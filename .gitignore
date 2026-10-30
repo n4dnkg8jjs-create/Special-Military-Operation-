@@ -4,7 +4,7 @@ tools/node_modules/
 __pycache__/
 .cache/
 _cache/
-build/
+/build/
 previews/_test/
 *.tmp.glb
 previews/
