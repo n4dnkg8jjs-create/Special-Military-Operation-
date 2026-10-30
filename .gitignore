@@ -1,0 +1,10 @@
+node_modules/
+tools/node_modules/
+*.blend1
+__pycache__/
+.cache/
+_cache/
+build/
+previews/_test/
+*.tmp.glb
+previews/

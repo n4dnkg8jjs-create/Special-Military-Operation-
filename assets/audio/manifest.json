@@ -1,0 +1,1374 @@
+{
+ "rifle_near": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 500,
+  "note": "AK-74 single shot, close (AK-47/SKS 7.62x39 recordings)",
+  "files": [
+   "weapons/rifle_near_01.mp3",
+   "weapons/rifle_near_02.mp3",
+   "weapons/rifle_near_03.mp3",
+   "weapons/rifle_near_04.mp3",
+   "weapons/rifle_near_05.mp3",
+   "weapons/rifle_near_06.mp3",
+   "weapons/rifle_near_07.mp3",
+   "weapons/rifle_near_08.mp3",
+   "weapons/rifle_near_09.mp3",
+   "weapons/rifle_near_10.mp3",
+   "weapons/rifle_near_11.mp3"
+  ]
+ },
+ "rifle_far": {
+  "category": "weapons",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 30,
+  "maxDistance": 1500,
+  "note": "single shot heard from 100-400 m",
+  "files": [
+   "weapons/rifle_far_01.mp3",
+   "weapons/rifle_far_02.mp3",
+   "weapons/rifle_far_03.mp3",
+   "weapons/rifle_far_04.mp3",
+   "weapons/rifle_far_05.mp3",
+   "weapons/rifle_far_06.mp3",
+   "weapons/rifle_far_07.mp3",
+   "weapons/rifle_far_08.mp3",
+   "weapons/rifle_far_09.mp3"
+  ]
+ },
+ "rifle_burst_near": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 500,
+  "note": "AK burst, close",
+  "files": [
+   "weapons/rifle_burst_near_01.mp3",
+   "weapons/rifle_burst_near_02.mp3",
+   "weapons/rifle_burst_near_03.mp3",
+   "weapons/rifle_burst_near_04.mp3"
+  ]
+ },
+ "rifle_burst_far": {
+  "category": "weapons",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 30,
+  "maxDistance": 1500,
+  "files": [
+   "weapons/rifle_burst_far_01.mp3",
+   "weapons/rifle_burst_far_02.mp3",
+   "weapons/rifle_burst_far_03.mp3",
+   "weapons/rifle_burst_far_04.mp3",
+   "weapons/rifle_burst_far_05.mp3",
+   "weapons/rifle_burst_far_06.mp3",
+   "weapons/rifle_burst_far_07.mp3",
+   "weapons/rifle_burst_far_08.mp3",
+   "weapons/rifle_burst_far_09.mp3",
+   "weapons/rifle_burst_far_10.mp3"
+  ]
+ },
+ "dmr_near": {
+  "category": "weapons",
+  "gain": 0.95,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 800,
+  "note": "SVD / single 7.62x54R shot, close (Mosin-Nagant recordings)",
+  "files": [
+   "weapons/dmr_near_01.mp3",
+   "weapons/dmr_near_02.mp3",
+   "weapons/dmr_near_03.mp3",
+   "weapons/dmr_near_04.mp3"
+  ]
+ },
+ "dmr_far": {
+  "category": "weapons",
+  "gain": 0.85,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 40,
+  "maxDistance": 2000,
+  "files": [
+   "weapons/dmr_far_01.mp3",
+   "weapons/dmr_far_02.mp3",
+   "weapons/dmr_far_03.mp3"
+  ]
+ },
+ "mg_near": {
+  "category": "weapons",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 700,
+  "note": "PKM-like GPMG bursts (7.62 LMG + Maxim 7.62x54R recordings)",
+  "files": [
+   "weapons/mg_near_01.mp3",
+   "weapons/mg_near_02.mp3",
+   "weapons/mg_near_03.mp3",
+   "weapons/mg_near_04.mp3",
+   "weapons/mg_near_05.mp3",
+   "weapons/mg_near_06.mp3",
+   "weapons/mg_near_07.mp3",
+   "weapons/mg_near_08.mp3",
+   "weapons/mg_near_09.mp3"
+  ]
+ },
+ "mg_far": {
+  "category": "weapons",
+  "gain": 0.85,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 40,
+  "maxDistance": 2000,
+  "files": [
+   "weapons/mg_far_01.mp3",
+   "weapons/mg_far_02.mp3",
+   "weapons/mg_far_03.mp3",
+   "weapons/mg_far_04.mp3",
+   "weapons/mg_far_05.mp3",
+   "weapons/mg_far_06.mp3",
+   "weapons/mg_far_07.mp3"
+  ]
+ },
+ "hmg": {
+  "category": "weapons",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 14,
+  "maxDistance": 900,
+  "note": "14.5 mm KPVT stand-in: .50 cal recordings",
+  "files": [
+   "weapons/hmg_01.mp3",
+   "weapons/hmg_02.mp3",
+   "weapons/hmg_03.mp3",
+   "weapons/hmg_04.mp3",
+   "weapons/hmg_05.mp3",
+   "weapons/hmg_06.mp3"
+  ]
+ },
+ "hmg_far": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 50,
+  "maxDistance": 2500,
+  "files": [
+   "weapons/hmg_far_01.mp3",
+   "weapons/hmg_far_02.mp3",
+   "weapons/hmg_far_03.mp3"
+  ]
+ },
+ "cannon30": {
+  "category": "weapons",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 16,
+  "maxDistance": 1200,
+  "note": "2A72 30 mm stand-in: M242 25 mm / Mk46 30 mm recordings, short bursts",
+  "files": [
+   "weapons/cannon30_01.mp3",
+   "weapons/cannon30_02.mp3",
+   "weapons/cannon30_03.mp3",
+   "weapons/cannon30_04.mp3",
+   "weapons/cannon30_05.mp3",
+   "weapons/cannon30_06.mp3"
+  ]
+ },
+ "cannon30_far": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 60,
+  "maxDistance": 3000,
+  "files": [
+   "weapons/cannon30_far_01.mp3",
+   "weapons/cannon30_far_02.mp3",
+   "weapons/cannon30_far_03.mp3",
+   "weapons/cannon30_far_04.mp3",
+   "weapons/cannon30_far_05.mp3"
+  ]
+ },
+ "tankgun": {
+  "category": "weapons",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 25,
+  "maxDistance": 4000,
+  "note": "125 mm main gun (120 mm / XM360 / tank cannon recordings)",
+  "files": [
+   "weapons/tankgun_01.mp3",
+   "weapons/tankgun_02.mp3",
+   "weapons/tankgun_03.mp3",
+   "weapons/tankgun_04.mp3"
+  ]
+ },
+ "tankgun_far": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 80,
+  "maxDistance": 6000,
+  "files": [
+   "weapons/tankgun_far_01.mp3",
+   "weapons/tankgun_far_02.mp3",
+   "weapons/tankgun_far_03.mp3",
+   "weapons/tankgun_far_04.mp3"
+  ]
+ },
+ "artillery_far": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "distant artillery / howitzer reports (non-positional bed one-shots)",
+  "files": [
+   "weapons/artillery_far_01.mp3",
+   "weapons/artillery_far_02.mp3",
+   "weapons/artillery_far_03.mp3",
+   "weapons/artillery_far_04.mp3",
+   "weapons/artillery_far_05.mp3"
+  ]
+ },
+ "mortar_launch": {
+  "category": "weapons",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 15,
+  "maxDistance": 1500,
+  "note": "82/120 mm mortar firing (M224 recordings)",
+  "files": [
+   "weapons/mortar_launch_01.mp3",
+   "weapons/mortar_launch_02.mp3",
+   "weapons/mortar_launch_03.mp3"
+  ]
+ },
+ "rpg_launch": {
+  "category": "weapons",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 12,
+  "maxDistance": 1200,
+  "files": [
+   "weapons/rpg_launch_01.mp3",
+   "weapons/rpg_launch_02.mp3",
+   "weapons/rpg_launch_03.mp3"
+  ]
+ },
+ "rpg_flight": {
+  "category": "weapons",
+  "gain": 0.7,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 400,
+  "note": "rocket motor/whoosh loop; attach to projectile",
+  "files": [
+   "weapons/rpg_flight_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 2.849977
+ },
+ "grenade_pin": {
+  "category": "weapons",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 4,
+  "maxDistance": 60,
+  "files": [
+   "weapons/grenade_pin_01.mp3",
+   "weapons/grenade_pin_02.mp3",
+   "weapons/grenade_pin_03.mp3",
+   "weapons/grenade_pin_04.mp3",
+   "weapons/grenade_pin_05.mp3"
+  ]
+ },
+ "grenade_throw": {
+  "category": "weapons",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 4,
+  "maxDistance": 60,
+  "files": [
+   "weapons/grenade_throw_01.mp3",
+   "weapons/grenade_throw_02.mp3"
+  ]
+ },
+ "reload": {
+  "category": "weapons",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 4,
+  "maxDistance": 60,
+  "files": [
+   "weapons/reload_01.mp3",
+   "weapons/reload_02.mp3",
+   "weapons/reload_03.mp3",
+   "weapons/reload_04.mp3",
+   "weapons/reload_05.mp3",
+   "weapons/reload_06.mp3",
+   "weapons/reload_07.mp3",
+   "weapons/reload_08.mp3",
+   "weapons/reload_09.mp3",
+   "weapons/reload_10.mp3"
+  ]
+ },
+ "bolt": {
+  "category": "weapons",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 4,
+  "maxDistance": 60,
+  "note": "charging handle / bolt",
+  "files": [
+   "weapons/bolt_01.mp3",
+   "weapons/bolt_03.mp3",
+   "weapons/bolt_04.mp3",
+   "weapons/bolt_06.mp3",
+   "weapons/bolt_08.mp3",
+   "weapons/bolt_09.mp3",
+   "weapons/bolt_11.mp3",
+   "weapons/bolt_12.mp3",
+   "weapons/bolt_14.mp3",
+   "weapons/bolt_16.mp3",
+   "weapons/bolt_17.mp3",
+   "weapons/bolt_19.mp3"
+  ]
+ },
+ "dryfire": {
+  "category": "weapons",
+  "gain": 0.4,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 40,
+  "files": [
+   "weapons/dryfire_01.mp3",
+   "weapons/dryfire_02.mp3",
+   "weapons/dryfire_03.mp3"
+  ]
+ },
+ "bullet_whizz": {
+  "category": "ballistics",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 40,
+  "note": "near-miss whizz (weak: single source pitched)",
+  "files": [
+   "ballistics/bullet_whizz_01.mp3",
+   "ballistics/bullet_whizz_02.mp3",
+   "ballistics/bullet_whizz_03.mp3",
+   "ballistics/bullet_whizz_04.mp3",
+   "ballistics/bullet_whizz_05.mp3"
+  ]
+ },
+ "ricochet": {
+  "category": "ballistics",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 6,
+  "maxDistance": 150,
+  "files": [
+   "ballistics/ricochet_01.mp3",
+   "ballistics/ricochet_02.mp3",
+   "ballistics/ricochet_03.mp3",
+   "ballistics/ricochet_04.mp3",
+   "ballistics/ricochet_05.mp3",
+   "ballistics/ricochet_06.mp3",
+   "ballistics/ricochet_07.mp3",
+   "ballistics/ricochet_08.mp3",
+   "ballistics/ricochet_09.mp3"
+  ]
+ },
+ "impact_concrete": {
+  "category": "ballistics",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 150,
+  "files": [
+   "ballistics/impact_concrete_01.mp3",
+   "ballistics/impact_concrete_02.mp3",
+   "ballistics/impact_concrete_03.mp3",
+   "ballistics/impact_concrete_04.mp3",
+   "ballistics/impact_concrete_05.mp3",
+   "ballistics/impact_concrete_06.mp3",
+   "ballistics/impact_concrete_07.mp3",
+   "ballistics/impact_concrete_08.mp3",
+   "ballistics/impact_concrete_09.mp3",
+   "ballistics/impact_concrete_10.mp3"
+  ]
+ },
+ "impact_dirt": {
+  "category": "ballistics",
+  "gain": 0.55,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 150,
+  "files": [
+   "ballistics/impact_dirt_01.mp3",
+   "ballistics/impact_dirt_02.mp3",
+   "ballistics/impact_dirt_03.mp3",
+   "ballistics/impact_dirt_04.mp3",
+   "ballistics/impact_dirt_05.mp3",
+   "ballistics/impact_dirt_06.mp3",
+   "ballistics/impact_dirt_07.mp3",
+   "ballistics/impact_dirt_08.mp3",
+   "ballistics/impact_dirt_09.mp3",
+   "ballistics/impact_dirt_10.mp3",
+   "ballistics/impact_dirt_11.mp3",
+   "ballistics/impact_dirt_12.mp3"
+  ]
+ },
+ "impact_metal": {
+  "category": "ballistics",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 6,
+  "maxDistance": 200,
+  "files": [
+   "ballistics/impact_metal_01.mp3",
+   "ballistics/impact_metal_02.mp3",
+   "ballistics/impact_metal_03.mp3",
+   "ballistics/impact_metal_04.mp3",
+   "ballistics/impact_metal_05.mp3",
+   "ballistics/impact_metal_06.mp3",
+   "ballistics/impact_metal_07.mp3",
+   "ballistics/impact_metal_08.mp3",
+   "ballistics/impact_metal_09.mp3"
+  ]
+ },
+ "impact_glass": {
+  "category": "ballistics",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 120,
+  "files": [
+   "ballistics/impact_glass_01.mp3",
+   "ballistics/impact_glass_02.mp3",
+   "ballistics/impact_glass_03.mp3",
+   "ballistics/impact_glass_04.mp3"
+  ]
+ },
+ "impact_flesh": {
+  "category": "ballistics",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 4,
+  "maxDistance": 60,
+  "note": "non-gory body hit thud",
+  "files": [
+   "ballistics/impact_flesh_01.mp3",
+   "ballistics/impact_flesh_02.mp3",
+   "ballistics/impact_flesh_03.mp3",
+   "ballistics/impact_flesh_04.mp3",
+   "ballistics/impact_flesh_05.mp3",
+   "ballistics/impact_flesh_06.mp3",
+   "ballistics/impact_flesh_07.mp3",
+   "ballistics/impact_flesh_08.mp3",
+   "ballistics/impact_flesh_09.mp3",
+   "ballistics/impact_flesh_10.mp3",
+   "ballistics/impact_flesh_11.mp3"
+  ]
+ },
+ "impact_armor": {
+  "category": "ballistics",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 500,
+  "note": "heavy round / shrapnel hitting vehicle armour",
+  "files": [
+   "ballistics/impact_armor_01.mp3",
+   "ballistics/impact_armor_02.mp3",
+   "ballistics/impact_armor_03.mp3",
+   "ballistics/impact_armor_04.mp3",
+   "ballistics/impact_armor_05.mp3",
+   "ballistics/impact_armor_06.mp3",
+   "ballistics/impact_armor_07.mp3",
+   "ballistics/impact_armor_08.mp3"
+  ]
+ },
+ "shell_casing": {
+  "category": "ballistics",
+  "gain": 0.3,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 30,
+  "files": [
+   "ballistics/shell_casing_01.mp3",
+   "ballistics/shell_casing_02.mp3",
+   "ballistics/shell_casing_03.mp3",
+   "ballistics/shell_casing_04.mp3",
+   "ballistics/shell_casing_05.mp3",
+   "ballistics/shell_casing_06.mp3",
+   "ballistics/shell_casing_07.mp3",
+   "ballistics/shell_casing_08.mp3",
+   "ballistics/shell_casing_09.mp3",
+   "ballistics/shell_casing_10.mp3",
+   "ballistics/shell_casing_11.mp3",
+   "ballistics/shell_casing_12.mp3",
+   "ballistics/shell_casing_13.mp3",
+   "ballistics/shell_casing_14.mp3",
+   "ballistics/shell_casing_15.mp3",
+   "ballistics/shell_casing_16.mp3",
+   "ballistics/shell_casing_17.mp3"
+  ]
+ },
+ "explosion_small": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 15,
+  "maxDistance": 1500,
+  "note": "grenade / RPG warhead",
+  "files": [
+   "explosions/explosion_small_01.mp3",
+   "explosions/explosion_small_02.mp3",
+   "explosions/explosion_small_03.mp3",
+   "explosions/explosion_small_04.mp3",
+   "explosions/explosion_small_05.mp3",
+   "explosions/explosion_small_06.mp3",
+   "explosions/explosion_small_07.mp3",
+   "explosions/explosion_small_08.mp3",
+   "explosions/explosion_small_09.mp3",
+   "explosions/explosion_small_10.mp3",
+   "explosions/explosion_small_11.mp3",
+   "explosions/explosion_small_12.mp3"
+  ]
+ },
+ "explosion_medium": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 25,
+  "maxDistance": 3000,
+  "note": "HE shell / mortar impact",
+  "files": [
+   "explosions/explosion_medium_01.mp3",
+   "explosions/explosion_medium_02.mp3",
+   "explosions/explosion_medium_03.mp3",
+   "explosions/explosion_medium_04.mp3",
+   "explosions/explosion_medium_05.mp3",
+   "explosions/explosion_medium_06.mp3",
+   "explosions/explosion_medium_07.mp3",
+   "explosions/explosion_medium_08.mp3"
+  ]
+ },
+ "explosion_large": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 40,
+  "maxDistance": 5000,
+  "note": "vehicle ammo cook-off / heavy shell",
+  "files": [
+   "explosions/explosion_large_01.mp3",
+   "explosions/explosion_large_02.mp3",
+   "explosions/explosion_large_03.mp3",
+   "explosions/explosion_large_04.mp3",
+   "explosions/explosion_large_05.mp3",
+   "explosions/explosion_large_06.mp3",
+   "explosions/explosion_large_07.mp3"
+  ]
+ },
+ "explosion_far": {
+  "category": "explosions",
+  "gain": 0.9,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "distant impacts / booms for the battle bed",
+  "files": [
+   "explosions/explosion_far_01.mp3",
+   "explosions/explosion_far_02.mp3",
+   "explosions/explosion_far_03.mp3",
+   "explosions/explosion_far_04.mp3",
+   "explosions/explosion_far_05.mp3",
+   "explosions/explosion_far_06.mp3",
+   "explosions/explosion_far_07.mp3",
+   "explosions/explosion_far_08.mp3",
+   "explosions/explosion_far_09.mp3",
+   "explosions/explosion_far_10.mp3",
+   "explosions/explosion_far_11.mp3",
+   "explosions/explosion_far_12.mp3",
+   "explosions/explosion_far_13.mp3",
+   "explosions/explosion_far_14.mp3",
+   "explosions/explosion_far_15.mp3"
+  ]
+ },
+ "incoming_whistle": {
+  "category": "explosions",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 20,
+  "maxDistance": 800,
+  "note": "falling shell whistle; play ~2-4 s before impact",
+  "files": [
+   "explosions/incoming_whistle_01.mp3",
+   "explosions/incoming_whistle_02.mp3",
+   "explosions/incoming_whistle_03.mp3"
+  ]
+ },
+ "debris": {
+  "category": "explosions",
+  "gain": 0.7,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 400,
+  "note": "falling rubble / debris rain",
+  "files": [
+   "explosions/debris_01.mp3",
+   "explosions/debris_02.mp3",
+   "explosions/debris_03.mp3",
+   "explosions/debris_04.mp3",
+   "explosions/debris_05.mp3",
+   "explosions/debris_06.mp3",
+   "explosions/debris_07.mp3",
+   "explosions/debris_08.mp3",
+   "explosions/debris_09.mp3",
+   "explosions/debris_10.mp3",
+   "explosions/debris_11.mp3",
+   "explosions/debris_12.mp3"
+  ]
+ },
+ "collapse": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 30,
+  "maxDistance": 3000,
+  "note": "building section collapse (composite)",
+  "files": [
+   "explosions/collapse_01.mp3",
+   "explosions/collapse_02.mp3",
+   "explosions/collapse_03.mp3",
+   "explosions/collapse_04.mp3"
+  ]
+ },
+ "glass_break": {
+  "category": "explosions",
+  "gain": 0.7,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 300,
+  "files": [
+   "explosions/glass_break_01.mp3",
+   "explosions/glass_break_02.mp3",
+   "explosions/glass_break_03.mp3",
+   "explosions/glass_break_04.mp3",
+   "explosions/glass_break_05.mp3",
+   "explosions/glass_break_06.mp3",
+   "explosions/glass_break_07.mp3",
+   "explosions/glass_break_08.mp3",
+   "explosions/glass_break_09.mp3",
+   "explosions/glass_break_10.mp3"
+  ]
+ },
+ "btr_engine_idle": {
+  "category": "vehicles",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "wheeled APC diesel idle",
+  "files": [
+   "vehicles/btr_engine_idle_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 6.836259
+ },
+ "btr_engine_drive": {
+  "category": "vehicles",
+  "gain": 0.75,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 12,
+  "maxDistance": 900,
+  "note": "wheeled APC diesel under load",
+  "files": [
+   "vehicles/btr_engine_drive_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 7.75
+ },
+ "btr_engine_drive_b": {
+  "category": "vehicles",
+  "gain": 0.75,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 12,
+  "maxDistance": 900,
+  "note": "alt: truck diesel cruising",
+  "files": [
+   "vehicles/btr_engine_drive_b_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 9.75
+ },
+ "tank_engine_idle": {
+  "category": "vehicles",
+  "gain": 0.7,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 12,
+  "maxDistance": 900,
+  "note": "tank diesel idle",
+  "files": [
+   "vehicles/tank_engine_idle_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 4.45
+ },
+ "tank_engine_drive": {
+  "category": "vehicles",
+  "gain": 0.85,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 15,
+  "maxDistance": 1200,
+  "note": "tank engine under load",
+  "files": [
+   "vehicles/tank_engine_drive_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 5.143537
+ },
+ "tank_engine_drive_fast": {
+  "category": "vehicles",
+  "gain": 0.85,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 15,
+  "maxDistance": 1200,
+  "note": "alt: heavy engine fast",
+  "files": [
+   "vehicles/tank_engine_drive_fast_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 2.369615
+ },
+ "engine_start": {
+  "category": "vehicles",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 12,
+  "maxDistance": 800,
+  "files": [
+   "vehicles/engine_start_01.mp3"
+  ]
+ },
+ "track_clank": {
+  "category": "vehicles",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "tank track link clatter loop (composite); scale playbackRate with speed",
+  "files": [
+   "vehicles/track_clank_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 4.25
+ },
+ "turret_traverse": {
+  "category": "vehicles",
+  "gain": 0.5,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 6,
+  "maxDistance": 200,
+  "note": "hydraulic/electric traverse whine loop",
+  "files": [
+   "vehicles/turret_traverse_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 4.597823
+ },
+ "servo_stop": {
+  "category": "vehicles",
+  "gain": 0.4,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 150,
+  "files": [
+   "vehicles/servo_stop_01.mp3",
+   "vehicles/servo_stop_02.mp3",
+   "vehicles/servo_stop_03.mp3"
+  ]
+ },
+ "hatch": {
+  "category": "vehicles",
+  "gain": 0.7,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 6,
+  "maxDistance": 200,
+  "note": "hatch / door clang",
+  "files": [
+   "vehicles/hatch_01.mp3",
+   "vehicles/hatch_02.mp3",
+   "vehicles/hatch_03.mp3",
+   "vehicles/hatch_04.mp3",
+   "vehicles/hatch_05.mp3",
+   "vehicles/hatch_06.mp3"
+  ]
+ },
+ "fire_vehicle_loop": {
+  "category": "vehicles",
+  "gain": 0.8,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 400,
+  "note": "large burning vehicle",
+  "files": [
+   "vehicles/fire_vehicle_loop_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 16.25
+ },
+ "footstep_rubble": {
+  "category": "foley",
+  "gain": 0.35,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 50,
+  "files": [
+   "foley/footstep_rubble_01.mp3",
+   "foley/footstep_rubble_02.mp3",
+   "foley/footstep_rubble_03.mp3",
+   "foley/footstep_rubble_04.mp3",
+   "foley/footstep_rubble_05.mp3",
+   "foley/footstep_rubble_06.mp3",
+   "foley/footstep_rubble_07.mp3",
+   "foley/footstep_rubble_08.mp3",
+   "foley/footstep_rubble_09.mp3",
+   "foley/footstep_rubble_10.mp3",
+   "foley/footstep_rubble_11.mp3",
+   "foley/footstep_rubble_12.mp3",
+   "foley/footstep_rubble_13.mp3",
+   "foley/footstep_rubble_14.mp3",
+   "foley/footstep_rubble_15.mp3",
+   "foley/footstep_rubble_16.mp3"
+  ]
+ },
+ "footstep_concrete": {
+  "category": "foley",
+  "gain": 0.3,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 50,
+  "files": [
+   "foley/footstep_concrete_01.mp3",
+   "foley/footstep_concrete_02.mp3",
+   "foley/footstep_concrete_03.mp3",
+   "foley/footstep_concrete_04.mp3",
+   "foley/footstep_concrete_05.mp3",
+   "foley/footstep_concrete_06.mp3",
+   "foley/footstep_concrete_07.mp3",
+   "foley/footstep_concrete_08.mp3",
+   "foley/footstep_concrete_09.mp3",
+   "foley/footstep_concrete_10.mp3",
+   "foley/footstep_concrete_11.mp3",
+   "foley/footstep_concrete_12.mp3"
+  ]
+ },
+ "footstep_gravel": {
+  "category": "foley",
+  "gain": 0.3,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 50,
+  "files": [
+   "foley/footstep_gravel_01.mp3",
+   "foley/footstep_gravel_02.mp3",
+   "foley/footstep_gravel_03.mp3",
+   "foley/footstep_gravel_04.mp3",
+   "foley/footstep_gravel_05.mp3",
+   "foley/footstep_gravel_06.mp3",
+   "foley/footstep_gravel_07.mp3",
+   "foley/footstep_gravel_08.mp3",
+   "foley/footstep_gravel_09.mp3",
+   "foley/footstep_gravel_10.mp3"
+  ]
+ },
+ "gear_rattle": {
+  "category": "foley",
+  "gain": 0.3,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 40,
+  "note": "webbing / kit rattle while moving",
+  "files": [
+   "foley/gear_rattle_01.mp3",
+   "foley/gear_rattle_02.mp3",
+   "foley/gear_rattle_03.mp3",
+   "foley/gear_rattle_04.mp3",
+   "foley/gear_rattle_05.mp3",
+   "foley/gear_rattle_06.mp3",
+   "foley/gear_rattle_07.mp3",
+   "foley/gear_rattle_08.mp3",
+   "foley/gear_rattle_09.mp3",
+   "foley/gear_rattle_10.mp3",
+   "foley/gear_rattle_11.mp3",
+   "foley/gear_rattle_12.mp3",
+   "foley/gear_rattle_13.mp3",
+   "foley/gear_rattle_14.mp3"
+  ]
+ },
+ "body_fall": {
+  "category": "foley",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 80,
+  "files": [
+   "foley/body_fall_01.mp3",
+   "foley/body_fall_02.mp3",
+   "foley/body_fall_03.mp3",
+   "foley/body_fall_04.mp3",
+   "foley/body_fall_05.mp3",
+   "foley/body_fall_06.mp3",
+   "foley/body_fall_07.mp3",
+   "foley/body_fall_08.mp3",
+   "foley/body_fall_09.mp3",
+   "foley/body_fall_10.mp3"
+  ]
+ },
+ "pain": {
+  "category": "human",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 120,
+  "note": "short hit / pain grunt (non-verbal)",
+  "files": [
+   "human/pain_01.mp3",
+   "human/pain_02.mp3",
+   "human/pain_03.mp3",
+   "human/pain_04.mp3",
+   "human/pain_05.mp3",
+   "human/pain_06.mp3",
+   "human/pain_07.mp3",
+   "human/pain_08.mp3",
+   "human/pain_09.mp3",
+   "human/pain_10.mp3",
+   "human/pain_11.mp3",
+   "human/pain_12.mp3",
+   "human/pain_13.mp3",
+   "human/pain_14.mp3",
+   "human/pain_15.mp3",
+   "human/pain_16.mp3",
+   "human/pain_17.mp3",
+   "human/pain_18.mp3",
+   "human/pain_19.mp3",
+   "human/pain_20.mp3",
+   "human/pain_21.mp3",
+   "human/pain_22.mp3",
+   "human/pain_23.mp3",
+   "human/pain_24.mp3",
+   "human/pain_25.mp3",
+   "human/pain_26.mp3"
+  ]
+ },
+ "wounded": {
+  "category": "human",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 80,
+  "note": "wounded groans / moans (tasteful, non-verbal)",
+  "files": [
+   "human/wounded_01.mp3",
+   "human/wounded_02.mp3",
+   "human/wounded_03.mp3",
+   "human/wounded_04.mp3",
+   "human/wounded_05.mp3",
+   "human/wounded_06.mp3",
+   "human/wounded_07.mp3",
+   "human/wounded_08.mp3",
+   "human/wounded_09.mp3",
+   "human/wounded_10.mp3",
+   "human/wounded_11.mp3",
+   "human/wounded_12.mp3",
+   "human/wounded_13.mp3",
+   "human/wounded_14.mp3",
+   "human/wounded_15.mp3"
+  ]
+ },
+ "death": {
+  "category": "human",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 100,
+  "note": "death cry (short, non-gory)",
+  "files": [
+   "human/death_01.mp3",
+   "human/death_02.mp3",
+   "human/death_03.mp3",
+   "human/death_04.mp3"
+  ]
+ },
+ "shout": {
+  "category": "human",
+  "gain": 0.7,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 200,
+  "note": "non-verbal battle shouts / yells",
+  "files": [
+   "human/shout_01.mp3",
+   "human/shout_02.mp3",
+   "human/shout_03.mp3",
+   "human/shout_04.mp3",
+   "human/shout_05.mp3",
+   "human/shout_06.mp3",
+   "human/shout_07.mp3",
+   "human/shout_08.mp3",
+   "human/shout_09.mp3",
+   "human/shout_10.mp3",
+   "human/shout_11.mp3"
+  ]
+ },
+ "curse_ru": {
+  "category": "human",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 8,
+  "maxDistance": 150,
+  "note": "optional: Russian swear exclamations (CC0); calm 'well... sh*t' delivery",
+  "files": [
+   "human/curse_ru_01.mp3",
+   "human/curse_ru_02.mp3",
+   "human/curse_ru_03.mp3",
+   "human/curse_ru_04.mp3",
+   "human/curse_ru_05.mp3"
+  ]
+ },
+ "ambience_wind": {
+  "category": "ambience",
+  "gain": 0.5,
+  "loop": true,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "stereo wind bed",
+  "files": [
+   "ambience/ambience_wind_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 30.759615
+ },
+ "ambience_wind_gusty": {
+  "category": "ambience",
+  "gain": 0.5,
+  "loop": true,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "stronger gusting wind",
+  "files": [
+   "ambience/ambience_wind_gusty_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 8.15
+ },
+ "ambience_city": {
+  "category": "ambience",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "war-torn city bed: wind + distant gunfire/artillery + crows (composite, stereo)",
+  "files": [
+   "ambience/ambience_city_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 64.25
+ },
+ "ambience_battle": {
+  "category": "ambience",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "denser distant battle bed (composite, stereo)",
+  "files": [
+   "ambience/ambience_battle_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 64.25
+ },
+ "fire_loop": {
+  "category": "ambience",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 150,
+  "note": "small fire crackle",
+  "files": [
+   "ambience/fire_loop_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 20.25
+ },
+ "fire_loop_b": {
+  "category": "ambience",
+  "gain": 0.6,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 5,
+  "maxDistance": 150,
+  "files": [
+   "ambience/fire_loop_b_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 4.268571
+ },
+ "crow": {
+  "category": "ambience",
+  "gain": 0.4,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 20,
+  "maxDistance": 400,
+  "note": "crow / raven caws",
+  "files": [
+   "ambience/crow_01.mp3",
+   "ambience/crow_02.mp3",
+   "ambience/crow_03.mp3",
+   "ambience/crow_04.mp3",
+   "ambience/crow_05.mp3",
+   "ambience/crow_06.mp3",
+   "ambience/crow_07.mp3",
+   "ambience/crow_08.mp3",
+   "ambience/crow_09.mp3",
+   "ambience/crow_10.mp3",
+   "ambience/crow_11.mp3",
+   "ambience/crow_12.mp3",
+   "ambience/crow_13.mp3"
+  ]
+ },
+ "radio": {
+  "category": "ambience",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 40,
+  "note": "radio squelch / chatter-less transmissions",
+  "files": [
+   "ambience/radio_01.mp3",
+   "ambience/radio_02.mp3",
+   "ambience/radio_03.mp3",
+   "ambience/radio_04.mp3",
+   "ambience/radio_05.mp3"
+  ]
+ },
+ "radio_static": {
+  "category": "ambience",
+  "gain": 0.35,
+  "loop": true,
+  "spatial": true,
+  "refDistance": 3,
+  "maxDistance": 30,
+  "files": [
+   "ambience/radio_static_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 11.25
+ },
+ "siren_air_raid": {
+  "category": "ambience",
+  "gain": 0.5,
+  "loop": true,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "distant air-raid siren",
+  "files": [
+   "ambience/siren_air_raid_01.mp3"
+  ],
+  "loopStart": 0.25,
+  "loopEnd": 17.75
+ },
+ "ui_click": {
+  "category": "ui",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "files": [
+   "ui/ui_click_01.mp3",
+   "ui/ui_click_02.mp3",
+   "ui/ui_click_03.mp3",
+   "ui/ui_click_04.mp3",
+   "ui/ui_click_05.mp3",
+   "ui/ui_click_06.mp3"
+  ]
+ },
+ "ui_select": {
+  "category": "ui",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "unit selected",
+  "files": [
+   "ui/ui_select_01.mp3",
+   "ui/ui_select_02.mp3",
+   "ui/ui_select_03.mp3",
+   "ui/ui_select_04.mp3",
+   "ui/ui_select_05.mp3"
+  ]
+ },
+ "ui_order": {
+  "category": "ui",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "order acknowledged (radio-style blip)",
+  "files": [
+   "ui/ui_order_01.mp3",
+   "ui/ui_order_02.mp3",
+   "ui/ui_order_03.mp3",
+   "ui/ui_order_04.mp3",
+   "ui/ui_order_05.mp3"
+  ]
+ },
+ "ui_hover": {
+  "category": "ui",
+  "gain": 0.3,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "files": [
+   "ui/ui_hover_01.mp3",
+   "ui/ui_hover_02.mp3",
+   "ui/ui_hover_03.mp3",
+   "ui/ui_hover_04.mp3",
+   "ui/ui_hover_05.mp3",
+   "ui/ui_hover_06.mp3"
+  ]
+ },
+ "ui_alert": {
+  "category": "ui",
+  "gain": 0.6,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "unit under attack / warning",
+  "files": [
+   "ui/ui_alert_01.mp3",
+   "ui/ui_alert_02.mp3",
+   "ui/ui_alert_03.mp3",
+   "ui/ui_alert_04.mp3"
+  ]
+ },
+ "ui_error": {
+  "category": "ui",
+  "gain": 0.5,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "files": [
+   "ui/ui_error_01.mp3"
+  ]
+ },
+ "victory": {
+  "category": "ui",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "victory stinger",
+  "files": [
+   "ui/victory_01.mp3",
+   "ui/victory_02.mp3",
+   "ui/victory_03.mp3"
+  ]
+ },
+ "defeat": {
+  "category": "ui",
+  "gain": 0.8,
+  "loop": false,
+  "spatial": false,
+  "refDistance": 10,
+  "maxDistance": 600,
+  "note": "defeat stinger",
+  "files": [
+   "ui/defeat_01.mp3",
+   "ui/defeat_02.mp3"
+  ]
+ }
+}

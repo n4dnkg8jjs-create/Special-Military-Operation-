@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Asset preview: /tools/preview.html?glb=/assets/x.glb&views=4&anim=walk&t=0.5&dist=1.0
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w')||1400), H = +(q.get('h')||800);
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(W,H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(),0.04).texture;
+scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(6,10,5); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048); scene.add(sun); scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+const gltf = await new GLTFLoader().loadAsync(q.get('glb'));
+const root = gltf.scene; scene.add(root);
+let tris=0; root.traverse(o=>{ if(o.isMesh){o.castShadow=o.receiveShadow=true; const g=o.geometry; tris += (g.index?g.index.count:g.attributes.position.count)/3;} });
+if (q.get('anim') && gltf.animations.length){
+  const mixer = new THREE.AnimationMixer(root);
+  const clip = gltf.animations.find(a=>a.name===q.get('anim')) || gltf.animations[0];
+  const act = mixer.clipAction(clip); act.play(); mixer.setTime(clip.duration*(+(q.get('t')||0.3)));
+}
+root.updateMatrixWorld(true);
+const box = new THREE.Box3().setFromObject(root); const size = box.getSize(new THREE.Vector3()); const c = box.getCenter(new THREE.Vector3());
+sun.shadow.camera.left=sun.shadow.camera.bottom=-size.length(); sun.shadow.camera.right=sun.shadow.camera.top=size.length(); sun.shadow.camera.updateProjectionMatrix();
+const views = +(q.get('views')||4); const r = size.length()*0.85*(+(q.get('dist')||1));
+const cols = views>1?2:1, rows = Math.ceil(views/cols);
+const cam = new THREE.PerspectiveCamera(35, (W/cols)/(H/rows), 0.01, 2000);
+renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
+const angs=[[35,15],[145,20],[260,10],[0,55],[90,5],[200,40]];
+for(let i=0;i<views;i++){
+  const [az,el]=angs[i%angs.length]; const a=az*Math.PI/180, e=el*Math.PI/180;
+  cam.position.set(c.x+r*Math.cos(e)*Math.sin(a), c.y+r*Math.sin(e), c.z+r*Math.cos(e)*Math.cos(a)); cam.lookAt(c);
+  const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;
+  renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(scene,cam);
+}
+window.__info = {tris:Math.round(tris), size:size.toArray().map(v=>+v.toFixed(3)), anims:gltf.animations.map(a=>a.name+':'+a.duration.toFixed(2)), nodes:(()=>{const n=[];root.traverse(o=>{if(o.name)n.push(o.name)});return n.slice(0,80)})()};
+window.__done = true;
+</script></body></html>

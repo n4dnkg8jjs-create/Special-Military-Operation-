@@ -1,0 +1,142 @@
+"""Stage 4: assets/soldiers/manifest.json (reads the produced GLBs + cached clip metadata).
+run: python3 tools/blender/soldiers/write_manifest.py"""
+import os, sys, json, struct, pickle
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import numpy as np
+import camo as C
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ASSETS = os.path.abspath(os.path.join(HERE, '../../../assets/soldiers'))
+CACHE = os.path.join(HERE, '.cache')
+
+
+def read_glb(path):
+    b = open(path, 'rb').read()
+    n = struct.unpack('<I', b[12:16])[0]
+    g = json.loads(b[20:20 + n])
+    acc = g.get('accessors', [])
+    tris = {}
+    for node in g['nodes']:
+        if 'mesh' in node:
+            m = g['meshes'][node['mesh']]
+            tris[node['name']] = int(sum(acc[p['indices']]['count'] // 3 for p in m['primitives']))
+    mats_by_node = {}
+    for node in g['nodes']:
+        if 'mesh' in node:
+            mats_by_node[node['name']] = sorted({g['materials'][p['material']]['name'] for p in g['meshes'][node['mesh']]['primitives'] if 'material' in p})
+    return g, tris, mats_by_node
+
+
+def main():
+    out = {
+        'generator': 'tools/blender/soldiers (stage_body.py -> build_soldier.py -> weapons.py -> build_anims.py -> write_manifest.py)',
+        'units': 'metres, Y up, model forward +Z, right = -X, origin on the ground between the feet',
+        'height_m': {'body_bare': 1.74, 'with_helmet_and_boots': 1.77},
+        'licences': 'MakeHuman base mesh/targets/cmu_mb rig+weights (CC0), CMU mocap (free for any use); everything else procedural.',
+    }
+    clips = pickle.load(open(f'{CACHE}/clips.pkl', 'rb'))
+    pal = lambda d: {k: v for k, v in d.items()}
+    out['references'] = {
+        'ratnik_emr_camo': dict(palette=pal(C.EMR), pixel_size_m=C.EMR_PIXEL_M,
+                                notes='EMR ("tsifra") summer: light grey-green ground with dark-green, brown and black pixel clusters forming '
+                                      'larger deforming blobs (Flecktarn-like micro/macro structure). Proportions used: ground ~45%, green 28%, brown 27% (black ~9% inside the dark clusters).'),
+        'mm14_camo': dict(palette=pal(C.MM14), pixel_size_m=C.MM14_PIXEL_M,
+                          notes='MM-14: five-tone digital pattern (light beige, light green, swamp green, grey-green, dark grey); slightly horizontally elongated shapes.'),
+        'multicam': dict(palette=pal(C.MULTICAM), notes='UA plate carriers / helmet covers / some tops; organic 6-tone pattern, procedural approximation.'),
+        'coyote_webbing': C.COYOTE,
+        '6b46_plate_carrier': dict(notes='Ratnik lightweight plate carrier: front/back plate bags (Granit-type plates), cummerbund, padded shoulder straps, MOLLE, drag handle. '
+                                         'Modelled: plate bags ~300 x 336 mm front / 310 x 344 mm back, 22-26 mm thick with plate bulge and shooter\'s-cut corners; '
+                                         'cummerbund 180 mm; 6Sh117-style pouches: 3 flapped double AK mag pouches (85x155x62 mm, Fastex), radio pouch (R-187 style radio + antenna), '
+                                         'grenade pouches, IFAK, hydration and dump pouch.'),
+        'ua_plate_carrier': dict(notes='JPC-style: slimmer plate bags (280 x 316 mm), integrated open-top triple mag shingle with visible AK mag bases, admin pouch with UA flag patch, '
+                                       'CAT tourniquet, radio on the cummerbund, IFAK, grenade pouch; MultiCam + coyote webbing.'),
+        'helmets': {'RU helmet_A': '6B47 with EMR cover, elastic foliage band, NVG shroud', 'RU helmet_B': '6B47 with EMR cover, band and goggles on the brow',
+                    'UA helmet_A': 'FAST-style high cut (ear cut-outs high) with MultiCam cover, ARC side rails, NVG shroud, counterweight pouch',
+                    'UA helmet_B': 'MICH/ACH-style mid cut with MultiCam cover and goggles'},
+        'tape_bands': 'Identification tape wrapped twice around the upper arms (~50 mm wide, ~120 mm below the shoulder joint) and around the thighs; '
+                      'RU white (alt red), UA yellow. Separate meshes using material `tape` (extras.recolourable) so the game can recolour them.',
+        'weapons': {'ak74m': 'AK-74M 943 mm, black polymer furniture, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), two-chamber muzzle brake',
+                    'pkm': 'PKM 1190 mm, skeleton-style stock, 100-rd box, folded bipod, carry handle',
+                    'rpg7': 'RPG-7 with wooden heat guards, PGO-7 sight and PG-7V (85 mm) round loaded'},
+    }
+    out['skeleton'] = {
+        'rig': 'MakeHuman cmu_mb (CMU-BVH compatible names); joint nodes carry identity rest rotations (world-aligned frames); skins use inverse bind = translate(-joint).',
+        'right_hand_bone': 'RightHand', 'left_hand_bone': 'LeftHand',
+        'finger_bones': ['RightFingerBase', 'RightHandFinger1', 'RThumb', 'LeftFingerBase', 'LeftHandFinger1', 'LThumb'],
+        'head_bone': 'Head', 'chest_bone': 'Spine1', 'root_bone': 'Hips',
+        'sockets': {
+            'weapon_socket': 'child of RightHand: parent a weapon GLB (origin = pistol grip, +Z muzzle) with identity transform; matches all rifle-hold clips',
+            'weapon_socket_L': 'child of LeftHand: rifle carried by the handguard (grip_L in the palm) - use during throw_grenade',
+            'weapon_socket_back': 'child of Spine1: slung rifle diagonally on the back, muzzle up over the right shoulder (RPG gunner, drag_wounded, wounded clips)',
+            'mag_socket_L': 'child of LeftHand: attach ak74m `magazine` node during reloads',
+            'aim': 'child of Head at the eye midpoint (eye height)', 'aim_eye_R': 'child of Head at the right eye (sighting eye)'},
+    }
+    for fac in ('ru', 'ua'):
+        g, tris, mats = read_glb(f'{ASSETS}/soldier_{fac}.glb')
+        nodes = [n['name'] for n in g['nodes']]
+        extras = {n['name']: n.get('extras') for n in g['nodes'] if n.get('extras')}
+        lod0 = {k: v for k, v in tris.items() if not k.endswith('_LOD1')}
+        default = [k for k in lod0 if (extras.get(k) or {}).get('default_visible', True)]
+        out[f'soldier_{fac}'] = dict(
+            file=f'soldier_{fac}.glb', size_bytes=os.path.getsize(f'{ASSETS}/soldier_{fac}.glb'),
+            mesh_nodes_tris=lod0, lod1_tris={k: v for k, v in tris.items() if k.endswith('_LOD1')},
+            default_visible=default, default_config_tris=int(sum(lod0[k] for k in default)),
+            materials_by_node=mats, node_extras=extras,
+            notes=('body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. '
+                   'helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. '
+                   'Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). '
+                   'Vertex colours (COLOR_0) on gear carry baked ambient occlusion.'),
+            uniform_material={'ru': 'emr_camo (all variants)', 'ua': 'mm14_camo (A,B), mm14_multicam_camo (C: MultiCam top, MM-14 trousers)'}[fac],
+            gear_materials=sorted({m for k, ms in mats.items() for m in ms}),
+            node_list=nodes)
+    out['soldier_ru']['tape_alt_material'] = 'tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable'
+    out['soldier_ua']['tape_alt_material'] = 'tape (yellow #e8c31c)'
+    g, tris, mats = read_glb(f'{ASSETS}/soldier_anims.glb')
+    ca = {a['name']: a for a in g['animations']}
+    acc = g['accessors']
+    cl = {}
+    for name, c in clips.items():
+        cl[name] = dict(duration_s=round(c['dur'], 3), frames=len(c['lq']), fps=30, loop=bool(c['loop']),
+                        ground_speed_mps=round(abs(c['speed']), 3) if c['speed'] else 0.0,
+                        direction='backward (-Z)' if c['speed'] < 0 else ('forward (+Z)' if c['speed'] > 0 else 'in place'),
+                        root_motion=bool(c['root_motion']), notes=c['notes'])
+    events = {
+        'fire_stand': {'shot': 0.0},
+        'reload_stand': {'mag_out': 0.70, 'mag_in': 1.80, 'charging_handle': 2.10},
+        'reload_crouch': {'mag_out': 0.70, 'mag_in': 1.80, 'charging_handle': 2.10},
+        'throw_grenade': {'move_weapon_to': 'weapon_socket_L', 'release_approx': 1.25},
+        'death_front': {'drop_weapon': 0.2}, 'death_back': {'drop_weapon': 0.1}, 'death_crumple': {'drop_weapon': 0.3},
+        'drag_wounded': {'weapon': 'weapon_socket_back'}, 'wounded_ground': {'weapon': 'drop or weapon_socket_back'},
+        'wounded_crawl': {'weapon': 'drop or weapon_socket_back'},
+    }
+    for k, v in events.items():
+        if k in cl:
+            cl[k]['events'] = v
+    out['soldier_anims'] = dict(file='soldier_anims.glb', size_bytes=os.path.getsize(f'{ASSETS}/soldier_anims.glb'),
+                                contents='skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear',
+                                in_place='loops have horizontal root motion stripped (Hips keeps vertical bob); deaths keep root motion and end at rest',
+                                sources='CMU mocap: walk 16_15, run 16_35, crouch walk 136_09, limp 77_19, drag 81_08, death_back 90_18, throw 113_24. '
+                                        'Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. '
+                                        'Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.',
+                                clips=cl)
+    wi = json.load(open(f'{CACHE}/weapons_info.json'))
+    for w in ('ak74m', 'pkm', 'rpg7'):
+        g, tris, mats = read_glb(f'{ASSETS}/{w}.glb')
+        out[w] = dict(file=f'{w}.glb', size_bytes=os.path.getsize(f'{ASSETS}/{w}.glb'), tris=tris, materials=sorted({m for ms in mats.values() for m in ms}),
+                      empties={k: v[0] for k, v in wi[w]['empties'].items()},
+                      conventions='origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1')
+    out['ak74m']['magazine_node'] = 'magazine (separate mesh; hide/reparent to mag_socket_L during reloads)'
+    out['deviations'] = [
+        'Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.',
+        'Extra nodes beyond the contract: gloves, boots, kneepads, legband_L, pouches_front/side/back split, helmet_B per faction, *_LOD1 for every mesh node.',
+        'Extra sockets: weapon_socket_L, mag_socket_L, aim_eye_R. AK-74M magazine is a separate node.',
+        'tape_red is not a separate material in the GLB (unused glTF materials are dropped by loaders); recolour `tape` instead (value given above).',
+        'throw_grenade needs the rifle moved to weapon_socket_L; wounded/drag/death clips expect the game to drop or sling the rifle.',
+        'Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris.',
+    ]
+    json.dump(out, open(f'{ASSETS}/manifest.json', 'w'), indent=1)
+    print('manifest written', {k: out[f'soldier_{k}']['default_config_tris'] for k in ('ru', 'ua')})
+
+
+if __name__ == '__main__':
+    main()

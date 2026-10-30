@@ -1,0 +1,198 @@
+import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import * as Fallback from '../engine/fallback.js';
+import { WEAPONS, TUNING } from '../config.js';
+
+// One infantryman: visual (skinned MakeHuman mesh + gear + weapon), animation state machine and combat state.
+const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
+let SHARED = null, SHARED_EVENTS = {};
+
+export function prepareSoldierAssets(assets) {
+  const a = assets.gltf.soldier_anims || assets.gltf.soldier_ua || assets.gltf.soldier_ru;
+  const clips = {};
+  for (const c of a?.animations || []) clips[c.name] = c;
+  for (const g of [assets.gltf.soldier_ua, assets.gltf.soldier_ru]) for (const c of g?.animations || []) clips[c.name] ||= c;
+  const man = assets.manifest.soldiers || {};
+  const mc = man.soldier_anims?.clips || man.clips || {};
+  for (const [k, v] of Object.entries(mc)) if (v && v.ground_speed_mps > 0) CLIP_SPEED[k] = v.ground_speed_mps;
+  SHARED_EVENTS = Object.fromEntries(Object.entries(mc).map(([k, v]) => [k, v.events || {}]));
+  SHARED = { clips, manifest: man, assets };
+}
+
+function pick(arr, r) { return arr[Math.floor(r * arr.length) % arr.length]; }
+
+export class Soldier {
+  constructor(squad, idx, role, faction, scene) {
+    this.squad = squad; this.idx = idx; this.role = role; this.faction = faction; this.scene = scene;
+    this.weaponKey = role.weapon; this.weapon = WEAPONS[role.weapon];
+    this.mags = role.mags; this.inMag = this.weapon.mag; this.sideKey = role.side; this.sideMags = role.sideMags || 0;
+    this.rpgCarried = role.carriesRpg || 0;
+    this.hp = TUNING.soldierHp; this.state = 'ok'; // ok | light | critical | stable | dead | evac
+    this.stance = 'stand'; this.suppression = 0; this.pos = new THREE.Vector3(); this.heading = 0; this.vel = new THREE.Vector3();
+    this.path = null; this.pathI = 0; this.goal = null; this.goalHeading = null; this.speedMul = 1;
+    this.target = null; this.fireCd = Math.random(); this.burstLeft = 0; this.reloadT = 0; this.aimT = 0; this.scanT = Math.random() * 0.5;
+    this.bleed = 0; this.dragger = null; this.dragging = null; this.treatT = 0;
+    this.inside = null; // 'btr' | building slot
+    this.visible = true; this.rand = Math.random();
+    this.buildVisual();
+  }
+  get alive() { return this.state !== 'dead' && this.state !== 'evac'; }
+  get effective() { return this.state === 'ok' || this.state === 'light'; }
+  buildVisual() {
+    const A = SHARED.assets, key = this.faction.soldierAsset, g = A.gltf[key];
+    const root = this.root = new THREE.Group(); root.name = 'soldier';
+    if (g) {
+      const m = SkeletonUtils.clone(g.scene); root.add(m); this.model = m;
+      // variants: one body (MakeHuman A/B/C), one helmet, random gear, gloves on some
+      const r = () => Math.random();
+      const pickOf = (pre) => { const set = new Set(); m.traverse(o => { const mm = o.name.match(new RegExp(`^${pre}_([A-Z])(_LOD1)?$`)); if (mm) set.add(mm[1]); }); return [...set][Math.floor(r() * set.size)]; };
+      const body = pickOf('body'), helmet = pickOf('helmet');
+      const gloves = r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : 0.3), knee = r() < 0.45;
+      const legL = this.faction.id === 'UA' ? r() < 0.35 : r() < 0.15;
+      const vis = core => {
+        let mm = core.match(/^body_([A-Z])$/); if (mm) return mm[1] === body;
+        mm = core.match(/^helmet_([A-Z])$/); if (mm) return mm[1] === helmet;
+        if (core === 'gloves') return gloves; if (core === 'hands') return !gloves;
+        if (core === 'backpack') return backpack; if (core === 'pouches_back') return !backpack && r() < 0.4;
+        if (core === 'kneepads') return knee; if (core === 'legband_L') return legL;
+        return true;
+      };
+      const meshes = [], names = new Set(), decided = {};
+      m.traverse(o => { if (o.isMesh) { meshes.push(o); names.add(o.name.replace(/\.\d+$/, '')); } });
+      this.lods = [];
+      for (const o of meshes) {
+        o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+        // skinned sub-primitives are children named like the node; walk up to the named node
+        let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband)/.test(n.name)) n = n.parent;
+        const base = n.name.replace(/\.\d+$/, ''), core = base.replace(/_LOD\d$/, '');
+        o.userData.variantOn = decided[core] ??= vis(core);
+        o.userData.lod = /_LOD1$/.test(base) ? 1 : (names.has(core + '_LOD1') || m.getObjectByName(core + '_LOD1')) ? 0 : -1;
+        o.visible = o.userData.variantOn && o.userData.lod !== 1;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((mt, i) => { if (/^tape/i.test(mt.name) || /armband|legband/i.test(base)) { const c = mt.clone(); c.color.set(this.faction.tape); c.roughness = 0.4; if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; } });
+        if (o.userData.lod !== -1) this.lods.push(o);
+      }
+      if (!this.lods.length) this.lods = null;
+      this.mixer = new THREE.AnimationMixer(m);
+      this.actions = {}; this.cur = null;
+      this.spine = m.getObjectByName('Spine1') || m.getObjectByName('Spine') || m.getObjectByName('spine_02');
+      this.sockets = { R: m.getObjectByName('weapon_socket'), L: m.getObjectByName('weapon_socket_L'), back: m.getObjectByName('weapon_socket_back'), mag: m.getObjectByName('mag_socket_L') };
+      const wg = A.gltf[this.weaponKey];
+      if (this.sockets.R && wg) {
+        const w = wg.scene.clone(); this.sockets.R.add(w); this.weaponObj = w; this.muzzleObj = w.getObjectByName('muzzle');
+        w.traverse(o => { if (o.isMesh) o.castShadow = true; });
+        this.mag = w.getObjectByName('magazine'); if (this.mag) { this.magHome = { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() }; }
+        this.wSock = 'R';
+      }
+      if (this.sideKey && A.gltf[this.sideKey]) { const back = m.getObjectByName('weapon_socket_back'); if (back) back.add(A.gltf[this.sideKey].scene.clone()); }
+      this.play('idle_rifle', 0);
+    } else {
+      const fb = Fallback.soldier(this.faction.tape); root.add(fb); this.model = fb; this.fallback = true;
+    }
+    this.scene.add(root);
+  }
+  // ------------------------------------------------------------ animation
+  action(name) {
+    if (!this.mixer) return null;
+    if (this.actions[name]) return this.actions[name];
+    const c = SHARED.clips[name]; if (!c) return null;
+    const a = this.mixer.clipAction(c);
+    const once = /^(death|fire|reload|throw|hit)/.test(name);
+    if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    return this.actions[name] = a;
+  }
+  play(name, fade = 0.25, timeScale = 1, alt = []) {
+    let a = this.action(name);
+    for (let i = 0; !a && i < alt.length; i++) { name = alt[i]; a = this.action(name); }
+    if (!a) return;
+    a.timeScale = timeScale;
+    if (this.curName === name) return;
+    a.reset(); a.enabled = true; a.setEffectiveWeight(1);
+    if (this.cur && fade > 0) a.crossFadeFrom(this.cur, fade, true); else if (this.cur) this.cur.stop();
+    if (!/^(death)/.test(name)) a.time = Math.random() * (a.getClip().duration || 1) * (/(walk|run|crawl|idle|aim|cower)/.test(name) ? 1 : 0);
+    a.play(); this.cur = a; this.curName = name;
+    // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
+    if (this.weaponObj && !this.dropped) {
+      if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000));
+      else this.weaponTo(name === 'throw_grenade' ? 'L' : /^(drag_wounded|wounded_)/.test(name) ? 'back' : 'R');
+    }
+  }
+  weaponTo(k) {
+    if (this.wSock === k || !this.sockets[k]) return;
+    this.sockets[k].add(this.weaponObj); this.wSock = k;
+  }
+  dropWeapon() {
+    if (this.dropped || !this.weaponObj) return; this.dropped = true;
+    const w = this.weaponObj; const p = w.getWorldPosition(new THREE.Vector3());
+    this.scene.add(w); w.position.set(p.x + (Math.random() - .5) * 0.6, 0.04, p.z + (Math.random() - .5) * 0.6);
+    w.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2 * (Math.random() < .5 ? 1 : -1)); w.updateMatrixWorld(true);
+    this.droppedWeapon = w;
+  }
+  magTick() {
+    if (!this.mag || !this.sockets.mag || !this.cur) return;
+    const ev = SHARED_EVENTS[this.curName]; const t = this.cur.time;
+    const out = ev && ev.mag_out != null && t >= ev.mag_out && t < ev.mag_in;
+    if (out && this.mag.parent !== this.sockets.mag) { this.sockets.mag.add(this.mag); this.mag.position.set(0, 0, 0); this.mag.quaternion.identity(); }
+    else if (!out && this.mag.parent !== this.magHome.parent) { this.magHome.parent.add(this.mag); this.mag.position.copy(this.magHome.pos); this.mag.quaternion.copy(this.magHome.quat); }
+  }
+  animate(dt, camDist) {
+    const sp = this.vel.length();
+    const st = this.stance;
+    let clip, ts = 1, alt = [];
+    if (this.state === 'dead') { clip = this.deathClip; }
+    else if (this.state === 'critical' || this.state === 'stable') {
+      if (this.dragger) clip = 'wounded_ground';
+      else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
+      else clip = 'wounded_ground';
+    } else if (this.dragging) { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
+    else if (this.hitT > 0) { clip = 'hit_react'; }
+    else if (this.throwT > 0) { clip = 'throw_grenade'; }
+    else if (sp > 0.15) {
+      if (st === 'prone') { clip = 'prone_crawl'; alt = ['crouch_walk']; }
+      else if (this.state === 'light' && this.legWound) clip = 'limp_walk';
+      else if (st === 'crouch' && sp < 2.2) clip = 'crouch_walk';
+      else if (sp > 2.4) clip = 'run_rifle'; else clip = 'walk_rifle';
+      ts = THREE.MathUtils.clamp(sp / (CLIP_SPEED[clip] || 1.4), 0.5, 1.8);
+      alt.push('walk_rifle');
+    } else if (this.reloadT > 0) { clip = st === 'stand' ? 'reload_stand' : 'reload_crouch'; alt = ['reload_stand', 'aim_crouch']; }
+    else if (this.suppression > 70 && this.squad.morale < 45) { clip = 'suppressed_cower'; alt = ['crouch_idle']; }
+    else if (this.target) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
+    else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
+    if (this.mixer) {
+      this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);
+      // animation LOD: update distant soldiers less often
+      this.animAcc = (this.animAcc || 0) + dt;
+      const every = camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
+      if (this.animAcc >= every) { this.mixer.update(this.animAcc); this.animAcc = 0; if (camDist < 60) this.magTick(); }
+      // recoil kick (procedural additive on spine)
+      if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
+      if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); } }
+    } else {
+      // fallback pose
+      const m = this.model;
+      const h = this.state === 'dead' || this.state === 'critical' || this.state === 'stable' ? 0 : st === 'prone' ? 0.15 : st === 'crouch' ? 0.7 : 1;
+      m.scale.y += (h * 0.999 + 0.001 - m.scale.y) * Math.min(1, dt * 6);
+      if (this.state === 'dead' || this.state === 'critical' || this.state === 'stable') { m.rotation.x = -Math.PI / 2 * 0.95; m.scale.y = 1; m.position.y = 0.2; }
+      else { m.rotation.x = 0; m.position.y = sp > 0.1 ? Math.abs(Math.sin(performance.now() * 0.012 * sp)) * 0.06 : 0; }
+    }
+    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt);
+  }
+  sync() {
+    this.root.position.copy(this.pos);
+    this.root.rotation.y = this.heading;
+    this.root.visible = this.visible && !(this.inside === 'btr');
+  }
+  muzzleWorld(out = new THREE.Vector3()) {
+    if (this.muzzleObj) return this.muzzleObj.getWorldPosition(out);
+    const h = this.stance === 'prone' ? 0.3 : this.stance === 'crouch' ? 1.0 : 1.45;
+    return out.set(this.pos.x + Math.sin(this.heading) * 0.7, this.pos.y + h, this.pos.z + Math.cos(this.heading) * 0.7);
+  }
+  headHeight() { return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? 0.35 : this.stance === 'crouch' ? 1.05 : 1.55; }
+  die(kind) {
+    this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0);
+    this.deathClip = kind || pick(['death_front', 'death_back', 'death_crumple'], Math.random());
+    if (this.dragging) { this.dragging.dragger = null; this.dragging = null; }
+    if (this.dragger) { this.dragger.dragging = null; this.dragger = null; }
+  }
+  dispose() { this.scene.remove(this.root); }
+}

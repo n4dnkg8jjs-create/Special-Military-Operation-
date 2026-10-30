@@ -1,0 +1,1145 @@
+{
+ "kit": {
+  "width": 3.2,
+  "height": 2.8,
+  "thickness": 0.3
+ },
+ "panel_kit": {
+  "file": "panel_kit.glb",
+  "material": "kit_panel (single 2048^2 atlas: albedo JPEG, normal PNG, ORM PNG)",
+  "coords": "glTF Y-up. Wall pieces: x 0..W, y 0..H, z 0 (outside face, +Z normal) .. -T (room side). Accessories (balcony*, entrance_canopy) start at the wall face z=0 and extend to +Z.",
+  "pieces": {
+   "wall_window_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 150
+   },
+   "wall_window_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.813
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.053
+    ],
+    "tris": 192
+   },
+   "wall_window_holed": {
+    "bbox_min": [
+     0.0,
+     -0.084,
+     -0.491
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.246
+    ],
+    "tris": 1368
+   },
+   "wall_window_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.095,
+     -1.351
+    ],
+    "bbox_max": [
+     3.2,
+     1.924,
+     0.182
+    ],
+    "tris": 866
+   },
+   "wall_balcony_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 226
+   },
+   "wall_balcony_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.699
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.574
+    ],
+    "tris": 236
+   },
+   "wall_balcony_holed": {
+    "bbox_min": [
+     0.0,
+     -0.844,
+     -0.459
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.557
+    ],
+    "tris": 1172
+   },
+   "wall_balcony_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.124,
+     -1.351
+    ],
+    "bbox_max": [
+     3.405,
+     1.745,
+     0.164
+    ],
+    "tris": 866
+   },
+   "wall_blank_end_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 20
+   },
+   "wall_blank_end_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 20
+   },
+   "wall_blank_end_holed": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.366
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.13
+    ],
+    "tris": 1482
+   },
+   "wall_blank_end_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.136,
+     -1.124
+    ],
+    "bbox_max": [
+     3.372,
+     1.789,
+     0.259
+    ],
+    "tris": 854
+   },
+   "wall_entrance_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 74
+   },
+   "wall_entrance_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.573
+    ],
+    "tris": 74
+   },
+   "wall_entrance_holed": {
+    "bbox_min": [
+     0.0,
+     -0.115,
+     -0.467
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.603
+    ],
+    "tris": 1302
+   },
+   "wall_entrance_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.128,
+     -1.062
+    ],
+    "bbox_max": [
+     3.2,
+     2.18,
+     2.45
+    ],
+    "tris": 880
+   },
+   "slab_floor": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -3.2
+    ],
+    "bbox_max": [
+     3.2,
+     0.22,
+     0.0
+    ],
+    "tris": 20
+   },
+   "slab_floor_broken": {
+    "bbox_min": [
+     0.0,
+     -1.103,
+     -3.2
+    ],
+    "bbox_max": [
+     3.2,
+     0.22,
+     -0.238
+    ],
+    "tris": 154
+   },
+   "roof_parapet": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.44
+    ],
+    "bbox_max": [
+     3.2,
+     1.904,
+     0.0
+    ],
+    "tris": 62
+   },
+   "plinth": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.45
+    ],
+    "bbox_max": [
+     3.2,
+     0.9,
+     0.0
+    ],
+    "tris": 86
+   },
+   "stair_core": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -4.2
+    ],
+    "bbox_max": [
+     3.2,
+     3.723,
+     0.0
+    ],
+    "tris": 238
+   },
+   "balcony_slab": {
+    "bbox_min": [
+     0.15,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.05,
+     2.62,
+     1.132
+    ],
+    "tris": 494
+   },
+   "balcony_slab_open": {
+    "bbox_min": [
+     0.15,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.05,
+     1.603,
+     1.132
+    ],
+    "tris": 322
+   },
+   "balcony_slab_glazed": {
+    "bbox_min": [
+     0.15,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.05,
+     2.62,
+     1.132
+    ],
+    "tris": 506
+   },
+   "balcony_hanging": {
+    "bbox_min": [
+     0.035,
+     -0.951,
+     -0.297
+    ],
+    "bbox_max": [
+     3.055,
+     0.451,
+     1.695
+    ],
+    "tris": 412
+   },
+   "entrance_canopy": {
+    "bbox_min": [
+     0.45,
+     -0.06,
+     0.0
+    ],
+    "bbox_max": [
+     2.75,
+     0.96,
+     1.25
+    ],
+    "tris": 78
+   },
+   "partition_wall_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.08
+    ],
+    "bbox_max": [
+     3.2,
+     2.58,
+     0.0
+    ],
+    "tris": 28
+   },
+   "partition_wall_holed": {
+    "bbox_min": [
+     0.0,
+     -0.042,
+     -0.672
+    ],
+    "bbox_max": [
+     3.2,
+     2.58,
+     0.436
+    ],
+    "tris": 320
+   },
+   "debris_wardrobe": {
+    "bbox_min": [
+     -0.56,
+     0.0,
+     -2.164
+    ],
+    "bbox_max": [
+     1.534,
+     0.746,
+     0.6
+    ],
+    "tris": 96
+   },
+   "debris_bed": {
+    "bbox_min": [
+     -0.015,
+     0.0,
+     -0.015
+    ],
+    "bbox_max": [
+     1.1,
+     0.915,
+     1.985
+    ],
+    "tris": 200
+   },
+   "debris_table": {
+    "bbox_min": [
+     -0.23,
+     0.0,
+     -0.037
+    ],
+    "bbox_max": [
+     1.5,
+     1.233,
+     0.954
+    ],
+    "tris": 92
+   },
+   "debris_radiator": {
+    "bbox_min": [
+     -0.267,
+     0.0,
+     -1.068
+    ],
+    "bbox_max": [
+     0.955,
+     0.13,
+     0.0
+    ],
+    "tris": 44
+   }
+  },
+  "notes": {
+   "wall_*_intact": "exactly fills [0,W]x[0,H]x[-T,0] -> game normalisation offset is zero",
+   "damage_states": "all four states share the intact frame; damaged/holed/destroyed may protrude to +Z (curtains, rebar, door leaves, balcony stub) and -Z (room-side debris, radiators) by design",
+   "wall_balcony_holed": "includes the broken-off root of the balcony slab (game removes balcony_slab at state>=2)",
+   "balcony_slab": "mixed corrugated asbestos parapet + residents' glazing (wood/PVC/boarded). Variants balcony_slab_open, balcony_slab_glazed are extra (same placement rules) for the game to randomise",
+   "balcony_hanging": "hinge (wall face, slab top) is at local y = bbox_max.y - 0.14 relative to bbox min; game normalises minY=0 so place it at floor_y - (bbox height - 0.14) to keep the hinge at the slab line",
+   "entrance_canopy": "slab bottom at bbox minY+0.06 (lamp housing hangs 6 cm below the slab)",
+   "roof_parapet": "height 0.72 m + galvanised cap; roofing upturn on the room side (-Z)",
+   "slab_floor": "3.2 x 0.22 x 3.2 m (x, y, -z). Top = linoleum, bottom = whitewashed ceiling. slab_floor_broken: outer half hinged down 35 deg on its bottom rebar",
+   "stair_core": "3.2 wide x 2.8 high x 4.5 deep: flight up from z=-4.2 (floor landing provided by slab_floor) to the half-landing at y=1.4 against the facade, second flight back up to y=2.8",
+   "plinth": "3.2 x 0.9 x 0.45 basement plinth with vent grille, same pivot rules as walls",
+   "partition_wall_*": "interior gypsum partition 3.2 x 2.58 x 0.08 with doorway; _intact/_holed",
+   "debris_*": "loose furniture debris (wardrobe, bed, table+chair, radiator), origin on the floor"
+  }
+ },
+ "rubble_files": [
+  "rubble_1",
+  "rubble_2",
+  "rubble_3",
+  "rubble_4",
+  "rubble_5",
+  "rubble_6"
+ ],
+ "rubble": {
+  "notes": "origin = ground centre of the pile, +Y up. One mesh per file, material \"debris\" (1024^2 atlas). rubble_1 big panel-fragment pile, rubble_2 brick-heavy pile, rubble_3 collapsed floor slabs \"tent\", rubble_4 low street debris, rubble_5 loose panel slab with rebar, rubble_6 brick scatter.",
+  "files": {
+   "rubble_1": {
+    "tris": 4692,
+    "bbox_min": [
+     -3.73,
+     -0.45,
+     -3.38
+    ],
+    "bbox_max": [
+     3.4,
+     1.78,
+     3.56
+    ],
+    "bytes": 3215760
+   },
+   "rubble_2": {
+    "tris": 3940,
+    "bbox_min": [
+     -2.59,
+     -0.14,
+     -2.81
+    ],
+    "bbox_max": [
+     2.66,
+     1.24,
+     2.47
+    ],
+    "bytes": 3178892
+   },
+   "rubble_3": {
+    "tris": 2894,
+    "bbox_min": [
+     -2.93,
+     -0.12,
+     -3.25
+    ],
+    "bbox_max": [
+     2.76,
+     1.42,
+     2.97
+    ],
+    "bytes": 3098920
+   },
+   "rubble_4": {
+    "tris": 2420,
+    "bbox_min": [
+     -2.04,
+     -0.67,
+     -3.13
+    ],
+    "bbox_max": [
+     2.49,
+     0.91,
+     2.97
+    ],
+    "bytes": 3080200
+   },
+   "rubble_5": {
+    "tris": 1620,
+    "bbox_min": [
+     -2.09,
+     -0.28,
+     -2.35
+    ],
+    "bbox_max": [
+     2.17,
+     0.55,
+     2.04
+    ],
+    "bytes": 3006568
+   },
+   "rubble_6": {
+    "tris": 2276,
+    "bbox_min": [
+     -2.01,
+     -0.12,
+     -2.26
+    ],
+    "bbox_max": [
+     2.17,
+     0.42,
+     2.1
+    ],
+    "bytes": 3064624
+   }
+  }
+ },
+ "trees": {
+  "file": "trees.glb",
+  "nodes": {
+   "tree_poplar_stripped": {
+    "tris": 1314,
+    "bbox_min": [
+     -1.37,
+     -0.19,
+     -1.02
+    ],
+    "bbox_max": [
+     1.85,
+     13.45,
+     2.68
+    ]
+   },
+   "tree_poplar_broken": {
+    "tris": 862,
+    "bbox_min": [
+     -2.46,
+     -0.19,
+     -1.3
+    ],
+    "bbox_max": [
+     1.22,
+     9.52,
+     2.1
+    ]
+   },
+   "tree_chestnut_stripped": {
+    "tris": 1750,
+    "bbox_min": [
+     -2.41,
+     -0.2,
+     -2.47
+    ],
+    "bbox_max": [
+     1.92,
+     8.92,
+     1.64
+    ]
+   },
+   "tree_chestnut_broken": {
+    "tris": 1323,
+    "bbox_min": [
+     -2.28,
+     -0.17,
+     -2.35
+    ],
+    "bbox_max": [
+     1.65,
+     7.86,
+     1.24
+    ]
+   },
+   "tree_birch_stripped": {
+    "tris": 1645,
+    "bbox_min": [
+     -3.61,
+     -0.16,
+     -2.05
+    ],
+    "bbox_max": [
+     1.42,
+     11.4,
+     3.64
+    ]
+   },
+   "tree_birch_snapped": {
+    "tris": 1513,
+    "bbox_min": [
+     -8.51,
+     -0.17,
+     -4.6
+    ],
+    "bbox_max": [
+     0.3,
+     7.73,
+     2.13
+    ]
+   },
+   "leafy_summer_chestnut": {
+    "tris": 6880,
+    "bbox_min": [
+     -3.98,
+     -0.15,
+     -4.14
+    ],
+    "bbox_max": [
+     2.53,
+     11.14,
+     2.94
+    ]
+   },
+   "leafy_summer_birch": {
+    "tris": 7700,
+    "bbox_min": [
+     -4.67,
+     -0.19,
+     -5.52
+    ],
+    "bbox_max": [
+     3.4,
+     13.41,
+     5.25
+    ]
+   },
+   "stump_1": {
+    "tris": 226,
+    "bbox_min": [
+     -0.82,
+     -0.38,
+     -0.68
+    ],
+    "bbox_max": [
+     1.06,
+     1.06,
+     0.63
+    ]
+   },
+   "stump_2": {
+    "tris": 226,
+    "bbox_min": [
+     -1.04,
+     -0.44,
+     -0.46
+    ],
+    "bbox_max": [
+     0.81,
+     0.58,
+     0.84
+    ]
+   },
+   "fallen_trunk": {
+    "tris": 611,
+    "bbox_min": [
+     -0.89,
+     0.0,
+     -5.49
+    ],
+    "bbox_max": [
+     1.31,
+     2.66,
+     4.41
+    ]
+   }
+  },
+  "notes": "Top-level nodes laid out 9 m apart along +X (game uses each node as a template). Origin at trunk base. Names avoid matching two city.js classes: bare=tree_*, leafy=leafy_summer_*, stump_*, fallen_trunk. Materials: bark_<species> (tiling), wood_splintered, leaves_late_summer (alpha MASK 0.5, double sided), soil."
+ },
+ "wires": {
+  "file": "wires.glb",
+  "nodes": {
+   "utility_pole": {
+    "tris": 656,
+    "bbox_min": [
+     -0.16,
+     -0.3,
+     -0.85
+    ],
+    "bbox_max": [
+     0.22,
+     8.41,
+     2.14
+    ],
+    "attach": [
+     [
+      -0.025,
+      8.16,
+      -0.75
+     ],
+     [
+      -0.025,
+      8.16,
+      -0.35
+     ],
+     [
+      -0.025,
+      8.16,
+      0.35
+     ],
+     [
+      -0.025,
+      8.16,
+      0.75
+     ],
+     [
+      0.14,
+      8.4,
+      0.0
+     ]
+    ]
+   },
+   "utility_pole_broken": {
+    "tris": 726,
+    "bbox_min": [
+     -0.13,
+     -0.3,
+     -0.85
+    ],
+    "bbox_max": [
+     7.14,
+     1.54,
+     2.14
+    ],
+    "attach": [
+     [
+      6.918,
+      0.298,
+      -0.75
+     ],
+     [
+      6.918,
+      0.298,
+      -0.35
+     ],
+     [
+      6.918,
+      0.298,
+      0.35
+     ],
+     [
+      6.918,
+      0.298,
+      0.75
+     ],
+     [
+      7.127,
+      0.095,
+      0.0
+     ]
+    ]
+   },
+   "trolleybus_pole": {
+    "tris": 400,
+    "bbox_min": [
+     -0.16,
+     -0.2,
+     -0.15
+    ],
+    "bbox_max": [
+     0.15,
+     9.6,
+     2.64
+    ],
+    "attach": [
+     [
+      0.0,
+      6.9,
+      0.48
+     ],
+     [
+      0.0,
+      6.25,
+      0.48
+     ]
+    ]
+   },
+   "concertina_coil": {
+    "tris": 4898,
+    "bbox_min": [
+     -3.01,
+     -0.3,
+     -0.45
+    ],
+    "bbox_max": [
+     3.0,
+     1.0,
+     0.48
+    ]
+   },
+   "barbed_wire_fence": {
+    "tris": 2058,
+    "bbox_min": [
+     -0.08,
+     -0.4,
+     -0.07
+    ],
+    "bbox_max": [
+     3.05,
+     1.55,
+     0.07
+    ]
+   }
+  },
+  "notes": "Poles: origin at ground, wire run along local +X, crossarm along local Z; attach_* empties are children of the pole node, positions given in pole-local glTF coords. utility_pole_broken: snapped at 1.3 m, top hanging on rebar (attach points follow the fallen top - the game should treat it as a broken pole). trolleybus_pole: attach_0 = span-wire strain insulator (6.9 m, road side +Z), attach_1 = feeder (6.25 m). concertina_coil: 6 m stretched coil along X, 0.9 m dia; barbed_wire_fence: 3 m segment along X with one snapped strand."
+ },
+ "props": {
+  "file": "props.glb",
+  "nodes": {
+   "car_vaz2107_burnt": {
+    "tris": 442,
+    "bbox_min": [
+     -0.81,
+     0.0,
+     -2.12
+    ],
+    "bbox_max": [
+     0.81,
+     1.31,
+     2.12
+    ]
+   },
+   "car_vaz2107_wreck_side": {
+    "tris": 442,
+    "bbox_min": [
+     -0.63,
+     0.0,
+     -2.12
+    ],
+    "bbox_max": [
+     0.63,
+     1.63,
+     2.12
+    ]
+   },
+   "car_vaz2107_burnt_sagged": {
+    "tris": 442,
+    "bbox_min": [
+     -0.81,
+     0.0,
+     -2.12
+    ],
+    "bbox_max": [
+     0.81,
+     1.13,
+     2.12
+    ]
+   },
+   "bus_paz_burnt": {
+    "tris": 786,
+    "bbox_min": [
+     -1.26,
+     0.03,
+     -3.48
+    ],
+    "bbox_max": [
+     1.26,
+     2.87,
+     3.48
+    ]
+   },
+   "hedgehog_ibeam": {
+    "tris": 144,
+    "bbox_min": [
+     -0.88,
+     -0.02,
+     -0.65
+    ],
+    "bbox_max": [
+     0.88,
+     1.38,
+     0.65
+    ]
+   },
+   "hedgehog_rail": {
+    "tris": 144,
+    "bbox_min": [
+     -0.91,
+     -0.02,
+     -0.86
+    ],
+    "bbox_max": [
+     0.9,
+     1.36,
+     0.84
+    ]
+   },
+   "sandbag_wall": {
+    "tris": 3850,
+    "bbox_min": [
+     -1.86,
+     0.0,
+     -0.37
+    ],
+    "bbox_max": [
+     1.88,
+     0.64,
+     0.83
+    ]
+   },
+   "sandbag_wall_low": {
+    "tris": 1210,
+    "bbox_min": [
+     -1.24,
+     -0.01,
+     -0.36
+    ],
+    "bbox_max": [
+     1.06,
+     0.4,
+     0.72
+    ]
+   },
+   "tyre_single": {
+    "tris": 196,
+    "bbox_min": [
+     -0.4,
+     0.0,
+     -0.39
+    ],
+    "bbox_max": [
+     0.4,
+     0.19,
+     0.39
+    ]
+   },
+   "tyre_stack": {
+    "tris": 980,
+    "bbox_min": [
+     -0.44,
+     -0.01,
+     -0.44
+    ],
+    "bbox_max": [
+     0.4,
+     0.93,
+     0.42
+    ]
+   },
+   "tyre_pile": {
+    "tris": 784,
+    "bbox_min": [
+     -0.86,
+     -0.16,
+     -0.71
+    ],
+    "bbox_max": [
+     0.77,
+     0.6,
+     0.61
+    ]
+   },
+   "garage_unit": {
+    "tris": 318,
+    "bbox_min": [
+     -1.8,
+     0.0,
+     -3.1
+    ],
+    "bbox_max": [
+     1.8,
+     2.75,
+     3.15
+    ]
+   },
+   "garage_unit_damaged": {
+    "tris": 314,
+    "bbox_min": [
+     -1.8,
+     -0.02,
+     -3.1
+    ],
+    "bbox_max": [
+     1.8,
+     2.75,
+     4.2
+    ]
+   },
+   "bus_stop": {
+    "tris": 168,
+    "bbox_min": [
+     -1.9,
+     0.0,
+     -1.76
+    ],
+    "bbox_max": [
+     2.4,
+     2.6,
+     1.85
+    ]
+   },
+   "playground_climbing_frame": {
+    "tris": 942,
+    "bbox_min": [
+     -2.68,
+     -0.04,
+     -1.07
+    ],
+    "bbox_max": [
+     2.4,
+     1.5,
+     2.58
+    ]
+   },
+   "kiosk_press": {
+    "tris": 138,
+    "bbox_min": [
+     -1.53,
+     0.0,
+     -1.15
+    ],
+    "bbox_max": [
+     1.48,
+     2.62,
+     2.64
+    ]
+   },
+   "kiosk_burnt": {
+    "tris": 130,
+    "bbox_min": [
+     -1.45,
+     0.0,
+     -1.15
+    ],
+    "bbox_max": [
+     1.76,
+     2.27,
+     2.69
+    ]
+   },
+   "crater_small": {
+    "tris": 476,
+    "bbox_min": [
+     -2.22,
+     -0.07,
+     -2.35
+    ],
+    "bbox_max": [
+     1.78,
+     0.24,
+     1.93
+    ]
+   },
+   "crater_large_asphalt": {
+    "tris": 404,
+    "bbox_min": [
+     -4.94,
+     -0.13,
+     -5.22
+    ],
+    "bbox_max": [
+     4.95,
+     0.36,
+     5.74
+    ]
+   }
+  },
+  "notes": "One material (props_atlas 2048^2). Origin = ground centre of footprint, forward +Z, nodes laid out on a grid in the file. garage_unit* are 3.6 m wide modules (city.js places 4 side by side at 3.6 m) with doors to +Z. crater_* are positive meshes (ejecta rim + scorched bowl texture down to y=0.02, nothing below ground). car_vaz2107_wreck_side lies on its side."
+ },
+ "module": {
+  "width_m": 3.2,
+  "storey_height_m": 2.8,
+  "wall_thickness_m": 0.3,
+  "floor_slab_m": 0.22,
+  "why": "3.2 m is the transverse-wall step of II-49 / 1-464 variants and the contract grid of src/world/buildings.js; 2.8 m storey is the contract value (real 1-464: 2.5 m clear + 0.2 m slab ~ 2.7 m, II-49: 2.64-2.8 m) - kept for gameplay clearance and because every kit piece tiles on it.",
+  "openings_m": {
+   "window": [
+    0.85,
+    0.86,
+    2.35,
+    2.3
+   ],
+   "balcony_door": [
+    0.42,
+    0.1,
+    1.16,
+    2.3
+   ],
+   "balcony_window": [
+    1.34,
+    0.86,
+    2.78,
+    2.3
+   ],
+   "entrance_door": [
+    0.95,
+    0.04,
+    2.25,
+    2.18
+   ],
+   "format": "x0, y0, x1, y1 in panel coords (sill 0.86 m, head 2.30 m)"
+  },
+  "panel_section_m": {
+   "tile_skin": 0.005,
+   "outer_concrete": 0.075,
+   "mineral_wool": 0.12,
+   "inner_concrete": 0.105,
+   "note": "three-layer panel; the broken-edge texture and geometry rings follow these layer depths"
+  }
+ },
+ "research": {
+  "series": {
+   "1-464 (khrushchyovka, 4-5 storeys)": "large-panel, cross walls of room size; WHE report 55 gives storey height 2.7 m, cross-wall span 2.7 / 3.6 m, room-size wall and floor panels, welded then monolithic joints (source: World Housing Encyclopedia report 55, Series 122/135/1-464c). Facades: small glazed ceramic tile on the panels, dark mastic in the joints, a coloured tile band under the windows; no lift, low parapet, flat roof.",
+   "1-468 / 1-480 (Ukrainian khrushchyovka/brezhnevka)": "same 3.2 m step family, 5 and 9 storeys, 3-layer external panels 0.30-0.35 m (concrete / mineral wool / concrete), balconies on hanging slabs with steel railings and corrugated asbestos-cement parapet sheets.",
+   "II-49 / II-18 (9-12 storeys)": "step 3.2 m, storey ~2.64-2.8 m, single- or 3-layer ceramsite-concrete panels ~0.3 m, lift machine rooms and parapets on the roof, entrance canopies (precast slab on steel tie rods) over each stair door, stairwell windows at the half-landing.",
+   "details used": [
+    "double wooden casements with a \"fortochka\" vent, white paint peeling; replacement white PVC units",
+    "balconies glazed by residents with mismatched wood/PVC frames, boarded panes, corrugated asbestos sheets",
+    "steel entrance door with intercom, concrete canopy, basement plinth with vent grilles",
+    "paper-tape crosses on window glass (blast protection), OSB boards over blown-out windows"
+   ]
+  },
+  "war_damage_reference (Mariupol, Bakhmut, Avdiivka, Kharkiv Saltivka photo record)": [
+   "black soot plumes rising from window heads after apartment fires, licking the reveals",
+   "shell penetrations through the spandrel merging with window openings, broken edges showing the insulation layer",
+   "hanging and bent rebar mesh, chunks still tied to bars, rebar of balcony roots dangling",
+   "facade tiles blown off around impacts, dense shrapnel pockmarks with light chipped halos, diagonal cracks from opening corners",
+   "pancaked vertical slices and collapsed top corners: stubs of lower panels with bars sticking up, slabs hinged down",
+   "debris fans at the base: panel fragments, bricks, window frames, radiators, furniture, insulation",
+   "shrapnel-stripped trees: snapped limbs, splintered trunks, a few still in leaf; pollarded city poplars",
+   "concrete SV-95 utility poles with pin insulators and cobra-head lamps; trolleybus span wires cut and hanging"
+  ],
+  "note": "All geometry/textures are procedurally generated by the scripts in tools/blender/env (no third-party assets)."
+ }
+}

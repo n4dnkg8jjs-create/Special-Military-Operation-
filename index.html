@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Special Military Operation — Novozavodsk</title>
+<link rel="stylesheet" href="src/ui/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<!-- Main menu -->
+<div id="menu" class="screen">
+  <div class="menu-inner">
+    <div class="title-block">
+      <div class="kicker">MAP 1 · NOVOZAVODSK, EASTERN DISTRICT</div>
+      <h1>HOLD THE LINE</h1>
+      <p class="brief">A shelled-out microdistrict of five- and nine-storey panel blocks. Your motorized rifle company holds
+        <b>Objective A — School No. 7</b> and <b>Objective B — Market Crossroads</b>. Keep both for the whole round.
+        Ammunition is limited, wounded must be pulled back, and squads that lose their nerve will break.</p>
+    </div>
+    <div class="menu-grid">
+      <div class="menu-col">
+        <h3>Side</h3>
+        <label class="opt"><input type="radio" name="side" value="UA" checked><span class="swatch tape-ua"></span>Ukraine <small>yellow tape · BTR-80 · T-72AV</small></label>
+        <label class="opt"><input type="radio" name="side" value="RU"><span class="swatch tape-ru"></span>Russia <small>white tape · BTR-82A · T-72B3</small></label>
+      </div>
+      <div class="menu-col">
+        <h3>Round length</h3>
+        <select id="roundLen"><option value="10">10 minutes</option><option value="12" selected>12 minutes</option><option value="14">14 minutes</option><option value="16">16 minutes</option><option value="rand">Random (10–16)</option></select>
+        <h3>Graphics</h3>
+        <select id="quality"><option value="high" selected>High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+      </div>
+    </div>
+    <button id="startBtn" class="big">DEPLOY</button>
+    <div class="controls-help">
+      <b>Camera</b> WASD / edge pan · Q E rotate · wheel zoom · middle-drag orbit &nbsp;
+      <b>Select</b> click / drag box · Ctrl+1–9 group · double-click type &nbsp;
+      <b>Orders</b> right-click move · right-drag formation line · R run · Space pause · F hold fire · G garrison · M mount/dismount · B resupply · X halt · V smoke · T mortar
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading" class="screen hidden"><div class="load-inner"><div class="kicker">DEPLOYING</div><div id="loadText">Loading…</div><div class="bar"><div id="loadBar"></div></div></div></div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div id="obj-A" class="objective"><span class="tag">A</span><div class="name">School No. 7</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
+    <div id="clock"><div id="timer">12:00</div><div id="phase">HOLD BOTH OBJECTIVES</div></div>
+    <div id="obj-B" class="objective"><span class="tag">B</span><div class="name">Market Crossroads</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
+  </div>
+  <div id="alerts"></div>
+  <div id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas></div>
+  <div id="cards"></div>
+  <div id="orders">
+    <button data-o="run" title="Run (R)">RUN</button>
+    <button data-o="holdfire" title="Hold fire (F)">HOLD FIRE</button>
+    <button data-o="garrison" title="Garrison building (G)">GARRISON</button>
+    <button data-o="mount" title="Mount / dismount (M)">MOUNT</button>
+    <button data-o="resupply" title="Resupply from carrier (B)">RESUPPLY</button>
+    <button data-o="halt" title="Halt (X)">HALT</button>
+    <button data-o="smoke" title="Throw smoke toward cursor (V)">SMOKE</button>
+    <button data-o="mortar" title="Call 82mm mortar (T)">MORTAR <span id="mortarCount">3</span></button>
+  </div>
+  <div id="unitinfo"></div>
+  <div id="pausebadge" class="hidden">PAUSED</div>
+  <div id="fps"></div>
+</div>
+<div id="selbox"></div>
+
+<!-- End screen -->
+<div id="endscreen" class="screen hidden"><div class="menu-inner"><div class="kicker" id="endKicker">ROUND OVER</div><h1 id="endTitle">VICTORY</h1><div id="endStats"></div><button class="big" onclick="location.reload()">AGAIN</button></div></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,358 @@
+import * as THREE from 'three';
+import { Soldier } from './soldier.js';
+import { SQUAD_ROLES, TUNING, WEAPONS } from '../config.js';
+
+let NEXT_ID = 1;
+const V = new THREE.Vector3();
+
+// An infantry squad (8 men). Owns orders, formation, morale and casualty handling.
+export class Squad {
+  constructor(game, side, faction, name) {
+    this.game = game; this.id = NEXT_ID++; this.side = side; this.faction = faction; this.name = name;
+    this.type = 'squad';
+    this.soldiers = SQUAD_ROLES.map((r, i) => new Soldier(this, i, r, faction, game.scene));
+    this.morale = 82; this.order = null; this.holdFire = false; this.run = false;
+    this.carrier = null; this.mounted = false; this.building = null; this.routing = false;
+    this.underFireT = 99; this.flankDirs = []; this.selected = false; this.spotted = side === 'player';
+    this.facing = 0; this.lastPos = new THREE.Vector3(); this.thinkT = Math.random();
+    this.stats = { kills: 0, kia: 0, wia: 0 };
+    this.supplyRpg = 0;
+  }
+  get alive() { return this.soldiers.filter(s => s.alive); }
+  get effective() { return this.soldiers.filter(s => s.effective); }
+  get leader() { return this.soldiers.find(s => s.role.leader && s.effective) || this.soldiers.find(s => s.role.second && s.effective) || this.effective[0]; }
+  get destroyed() { return this.effective.length === 0; }
+  center(out = new THREE.Vector3()) {
+    if (this.mounted && this.carrier) return out.copy(this.carrier.pos);
+    const e = this.effective.length ? this.effective : this.alive; if (!e.length) return out.copy(this.lastPos);
+    out.set(0, 0, 0); for (const s of e) out.add(s.pos); out.multiplyScalar(1 / e.length); this.lastPos.copy(out); return out;
+  }
+  ammoFrac() {
+    let have = 0, max = 0;
+    for (const s of this.effective) { const w = s.weapon; have += s.mags * w.mag + s.inMag; max += (s.role.mags + 1) * w.mag; }
+    return max ? have / max : 0;
+  }
+  moraleState() {
+    if (this.routing) return 'ROUTING';
+    const m = this.morale; return m >= 60 ? 'STEADY' : m >= 45 ? 'HOLDING' : m >= 25 ? 'SHAKEN' : 'WAVERING';
+  }
+  // ------------------------------------------------------------ placement & orders
+  placeAt(x, z, facing) {
+    this.facing = facing;
+    const slots = this.formationSlots(x, z, facing, 16);
+    this.soldiers.forEach((s, i) => { s.pos.set(slots[i][0], 0, slots[i][1]); s.heading = facing; s.sync(); });
+  }
+  formationSlots(x, z, facing, width) {
+    const nav = this.game.nav, n = this.effective.length || 8;
+    const right = [Math.cos(facing), -Math.sin(facing)], fwd = [Math.sin(facing), Math.cos(facing)];
+    const perRank = width < 10 ? Math.ceil(n / 2) : n;
+    const sp = Math.max(1.8, Math.min(4.2, width / Math.max(1, perRank - 1)));
+    const out = [];
+    for (let i = 0; i < 8; i++) {
+      const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp;
+      let px = x + right[0] * off - fwd[0] * rank * 3 + (Math.random() - .5) * 0.8, pz = z + right[1] * off - fwd[1] * rank * 3 + (Math.random() - .5) * 0.8;
+      // snap to a nearby cell offering cover toward the facing direction
+      let best = null, bestS = -1;
+      for (let r = 0; r <= 3.5; r += 0.9) for (let a = 0; a < 8; a++) {
+        const cx = px + Math.cos(a * 0.785) * r, cz = pz + Math.sin(a * 0.785) * r, idx = nav.idx(cx, cz);
+        if (!nav.passable(idx, 0.4)) continue;
+        const sc = nav.coverFrom(cx, cz, cx + fwd[0] * 50, cz + fwd[1] * 50) * 2 - r * 0.25;
+        if (sc > bestS) { bestS = sc; best = [cx, cz]; }
+      }
+      if (!best) best = nav.nearestFree(px, pz, 0.4, 8);
+      out.push(best);
+    }
+    return out;
+  }
+  orderMove(x, z, facing = null, width = 18, run = false, queued = false) {
+    if (this.routing) return;
+    const c = this.center();
+    if (facing == null) facing = Math.atan2(x - c.x, z - c.z);
+    this.leaveBuilding();
+    if (this.mounted && this.carrier) { this.carrier.orderMove(x, z, facing, run); return; }
+    this.order = { type: 'move', x, z, facing, width, run };
+    this.run = run; this.facing = facing;
+    const slots = this.formationSlots(x, z, facing, width);
+    // assign slots by lateral order to avoid crossing
+    const right = [Math.cos(facing), -Math.sin(facing)];
+    const men = this.alive.filter(s => s.effective && !s.dragging);
+    const lat = p => p[0] * right[0] + p[1] * right[1];
+    const ms = [...men].sort((a, b) => lat([a.pos.x, a.pos.z]) - lat([b.pos.x, b.pos.z]));
+    const ss = slots.slice(0, ms.length).sort((a, b) => lat(a) - lat(b));
+    ms.forEach((s, i) => { s.goal = ss[i]; s.goalHeading = facing; s.path = null; this.game.requestPath(s, s.pos.x, s.pos.z, ss[i][0], ss[i][1], 0.45); });
+  }
+  orderGarrison(b) {
+    if (this.routing) return;
+    if (this.mounted) this.dismount();
+    this.leaveBuilding();
+    const free = b.slots.filter(sl => !sl.occupant && !sl.panel.gone);
+    const men = this.effective.filter(s => !s.dragging);
+    if (!free.length) { this.game.hud?.alert(`${b.kind === 'school' ? 'School' : 'Building'} is full`, 'bad'); return; }
+    this.order = { type: 'garrison', building: b };
+    this.building = b;
+    // fill slots nearest to the threat (north for defenders) first
+    free.sort((p, q) => this.threatScore(b, q) - this.threatScore(b, p));
+    men.forEach((s, i) => {
+      const sl = free[i % free.length]; if (i >= free.length) return;
+      sl.occupant = s; s.slotRef = sl;
+      const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a));
+      s.goal = [ent.x, ent.z]; s.goalHeading = null; this.game.requestPath(s, s.pos.x, s.pos.z, ent.x, ent.z, 0.45);
+    });
+  }
+  threatScore(b, sl) { const o = b.outward(sl.panel); const enemyDir = this.side === 'player' ? -1 : 1; return o.z * enemyDir - sl.panel.floor * 0.1 + (sl.panel.state >= 2 ? -0.5 : 0); }
+  leaveBuilding() {
+    if (!this.building) return;
+    const b = this.building;
+    for (const s of this.soldiers) if (s.slotRef) {
+      s.slotRef.occupant = null; s.slotRef = null;
+      if (s.inside && s.inside !== 'btr') { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); s.inside = null; }
+    }
+    this.building = null;
+  }
+  orderMount(v) {
+    if (this.routing || !v || v.destroyed) return;
+    this.leaveBuilding();
+    this.order = { type: 'mount', vehicle: v }; this.carrier = v;
+    for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
+  }
+  dismount(facing) {
+    const v = this.carrier; if (!v || !this.mounted) return;
+    this.mounted = false; v.passengers = null;
+    facing ??= v.heading;
+    this.soldiers.forEach((s, i) => {
+      if (s.inside !== 'btr') return;
+      const d = v.doorPos(i, true); s.pos.set(d.x, 0, d.z); s.inside = null; s.heading = v.heading + (i % 2 ? 1.57 : -1.57);
+    });
+    const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
+    this.order = null;
+    const slots = this.formationSlots(back.x, back.z, facing, 18);
+    this.effective.forEach((s, i) => { s.goal = slots[i]; s.goalHeading = facing; this.game.requestPath(s, s.pos.x, s.pos.z, slots[i][0], slots[i][1], 0.45); });
+    this.game.sfx('hatch', v.pos);
+  }
+  orderAttack(target) {
+    if (this.routing) return;
+    this.order = { type: 'attack', target };
+    const tc = target.center ? target.center() : target.pos;
+    const c = this.center(); const d = c.distanceTo(tc);
+    const range = 160;
+    if (d > range) { const p = c.clone().lerp(tc, 1 - range * 0.85 / d); this.orderMove(p.x, p.z, Math.atan2(tc.x - p.x, tc.z - p.z), 18, this.run); this.order.attack = target; }
+    this.focus = target;
+  }
+  halt() { this.order = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
+  // ------------------------------------------------------------ morale
+  addMorale(d, why) { if (this.destroyed) return; this.morale = THREE.MathUtils.clamp(this.morale + d, 0, 100); }
+  onCasualty(s, killed) {
+    this.addMorale(killed ? -9 : -6);
+    if (s.role.leader) { this.addMorale(-14); if (this.side === 'player') this.game.hud?.alert(`${this.name}: squad leader ${killed ? 'killed' : 'down'}`, 'bad'); }
+    // nearby friendly squads feel it too
+    for (const o of this.game.unitsOf(this.side)) if (o !== this && o.type === 'squad' && o.center().distanceTo(s.pos) < 40) o.addMorale(-2.5);
+    if (killed) this.stats.kia++; else this.stats.wia++;
+  }
+  updateMorale(dt) {
+    const e = this.effective; if (!e.length) return;
+    let supp = 0; for (const s of e) supp += s.suppression; supp /= e.length;
+    this.underFireT += dt;
+    let d = 0;
+    d -= supp * 0.035;
+    if (this.ammoFrac() < 0.15) d -= 0.6;
+    if (this.flankDirs.length >= 2) { const a = this.flankDirs; let spread = 0; for (let i = 1; i < a.length; i++) { let x = Math.abs(a[i] - a[0]) % (Math.PI * 2); if (x > Math.PI) x = Math.PI * 2 - x; spread = Math.max(spread, x); } if (spread > 1.6) d -= 0.9; }
+    this.flankDirs.length = 0;
+    if (this.underFireT > 6) {
+      let r = TUNING.moraleRegen * (this.leader?.role.leader ? 1.4 : 1);
+      if (this.building) r += 0.5;
+      const c = this.center();
+      for (const u of this.game.unitsOf(this.side)) if (u.type === 'vehicle' && !u.destroyed && u.pos.distanceTo(c) < 30) { r += 0.6; break; }
+      for (const o of this.game.objectives) if (o.owner === this.side && Math.hypot(o.x - c.x, o.z - c.z) < 30) r += 0.4;
+      d += r;
+    }
+    // local odds
+    if (e.length <= 3) d -= 0.5;
+    this.morale = THREE.MathUtils.clamp(this.morale + d * dt, 0, 100);
+    if (!this.routing && this.morale < TUNING.routThreshold) this.startRout();
+    else if (this.routing && this.morale > 42 && this.underFireT > 8) { this.routing = false; this.order = null; this.morale = 45; if (this.side === 'player') this.game.hud?.alert(`${this.name} has rallied`, 'good'); }
+  }
+  startRout() {
+    this.routing = true; this.leaveBuilding();
+    if (this.side === 'player') { this.game.hud?.alert(`${this.name} is ROUTING!`, 'bad'); this.game.sfx('ui_alert'); }
+    for (const o of this.game.unitsOf(this.side)) if (o !== this && o.type === 'squad' && o.center().distanceTo(this.center()) < 45) o.addMorale(-6);
+    const sp = this.game.rallyPoint(this.side);
+    const c = this.center(); const f = Math.atan2(c.x - sp[0], c.z - sp[1]);
+    const slots = this.formationSlots(sp[0], sp[1], f, 14);
+    this.effective.forEach((s, i) => { s.goal = slots[i]; s.goalHeading = f; this.game.requestPath(s, s.pos.x, s.pos.z, slots[i][0], slots[i][1], 0.45); });
+    this.order = { type: 'rout' };
+  }
+  // ------------------------------------------------------------ per-frame
+  update(dt) {
+    if (this.mounted) { for (const s of this.soldiers) if (s.inside === 'btr' && this.carrier) s.pos.copy(this.carrier.pos); this.updateMorale(dt); this.resupplyTick(dt); return; }
+    this.updateMorale(dt);
+    this.thinkT -= dt;
+    if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
+    for (const s of this.soldiers) this.updateSoldier(s, dt);
+    this.resupplyTick(dt);
+  }
+  think() {
+    // mounting completion
+    if (this.order?.type === 'mount') {
+      const v = this.order.vehicle;
+      if (!v || v.destroyed) { this.order = null; for (const s of this.soldiers) if (s.inside === 'btr') s.inside = null; return; }
+      const need = this.alive.filter(s => s.state !== 'dead' && !s.inside);
+      for (const s of need) if (s.pos.distanceTo(v.pos) < 4.5) {
+        if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
+        if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }
+        s.inside = 'btr'; s.path = null;
+      }
+      if (this.alive.every(s => s.inside === 'btr' || !s.effective)) {
+        for (const s of this.alive) if (!s.effective && !s.dragger) this.abandonWounded(s);
+        this.mounted = true; v.passengers = this; this.order = null;
+        if (this.side === 'player') this.game.sfx('hatch', v.pos);
+      }
+    }
+    // pending wounded -> assign a buddy to drag them to cover / the carrier
+    if (!this.routing) for (const w of this.soldiers) {
+      if (w.state !== 'critical' || w.dragger) continue;
+      const helpers = this.effective.filter(s => !s.dragging && !s.inside);
+      if (!helpers.length) break;
+      helpers.sort((a, b) => (b.role.medic ? 20 : 0) - (a.role.medic ? 20 : 0) + a.pos.distanceTo(w.pos) - b.pos.distanceTo(w.pos));
+      const h = helpers[0]; if (h.pos.distanceTo(w.pos) > 60) continue;
+      h.dragging = w; h.dragPhase = 'reach'; h.goal = [w.pos.x, w.pos.z]; this.game.requestPath(h, h.pos.x, h.pos.z, w.pos.x, w.pos.z, 0.45);
+    }
+    // stance from situation
+    for (const s of this.effective) {
+      if (s.inside === 'btr') continue;
+      if (s.inside) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
+      const moving = s.path && s.pathI < s.path.length;
+      if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
+      else {
+        const threat = s.target ? s.target.pos : null;
+        const cov = threat ? this.game.nav.coverFrom(s.pos.x, s.pos.z, threat.x, threat.z) : 0;
+        const lowc = this.game.nav.low[this.game.nav.idx(s.pos.x, s.pos.z)] === 1;
+        if (s.suppression > 75 && cov < 0.5) s.stance = 'prone';
+        else if (cov > 0.5) s.stance = lowc ? 'crouch' : (s.weaponKey === 'rpg7' ? 'stand' : 'crouch');
+        else if (this.underFireT < 4) s.stance = s.weaponKey === 'pkm' ? 'prone' : 'crouch';
+        else s.stance = s.weaponKey === 'pkm' && s.target ? 'prone' : 'stand';
+      }
+    }
+  }
+  evacuate(s) { s.state = 'evac'; s.root.visible = false; s.inside = 'btr'; this.game.stats[this.side].evac++; if (s.dragger) { s.dragger.dragging = null; s.dragger = null; } }
+  abandonWounded(s) { /* left on the field; keeps bleeding */ }
+  resupplyTick(dt) {
+    const v = this.carrier && !this.carrier.destroyed ? this.carrier : null; if (!v || !v.supply) return;
+    const near = this.mounted || this.center().distanceTo(v.pos) < 25; if (!near) return;
+    this.resupT = (this.resupT || 0) + dt; if (this.resupT < 1.2) return; this.resupT = 0;
+    for (const s of this.effective) {
+      if (s.weaponKey === 'ak74m' && s.mags < s.role.mags && v.supply.rifle >= 30) { s.mags++; v.supply.rifle -= 30; }
+      if (s.weaponKey === 'pkm' && s.mags < s.role.mags && v.supply.mg >= 100) { s.mags++; v.supply.mg -= 100; }
+      if (s.weaponKey === 'rpg7' && s.mags < s.role.mags && v.supply.rpg > 0) { s.mags++; v.supply.rpg--; }
+      if (s.sideKey && s.sideMags < (s.role.sideMags || 0) && v.supply.rifle >= 30) { s.sideMags++; v.supply.rifle -= 30; }
+    }
+  }
+  updateSoldier(s, dt) {
+    const g = this.game;
+    s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inside && s.inside !== 'btr' ? 1.4 : 1));
+    if (s.state === 'dead' || s.state === 'evac') { s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); s.sync(); return; }
+    if (s.inside === 'btr') { s.sync(); return; }
+    // bleeding
+    if (s.state === 'critical') {
+      s.bleed -= dt * (s.dragger && s.dragger.dragPhase === 'treat' ? 0.25 : 1);
+      if (s.bleed <= 0) { s.die('death_crumple'); g.onDeath(s, null, true); }
+      if (!s.dragger && s.vel.lengthSq() < 0.01 && Math.random() < dt * 0.05) { // crawl a little towards cover
+        const [cx, cz] = g.nav.nearestFree(s.pos.x + (Math.random() - .5) * 4, s.pos.z + (this.side === 'player' ? 3 : -3), 0.4, 3); s.path = [[cx, cz]]; s.pathI = 0; s.crawl = true;
+      }
+    }
+    // dragging logic (medic / buddy)
+    if (s.dragging) this.dragStep(s, dt);
+    // garrison: entering the building through the entrance
+    if (s.slotRef && !s.inside && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {
+      s.inside = s.slotRef; s.path = null; s.goal = null;
+      this.building.slotPos(s.slotRef, s.pos); s.heading = Math.atan2(this.building.outward(s.slotRef.panel).x, this.building.outward(s.slotRef.panel).z);
+    }
+    if (s.inside && s.inside !== 'btr') {
+      // panel destroyed under him -> he falls back inside but keeps fighting; if the floor is gone he drops
+      if (s.inside.panel.state === 3 && s.inside.panel.floor > 0 && Math.random() < dt * 0.3) { g.hitSoldier(s, { dmg: [40, 90], type: 'blast' }, s.pos, true); }
+      s.vel.set(0, 0, 0);
+    } else this.moveStep(s, dt);
+    // facing
+    let want = s.heading;
+    if (s.target && s.effective && !(s.path && s.pathI < s.path.length && this.run)) want = Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z);
+    else if (s.vel.lengthSq() > 0.05) want = Math.atan2(s.vel.x, s.vel.z);
+    else if (s.goalHeading != null) want = s.goalHeading;
+    if (s.inside && s.inside !== 'btr' && s.target) { const o = this.building.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
+    if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
+    s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);
+    // combat
+    if (s.effective && !this.routing && !s.dragging) g.combat.soldierCombat(s, dt);
+    else s.target = null;
+    s.animate(dt, g.camDist(s.pos));
+    s.sync();
+  }
+  moveStep(s, dt) {
+    const g = this.game;
+    const moving = s.path && s.pathI < s.path.length;
+    let speed = 0;
+    if (moving) {
+      const wp = s.path[s.pathI];
+      const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
+      let base = this.run || this.routing ? 4.2 : 1.6;
+      if (s.stance === 'crouch') base = Math.min(base, this.run ? 2.6 : 1.2);
+      if (s.stance === 'prone') base = 0.45;
+      if (s.state === 'light' && s.legWound) base *= 0.55;
+      if (s.state === 'critical') base = 0.3;
+      if (s.dragging && s.dragPhase === 'drag') base = TUNING.dragSpeed;
+      const ci = g.nav.idx(s.pos.x, s.pos.z); if (ci >= 0 && g.nav.cost[ci] > 2 && g.nav.cost[ci] < 255) base *= 0.7;
+      // cohesion: don't outrun the squad too much
+      speed = base;
+      if (d < 0.4) { s.pathI++; if (s.pathI >= s.path.length) { s.path = null; s.crawl = false; } }
+      else { V.set(dx / d, 0, dz / d); s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6)); }
+    } else s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
+    // separation from squadmates & vehicles
+    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt; s.pos.x += dx * k; s.pos.z += dz * k; } }
+    for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { s.pos.x += dx / d * (r - d); s.pos.z += dz / d * (r - d); } }
+    const nx = s.pos.x + s.vel.x * dt, nz = s.pos.z + s.vel.z * dt;
+    const idx = g.nav.idx(nx, nz);
+    if (idx >= 0 && g.nav.cost[idx] !== 255) { s.pos.x = nx; s.pos.z = nz; }
+    else if (moving) { s.vel.multiplyScalar(0.3); s.pathI = Math.min(s.pathI + 1, s.path.length); if (s.pathI >= s.path.length) s.path = null; }
+    // footsteps (close to camera only)
+    if (s.vel.lengthSq() > 1 && g.camDist(s.pos) < 35) { s.stepT = (s.stepT || 0) + dt * s.vel.length(); if (s.stepT > 1.6) { s.stepT = 0; g.sfx(Math.random() < .6 ? 'footstep_rubble' : 'footstep_gravel', s.pos, { gain: 0.5 }); } }
+    s.pos.y = 0;
+  }
+  dragStep(s, dt) {
+    const w = s.dragging, g = this.game;
+    if (!w.alive || w.state === 'evac') { s.dragging = null; return; }
+    if (s.dragPhase === 'reach') {
+      if (s.pos.distanceTo(w.pos) < 1.4) {
+        s.dragPhase = 'drag'; w.dragger = s;
+        // destination: carrier if close, else nearest cover away from the enemy
+        const v = this.carrier && !this.carrier.destroyed && this.carrier.pos.distanceTo(s.pos) < 70 ? this.carrier : null;
+        let dest;
+        if (v) { const d = v.doorPos(s.idx); dest = [d.x, d.z]; s.dragTarget = 'carrier'; }
+        else { const back = this.side === 'player' ? 1 : -1; dest = this.findCover(s.pos.x, s.pos.z + back * 14, s.pos); s.dragTarget = 'cover'; }
+        s.goal = dest; g.requestPath(s, s.pos.x, s.pos.z, dest[0], dest[1], 0.45);
+      } else if (!s.path) { s.goal = [w.pos.x, w.pos.z]; g.requestPath(s, s.pos.x, s.pos.z, w.pos.x, w.pos.z, 0.45); }
+    } else if (s.dragPhase === 'drag') {
+      // wounded is pulled behind the dragger
+      const back = new THREE.Vector3(-Math.sin(s.heading), 0, -Math.cos(s.heading));
+      w.pos.lerp(s.pos.clone().addScaledVector(back, -1.0), Math.min(1, dt * 8)); w.heading = s.heading + Math.PI;
+      w.vel.set(0, 0, 0);
+      if (!s.path || s.pathI >= (s.path?.length || 0)) {
+        if (s.dragTarget === 'carrier' && this.carrier && this.carrier.pos.distanceTo(s.pos) < 5) { this.evacuate(w); s.dragging = null; s.dragPhase = null; this.game.hud && this.side === 'player' && this.game.hud.alert(`${this.name}: casualty evacuated`, 'good'); }
+        else { s.dragPhase = 'treat'; s.treatT = 7 + Math.random() * 4; }
+      }
+    } else if (s.dragPhase === 'treat') {
+      s.treatT -= dt; s.vel.set(0, 0, 0); s.stance = 'crouch';
+      if (s.treatT <= 0) { w.state = 'stable'; w.dragger = null; s.dragging = null; s.dragPhase = null; }
+    }
+  }
+  findCover(x, z, from) {
+    const nav = this.game.nav; let best = [x, z], bs = -1e9;
+    const enemyZ = this.side === 'player' ? -200 : 200;
+    for (let r = 0; r <= 10; r += 2) for (let a = 0; a < 12; a++) {
+      const cx = x + Math.cos(a / 12 * 6.28) * r, cz = z + Math.sin(a / 12 * 6.28) * r, i = nav.idx(cx, cz);
+      if (!nav.passable(i, 0.4)) continue;
+      const sc = nav.coverFrom(cx, cz, cx, enemyZ) * 10 - r * 0.3 - Math.hypot(cx - from.x, cz - from.z) * 0.1;
+      if (sc > bs) { bs = sc; best = [cx, cz]; }
+    }
+    return best;
+  }
+}
+
+export function angDiff(a, b) { let d = (a - b) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
