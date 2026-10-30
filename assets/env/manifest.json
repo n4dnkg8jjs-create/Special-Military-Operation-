@@ -447,9 +447,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.476
+     0.04
     ],
-    "tris": 212
+    "tris": 176
    },
    "brick_window_holed": {
     "bbox_min": [
@@ -460,9 +460,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     1.103
+     0.074
     ],
-    "tris": 1036
+    "tris": 904
    },
    "brick_window_destroyed": {
     "bbox_min": [
@@ -473,9 +473,9 @@
     "bbox_max": [
      3.2,
      2.032,
-     1.519
+     0.063
     ],
-    "tris": 944
+    "tris": 896
    },
    "brick_balcony_intact": {
     "bbox_min": [
@@ -499,9 +499,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.624
+     0.549
     ],
-    "tris": 248
+    "tris": 212
    },
    "brick_balcony_holed": {
     "bbox_min": [
@@ -512,9 +512,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     1.107
+     0.558
     ],
-    "tris": 948
+    "tris": 816
    },
    "brick_balcony_destroyed": {
     "bbox_min": [
@@ -525,9 +525,9 @@
     "bbox_max": [
      3.2,
      2.097,
-     1.417
+     0.0
     ],
-    "tris": 944
+    "tris": 896
    },
    "brick_blank_end_intact": {
     "bbox_min": [
@@ -551,22 +551,22 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.494
+     0.0
     ],
-    "tris": 48
+    "tris": 12
    },
    "brick_blank_end_holed": {
     "bbox_min": [
      0.0,
-     -0.039,
+     -0.038,
      -1.491
     ],
     "bbox_max": [
      3.2,
      2.8,
-     1.067
+     0.056
     ],
-    "tris": 972
+    "tris": 840
    },
    "brick_blank_end_destroyed": {
     "bbox_min": [
@@ -577,9 +577,9 @@
     "bbox_max": [
      3.2,
      2.026,
-     1.567
+     0.069
     ],
-    "tris": 932
+    "tris": 884
    },
    "brick_entrance_intact": {
     "bbox_min": [
@@ -603,9 +603,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.564
+     0.423
     ],
-    "tris": 94
+    "tris": 58
    },
    "brick_entrance_holed": {
     "bbox_min": [
@@ -614,11 +614,11 @@
      -1.395
     ],
     "bbox_max": [
-     3.226,
+     3.2,
      2.8,
-     1.074
+     0.603
     ],
-    "tris": 846
+    "tris": 714
    },
    "brick_entrance_destroyed": {
     "bbox_min": [
@@ -631,7 +631,7 @@
      2.334,
      2.45
     ],
-    "tris": 878
+    "tris": 830
    },
    "brick_parapet": {
     "bbox_min": [
@@ -668,9 +668,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.501
+     0.04
     ],
-    "tris": 212
+    "tris": 176
    },
    "brick_red_window_holed": {
     "bbox_min": [
@@ -681,9 +681,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     1.131
+     0.057
     ],
-    "tris": 1036
+    "tris": 904
    },
    "brick_red_window_destroyed": {
     "bbox_min": [
@@ -694,9 +694,9 @@
     "bbox_max": [
      3.2,
      2.115,
-     1.415
+     0.08
     ],
-    "tris": 944
+    "tris": 896
    },
    "brick_red_balcony_intact": {
     "bbox_min": [
@@ -722,7 +722,7 @@
      2.8,
      0.549
     ],
-    "tris": 248
+    "tris": 212
    },
    "brick_red_balcony_holed": {
     "bbox_min": [
@@ -733,9 +733,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.993
+     0.557
     ],
-    "tris": 948
+    "tris": 816
    },
    "brick_red_balcony_destroyed": {
     "bbox_min": [
@@ -746,9 +746,9 @@
     "bbox_max": [
      3.2,
      2.116,
-     1.587
+     0.035
     ],
-    "tris": 944
+    "tris": 896
    },
    "brick_red_blank_end_intact": {
     "bbox_min": [
@@ -772,9 +772,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.418
+     0.0
     ],
-    "tris": 48
+    "tris": 12
    },
    "brick_red_blank_end_holed": {
     "bbox_min": [
@@ -785,9 +785,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     1.08
+     0.07
     ],
-    "tris": 972
+    "tris": 840
    },
    "brick_red_blank_end_destroyed": {
     "bbox_min": [
@@ -798,9 +798,9 @@
     "bbox_max": [
      3.38,
      2.104,
-     1.53
+     0.049
     ],
-    "tris": 932
+    "tris": 884
    },
    "brick_red_entrance_intact": {
     "bbox_min": [
@@ -824,9 +824,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     0.607
+     0.514
     ],
-    "tris": 94
+    "tris": 58
    },
    "brick_red_entrance_holed": {
     "bbox_min": [
@@ -837,9 +837,9 @@
     "bbox_max": [
      3.2,
      2.8,
-     1.011
+     0.603
     ],
-    "tris": 846
+    "tris": 714
    },
    "brick_red_entrance_destroyed": {
     "bbox_min": [
@@ -852,7 +852,7 @@
      2.258,
      2.45
     ],
-    "tris": 878
+    "tris": 830
    },
    "brick_red_parapet": {
     "bbox_min": [
@@ -896,26 +896,26 @@
    "wall_shopfront_holed": {
     "bbox_min": [
      -0.27,
-     -0.058,
+     -0.055,
      -1.621
     ],
     "bbox_max": [
-     3.203,
+     3.2,
      2.8,
-     0.981
+     0.5
     ],
     "tris": 326
    },
    "wall_shopfront_destroyed": {
     "bbox_min": [
      -0.27,
-     -0.198,
+     -0.174,
      -1.621
     ],
     "bbox_max": [
      3.2,
      2.08,
-     0.726
+     0.5
     ],
     "tris": 352
    },
@@ -948,8 +948,8 @@
    "wall_shopfront_shutter_holed": {
     "bbox_min": [
      0.0,
-     -0.063,
-     -1.156
+     -0.056,
+     -1.122
     ],
     "bbox_max": [
      3.2,
@@ -961,8 +961,8 @@
    "wall_shopfront_shutter_destroyed": {
     "bbox_min": [
      0.0,
-     -0.143,
-     -1.333
+     -0.112,
+     -1.511
     ],
     "bbox_max": [
      3.2,
@@ -2032,5 +2032,610 @@
    "concrete SV-95 utility poles with pin insulators and cobra-head lamps; trolleybus span wires cut and hanging"
   ],
   "note": "All geometry/textures are procedurally generated by the scripts in tools/blender/env (no third-party assets)."
+ },
+ "city": {
+  "file": "city.glb",
+  "nodes": {
+   "pipe_straight_a": {
+    "tris": 312,
+    "bbox_min": [
+     -3.0,
+     0.0,
+     -0.75
+    ],
+    "bbox_max": [
+     3.0,
+     1.22,
+     0.75
+    ]
+   },
+   "pipe_straight_torn": {
+    "tris": 522,
+    "bbox_min": [
+     -3.0,
+     -0.1,
+     -1.2
+    ],
+    "bbox_max": [
+     3.0,
+     1.22,
+     0.75
+    ]
+   },
+   "pipe_straight_burst": {
+    "tris": 776,
+    "bbox_min": [
+     -3.0,
+     -0.13,
+     -1.78
+    ],
+    "bbox_max": [
+     3.0,
+     1.24,
+     1.37
+    ]
+   },
+   "pipe_loop": {
+    "tris": 1424,
+    "bbox_min": [
+     -3.0,
+     0.0,
+     -1.03
+    ],
+    "bbox_max": [
+     3.0,
+     5.22,
+     1.03
+    ]
+   },
+   "substation_a": {
+    "tris": 908,
+    "bbox_min": [
+     -2.55,
+     0.0,
+     -1.95
+    ],
+    "bbox_max": [
+     2.55,
+     3.52,
+     1.95
+    ]
+   },
+   "substation_damaged": {
+    "tris": 1666,
+    "bbox_min": [
+     -2.55,
+     -0.19,
+     -1.95
+    ],
+    "bbox_max": [
+     2.58,
+     3.52,
+     4.6
+    ]
+   },
+   "fence_po2_a": {
+    "tris": 32,
+    "bbox_min": [
+     -2.0,
+     0.0,
+     -0.22
+    ],
+    "bbox_max": [
+     2.0,
+     2.15,
+     0.22
+    ]
+   },
+   "fence_po2_b": {
+    "tris": 38,
+    "bbox_min": [
+     -2.0,
+     0.0,
+     -0.22
+    ],
+    "bbox_max": [
+     2.0,
+     2.15,
+     0.22
+    ]
+   },
+   "fence_po2_broken": {
+    "tris": 226,
+    "bbox_min": [
+     -2.0,
+     -0.06,
+     -0.49
+    ],
+    "bbox_max": [
+     2.15,
+     2.15,
+     2.1
+    ]
+   },
+   "house_a": {
+    "tris": 1184,
+    "bbox_min": [
+     -5.4,
+     0.0,
+     -3.85
+    ],
+    "bbox_max": [
+     4.55,
+     6.14,
+     3.85
+    ]
+   },
+   "house_b": {
+    "tris": 2034,
+    "bbox_min": [
+     -5.7,
+     0.0,
+     -4.05
+    ],
+    "bbox_max": [
+     4.85,
+     6.27,
+     4.05
+    ]
+   },
+   "house_c": {
+    "tris": 940,
+    "bbox_min": [
+     -5.2,
+     -0.45,
+     -5.27
+    ],
+    "bbox_max": [
+     4.06,
+     5.32,
+     5.31
+    ]
+   },
+   "house_d": {
+    "tris": 1788,
+    "bbox_min": [
+     -4.7,
+     -0.14,
+     -4.95
+    ],
+    "bbox_max": [
+     5.35,
+     6.21,
+     4.95
+    ]
+   },
+   "house_e": {
+    "tris": 1156,
+    "bbox_min": [
+     -5.0,
+     0.0,
+     -3.85
+    ],
+    "bbox_max": [
+     4.25,
+     6.39,
+     3.85
+    ]
+   },
+   "fence_house_prof": {
+    "tris": 264,
+    "bbox_min": [
+     -9.04,
+     0.0,
+     -0.1
+    ],
+    "bbox_max": [
+     9.04,
+     2.1,
+     0.01
+    ]
+   },
+   "fence_house_picket": {
+    "tris": 672,
+    "bbox_min": [
+     -9.05,
+     0.0,
+     -0.66
+    ],
+    "bbox_max": [
+     9.0,
+     1.4,
+     0.5
+    ]
+   },
+   "fence_house_broken": {
+    "tris": 326,
+    "bbox_min": [
+     -9.04,
+     0.0,
+     -0.1
+    ],
+    "bbox_max": [
+     9.04,
+     2.1,
+     1.38
+    ]
+   },
+   "fence_house_plain": {
+    "tris": 234,
+    "bbox_min": [
+     -9.04,
+     0.0,
+     -0.1
+    ],
+    "bbox_max": [
+     9.04,
+     2.1,
+     0.0
+    ]
+   },
+   "fence_house_plain_brown": {
+    "tris": 234,
+    "bbox_min": [
+     -9.04,
+     0.0,
+     -0.1
+    ],
+    "bbox_max": [
+     9.04,
+     2.1,
+     0.0
+    ]
+   },
+   "church_small": {
+    "tris": 3742,
+    "bbox_min": [
+     -6.12,
+     -0.25,
+     -7.0
+    ],
+    "bbox_max": [
+     7.4,
+     20.35,
+     7.8
+    ]
+   },
+   "pavilion_closed": {
+    "tris": 306,
+    "bbox_min": [
+     -1.7,
+     0.0,
+     -1.4
+    ],
+    "bbox_max": [
+     1.7,
+     3.3,
+     1.9
+    ]
+   },
+   "pavilion_open": {
+    "tris": 480,
+    "bbox_min": [
+     -1.7,
+     -0.06,
+     -1.4
+    ],
+    "bbox_max": [
+     1.7,
+     3.3,
+     2.66
+    ]
+   },
+   "pavilion_burnt": {
+    "tris": 480,
+    "bbox_min": [
+     -1.7,
+     -0.05,
+     -1.4
+    ],
+    "bbox_max": [
+     1.7,
+     3.29,
+     2.6
+    ]
+   },
+   "pavilion_stall": {
+    "tris": 212,
+    "bbox_min": [
+     -1.65,
+     0.0,
+     -1.38
+    ],
+    "bbox_max": [
+     1.65,
+     2.85,
+     1.42
+    ]
+   },
+   "billboard_a": {
+    "tris": 76,
+    "bbox_min": [
+     -3.08,
+     0.0,
+     -0.5
+    ],
+    "bbox_max": [
+     3.08,
+     7.67,
+     0.9
+    ]
+   },
+   "billboard_b": {
+    "tris": 76,
+    "bbox_min": [
+     -3.08,
+     0.0,
+     -0.5
+    ],
+    "bbox_max": [
+     3.08,
+     7.67,
+     0.9
+    ]
+   },
+   "billboard_torn": {
+    "tris": 151,
+    "bbox_min": [
+     -3.34,
+     0.0,
+     -0.5
+    ],
+    "bbox_max": [
+     3.07,
+     7.84,
+     0.9
+    ]
+   },
+   "bench_concrete": {
+    "tris": 128,
+    "bbox_min": [
+     -1.0,
+     0.0,
+     -0.38
+    ],
+    "bbox_max": [
+     1.0,
+     0.95,
+     0.25
+    ]
+   },
+   "bench_steel": {
+    "tris": 112,
+    "bbox_min": [
+     -1.01,
+     -0.02,
+     -0.35
+    ],
+    "bbox_max": [
+     1.0,
+     0.93,
+     0.26
+    ]
+   },
+   "bin_a": {
+    "tris": 148,
+    "bbox_min": [
+     -0.78,
+     0.0,
+     -0.47
+    ],
+    "bbox_max": [
+     0.78,
+     1.29,
+     0.47
+    ]
+   },
+   "bin_tipped": {
+    "tris": 196,
+    "bbox_min": [
+     -0.74,
+     -0.12,
+     -0.64
+    ],
+    "bbox_max": [
+     0.94,
+     0.89,
+     1.99
+    ]
+   },
+   "lamp_a": {
+    "tris": 136,
+    "bbox_min": [
+     -0.16,
+     0.0,
+     -0.15
+    ],
+    "bbox_max": [
+     0.16,
+     9.41,
+     2.55
+    ]
+   },
+   "lamp_broken": {
+    "tris": 232,
+    "bbox_min": [
+     -0.41,
+     -0.02,
+     -0.64
+    ],
+    "bbox_max": [
+     0.6,
+     9.08,
+     1.61
+    ]
+   },
+   "car_parked_lada": {
+    "tris": 258,
+    "bbox_min": [
+     -0.84,
+     0.0,
+     -2.06
+    ],
+    "bbox_max": [
+     0.84,
+     1.38,
+     2.06
+    ]
+   },
+   "car_parked_lada_red": {
+    "tris": 258,
+    "bbox_min": [
+     -0.84,
+     0.0,
+     -2.06
+    ],
+    "bbox_max": [
+     0.84,
+     1.38,
+     2.06
+    ]
+   },
+   "car_parked_moskvich": {
+    "tris": 258,
+    "bbox_min": [
+     -0.81,
+     0.0,
+     -2.15
+    ],
+    "bbox_max": [
+     0.81,
+     1.46,
+     2.15
+    ]
+   },
+   "car_parked_volga": {
+    "tris": 258,
+    "bbox_min": [
+     -0.93,
+     0.0,
+     -2.39
+    ],
+    "bbox_max": [
+     0.93,
+     1.47,
+     2.39
+    ]
+   },
+   "sign_road_give_way": {
+    "tris": 32,
+    "bbox_min": [
+     -0.34,
+     0.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.34,
+     2.6,
+     0.04
+    ]
+   },
+   "sign_road_crossing": {
+    "tris": 34,
+    "bbox_min": [
+     -0.34,
+     0.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.34,
+     2.6,
+     0.04
+    ]
+   },
+   "sign_road_children": {
+    "tris": 32,
+    "bbox_min": [
+     -0.34,
+     0.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.34,
+     2.6,
+     0.04
+    ]
+   },
+   "sign_road_no_entry": {
+    "tris": 58,
+    "bbox_min": [
+     -0.33,
+     0.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.33,
+     2.6,
+     0.04
+    ]
+   },
+   "sign_road_dir": {
+    "tris": 44,
+    "bbox_min": [
+     -0.1,
+     0.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.72,
+     2.6,
+     0.04
+    ]
+   },
+   "goal_a": {
+    "tris": 720,
+    "bbox_min": [
+     -2.6,
+     -0.06,
+     -1.22
+    ],
+    "bbox_max": [
+     2.53,
+     2.03,
+     0.1
+    ]
+   },
+   "goal_b": {
+    "tris": 294,
+    "bbox_min": [
+     -2.6,
+     0.0,
+     -1.22
+    ],
+    "bbox_max": [
+     2.53,
+     2.03,
+     0.1
+    ]
+   },
+   "laundry_pole_a": {
+    "tris": 592,
+    "bbox_min": [
+     -3.23,
+     0.0,
+     -0.65
+    ],
+    "bbox_max": [
+     3.23,
+     2.28,
+     0.65
+    ]
+   },
+   "laundry_pole_b": {
+    "tris": 406,
+    "bbox_min": [
+     -3.23,
+     0.0,
+     -0.65
+    ],
+    "bbox_max": [
+     3.58,
+     2.28,
+     0.65
+    ]
+   }
+  },
+  "refs": "Photo record of Mariupol (Livoberezhnyi / Primorskyi private sector, Azovstal-side districts), Bakhmut, Avdiivka (Khimik), Sievierodonetsk: above-ground foil-clad heating mains on concrete sleepers with \u041f-shaped expansion loops over paths, white silicate brick transformer kiosks with louvred steel doors, \u041f\u041e-2 diamond-relief concrete fences, one-storey plastered / brick houses with tin or asbestos-slate gable roofs and blue carved window trims, profiled-sheet and picket fences with painted gates, small white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts.",
+  "notes": "One material (city_atlas 2048^2, tools/blender/env/city_atlas.py). Every node is a top-level mesh, origin on the ground at the footprint centre, front = +Z, nodes laid out on a grid in the file (city.js instancing ignores the layout transform). Linear pieces run along local X: pipe_straight_* 6.0 m (mains at z = +-0.36, axis y = 1.0, supports at x = +-1.5 so segments tile every 6 m), pipe_loop 6.0 m (raised to 5 m over a footpath), fence_po2_* 4.0 m panel (+0.1 m gap at the 4.1 m pitch), fence_house_* 18 m with a gate at the centre. house_* plinth 0.45 + walls to 3.2 m, gable roofs; house_c is burnt and roofless, house_b has a roof hole, house_d a shell hole in its right wall (fit inside a 19 x 18 m plot, fences at z+9 / x+-9.5). lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z."
  }
 }

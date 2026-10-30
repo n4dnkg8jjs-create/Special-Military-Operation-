@@ -177,7 +177,7 @@ export class Building {
       }
     }
     // shop signs above shopfronts, lift machine rooms on tall blocks
-    for (const sg of this.signs || []) if (sg.name) { sg.slot = -1; sg.cell = this.cell; const m2 = this.panelMatrix(sg.p, new THREE.Matrix4()).multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.86, 0)); pool.add(sg.name, m2, sg, null); }
+    for (const sg of this.signs || []) if (sg.name) { sg.slot = -1; sg.cell = this.cell; const m2 = this.panelMatrix(sg.p, new THREE.Matrix4()).multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.764, 0)); pool.add(sg.name, m2, sg, null); }
     if (this.floors >= 9 && this.kit.pieces.roof_machine_room) for (const [a, b] of this.secCols) { const o = { slot: -1, cell: this.cell }; const w = this.toWorld(-this.L / 2 + ((a + b + 1) / 2) * this.kit.W, this.floors * this.kit.H + 0.2, 0); pool.add('roof_machine_room', new THREE.Matrix4().compose(w, new THREE.Quaternion().setFromAxisAngle(Y, this.rot), tmpS.set(1, 1, 1)), o, null); (this.machines ||= []).push({ o, a, b }); }
     // roof parapets
     const { W, H } = this.kit, top = this.floors * H;

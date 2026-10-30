@@ -264,7 +264,7 @@ def paint(name, rect, seed):
         rust_low = smoothstep(h * 0.75, h, yy) * smoothstep(0.0, 1.0, n + 0.5)
         alb = lerp(alb, srgb('#5e3018'), np.clip(rust_low, 0, 1) * 0.8)
         alb = lerp(alb, srgb('#8a857a'), smoothstep(0.6, 1.6, f) * 0.15)   # dust
-        metal = 0.3 * (1 - chip); rough = 0.45 + chip * 0.4 + rust_low * 0.3
+        metal = 0.08 * (1 - chip); rough = 0.6 + chip * 0.3 + rust_low * 0.3
     elif name == 'car_glass':
         alb = colorize(norm01(n), [(0, '#1b2226'), (1, '#3c464b')]); alb = lerp(alb, srgb('#7f8a90'), smoothstep(h, 0, yy)[..., None] * 0.3)
         alb = lerp(alb, srgb('#8d887c'), smoothstep(0.6, 1.5, f) * 0.35); rough[:] = 0.1

@@ -200,6 +200,30 @@ def main():
             o.matrix_world = C @ Matrix.Translation(pos) @ Matrix.Translation(-p['loc']) @ Ci @ p['obj'].matrix_world
             o.hide_set(False); o.hide_render = False
             coll.objects.link(o)
+    elif which == 'street':
+        # a district street: 5-storey white-brick block with a shop ground floor, heating mains and private houses opposite
+        S = {(0, 0): 1, (3, 1): 2, (2, 3): 1, (5, 4): 2, (5, 0): 2}
+        section_brick(pieces, coll, lambda c, f: S.get((c, f), 0), pre='brick_', modules=6,
+                      ground={0: 'wall_shopfront', 1: 'wall_shopfront_shutter', 2: 'brick_entrance', 3: 'wall_shopfront', 4: 'wall_shopfront', 5: 'wall_shopfront_shutter'},
+                      signs={0: 'sign_apteka', 1: 'sign_gospodarchi', 3: 'sign_khlib', 4: 'sign_perukarnia', 5: 'sign_produkty'})
+        bpy.ops.import_scene.gltf(filepath=os.path.join(REPO, 'assets', 'env', 'city.glb'))
+        city = {re.sub(r'\.\d+$', '', o.name): o for o in bpy.context.selected_objects if o.parent is None}
+        for o in city.values():
+            o.hide_set(True); o.hide_render = True
+        P = math.pi
+        layout = [('lamp_a', -7, 8.6, 0), ('lamp_broken', 7, 8.6, 0), ('car_parked_lada', -4, 11.2, P / 2), ('car_parked_volga', 3.5, 11.4, -P / 2 + 0.05),
+                  ('bench_concrete', -1.0, 6.3, 0), ('bin_a', 1.6, 6.4, 0), ('sign_road_crossing', 9.5, 8.6, 0), ('billboard_b', -13, 9, 0.3),
+                  ('pipe_straight_a', -15, 20, 0), ('pipe_straight_torn', -9, 20, 0), ('pipe_loop', -3, 20, 0), ('pipe_straight_burst', 3, 20, 0),
+                  ('pipe_straight_a', 9, 20, 0), ('pipe_straight_a', 15, 20, 0), ('substation_a', 13, 13.5, P),
+                  ('house_a', -8, 32, P), ('house_d', 6, 32, P), ('house_c', 20, 32, P), ('fence_house_prof', -8, 23, P), ('fence_house_picket', 6, 23, P),
+                  ('fence_house_broken', 20, 23, P), ('laundry_pole_a', -3, -9.5, 0), ('fence_po2_a', -20, 2, P / 2), ('fence_po2_broken', -20, 6.1, P / 2)]
+        for name, x, z, ry in layout:
+            src = city[name]
+            o = src.copy(); o.data = src.data
+            loc = src.matrix_world.translation.copy()
+            o.matrix_world = C @ Matrix.Translation((x, 0, z)) @ Matrix.Rotation(ry, 4, 'Y') @ Ci @ Matrix.Translation(-loc) @ src.matrix_world
+            o.hide_set(False); o.hide_render = False
+            coll.objects.link(o)
     sel = list(coll.objects)
     out = os.path.join(REPO, 'previews', '_test', which + '.glb')
     export_glb(out, selection=sel)

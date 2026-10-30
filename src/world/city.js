@@ -144,7 +144,7 @@ export class City {
   placeBuildings() {
     const kit = this.assets.kit;
     this.pool = new KitPool(this.scene, kit);
-    const signNames = Object.keys(kit.pieces).filter(k => /^sign_/.test(k));
+    const signNames = Object.keys(kit.pieces).filter(k => /^sign_.*_intact$/.test(k));
     for (const [x, z, rot, modules, floors, depthModules, sections, kind, dmg, extra] of BUILDINGS) {
       const b = new Building({ x, z, rot, modules, floors, depthModules, sections, kind, ...(extra || {}), signNames }, kit);
       b.predamage(dmg);
@@ -461,7 +461,7 @@ export class City {
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
     const mats = [];
     for (let i = 0; i < 70; i++) {
-      const a = this.rng() * Math.PI * 2, r = MAP_SIZE / 2 + 60 + this.rng() * 200;
+      const a = this.rng() * Math.PI * 2, r = MAP_SIZE * 0.78 + this.rng() * 220;
       const h = 15 + this.rng() * 30 * (this.rng() < 0.3 ? 1.6 : 1);
       const M = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng() * 3), new THREE.Vector3(12 + this.rng() * 50, h, 12 + this.rng() * 4));
       mats.push(M);

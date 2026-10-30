@@ -20,7 +20,7 @@ export class Assets {
       ['ak74m', 'assets/soldiers/ak74m.glb'], ['pkm', 'assets/soldiers/pkm.glb'], ['rpg7', 'assets/soldiers/rpg7.glb'],
       ['btr82a', 'assets/vehicles/btr82a.glb'], ['btr80_ua', 'assets/vehicles/btr80_ua.glb'],
       ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'],
-      ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'],
+      ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
     ];
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};
     // rubble files are discovered from the env manifest (or a default list)
@@ -87,8 +87,10 @@ export class Assets {
       if (!offsets[base]) {
         const b = bboxOf(ref.parts), sz = b.getSize(new THREE.Vector3());
         // accessories hang outside the facade: centre them on the module and start at the wall face
-        const acc = /^(balcony|entrance_canopy)/.test(base);
-        offsets[base] = acc ? new THREE.Vector3((kit.W - sz.x) / 2 - b.min.x, -b.min.y, -b.min.z) : new THREE.Vector3(-b.min.x, -b.min.y, -b.max.z);
+        const acc = /^(balcony|entrance_canopy|sign_)/.test(base);
+        const centred = /^(roof_machine_room|roof_vent|roof_antenna|collapse_pile|slab_hanging)/.test(base);
+        offsets[base] = centred ? new THREE.Vector3(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2)
+          : acc ? new THREE.Vector3((kit.W - sz.x) / 2 - b.min.x, -b.min.y, -b.min.z) : new THREE.Vector3(-b.min.x, -b.min.y, -b.max.z);
         offsets[base].size = sz;
       }
       for (const pt of raw[name].parts) { pt.geometry.translate(offsets[base].x, offsets[base].y, offsets[base].z); pt.geometry.computeBoundingBox(); pt.geometry.computeBoundingSphere(); }
