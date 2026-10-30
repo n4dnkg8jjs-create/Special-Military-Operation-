@@ -40,6 +40,14 @@ export class NavGrid {
       if (Math.abs(lx) <= hx + pad && Math.abs(lz) <= hz + pad) { const i = this.idx(x, z); if (i >= 0) this.cost[i] = Math.max(this.cost[i], val); }
     }
   }
+  // overwrite (not max) costs inside an oriented rectangle, e.g. a collapsed building becoming rubble
+  setRect(cx, cz, hx, hz, rot, val, low = 1) {
+    const c = Math.cos(rot), s = Math.sin(rot), r = Math.hypot(hx, hz);
+    for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
+      const dx = x - cx, dz = z - cz, lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) { this.cost[i] = val; this.low[i] = low; } }
+    }
+  }
   circle(cx, cz, r, val, lowCover = false) {
     for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
       if ((x - cx) ** 2 + (z - cz) ** 2 > r * r) continue;

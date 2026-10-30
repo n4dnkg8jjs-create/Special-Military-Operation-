@@ -18,9 +18,10 @@
     <div class="title-block">
       <div class="kicker">MAP 1 · NOVOZAVODSK, EASTERN DISTRICT</div>
       <h1>HOLD THE LINE</h1>
-      <p class="brief">A shelled-out microdistrict of five- and nine-storey panel blocks. Your motorized rifle company holds
-        <b>Objective A — School No. 7</b> and <b>Objective B — Market Crossroads</b>. Keep both for the whole round.
-        Ammunition is limited, wounded must be pulled back, and squads that lose their nerve will break.</p>
+      <p class="brief">A shelled-out district of panel blocks, brick five-storeys and private houses. Your motorized rifle company
+        rides in on armour with an assault squad on the lead tank. <b>Capture Objective A — School No. 7</b> and
+        <b>Objective B — Market Crossroads</b> from dug-in defenders, then <b>hold both</b> against counterattacks until the
+        round ends. Ammunition is limited, wounded must be pulled back, and squads that lose their nerve will break.</p>
     </div>
     <div class="menu-grid">
       <div class="menu-col">
@@ -39,6 +40,7 @@
     <div class="controls-help">
       <b>Camera</b> WASD / edge pan · Q E rotate · wheel zoom · middle-drag orbit &nbsp;
       <b>Select</b> click / drag box · Ctrl+1–9 group · double-click type &nbsp;
+      <b>Deploy</b> place units in your staging ground, then START BATTLE (Enter) &nbsp;
       <b>Orders</b> right-click move · right-drag formation line · R run · Space pause · F hold fire · G garrison · M mount/dismount · B resupply · X halt · V smoke · T mortar
     </div>
   </div>
@@ -51,9 +53,10 @@
 <div id="hud" class="hidden">
   <div id="topbar">
     <div id="obj-A" class="objective"><span class="tag">A</span><div class="name">School No. 7</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
-    <div id="clock"><div id="timer">12:00</div><div id="phase">HOLD BOTH OBJECTIVES</div></div>
+    <div id="clock"><div id="timer">12:00</div><div id="phase">CAPTURE A &amp; B · THEN HOLD</div></div>
     <div id="obj-B" class="objective"><span class="tag">B</span><div class="name">Market Crossroads</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
   </div>
+  <div id="deploybar"><div class="dk">DEPLOYMENT</div><div class="dt">Place your units inside the green staging ground: select, then right-click or right-drag a formation line. <b>M</b> mounts/dismounts. The enemy is deploying in the north.</div><button id="startBattle" class="big">START BATTLE</button></div>
   <div id="alerts"></div>
   <div id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas></div>
   <div id="cards"></div>

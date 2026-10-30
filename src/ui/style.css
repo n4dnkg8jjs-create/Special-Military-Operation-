@@ -78,3 +78,8 @@ button{font:inherit;cursor:pointer}
 .banner .mb{width:34px;height:3px;background:#333;margin-top:2px}.banner .mb i{display:block;height:100%}
 .banner.sel .flag{outline:1px solid var(--accent)}
 .banner .pole{width:1px;height:14px;background:rgba(255,255,255,.4)}
+
+#deploybar{position:absolute;top:96px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--good);padding:10px 16px;display:flex;align-items:center;gap:16px;max-width:860px}
+#deploybar .dk{font-weight:800;letter-spacing:.25em;color:var(--good);font-size:15px}
+#deploybar .dt{color:var(--dim);font-size:14px;line-height:1.35}#deploybar .dt b{color:var(--ink)}
+#deploybar .big{padding:10px 22px;font-size:16px;white-space:nowrap;background:var(--good)}

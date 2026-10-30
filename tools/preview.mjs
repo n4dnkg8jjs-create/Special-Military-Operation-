@@ -27,4 +27,5 @@ try { await page.waitForFunction('window.__done === true', null, { timeout: 2400
 if (+waitMs) await page.waitForTimeout(+waitMs);
 await page.screenshot({ path: out, timeout: 180000 });
 console.log(JSON.stringify(await page.evaluate('window.__info || null')));
+if (process.env.BR) console.log(JSON.stringify(await page.evaluate('window.__br || null')));
 await browser.close(); server.close();

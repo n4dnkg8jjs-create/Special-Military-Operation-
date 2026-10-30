@@ -4,30 +4,38 @@ import * as THREE from 'three';
 // Each panel has a damage state (0 intact, 1 damaged, 2 holed, 3 destroyed) that shells can raise at runtime.
 export const STATES = ['intact', 'damaged', 'holed', 'destroyed'];
 
-// Pool of InstancedMeshes keyed by piece name, kept compact with swap-remove.
+// Pool of InstancedMeshes keyed by (piece, spatial cell), kept compact with swap-remove.
+// Cells give each InstancedMesh a tight bounding sphere so off-screen / out-of-shadow-range
+// blocks are culled from both the main and the shadow pass.
+const CELL = 90;
 export class KitPool {
-  constructor(scene, kit) { this.scene = scene; this.kit = kit; this.req = new Map(); this.groups = new Map(); }
-  request(piece, n = 1) { this.req.set(piece, (this.req.get(piece) || 0) + n); }
+  constructor(scene, kit) { this.scene = scene; this.kit = kit; this.req = new Map(); this.groups = new Map(); this.dirty = new Set(); }
+  static cellOf(x, z) { return `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`; }
+  key(piece, cell) { return piece + '|' + cell; }
+  request(piece, n = 1, cell = '0,0') { const k = this.key(piece, cell); this.req.set(k, (this.req.get(k) || 0) + n); }
   build() {
-    for (const [piece, cap] of this.req) {
+    for (const [k, cap] of this.req) {
+      const piece = k.split('|')[0];
       const parts = this.kit.pieces[piece]; if (!parts) { console.warn('kit piece missing', piece); continue; }
       const meshes = parts.map(p => {
         const m = new THREE.InstancedMesh(p.geometry, p.material, cap);
-        m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+        m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = true; m.visible = false;
         m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         m.name = piece; this.scene.add(m); return m;
       });
-      this.groups.set(piece, { meshes, owners: [], cap });
+      this.groups.set(k, { meshes, owners: [], cap });
     }
   }
   add(piece, matrix, owner, color) {
-    const g = this.groups.get(piece); if (!g) return -1;
+    const cell = owner.cell || '0,0', k = this.key(piece, cell);
+    const g = this.groups.get(k); if (!g) return -1;
     const i = g.owners.length; if (i >= g.cap) return -1;
-    for (const m of g.meshes) { m.setMatrixAt(i, matrix); if (color) m.setColorAt(i, color); m.count = i + 1; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-    g.owners.push(owner); owner.slot = i; return i;
+    for (const m of g.meshes) { m.setMatrixAt(i, matrix); if (color) m.setColorAt(i, color); m.count = i + 1; m.visible = true; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    g.owners.push(owner); owner.slot = i; owner.poolKey = k; this.dirty.add(g);
+    return i;
   }
   remove(piece, owner) {
-    const g = this.groups.get(piece); if (!g || owner.slot < 0) return;
+    const g = this.groups.get(owner.poolKey || this.key(piece, owner.cell || '0,0')); if (!g || owner.slot < 0) return;
     const i = owner.slot, last = g.owners.length - 1, mtx = new THREE.Matrix4(), col = new THREE.Color();
     if (i !== last) {
       const moved = g.owners[last];
@@ -35,9 +43,15 @@ export class KitPool {
       g.owners[i] = moved; moved.slot = i;
     }
     g.owners.pop(); owner.slot = -1;
-    for (const m of g.meshes) { m.count = g.owners.length; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    for (const m of g.meshes) { m.count = g.owners.length; m.visible = m.count > 0; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    this.dirty.add(g);
   }
-  finish() { for (const g of this.groups.values()) for (const m of g.meshes) { m.computeBoundingSphere(); } }
+  setMatrix(owner, matrix) {
+    const g = this.groups.get(owner.poolKey); if (!g || owner.slot < 0) return;
+    for (const m of g.meshes) { m.setMatrixAt(owner.slot, matrix); m.instanceMatrix.needsUpdate = true; } this.dirty.add(g);
+  }
+  // recompute bounding spheres of groups that changed (call once per frame / after edits)
+  finish() { for (const g of this.dirty) for (const m of g.meshes) if (m.count) { m.computeBoundingSphere(); m.boundingSphere.radius += 3; } this.dirty.clear(); }
 }
 
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
@@ -57,26 +71,36 @@ export class Building {
   // local -> world
   toWorld(lx, ly, lz, out = new THREE.Vector3()) { return out.set(this.x + lx * this.cos + lz * this.sin, ly, this.z - lx * this.sin + lz * this.cos); }
   toLocal(wx, wz) { const dx = wx - this.x, dz = wz - this.z; return [dx * this.cos - dz * this.sin, dx * this.sin + dz * this.cos]; }
+  // kit piece for a wall role, honouring the building's construction type with fallback
+  piece(role) {
+    const has = n => !!this.kit.pieces[n + '_intact'];
+    if (this.kind === 'brick') { const b = role.replace(/^wall_/, 'brick_'); if (has(b)) return b; }
+    return role;
+  }
   layout() {
     const { W, H } = this.kit, L = this.L, D = this.D, r = this.rng;
+    const hasShop = !!this.kit.pieces.wall_shopfront_intact;
     const secW = Math.floor(this.modules / this.sections);
     const entranceCols = new Set(); for (let s = 0; s < this.sections; s++) entranceCols.add(Math.min(this.modules - 1, s * secW + Math.floor(secW / 2)));
-    const balconyPattern = this.kind === 'school' || this.kind === 'shop' ? () => false : (c) => (c % 3 === 1);
+    const balconyPattern = this.kind === 'school' || this.kind === 'shop' ? () => false : this.kind === 'tower' ? (c) => (c % 2 === 1) : (c) => (c % 3 === 1);
     for (let f = 0; f < this.floors; f++) {
       for (let c = 0; c < this.modules; c++) {
         // front (+Z local, street side): windows & balconies
         const fb = f > 0 && balconyPattern(c);
-        this.panels.push({ side: 'front', col: c, floor: f, type: fb ? 'wall_balcony' : 'wall_window', state: 0, balcony: fb, rot: 0, px: -L / 2 + c * W, pz: D / 2 });
+        const shop = f === 0 && this.shops && hasShop && (c % 4 !== 3);
+        this.panels.push({ side: 'front', col: c, floor: f, type: shop ? 'wall_shopfront' : this.piece(fb ? 'wall_balcony' : 'wall_window'), state: 0, balcony: fb, shop, rot: 0, px: -L / 2 + c * W, pz: D / 2 });
         // back (-Z local, courtyard side): entrances at ground floor
         const ent = f === 0 && entranceCols.has(c);
-        this.panels.push({ side: 'back', col: c, floor: f, type: ent ? 'wall_entrance' : 'wall_window', state: 0, entrance: ent, rot: Math.PI, px: -L / 2 + (c + 1) * W, pz: -D / 2 });
+        this.panels.push({ side: 'back', col: c, floor: f, type: this.piece(ent ? 'wall_entrance' : 'wall_window'), state: 0, entrance: ent, rot: Math.PI, px: -L / 2 + (c + 1) * W, pz: -D / 2 });
       }
       for (let j = 0; j < this.depthModules; j++) {
-        this.panels.push({ side: 'right', col: j, floor: f, type: 'wall_blank_end', state: 0, rot: Math.PI / 2, px: L / 2, pz: D / 2 - j * W });
-        this.panels.push({ side: 'left', col: j, floor: f, type: 'wall_blank_end', state: 0, rot: -Math.PI / 2, px: -L / 2, pz: -D / 2 + j * W });
+        const endT = this.kind === 'tower' ? this.piece('wall_window') : this.piece('wall_blank_end');
+        this.panels.push({ side: 'right', col: j, floor: f, type: endT, state: 0, rot: Math.PI / 2, px: L / 2, pz: D / 2 - j * W });
+        this.panels.push({ side: 'left', col: j, floor: f, type: endT, state: 0, rot: -Math.PI / 2, px: -L / 2, pz: -D / 2 + j * W });
       }
     }
-    for (const p of this.panels) { p.b = this; p.slot = -1; p.acc = null; p.hp = 100; }
+    this.cell = KitPool.cellOf(this.x, this.z);
+    for (const p of this.panels) { p.b = this; p.slot = -1; p.acc = null; p.hp = 100; p.cell = this.cell; }
     // garrison slots: windows on floors 0..2 facing out
     for (const p of this.panels) {
       if (p.floor > 2 || p.type === 'wall_blank_end' || p.entrance) continue;
@@ -84,6 +108,10 @@ export class Building {
       this.slots.push({ panel: p, occupant: null });
     }
     this.garrisonCap = Math.min(this.slots.length, 24);
+    // entrance sections (load-bearing units that can collapse independently)
+    const sw = Math.max(1, Math.floor(this.modules / this.sections));
+    this.secCols = []; for (let i = 0; i < this.sections; i++) this.secCols.push([i * sw, i === this.sections - 1 ? this.modules - 1 : (i + 1) * sw - 1]);
+    this.collapsedSecs = new Set(); this.goneCols = new Set();
     // entrance world positions (courtyard side doors)
     this.entrances = [...entranceCols].map(c => this.toWorld(-L / 2 + (c + 0.5) * W, 0, -D / 2 - 2.0));
   }
@@ -119,10 +147,14 @@ export class Building {
     this.pancaked = [a, b];
   }
   requestKit(pool) {
-    for (const p of this.panels) for (const s of STATES) pool.request(`${p.type}_${s}`);
-    for (const p of this.panels) if (p.balcony) pool.request('balcony_slab');
-    for (const p of this.panels) if (p.entrance) pool.request('entrance_canopy');
-    pool.request('roof_parapet', 2 * this.modules + 2 * this.depthModules);
+    const c = this.cell;
+    for (const p of this.panels) for (const s of STATES) pool.request(`${p.type}_${s}`, 1, c);
+    for (const p of this.panels) if (p.balcony) pool.request('balcony_slab', 1, c);
+    for (const p of this.panels) if (p.entrance) pool.request('entrance_canopy', 1, c);
+    this.signs = this.signs || this.panels.filter(p => p.shop && p.col % 3 === 0).map((p, i) => ({ p, name: this.signNames?.[i % this.signNames.length] }));
+    for (const sg of this.signs) if (sg.name) pool.request(sg.name, 1, c);
+    if (this.floors >= 9 && this.kit.pieces.roof_machine_room) pool.request('roof_machine_room', this.sections, c);
+    pool.request('roof_parapet', 2 * this.modules + 2 * this.depthModules, c);
   }
   panelMatrix(p, out) {
     const { H } = this.kit;
@@ -138,19 +170,22 @@ export class Building {
       col.copy(this.tint).offsetHSL(0, 0, (this.rng() - 0.5) * 0.04);
       p.color = col.clone();
       pool.add(`${p.type}_${STATES[p.state]}`, this.panelMatrix(p, tmpM), p, p.color);
-      if (p.balcony && p.state < 2) { p.acc = { slot: -1 }; pool.add('balcony_slab', tmpM, p.acc, p.color); }
+      if (p.balcony && p.state < 2) { p.acc = { slot: -1, cell: this.cell }; pool.add('balcony_slab', tmpM, p.acc, p.color); }
       if (p.entrance) {
-        p.acc = { slot: -1 }; const m2 = tmpM.clone(); m2.multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.8, 0));
+        p.acc = { slot: -1, cell: this.cell }; const m2 = tmpM.clone(); m2.multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.8, 0));
         pool.add('entrance_canopy', m2, p.acc, p.color);
       }
     }
+    // shop signs above shopfronts, lift machine rooms on tall blocks
+    for (const sg of this.signs || []) if (sg.name) { sg.slot = -1; sg.cell = this.cell; const m2 = this.panelMatrix(sg.p, new THREE.Matrix4()).multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.86, 0)); pool.add(sg.name, m2, sg, null); }
+    if (this.floors >= 9 && this.kit.pieces.roof_machine_room) for (const [a, b] of this.secCols) { const o = { slot: -1, cell: this.cell }; const w = this.toWorld(-this.L / 2 + ((a + b + 1) / 2) * this.kit.W, this.floors * this.kit.H + 0.2, 0); pool.add('roof_machine_room', new THREE.Matrix4().compose(w, new THREE.Quaternion().setFromAxisAngle(Y, this.rot), tmpS.set(1, 1, 1)), o, null); (this.machines ||= []).push({ o, a, b }); }
     // roof parapets
     const { W, H } = this.kit, top = this.floors * H;
     this.parapets = [];
-    const addPar = (lx, lz, rot) => { const o = { slot: -1 }; this.toWorld(lx, top, lz, tmpV); tmpQ.setFromAxisAngle(Y, this.rot + rot); tmpM.compose(tmpV, tmpQ, tmpS); pool.add('roof_parapet', tmpM, o, this.tint); this.parapets.push(o); };
+    const addPar = (lx, lz, rot, col) => { const o = { slot: -1, cell: this.cell, col }; this.toWorld(lx, top, lz, tmpV); tmpQ.setFromAxisAngle(Y, this.rot + rot); tmpM.compose(tmpV, tmpQ, tmpS); pool.add('roof_parapet', tmpM, o, this.tint); this.parapets.push(o); };
     for (let c = 0; c < this.modules; c++) {
-      if (!this.isDestroyedTop('front', c)) addPar(-this.L / 2 + c * W, this.D / 2, 0);
-      if (!this.isDestroyedTop('back', c)) addPar(-this.L / 2 + (c + 1) * W, -this.D / 2, Math.PI);
+      if (!this.isDestroyedTop('front', c)) addPar(-this.L / 2 + c * W, this.D / 2, 0, c);
+      if (!this.isDestroyedTop('back', c)) addPar(-this.L / 2 + (c + 1) * W, -this.D / 2, Math.PI, c);
     }
   }
   isDestroyedTop(side, col) { const p = this.panels.find(q => q.side === side && q.col === col && q.floor === this.floors - 1); return p && (p.state === 3 || p.gone); }
@@ -164,9 +199,9 @@ export class Building {
       if (gone || topGone) continue;
       const cx = -this.L / 2 + (c + 0.5) * W;
       this.toWorld(cx, f * H + H - 0.11, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W, 0.22, D - 0.2)); slabMesh.setMatrixAt(counters.slab++, tmpM);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= []; this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM);
       this.toWorld(cx, f * H + H / 2, 0, tmpV);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); darkMesh.setMatrixAt(counters.dark++, tmpM);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]); darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);
     }
     // roof, per module column (missing over collapsed parts)
@@ -175,7 +210,7 @@ export class Building {
       const corner = this.collapsedCorner && (this.collapsedCorner === 'right' ? c >= this.modules - 2 : c <= 1);
       if (gone || corner) continue;
       this.toWorld(-this.L / 2 + (c + 0.5) * W, this.floors * H + 0.05, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W + 0.01, 0.3, this.D)); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W + 0.01, 0.3, this.D)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
     }
   }
   setGone(p) {
@@ -224,6 +259,25 @@ export class Building {
       } else if (p.floor === 0) for (const q of this.panels) if (q.side === p.side && q.col === p.col && q.floor === 1 && q.state < 2) { this.setState(q, 2); changed.push(q); }
     }
     return changed;
+  }
+  // Section collapse check: lower floors of a section badly destroyed, or the section shot to pieces.
+  checkCollapse() {
+    const out = [];
+    this.secCols.forEach(([a, b], si) => {
+      if (this.collapsedSecs.has(si)) return;
+      let low = 0, lowBad = 0, all = 0, score = 0;
+      for (const p of this.panels) {
+        if (p.side !== 'front' && p.side !== 'back') continue; if (p.col < a || p.col > b) continue;
+        all++; score += p.gone ? 3 : p.state;
+        if (p.floor <= 1) { low++; if (p.state === 3 || p.gone) lowBad++; }
+      }
+      if ((low && lowBad / low >= 0.38) || (all && score / (3 * all) >= 0.5)) out.push(si);
+    });
+    return out;
+  }
+  panelsOfSection(si) {
+    const [a, b] = this.secCols[si], first = si === 0, last = si === this.secCols.length - 1;
+    return this.panels.filter(p => !p.gone && (((p.side === 'front' || p.side === 'back') && p.col >= a && p.col <= b) || (p.side === 'left' && first) || (p.side === 'right' && last)));
   }
   panelCenter(p, out = new THREE.Vector3()) {
     const { W, H } = this.kit; const L = this.L, D = this.D;

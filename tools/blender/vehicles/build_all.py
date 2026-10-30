@@ -19,6 +19,7 @@ SOURCES = {
         'https://koi.legion.wplus.net/guide/army/ta/btr80.shtml (axle spacing 1.35 + 1.95 + 1.35 m, central tyre inflation, 902V Tucha x6)',
         'https://en.wikipedia.org/wiki/BTR-80 (split side doors between axles 2 and 3, ball-mount firing ports, BPPU on BTR-80A/82A)',
         'https://www.globalsecurity.org/military/world/russia/btr-80-specs.htm (BTR-80 7.55 x 2.95 x 2.41 m, KPVT + PKT, 6 x 81 mm launchers)',
+        'https://en.wikipedia.org/wiki/BTR-80 (side doors: upper part opens forward, lower part folds down as a step; round ball-mount ports, the forward ones in angled recesses; rear raised and engine compartment squared off; 6 smoke projectors on the turret rear; KPVT/PKT elevate to 60 deg)',
     ],
     't72': [
         'https://www.globalsecurity.org/military/world/russia/t-72-specs.htm (hull 6.86-6.91 m, 9.53 m gun forward, width 3.58-3.77 m, turret roof 2.226 m, clearance 0.49 m)',
@@ -36,7 +37,7 @@ STATIC = {
                      real_dimensions_m=dict(length=7.65, width=2.90, height=2.41, ground_clearance=0.475, wheel_track=2.41,
                                             axle_spacing=[1.35, 1.95, 1.35], tyre='KI-80 13.00x18 (dia ~1.12 m)'),
                      armament=['14.5 mm KPVT (muzzle)', '7.62 mm PKT coaxial (coax_muzzle)', '6 x 81 mm 902V Tucha (smoke_launchers)'],
-                     markings='white crosses on both hull sides + rear plate; green/black/brown disruptive camo'),
+                     markings='white crosses on both hull sides, rear plate and roof; green base with brown + khaki disruptive patches'),
     't72b3': dict(faction='RU', name='T-72B3', kind='tank', crew=3, passengers=0,
                   real_dimensions_m=dict(hull_length=6.86, length_gun_forward=9.53, width_over_tracks=3.46, width_with_skirts=3.59,
                                          height_turret_roof=2.23, ground_clearance=0.49, track_width=0.58, track_centres=2.79,
@@ -68,6 +69,17 @@ CONVENTIONS = {
     'track_uv': 'track_L/track_R: U = link index along the loop (1.0 per link, 97 links -> U 0..97), V across the profile. Scroll the track material map/normalMap/roughnessMap offset.x by distance_travelled / track_link_pitch_m (sign by direction; L and R share the material, so clone it per side for skid steering). Guide horns and the gaps between links are alpha-tested, so they scroll with the texture.',
     'cope_cage': 't72b3 only: separate mesh node turret/cope_cage (+LOD1) so the game can toggle it.',
     'empties': 'muzzle, coax_muzzle under gun_pivot; smoke_launchers and (tanks) commander_hatch under turret; exhaust, dismount_L, dismount_R and (BTR) commander_hatch under hull. Tank dismount_L/R mark crew bail-out points beside the hull.',
+    'ride_seats': ('Desant riding positions: empties ride_seat_1..N under hull (BTR: 8, T-72: 6), listed per vehicle in ride_seats. '
+                   'Origin = point under the rider pelvis on the sitting surface; local +Z = direction the rider faces, +Y = up. '
+                   'extras.seat_type: "edge" = sitting on a deck edge / fender bin with the legs hanging over the side '
+                   '(thighs along +Z, knees ~0.44 m out, shins down; on the BTR the upper hull side below the roof edge slopes '
+                   'outward ~39 deg, so angle the shins out ~30 deg) or "deck" = sitting on the deck, legs forward along +Z '
+                   '(knees up). Seats parent to hull, so riders follow hull motion; turret traverse never reaches them '
+                   '(ride_clearance.turret_sweep_radius_m vs min_rider_margin_m, cope cage included), but the gun barrel '
+                   'does: ride_clearance.gun_min_elevation_to_clear_riders_deg is the elevation the gun needs before it may '
+                   'traverse over riders; when gun_can_clear_riders is false (T-72) lock the turret to the forward arc '
+                   'while riders are aboard. The rider proxy used for these checks is drawn by '
+                   'tools/blender/vehicles/preview.html?seats=1.'),
 }
 
 def main(names):
@@ -102,7 +114,7 @@ def main(names):
         v['model_bbox_m'] = dict(min=info['bbox_lod0'][0], max=info['bbox_lod0'][1],
                                  size=[round(b - a, 3) for a, b in zip(*info['bbox_lod0'])])
         v['materials'] = info['materials']
-        for k in ('track_link_pitch_m', 'track_length_m', 'track_links'):
+        for k in ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance'):
             if k in info:
                 v[k] = info[k]
         v['hierarchy'] = info['hierarchy']

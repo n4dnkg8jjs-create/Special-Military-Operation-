@@ -75,6 +75,48 @@ class Builder:
         bmesh.ops.transform(bm, matrix=Matrix(M.tolist()), verts=bm.verts[:])
         return self._finish(self._obj(bm, 'tube'), mat, bevel, 1, 30)
 
+    def lathe(self, prof, mat, c=(0, 0), n=20, angle=35, a0=0.0):
+        """solid of revolution about gl +Z through (x, y) = c; prof: [(z, r), ...] (r = 0 -> pole)"""
+        bm = bmesh.new()
+        rings = []
+        for z, r in prof:
+            if r <= 1e-6:
+                rings.append([bm.verts.new(tuple(bl.to_bl(np.array([[c[0], c[1], z]]))[0]))])
+                continue
+            a = a0 + np.linspace(0, 2 * np.pi, n, endpoint=False)
+            P = np.stack([c[0] + r * np.cos(a), c[1] + r * np.sin(a), np.full(n, z)], 1)
+            rings.append([bm.verts.new(tuple(p)) for p in bl.to_bl(P)])
+        for A, B in zip(rings[:-1], rings[1:]):
+            if len(A) == 1 and len(B) == 1:
+                continue
+            for k in range(n):
+                if len(A) == 1:
+                    bm.faces.new((A[0], B[k], B[(k + 1) % n]))
+                elif len(B) == 1:
+                    bm.faces.new((A[k], A[(k + 1) % n], B[0]))
+                else:
+                    bm.faces.new((A[k], A[(k + 1) % n], B[(k + 1) % n], B[k]))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        return self._finish(self._obj(bm, 'lathe'), mat, 0.0, 1, angle, wn=False)
+
+    def strap(self, pts, width, thick, mat, up=(1, 0, 0)):
+        """flat strap along a gl polyline; `up` = strap face normal hint"""
+        pts = np.asarray(pts, float)
+        bm = bmesh.new()
+        secs = []
+        for i, p in enumerate(pts):
+            d = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]; d /= np.linalg.norm(d)
+            u = np.asarray(up, float); u = u - d * (u @ d); u /= np.linalg.norm(u)
+            w = np.cross(d, u)
+            Q = [p + w * width / 2 + u * thick / 2, p - w * width / 2 + u * thick / 2, p - w * width / 2 - u * thick / 2, p + w * width / 2 - u * thick / 2]
+            secs.append([bm.verts.new(tuple(q)) for q in bl.to_bl(np.array(Q))])
+        for A, B in zip(secs[:-1], secs[1:]):
+            for k in range(4):
+                bm.faces.new((A[k], A[(k + 1) % 4], B[(k + 1) % 4], B[k]))
+        bm.faces.new(secs[0][::-1]); bm.faces.new(secs[-1])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        return self._finish(self._obj(bm, 'strap'), mat, 0.0, 1, 30, wn=False)
+
     def export(self, name, mats, empties, extras=None, lod_ratio=0.3):
         g = gltfw.GLB()
         root = g.node(name, extras=extras)
@@ -127,9 +169,17 @@ MATS = {
     'warhead_olive': dict(color=TX.hexc('#55593c').tolist() + [1], metallic=0.3, roughness=0.5),
     'glass': dict(color=TX.hexc('#10161c').tolist() + [1], metallic=0.2, roughness=0.05),
     'brass': dict(color=TX.hexc('#a8843f').tolist() + [1], metallic=0.9, roughness=0.35),
+    'fibreglass_olive': dict(color=TX.hexc('#434b2c').tolist() + [1], metallic=0.0, roughness=0.6),
+    'fibreglass_olive_dark': dict(color=TX.hexc('#343a24').tolist() + [1], metallic=0.0, roughness=0.6),
+    'bore_black': dict(color=TX.hexc('#0c0c0b').tolist() + [1], metallic=0.0, roughness=0.9),
+    'rubber_black': dict(color=TX.hexc('#1a1a18').tolist() + [1], metallic=0.0, roughness=0.8),
+    'sling_webbing': dict(color=TX.hexc('#4a4a36').tolist() + [1], metallic=0.0, roughness=0.95),
+    'stencil_yellow': dict(color=TX.hexc('#8f8040').tolist() + [1], metallic=0.0, roughness=0.7),
 }
 MAT_NAMES = {'steel': 'gun_steel', 'steel_worn': 'gun_steel_worn', 'polymer': 'gun_polymer', 'mag_polymer': 'ak_mag_polymer',
-             'wood': 'gun_wood', 'olive_paint': 'gun_olive_paint', 'warhead_olive': 'warhead_olive', 'glass': 'optic_glass', 'brass': 'brass'}
+             'wood': 'gun_wood', 'olive_paint': 'gun_olive_paint', 'warhead_olive': 'warhead_olive', 'glass': 'optic_glass', 'brass': 'brass',
+             'fibreglass_olive': 'rpg22_fibreglass', 'fibreglass_olive_dark': 'rpg22_fibreglass_dark', 'bore_black': 'bore_black',
+             'rubber_black': 'rubber_black', 'sling_webbing': 'sling_webbing', 'stencil_yellow': 'stencil_yellow'}
 
 
 def mats(g, key):
@@ -325,11 +375,118 @@ def rpg7():
     return tris, {k: [list(map(float, v[0])), v[1]] for k, v in emp.items()}
 
 
+RPG22 = dict(AXY=0.066, R_REAR=0.0400, R_FRONT=0.0435, Z_REAR=-0.462, Z_MUZZLE=0.392, EXT=0.095)
+
+
+def _rpg22_parts(B, carried=False, oy=0.0, oz=0.0):
+    """RPG-22 'Netto' (72.5 mm, fibreglass, telescoping).  Firing configuration 0.85 m, collapsed 0.755 m.
+    gun space: origin = right hand on the tube (below the firing-mechanism housing), +Z muzzle, +Y up, +X weapon left."""
+    P = RPG22
+    A = P['AXY'] + oy
+    Rr, Rf = P['R_REAR'], P['R_FRONT']
+    ext = 0.0 if not carried else -P['EXT']
+    z = lambda v: v + oz
+    zf = lambda v: v + oz + ext          # parts riding on the front (extension) tube
+    c = (0.0, A)
+    # rear (main) tube with rear rim band; open end shows the dark bore
+    B.lathe([(z(-0.43), 0.0355), (z(-0.462), 0.0355), (z(-0.462), 0.0428), (z(-0.438), 0.0428), (z(-0.436), Rr), (z(0.02), Rr)], 'fibreglass_olive', c=c, n=22)
+    B.lathe([(z(-0.43), 0.0356), (z(-0.43), 0.0)], 'bore_black', c=c, n=22)
+    B.lathe([(z(-0.30), Rr + 0.0006), (z(-0.29), Rr + 0.0006)], 'fibreglass_olive_dark', c=c, n=22)   # seam band
+    # front extension tube (slides over the main tube): rear collar, body, front rim
+    B.lathe([(zf(-0.075), Rr + 0.0004), (zf(-0.075), 0.0458), (zf(-0.052), 0.0458), (zf(-0.050), Rf), (zf(0.368), Rf), (zf(0.370), 0.0458),
+             (zf(0.392), 0.0458), (zf(0.392), 0.0385), (zf(0.355), 0.0385)], 'fibreglass_olive', c=c, n=22)
+    B.lathe([(zf(0.355), 0.0386), (zf(0.355), 0.0)], 'bore_black', c=c, n=22)
+    B.lathe([(zf(0.17), Rf + 0.0006), (zf(0.19), Rf + 0.0006)], 'fibreglass_olive_dark', c=c, n=22)  # sling band
+    # stencil markings (left side)
+    B.box((Rr - 0.002, A + 0.006, z(-0.24)), (0.003, 0.012, 0.08), 'stencil_yellow', bevel=0.0)
+    B.box((Rf - 0.002, A + 0.004, zf(0.07)), (0.003, 0.010, 0.05), 'stencil_yellow', bevel=0.0)
+    # firing-mechanism housing on top of the main tube + trigger button + safety
+    top = A + Rr
+    B.profile([(z(-0.155), top - 0.012), (z(-0.035), top - 0.012), (z(-0.035), top + 0.012), (z(-0.05), top + 0.024), (z(-0.145), top + 0.024), (z(-0.155), top + 0.016)],
+              0.032, 'fibreglass_olive_dark', x0=0.004, bevel=0.003, seg=2)
+    B.box((0.004, top + 0.027, z(-0.062)), (0.014, 0.008, 0.016), 'rubber_black', bevel=0.002)      # trigger push-button
+    B.box((0.022, top + 0.010, z(-0.10)), (0.004, 0.010, 0.030), 'rubber_black', bevel=0.001)       # safety lever (left)
+    # rear sight / cocking lever (flip-up aperture frame) at the back of the housing
+    if not carried:
+        y0, y1 = top + 0.022, top + 0.068
+        zs = z(-0.150)
+        for sx in (1, -1):
+            B.box((0.004 + sx * 0.012, (y0 + y1) / 2, zs), (0.004, y1 - y0, 0.004), 'fibreglass_olive_dark', bevel=0.0008)
+        B.box((0.004, y1 - 0.002, zs), (0.028, 0.004, 0.004), 'fibreglass_olive_dark', bevel=0.0008)
+        B.box((0.004, top + 0.040, zs), (0.028, 0.006, 0.004), 'fibreglass_olive_dark', bevel=0.0008)   # aperture plate
+        B.box((0.004, top + 0.054, zs), (0.010, 0.004, 0.003), 'fibreglass_olive_dark', bevel=0.0005)
+    else:
+        B.box((0.004, top + 0.027, z(-0.12)), (0.028, 0.004, 0.05), 'fibreglass_olive_dark', bevel=0.0008)  # folded flat
+    # front sight frame (pops up when extended)
+    ftop = A + Rf
+    if not carried:
+        zs = zf(0.335)
+        B.box((0.004, ftop + 0.002, zs), (0.032, 0.006, 0.014), 'fibreglass_olive_dark', bevel=0.001)
+        for sx in (1, -1):
+            B.box((0.004 + sx * 0.013, ftop + 0.026, zs), (0.004, 0.046, 0.004), 'fibreglass_olive_dark', bevel=0.0008)
+        B.box((0.004, ftop + 0.048, zs), (0.030, 0.004, 0.004), 'fibreglass_olive_dark', bevel=0.0008)
+        B.box((0.004, ftop + 0.024, zs), (0.003, 0.040, 0.003), 'fibreglass_olive_dark', bevel=0.0)    # post
+    else:
+        B.box((0.004, ftop + 0.004, zf(0.31)), (0.032, 0.004, 0.06), 'fibreglass_olive_dark', bevel=0.001)
+    # sling swivels (bottom-left) + carry sling
+    sw = [(0.026, A - 0.034, z(-0.445)), (0.028, A - 0.036, zf(0.18))]
+    for p in sw:
+        B.box(p, (0.006, 0.014, 0.018), 'rubber_black', bevel=0.001)
+    a, b = np.array(sw[0]) + [0.004, -0.008, 0], np.array(sw[1]) + [0.004, -0.008, 0]
+    t = np.linspace(0, 1, 11)
+    sag = 0.0 if carried else 0.09
+    pts = a[None] * (1 - t[:, None]) + b[None] * t[:, None]
+    pts[:, 1] -= sag * 4 * t * (1 - t)
+    if carried:
+        pts[:, 0] += 0.006 * np.sin(np.pi * t)
+    B.strap(pts, 0.025, 0.003, 'sling_webbing', up=(1, 0, 0))
+    if carried:
+        # rubber end covers on
+        B.lathe([(z(-0.474), 0.0), (z(-0.474), 0.040), (z(-0.470), 0.0448), (z(-0.442), 0.0448), (z(-0.440), 0.0430)], 'rubber_black', c=c, n=22)
+        B.lathe([(zf(0.404), 0.0), (zf(0.404), 0.042), (zf(0.400), 0.0475), (zf(0.372), 0.0475), (zf(0.370), 0.0460)], 'rubber_black', c=c, n=22)
+    return A
+
+
+def rpg22():
+    B = Builder()
+    P = RPG22
+    A = _rpg22_parts(B)
+    top = A + P['R_REAR']
+    emp = {'muzzle': (np.array([0, A, P['Z_MUZZLE']]), [0, 0, 0, 1]),
+           'rear': (np.array([0, A, P['Z_REAR']]), [0, 1, 0, 0]),
+           'backblast': (np.array([0, A, P['Z_REAR']]), [0, 1, 0, 0]),
+           'grip_R': (np.zeros(3), [0, 0, 0, 1]),
+           'grip_L': (np.array([0.0, A - P['R_FRONT'] + 0.004, 0.19]), [0, 0, 0, 1]),
+           'sight_rear': (np.array([0.004, top + 0.054, -0.150]), [0, 0, 0, 1]),
+           'sight_front': (np.array([0.004, A + P['R_FRONT'] + 0.046, 0.335]), [0, 0, 0, 1]),
+           'shoulder_rest': (np.array([0, A + P['R_REAR'], -0.21]), [0, 0, 0, 1])}
+    tris = B.export('rpg22', mats, emp, extras={'calibre': '72.5 mm', 'length_m': 0.85, 'length_collapsed_m': 0.755, 'weight_kg': 2.8,
+                                                'config': 'extended / ready to fire, end covers removed, sights up'})
+    # carried / collapsed variant: separate small GLB, origin at the tube centre, +Z toward the (closed) front end
+    B2 = Builder()
+    zc = (P['Z_REAR'] - 0.012 + P['Z_MUZZLE'] - P['EXT'] + 0.012) / 2
+    _rpg22_parts(B2, carried=True, oy=-P['AXY'], oz=-zc)
+    L = (P['Z_MUZZLE'] - P['EXT'] + 0.012) - (P['Z_REAR'] - 0.012)
+    emp2 = {'front_end': (np.array([0, 0, L / 2]), [0, 0, 0, 1]), 'rear_end': (np.array([0, 0, -L / 2]), [0, 1, 0, 0])}
+    t2 = B2.export('rpg22_carried', mats, emp2, extras={'config': 'collapsed (transport) 0.755 m tube + covers, sights folded, sling taut',
+                                                         'length_m': round(float(L), 3), 'socket': 'launcher_socket_back'})
+    return tris, {k: [list(map(float, v[0])), v[1]] for k, v in emp.items()}, t2
+
+
 if __name__ == '__main__':
     info = {}
-    for fn in (ak74m, pkm, rpg7):
-        (t0, t1), emp = fn()
+    only = sys.argv[1:]
+    infop = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache', 'weapons_info.json')
+    if only and os.path.exists(infop):
+        info = json.load(open(infop))
+    for fn in (ak74m, pkm, rpg7, rpg22):
+        if only and fn.__name__ not in only:
+            continue
+        r = fn()
+        (t0, t1), emp = r[0], r[1]
         info[fn.__name__] = dict(tris=t0, tris_LOD1=t1, empties=emp)
+        if len(r) > 2:
+            info[fn.__name__]['carried'] = dict(file='rpg22_carried.glb', tris=r[2][0], tris_LOD1=r[2][1])
         print(fn.__name__, t0, t1)
     os.makedirs(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache'), exist_ok=True)
     json.dump(info, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache', 'weapons_info.json'), 'w'), indent=1)

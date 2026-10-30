@@ -4,7 +4,12 @@ Reference data (see assets/vehicles/manifest.json for sources):
   length 7.65 m, width 2.90 m, height 2.41 m (BTR-80 turret roof) / ~2.80 m (BTR-82A sights),
   ground clearance 0.475 m, wheel track 2.41 m, tyres KI-80 13.00x18 (dia ~1.12 m),
   axle spacing 1.35 + 1.95 + 1.35 m, side doors between axles 2 and 3 (split: upper opens forward,
-  lower folds down as a step), 3 ball-mount firing ports per side, 902V Tucha 81 mm launchers.
+  lower folds down as a step), round ball-mount firing ports, the forward pair in angled recesses so
+  they fire forward, 902V Tucha 81 mm launchers (6, rear of the BPU-1 turret).
+Shape (from photographs): boat hull with a horizontal crease at ~wheel-top height, upper sides sloping
+  ~39 deg inward to a narrow flat roof, lower sides sloping in to the belly; bow = lower wedge + long
+  shallow glacis with the folded trim vane + steeper windscreen plate with two big windows behind
+  top-hinged armoured shutters; squared-off engine compartment at the rear.
 Authoring frame: X right, Y forward, Z up (see vlib).
 """
 import sys, os, math, json, time
@@ -16,18 +21,28 @@ import vlib as L
 from vlib import B, box, hull, prism, lathe, cyl, tube, rail, bolt, fillet_path
 import vtex as T
 import vbuild as VB
+import seats as S
 
 AXLES = [2.125, 0.775, -1.175, -2.525]
 TRACK = 2.41
 WR = 0.555          # loaded tyre radius
 WZ = 0.548          # hub height
-ROOF = 2.0
+ROOF = 1.96
 BELLY = 0.475
 
 # hull cross-section helpers (mid-body, right side)
-CH_X, CH_Z = 1.45, 1.27            # chine
-RF_X = 0.98                        # roof edge half-width
+CH_X, CH_Z = 1.45, 1.27            # crease (widest line)
+RF_X = 0.90                        # roof edge half-width
 BL_X = 0.62                        # belly half width
+NOSE = (3.86, 1.03)                # y, z of the bow edge
+WS_BOT = (2.82, 1.54)              # windscreen plate lower edge (y, z)
+WS_TOP = (2.27, ROOF)              # windscreen plate upper edge = roof front
+REAR_TOP = -3.30                   # roof rear edge
+REAR_LOW = (-3.84, 1.34)           # upper rear plate lower edge
+TY = 0.95                          # turret ring centre (y)
+DOOR_Y = -0.2                      # side door centre
+RECESS = (1.20, 1.80)              # forward firing-port recess (y range)
+
 def x_upper(z):  # upper side plate x at height z
     return CH_X - (z - CH_Z) * (CH_X - RF_X) / (ROOF - CH_Z)
 def x_lower(z):
@@ -59,29 +74,57 @@ def plate_M(n, s):
         M = Matrix((xx * -1, yy, n)).transposed().to_4x4()
     return M
 
+def front_plate(p_lo, p_hi):
+    """Normal / up-the-plate unit vectors of a transverse front plate given (y, z) of its lower & upper edge."""
+    u = V((0, p_hi[0] - p_lo[0], p_hi[1] - p_lo[1])).normalized()
+    n = V((0, -u.z, u.y)) if u.y < 0 else V((0, u.z, -u.y))
+    if n.y < 0:
+        n = -n
+    return n, u
+
+def frame_nu(n, u):
+    """Frame with local z = n, y = u, x = y cross z."""
+    x = u.cross(n).normalized()
+    return Matrix((x, u, n)).transposed().to_4x4()
+
 # =============================================================================================== hull
 def hull_shell():
+    # every plate is exactly planar: side plate = all points with x = x_upper(z); cheek = triangle crease-front /
+    # windscreen corner / bow corner; glacis, windscreen and rear plates are symmetric trapezoids.
+    WS_X = x_upper(WS_BOT[1])
     pts = []
     for s in (1, -1):
-        pts += [(s * BL_X, -3.22, BELLY), (s * BL_X, 2.92, BELLY),
-                (s * 1.36, -3.56, CH_Z), (s * CH_X, -3.05, CH_Z), (s * CH_X, 1.25, CH_Z),
-                (s * 1.30, 2.55, 1.22), (s * 1.02, 3.35, 1.12),
-                (s * 1.22, -3.84, 1.36),
-                (s * 0.72, 3.84, 1.04),
-                (s * 1.08, 2.72, 1.62),
-                (s * RF_X, -3.26, ROOF), (s * RF_X, 2.30, ROOF)]
+        pts += [(s * BL_X, -3.18, BELLY), (s * BL_X, 2.98, BELLY),
+                (s * CH_X, -3.12, CH_Z), (s * CH_X, 2.25, CH_Z),
+                (s * 0.76, NOSE[0], NOSE[1]),
+                (s * WS_X, WS_BOT[0], WS_BOT[1]),
+                (s * RF_X, WS_TOP[0], ROOF), (s * RF_X, REAR_TOP, ROOF),
+                (s * 1.16, REAR_LOW[0], REAR_LOW[1])]
     b = hull(pts)
-    # wheel wells: boolean difference with cylinders
     cut = B(mat='rolled')
     for y in AXLES:
         for s in (1, -1):
-            cut.add(cyl(0.67, 0.9, 40, 'x', c=(s * (TRACK / 2 + 0.25), y, WZ)))
-    # inner well box connecting front pairs (steering clearance)
+            cut.add(cyl(0.68, 0.9, 40, 'x', c=(s * (TRACK / 2 + 0.25), y, WZ)))
+    # concave step between the shallow glacis and the steeper windscreen plate (convex hull can't express it)
+    gd = V((0, NOSE[0] - WS_BOT[0], NOSE[1] - WS_BOT[1]))
+    wd = V((0, WS_TOP[0] - WS_BOT[0], WS_TOP[1] - WS_BOT[1]))
+    p_n = V((0, WS_BOT[0], WS_BOT[1])) + gd * 1.45
+    p_t = V((0, WS_BOT[0], WS_BOT[1])) + wd * 1.3
+    prof = [(p_n.y, p_n.z), (WS_BOT[0], WS_BOT[1]), (p_t.y, p_t.z), (p_t.y, 2.8), (p_n.y, 2.8)]
+    cut.add(hull([(x, y, z) for (y, z) in prof for x in (-2.0, 2.0)]))
+    # forward firing-port recesses: wedge cut into the upper side so the port faces forward-outward
+    for s in (1, -1):
+        rp = []
+        for z in (CH_Z + 0.14, ROOF - 0.12):
+            xs = x_upper(z)
+            for (dx, y) in ((-0.26, RECESS[0]), (0.5, RECESS[0]), (0.5, RECESS[1]), (0.03, RECESS[1])):
+                rp.append((s * (xs + dx), y, z))
+        cut.add(hull(rp))
     me_cut = cut.to_mesh('_cut')
     ob_cut = L.link(bpy.data.objects.new('_cut', me_cut))
     b.mods([('BOOLEAN', dict(operation='DIFFERENCE', object=ob_cut, solver='EXACT'))])
     bpy.data.objects.remove(ob_cut)
-    b.bevel(0.022, 2, 25)
+    b.bevel(0.02, 2, 25)
     return b
 
 def weld_line(pts, r=0.007):
@@ -226,386 +269,504 @@ def tow_cable(p0, p1, sag=0.0, loops=True):
         b.add(eye.rot('X', 90), Matrix.Translation(p + (V(p1) - V(p0)).normalized() * d * 0.05))
     return b
 
+def align_y(d):
+    """Rotation matrix taking local +Y to direction d."""
+    return V((0, 1, 0)).rotation_difference(V(d).normalized()).to_matrix().to_4x4()
+
+def tucha_tube():
+    tb = lathe([(0, -0.1), (0.044, -0.1), (0.044, 0.1), (0.037, 0.1), (0.037, -0.06), (0, -0.06)], 12, 'y')
+    tb.add(cyl(0.05, 0.02, 12, 'y', c=(0, 0.085, 0)))
+    tb.add(cyl(0.05, 0.02, 12, 'y', c=(0, -0.07, 0)))
+    return tb
+
+def exhaust_muffler(side):
+    """Exhaust silencer cover on the rear upper side plate (built in the plate frame: x fwd, y up-plate, z out)."""
+    b = hull([(-0.36, -0.02, 0), (0.36, -0.02, 0), (-0.36, 0.36, 0), (0.36, 0.36, 0),
+              (-0.33, 0.01, 0.15), (0.33, 0.01, 0.15), (-0.33, 0.33, 0.13), (0.33, 0.33, 0.13)], bev=0.012, segs=2)
+    for i in range(5):
+        b.add(box(0.56, 0.022, 0.014, c=(0.02, 0.06 + i * 0.06, 0.148), mat='gunmetal'))
+    b.add(box(0.04, 0.34, 0.03, c=(0.26, 0.17, 0.15)))
+    b.add(box(0.04, 0.34, 0.03, c=(-0.22, 0.17, 0.15)))
+    # tail pipe out of the rear end, angled down
+    b.add(tube([(-0.30, 0.12, 0.08), (-0.46, 0.10, 0.09), (-0.54, 0.02, 0.10)], 0.045, 10, 'gunmetal'))
+    b.add(cyl(0.05, 0.03, 10, 'x', c=(-0.33, 0.12, 0.08), mat='gunmetal').rot('Y', 0))
+    return b
+
+def windscreen(open_):
+    """Two driver/commander windows with top-hinged armoured shutters (open = propped on struts)."""
+    n, u = front_plate(WS_BOT, WS_TOP)
+    M = frame_nu(n, u)                          # local x = -X, y = up the plate, z = out
+    o0 = V((0, WS_BOT[0], WS_BOT[1]))
+    W = B()
+    for s in (1, -1):
+        loc = B()
+        # window: dark glass set into a frame
+        loc.add(box(0.52, 0.27, 0.02, c=(0, 0, -0.002), mat='glass'))
+        loc.add(box(0.60, 0.045, 0.035, c=(0, 0.157, 0.012), bev=0.008, segs=1))
+        loc.add(box(0.60, 0.045, 0.035, c=(0, -0.157, 0.012), bev=0.008, segs=1))
+        for x in (-0.282, 0.282):
+            loc.add(box(0.045, 0.36, 0.035, c=(x, 0, 0.012), bev=0.008, segs=1))
+        loc.add(box(0.025, 0.27, 0.025, c=(0, 0, 0.004)))          # centre mullion
+        # shutter (hinge axis along local x at the window top)
+        sh = box(0.64, 0.40, 0.032, c=(0, -0.20, 0.016), bev=0.008, segs=1)
+        for y in (-0.10, -0.29):
+            sh.add(box(0.56, 0.03, 0.026, c=(0, y, 0.044), bev=0.005, segs=1))
+        sh.add(box(0.12, 0.05, 0.035, c=(0.18, -0.2, 0.04), bev=0.006, segs=1))
+        sh.add(box(0.09, 0.012, 0.02, c=(0.18, -0.2, 0.06), mat='glass'))   # small vision slit
+        sh.add(rail([(-0.12, -0.36, 0.032), (-0.12, -0.36, 0.08), (0.06, -0.36, 0.08), (0.06, -0.36, 0.032)], r=0.009, rad=0.02))
+        for x in (-0.22, 0.22):
+            sh.add(cyl(0.024, 0.13, 10, 'x', c=(x, 0.0, 0.0)))
+            sh.add(box(0.12, 0.08, 0.012, c=(x, -0.05, 0.034)))
+        hinge = V((0, 0.21, 0.03))
+        ang = -80 if open_ else 0
+        Rm = Matrix.Rotation(math.radians(ang), 4, 'X')
+        loc.add(sh, Matrix.Translation(hinge) @ Rm)
+        for x in (-0.22, 0.22):
+            loc.add(box(0.1, 0.05, 0.03, c=(x, 0.235, 0.012), bev=0.006, segs=1))   # hull hinge blocks
+        if open_:
+            for x in (-0.3, 0.3):
+                p0 = V((x * 1.02, -0.10, 0.03))
+                p1 = Matrix.Translation(hinge) @ Rm @ V((x, -0.30, 0.0))
+                loc.add(tube([p0, p1], 0.011, 6, 'bare'))
+                loc.add(cyl(0.02, 0.03, 8, 'z', c=tuple(p0)))
+        o = o0 + V((s * 0.45, 0, 0)) + u * 0.34 + n * 0.0
+        W.add(loc, L.place(M, o))
+        # small vision block on the outer corner of the windscreen plate
+        vb = box(0.11, 0.10, 0.06, c=(0, 0, 0.03), bev=0.01, segs=1)
+        vb.add(box(0.08, 0.05, 0.01, c=(0, 0.0, 0.062), mat='glass'))
+        vb.add(box(0.14, 0.02, 0.03, c=(0, 0.06, 0.065)))
+        W.add(vb, L.place(M, o0 + V((s * 0.86, 0, 0)) + u * 0.30))
+    return W
+
+def trim_vane():
+    """Folded trim vane (wave breaker) lying on the glacis, hinged at the bow edge."""
+    n, u = front_plate(NOSE, WS_BOT)
+    M = frame_nu(n, u)
+    tv = B()
+    tv.add(prism([(-0.70, 0.10), (0.70, 0.10), (0.84, 0.74), (-0.84, 0.74)], 0.03, 'z', c=0.055, bev=0.008, segs=1))
+    # perimeter angle + vertical stiffeners + top rib
+    tv.add(box(1.68, 0.035, 0.05, c=(0, 0.735, 0.085), bev=0.006, segs=1))
+    tv.add(box(1.42, 0.035, 0.04, c=(0, 0.115, 0.08), bev=0.006, segs=1))
+    for x in (-0.54, -0.18, 0.18, 0.54):
+        tv.add(box(0.035, 0.6, 0.045, c=(x, 0.42, 0.085), bev=0.006, segs=1))
+    tv.add(box(1.5, 0.03, 0.035, c=(0, 0.42, 0.08), bev=0.005, segs=1))
+    # stand-off brackets to the plate
+    for x in (-0.55, 0.55):
+        for y in (0.2, 0.65):
+            tv.add(box(0.06, 0.06, 0.05, c=(x, y, 0.025)))
+    # bow hinges
+    for x in (-0.55, -0.2, 0.2, 0.55):
+        tv.add(cyl(0.03, 0.15, 10, 'x', c=(x, 0.06, 0.04)))
+        tv.add(box(0.12, 0.08, 0.02, c=(x, 0.03, 0.01)))
+    # folded actuating struts along the vane edges
+    for x in (-0.8, 0.8):
+        tv.add(tube([(x, 0.14, 0.03), (x * 1.08, 0.66, 0.05)], 0.016, 6, 'bare'))
+    tv.add(rail([(-0.12, 0.6, 0.07), (-0.12, 0.6, 0.12), (0.12, 0.6, 0.12), (0.12, 0.6, 0.07)], r=0.01, rad=0.02))
+    return L.place(M, V((0, NOSE[0], NOSE[1]))), tv, (n, u)
+
 # =============================================================================================== wheels
 def tyre_wheel():
-    """KI-80 13.00x18 tyre on steel rim, outward = +X. Hub at origin."""
+    """KI-80 13.00x18 tyre on steel rim, outward = +X, hub at origin: chunky directional lugs wrapping the
+    shoulders, domed hub with the central tyre-inflation valve and hose."""
     segs = 40
-    prof = [(0.235, -0.125), (0.30, -0.152), (0.39, -0.166), (0.46, -0.162), (0.505, -0.15), (0.532, -0.13),
-            (0.547, -0.095), (0.552, -0.04), (0.553, 0.0), (0.552, 0.04), (0.547, 0.095), (0.532, 0.13),
+    prof = [(0.235, -0.125), (0.30, -0.152), (0.39, -0.166), (0.46, -0.162), (0.505, -0.15), (0.53, -0.13),
+            (0.543, -0.095), (0.548, -0.04), (0.549, 0.0), (0.548, 0.04), (0.543, 0.095), (0.53, 0.13),
             (0.505, 0.15), (0.46, 0.162), (0.39, 0.166), (0.30, 0.152), (0.235, 0.125)]
     prof = [(r, h, 'tyre') for r, h in prof]
     tyre = lathe(prof, segs, 'x', mat='tyre', cap=False)
-    # sidewall rib rings
     for s in (-1, 1):
-        rib = lathe([(0.33, s * 0.158, 'tyre'), (0.335, s * 0.168, 'tyre'), (0.345, s * 0.168, 'tyre'), (0.35, s * 0.16, 'tyre')], segs, 'x', mat='tyre', cap=False)
+        rib = lathe([(0.33, s * 0.158, 'tyre'), (0.335, s * 0.17, 'tyre'), (0.345, s * 0.17, 'tyre'), (0.35, s * 0.16, 'tyre')], segs, 'x', mat='tyre', cap=False)
         tyre.add(rib)
-    # tread lugs: directional chevron, 2 staggered rows
-    n = 22
-    R = 0.551
+    n = 18
+    R = 0.548
     def lug(theta, side):
-        # local (t along circumference, h axial, d radial)
-        L_ = [(-0.028, 0.012), (0.028, 0.012), (0.062, 0.15), (0.012, 0.15)]
-        vs = []
+        # (t along circumference, h axial from centre) footprint; lug wraps over the shoulder
+        L_ = [(-0.035, 0.018), (0.03, 0.018), (0.085, 0.172), (0.02, 0.172)]
         bm = bmesh.new()
         top, bot = [], []
         for t, hh in L_:
-            for d, lst in ((0.0, bot), (0.026, top)):
-                shrink = 0.004 if d > 0 else 0
-                tt = t * (1 - shrink * 5)
+            for d, lst in ((-0.004, bot), (0.034, top)):
+                tt = t * (0.86 if d > 0 else 1.0)
                 a = theta + tt / R
-                rr = R + d - (0.012 * (hh / 0.15) ** 2)   # follow crown curvature
+                k = hh / 0.172
+                rr = R + d - 0.052 * k ** 3 - (0.012 * k if d > 0 else 0)  # follow crown + shoulder roll-off
                 lst.append(bm.verts.new((side * hh, rr * math.cos(a), rr * math.sin(a))))
         bm.faces.new(bot[::-1]); bm.faces.new(top)
         for i in range(4):
             j = (i + 1) % 4
             bm.faces.new((bot[i], bot[j], top[j], top[i]))
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        b = B(bm, 'tyre')
-        return b
+        return B(bm, 'tyre')
     lugs = B(mat='tyre')
     for i in range(n):
         th = math.tau * i / n
         lugs.add(lug(th, 1))
         lugs.add(lug(th + math.tau / n / 2, -1))
-    lugs.bevel(0.005, 1, 30)
+    lugs.bevel(0.006, 1, 30)
     tyre.add(lugs)
-    # rim: bead seat, flange, dished disc, hub, tyre-inflation valve housing
-    rim = lathe([(0.25, 0.125, 'rim'), (0.236, 0.118, 'rim'), (0.228, 0.10, 'rim'), (0.225, 0.04, 'rim'), (0.20, 0.035, 'rim'),
-                 (0.17, 0.06, 'rim'), (0.13, 0.075, 'rim'), (0.12, 0.09, 'rim'), (0.10, 0.10, 'rim'), (0.075, 0.105, 'rim'),
-                 (0.07, 0.14, 'rim'), (0.06, 0.15, 'rim'), (0.0, 0.152, 'rim')], 32, 'x', mat='rim', cap=False)
+    # centre tread blocks between the chevrons
+    for i in range(n):
+        th = math.tau * (i + 0.25) / n
+        blk = box(0.05, 0.05, 0.026, mat='tyre', bev=0.005, segs=1)
+        blk.xf(Matrix.Rotation(th - math.pi / 2, 4, 'X'))
+        tyre.add(blk, Matrix.Translation((0, (R + 0.008) * math.cos(th), (R + 0.008) * math.sin(th))))
+    # rim: bead seat, flange, disc, domed hub
+    rim = lathe([(0.25, 0.125, 'rim'), (0.236, 0.118, 'rim'), (0.228, 0.10, 'rim'), (0.225, 0.05, 'rim'), (0.205, 0.045, 'rim'),
+                 (0.19, 0.07, 'rim'), (0.165, 0.09, 'rim'), (0.15, 0.10, 'rim'), (0.13, 0.13, 'rim'), (0.11, 0.155, 'rim'),
+                 (0.08, 0.175, 'rim'), (0.045, 0.188, 'rim'), (0.0, 0.192, 'rim')], 32, 'x', mat='rim', cap=False)
     rim.add(lathe([(0.25, -0.125, 'rim'), (0.236, -0.118, 'rim'), (0.228, -0.10, 'rim'), (0.225, -0.03, 'rim'), (0.0, -0.03, 'rim')], 32, 'x', mat='rim', cap=False))
-    # wheel nuts
     for i in range(10):
         a = math.tau * i / 10
-        rim.add(bolt(0.016, 0.022, 6, 'rim').rot('Y', 90), Matrix.Translation((0.085, 0.112 * math.cos(a), 0.112 * math.sin(a))))
-    # central tyre inflation fitting: cap + elbow pipe + guard
-    rim.add(lathe([(0, 0.0), (0.045, 0.0), (0.045, 0.04), (0.03, 0.06), (0, 0.065)], 12, 'x', mat='rim', c=(0.15, 0, 0)))
-    rim.add(tube(fillet_path([(0.19, 0, 0.02), (0.22, 0, 0.02), (0.22, 0, 0.12), (0.17, 0, 0.19)], 0.03, 4), 0.011, 6, 'bare'))
-    for a in range(6):
-        ang = a * math.tau / 6
-        rim.add(box(0.03, 0.025, 0.045).rot('X', math.degrees(ang)), Matrix.Translation((0.11, 0.165 * math.cos(ang), 0.165 * math.sin(ang))))
+        rim.add(bolt(0.017, 0.024, 6, 'rim').rot('Y', 90), Matrix.Translation((0.088, 0.172 * math.cos(a), 0.172 * math.sin(a))))
+    # central tyre-inflation valve on the dome + hose to the rim edge + guard lugs
+    rim.add(lathe([(0, 0.0), (0.035, 0.0), (0.035, 0.035), (0.025, 0.05), (0, 0.055)], 12, 'x', mat='bare', c=(0.185, 0, 0)))
+    rim.add(tube(fillet_path([(0.2, 0, 0.02), (0.205, 0, 0.06), (0.15, 0, 0.13), (0.1, 0, 0.2), (0.095, 0, 0.225)], 0.03, 4), 0.012, 6, 'bare'))
+    for a in range(5):
+        ang = a * math.tau / 5 + 0.3
+        rim.add(box(0.03, 0.03, 0.05).rot('X', math.degrees(ang)), Matrix.Translation((0.145, 0.12 * math.cos(ang), 0.12 * math.sin(ang))))
     tyre.add(rim)
     return tyre
 
 # =============================================================================================== turrets
 def turret_bpu1():
-    """BTR-80 BPU-1: conical turret, KPVT 14.5 mm + coax PKT, 1PZ-2 sight, rear smoke dischargers.
-    Turret local: origin at ring centre on hull roof."""
+    """BTR-80 BPU-1: small welded truncated-cone turret, KPVT + coax PKT through a front slot, 1PZ-2 sight,
+    3 + 3 902V launchers on the rear.  Local origin = ring centre on the hull roof."""
     t = B()
-    # conical body: ring base r .72 -> roof r .55 at h .44, front slightly flattened for the gun slot
     pts = []
-    for i in range(16):
-        a = math.tau * i / 16
-        pts.append((0.74 * math.cos(a), 0.74 * math.sin(a), 0.02))
-        pts.append((0.56 * math.cos(a), 0.56 * math.sin(a), 0.44))
-    body = hull(pts).subsurf(1)
-    body.bevel(0.01, 1, 35)
-    bv = L.bvh_of(body)
+    nseg = 16
+    for i in range(nseg):
+        a = math.tau * (i + 0.5) / nseg
+        pts.append((0.70 * math.cos(a), 0.70 * math.sin(a), 0.03))
+        pts.append((0.50 * math.cos(a), 0.50 * math.sin(a), 0.36))
+    body = hull(pts, bev=0.012, segs=1, angle=25)
     t.add(body)
-    t.add(cyl(0.79, 0.06, 32, 'z', c=(0, 0, 0.03)))     # ring collar
-    # gun embrasure housing (armoured block in front)
-    emb = hull([(-0.28, 0.45, 0.06), (0.28, 0.45, 0.06), (-0.28, 0.45, 0.4), (0.28, 0.45, 0.4),
-                (-0.22, 0.74, 0.12), (0.22, 0.74, 0.12), (-0.22, 0.72, 0.36), (0.22, 0.72, 0.36)], bev=0.015, segs=2)
+    t.add(lathe([(0.0, 0.36), (0.5, 0.36), (0.49, 0.375), (0.40, 0.395), (0.0, 0.40)], 32, 'z'))   # roof
+    t.add(lathe([(0.74, 0.0), (0.77, 0.0), (0.77, 0.035), (0.70, 0.05)], 40, 'z', cap=False))   # ring guard
+    # frontal gun housing: vertical slot face with cheeks
+    emb = hull([(-0.30, 0.36, 0.04), (0.30, 0.36, 0.04), (-0.30, 0.36, 0.37), (0.30, 0.36, 0.37),
+                (-0.25, 0.70, 0.05), (0.25, 0.70, 0.05), (-0.23, 0.62, 0.36), (0.23, 0.62, 0.36)], bev=0.014, segs=2)
     t.add(emb)
-    # roof hatch (round) + periscopes
-    hz = L.drop_on(bv, 0.12, -0.12)[0].z - 0.01
-    hat = lathe([(0, 0.06), (0.2, 0.055), (0.24, 0.03), (0.25, 0.0)], 24, 'z', c=(0.12, -0.12, hz))
-    hat.add(cyl(0.035, 0.12, 8, 'x', c=(0.12, -0.36, hz + 0.03)))
-    hat.add(rail([(0.02, -0.0, hz + 0.06), (0.02, 0.0, hz + 0.1), (0.22, 0.0, hz + 0.1), (0.22, 0.0, hz + 0.06)], r=0.01, rad=0.025))
-    t.add(hat)
-    # 1PZ-2 sight head, front left
-    sh = lathe([(0, 0), (0.1, 0), (0.1, 0.1), (0.085, 0.16), (0.0, 0.17)], 16, 'z', c=(-0.32, 0.28, 0.42))
-    sh.add(box(0.12, 0.08, 0.1, c=(-0.32, 0.36, 0.55), bev=0.012, segs=2))
-    sh.add(box(0.1, 0.01, 0.06, c=(-0.32, 0.405, 0.55), mat='glass'))
-    sh.add(box(0.15, 0.1, 0.012, c=(-0.32, 0.38, 0.61)))
+    t.add(box(0.30, 0.03, 0.27, c=(0.01, 0.685, 0.21), mat='gunmetal'))       # slot (dark)
+    for x in (-0.17, 0.19):
+        t.add(box(0.03, 0.05, 0.29, c=(x, 0.685, 0.205), bev=0.006, segs=1))   # slot guides
+    # 1PZ-2 sight head (front left of the roof) with hood
+    sx, sy = -0.26, 0.20
+    sh = lathe([(0, 0), (0.1, 0), (0.1, 0.06), (0.085, 0.09), (0.0, 0.09)], 16, 'z', c=(sx, sy, 0.39))
+    sh.add(box(0.14, 0.12, 0.12, c=(sx, sy + 0.04, 0.53), bev=0.015, segs=2))
+    sh.add(box(0.1, 0.01, 0.06, c=(sx, sy + 0.103, 0.53), mat='glass'))
+    sh.add(box(0.17, 0.12, 0.014, c=(sx, sy + 0.08, 0.6), bev=0.004, segs=1))
+    sh.add(box(0.03, 0.1, 0.07, c=(sx - 0.075, sy + 0.08, 0.565)))
+    sh.add(box(0.03, 0.1, 0.07, c=(sx + 0.075, sy + 0.08, 0.565)))
     t.add(sh)
-    # periscopes around the roof edge, looking outward (dropped onto the roof surface)
-    for ang in (-40, 40, 150, 210):
-        a = math.radians(90 + ang)
-        loc, n = L.drop_on(bv, 0.4 * math.cos(a), 0.4 * math.sin(a))
-        M = Matrix.Translation(loc - V((0, 0, 0.015))) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z')
-        t.add(periscope_block(0.14, 0.08, 0.06), M)
-    # 902V smoke dischargers: two clusters of 3 on brackets welded to the rear turret wall
-    for s in (1, -1):
-        a = math.radians(270 + s * 42)
-        r = 0.66
-        bx, by = r * math.cos(a), r * math.sin(a)
-        rotz = a - math.pi / 2
-        M = Matrix.Translation((bx, by, 0.26)) @ Matrix.Rotation(rotz, 4, 'Z')
-        br = box(0.34, 0.1, 0.03, c=(0, 0.02, 0), bev=0.006, segs=1)
-        br.add(box(0.03, 0.09, 0.12, c=(-0.15, -0.03, -0.05)))
-        br.add(box(0.03, 0.09, 0.12, c=(0.15, -0.03, -0.05)))
+    # TNPO periscopes around the cone top, looking outward
+    bv = L.bvh_of(t)
+    for ang in (35, 145, 215, 325):
+        a = math.radians(ang + 90)
+        loc, nn = L.drop_on(bv, 0.42 * math.cos(a), 0.42 * math.sin(a))
+        if loc is None:
+            continue
+        M = Matrix.Translation(loc - V((0, 0, 0.01))) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z')
+        t.add(periscope_block(0.13, 0.08, 0.06), M)
+    # armoured fan cover at the rear of the roof
+    t.add(lathe([(0, 0.07), (0.08, 0.065), (0.11, 0.04), (0.11, 0.0)], 16, 'z', c=(0.12, -0.26, 0.39)))
+    # 902V Tucha: two groups of 3 tubes on brackets on the rear wall, firing forward-up over the turret
+    for s_ in (1, -1):
         for i in range(3):
-            tb = lathe([(0, -0.09), (0.045, -0.09), (0.045, 0.1), (0.038, 0.1), (0.038, -0.06), (0, -0.06)], 12, 'y')
-            # tubes point forward-outward and up (launch over the turret)
-            tb.rot('X', 40).rot('Z', s * 150)
-            tb.move((i - 1) * 0.1, 0.06, 0.07)
-            br.add(tb)
-        t.add(br, M)
-    # bolts on roof
-    for i in range(12):
-        a = math.tau * i / 12
-        loc, n = L.drop_on(bv, 0.3 * math.cos(a), 0.3 * math.sin(a))
-        if loc is not None:
-            t.add(bolt(0.012, 0.01), L.place(L.frame_from_normal(n), loc))
+            a = math.radians(270 + s_ * (24 + i * 14))
+            p = V((0.71 * math.cos(a), 0.71 * math.sin(a), 0.2))
+            d = V((s_ * (0.12 + 0.1 * i), 1.0, 1.25))
+            t.add(tucha_tube(), Matrix.Translation(p) @ align_y(d))
+            br = box(0.12, 0.05, 0.16, c=(0, 0, 0), bev=0.006, segs=1)
+            t.add(br, Matrix.Translation(V((0.68 * math.cos(a), 0.68 * math.sin(a), 0.12))) @ Matrix.Rotation(a + math.pi / 2, 4, 'Z'))
+        a0, a1 = math.radians(270 + s_ * 20), math.radians(270 + s_ * 56)
+        t.add(tube([(0.7 * math.cos(a0), 0.7 * math.sin(a0), 0.06), (0.7 * math.cos((a0 + a1) / 2), 0.7 * math.sin((a0 + a1) / 2), 0.06),
+                    (0.7 * math.cos(a1), 0.7 * math.sin(a1), 0.06)], 0.02, 6))
+    # roof bolts
+    for i in range(14):
+        a = math.tau * i / 14
+        t.add(bolt(0.011, 0.009), Matrix.Translation((0.44 * math.cos(a), 0.44 * math.sin(a), 0.37)))
     return t
 
 def gun_bpu1():
-    """KPVT + PKT on common cradle. Local origin = trunnion (gun_pivot)."""
+    """KPVT 14.5 mm + coax PKT on a common cradle with a curved mantlet shield.  Origin = trunnion."""
     g = B()
-    # cradle / mantlet face
-    g.add(box(0.36, 0.12, 0.2, c=(0.0, 0.0, 0.0), bev=0.02, segs=2))
-    # KPVT: barrel jacket (heavy perforated shroud) then barrel + flash hider
-    kx = -0.06
-    jacket = lathe([(0, 0), (0.06, 0), (0.06, 0.36), (0.05, 0.4), (0.05, 0.62), (0.03, 0.66), (0, 0.66)], 16, 'y', mat='gunmetal')
-    g.add(jacket.move(kx, 0.06, 0))
-    for i in range(6):
-        g.add(cyl(0.064, 0.025, 16, 'y', c=(kx, 0.12 + i * 0.05, 0), mat='gunmetal'))
-    g.add(cyl(0.022, 1.0, 12, 'y', c=(kx, 1.15, 0), mat='gunmetal'))
-    g.add(lathe([(0.0, 0), (0.035, 0.0), (0.035, 0.16), (0.03, 0.17), (0.0, 0.17)], 12, 'y', mat='gunmetal', c=(kx, 1.6, 0)))
+    g.add(cyl(0.16, 0.36, 22, 'x', c=(0.01, 0.0, 0.0)))                     # cylindrical mantlet
+    g.add(box(0.34, 0.12, 0.12, c=(0.01, 0.1, 0.0), bev=0.02, segs=2))      # gun shield block
+    kx = -0.05
+    # KPVT: barrel casing, barrel, perforated muzzle brake
+    g.add(lathe([(0, 0.1), (0.058, 0.1), (0.058, 0.58), (0.05, 0.62), (0.03, 0.64), (0, 0.64)], 16, 'y', mat='gunmetal', c=(kx, 0, 0)))
+    for i in range(4):
+        g.add(cyl(0.062, 0.022, 16, 'y', c=(kx, 0.2 + i * 0.11, 0), mat='gunmetal'))
+    g.add(cyl(0.021, 0.95, 12, 'y', c=(kx, 1.1, 0), mat='gunmetal'))
+    g.add(cyl(0.026, 0.06, 12, 'y', c=(kx, 1.6, 0), mat='gunmetal'))
+    for i in range(5):            # alternating rings = slotted/perforated flash hider at range
+        g.add(cyl(0.034 if i % 2 == 0 else 0.026, 0.03, 12, 'y', c=(kx, 1.645 + i * 0.03, 0), mat='gunmetal'))
     # PKT coax to the right
     px = 0.13
-    g.add(cyl(0.035, 0.2, 10, 'y', c=(px, 0.15, -0.01), mat='gunmetal'))
-    g.add(cyl(0.012, 0.42, 8, 'y', c=(px, 0.45, -0.01), mat='gunmetal'))
-    g.add(cyl(0.018, 0.06, 8, 'y', c=(px, 0.68, -0.01), mat='gunmetal'))
-    muzzle = (kx, 1.77, 0.0)
-    coax = (px, 0.71, -0.01)
-    return g, muzzle, coax
+    g.add(cyl(0.032, 0.2, 10, 'y', c=(px, 0.18, -0.02), mat='gunmetal'))
+    g.add(cyl(0.011, 0.36, 8, 'y', c=(px, 0.46, -0.02), mat='gunmetal'))
+    g.add(cyl(0.017, 0.05, 8, 'y', c=(px, 0.66, -0.02), mat='gunmetal'))
+    return g, (kx, 1.78, 0.0), (px, 0.69, -0.02)
 
 def turret_bppu():
-    """BTR-82A BPPU: larger welded turret, 2A72 30 mm + PKTM, TKN-4GA / 1PZ-9 sights, 3+3 smoke tubes."""
+    """BTR-82A BPPU: larger welded faceted turret, 2A72 + PKTM, gunner's combined day/night sight box,
+    3 + 3 902V launchers on the rear corners, rear stowage box.  Origin = ring centre on the hull roof."""
     t = B()
-    # lower faceted collar (frustum) + upper armoured box
     pts = []
     for i in range(12):
         a = math.tau * (i + 0.5) / 12
-        pts.append((0.8 * math.cos(a), 0.8 * math.sin(a), 0.0))
-        pts.append((0.7 * math.cos(a), 0.7 * math.sin(a), 0.3))
-    t.add(hull(pts, bev=0.02, segs=2))
-    up = hull([(-0.62, -0.62, 0.28), (0.62, -0.62, 0.28), (-0.66, 0.42, 0.28), (0.66, 0.42, 0.28),
-               (-0.5, 0.76, 0.32), (0.5, 0.76, 0.32),
-               (-0.55, -0.58, 0.66), (0.55, -0.58, 0.66), (-0.56, 0.36, 0.66), (0.56, 0.36, 0.66),
-               (-0.42, 0.62, 0.6), (0.42, 0.62, 0.6)], bev=0.022, segs=2)
+        pts.append((0.84 * math.cos(a), 0.84 * math.sin(a), 0.0))
+        pts.append((0.80 * math.cos(a), 0.80 * math.sin(a), 0.12))
+    t.add(hull(pts, bev=0.015, segs=1))
+    bot = [(-0.42, 0.74), (0.42, 0.74), (0.74, 0.32), (0.74, -0.42), (0.52, -0.70), (-0.52, -0.70), (-0.74, -0.42), (-0.74, 0.32)]
+    top = [(-0.30, 0.56), (0.30, 0.56), (0.58, 0.24), (0.60, -0.40), (0.44, -0.60), (-0.44, -0.60), (-0.60, -0.40), (-0.58, 0.24)]
+    up = hull([(x, y, 0.10) for x, y in bot] + [(x, y, 0.58) for x, y in top], bev=0.022, segs=2, angle=20)
     t.add(up)
-    t.add(cyl(0.84, 0.06, 36, 'z', c=(0, 0, 0.03)))
-    # gun slot frame on front
-    t.add(box(0.5, 0.06, 0.24, c=(0.0, 0.72, 0.44), bev=0.012, segs=1))
-    # commander's TKN-4GA head (left) and gunner's 1PZ-9 (right) on roof
-    for sx, hgt in ((-0.32, 0.26), (0.3, 0.2)):
-        s = lathe([(0, 0), (0.12, 0), (0.12, 0.06), (0.1, 0.08), (0.0, 0.08)], 16, 'z', c=(sx, 0.2, 0.66))
-        s.add(box(0.2, 0.22, hgt, c=(sx, 0.24, 0.72 + hgt / 2), bev=0.02, segs=2))
-        s.add(box(0.16, 0.01, hgt * 0.45, c=(sx, 0.355, 0.73 + hgt * 0.55), mat='glass'))
-        s.add(box(0.24, 0.12, 0.015, c=(sx, 0.32, 0.74 + hgt)))
-        t.add(s)
-    # hatch
-    t.add(lathe([(0, 0.05), (0.22, 0.045), (0.26, 0.02), (0.27, 0.0)], 24, 'z', c=(0.05, -0.25, 0.66)))
-    t.add(rail([(-0.05, -0.25, 0.71), (-0.05, -0.25, 0.75), (0.15, -0.25, 0.75), (0.15, -0.25, 0.71)], r=0.01, rad=0.025))
-    t.add(cyl(0.035, 0.14, 8, 'x', c=(0.05, -0.52, 0.69)))
-    # wind sensor mast + antenna at rear
-    t.add(cyl(0.012, 0.35, 6, 'z', c=(-0.45, -0.45, 0.83), mat='gunmetal'))
-    t.add(cyl(0.03, 0.05, 8, 'z', c=(-0.45, -0.45, 1.0)))
-    # 902V smoke dischargers: row of 3 per side on the upper front corners, facing forward and up
-    for s in (1, -1):
-        br = box(0.36, 0.14, 0.03, bev=0.006, segs=1)
+    # front gun slot
+    t.add(box(0.44, 0.04, 0.3, c=(0.03, 0.70, 0.34), mat='gunmetal'))
+    # gunner's combined sight (left front) - armoured box with front shutter, and day periscope (right)
+    sx = -0.32
+    s1 = box(0.26, 0.34, 0.28, c=(sx, 0.18, 0.72), bev=0.02, segs=2)
+    s1.add(box(0.2, 0.012, 0.12, c=(sx, 0.352, 0.74), mat='glass'))
+    s1.add(box(0.28, 0.14, 0.018, c=(sx, 0.38, 0.88)).rot('X', -25, (sx, 0.33, 0.87)))
+    s1.add(box(0.3, 0.08, 0.02, c=(sx, 0.35, 0.87)))
+    s1.add(box(0.2, 0.24, 0.06, c=(sx, 0.16, 0.6)))
+    t.add(s1)
+    s2 = lathe([(0, 0), (0.09, 0), (0.09, 0.08), (0.0, 0.08)], 14, 'z', c=(0.32, 0.22, 0.58))
+    s2.add(box(0.15, 0.14, 0.12, c=(0.32, 0.26, 0.72), bev=0.015, segs=2))
+    s2.add(box(0.11, 0.01, 0.06, c=(0.32, 0.335, 0.73), mat='glass'))
+    t.add(s2)
+    # gunner's hatch + periscopes
+    t.add(lathe([(0, 0.05), (0.22, 0.045), (0.25, 0.02), (0.26, 0.0)], 24, 'z', c=(0.12, -0.28, 0.58)))
+    t.add(rail([(0.02, -0.28, 0.63), (0.02, -0.28, 0.67), (0.22, -0.28, 0.67), (0.22, -0.28, 0.63)], r=0.01, rad=0.025))
+    t.add(cyl(0.035, 0.14, 8, 'x', c=(0.12, -0.54, 0.6)))
+    for (px, py, ang) in ((-0.5, -0.1, 90), (0.52, 0.0, -90)):
+        t.add(periscope_block(0.14, 0.08, 0.06), Matrix.Translation((px, py, 0.575)) @ Matrix.Rotation(math.radians(ang), 4, 'Z'))
+    # wind sensor mast + antenna base at the rear
+    t.add(cyl(0.012, 0.32, 6, 'z', c=(-0.42, -0.45, 0.74), mat='gunmetal'))
+    t.add(cyl(0.03, 0.05, 8, 'z', c=(-0.42, -0.45, 0.92)))
+    t.add(antenna_base(), Matrix.Translation((0.40, -0.48, 0.58)))
+    # 902V smoke launchers: 3 per rear corner on a bracket, pointing forward-up-outward
+    for s_ in (1, -1):
+        nrm = V((s_ * 0.79, -0.62, 0))
+        ang = math.atan2(nrm.y, nrm.x)
+        c0 = V((s_ * 0.66, -0.52, 0.40))
+        tang = V((-nrm.y, nrm.x, 0)) * (1 if s_ > 0 else -1)      # along the corner face, pointing forward
+        br = box(0.06, 0.40, 0.14, bev=0.006, segs=1)
+        t.add(br, Matrix.Translation(c0) @ Matrix.Rotation(ang, 4, 'Z'))
         for i in range(3):
-            tb = lathe([(0, -0.1), (0.045, -0.1), (0.045, 0.11), (0.038, 0.11), (0.038, -0.07), (0, -0.07)], 12, 'y')
-            tb.rot('X', 18).rot('Z', -s * (8 + 8 * i))
-            tb.move((i - 1) * 0.11, 0.02, 0.06)
-            br.add(tb)
-        t.add(br, Matrix.Translation((s * 0.52, 0.42, 0.64)) @ Matrix.Rotation(math.radians(-s * 15), 4, 'Z'))
-    # stowage box on turret rear
-    t.add(box(1.0, 0.25, 0.3, c=(0, -0.78, 0.38), bev=0.015, segs=2))
+            p = c0 + nrm * 0.07 + tang * ((i - 1) * 0.12) + V((0, 0, 0.06))
+            d = V((s_ * (0.25 + 0.08 * i), 1.0, 0.75))
+            t.add(tucha_tube(), Matrix.Translation(p) @ align_y(d))
+    # stowage box on the turret rear
+    t.add(box(0.92, 0.24, 0.30, c=(0, -0.80, 0.34), bev=0.015, segs=2))
+    t.add(box(0.94, 0.26, 0.025, c=(0, -0.80, 0.49), bev=0.005, segs=1))
     for x in (-0.3, 0.3):
-        t.add(rail([(x, -0.9, 0.42), (x, -0.95, 0.42), (x, -0.95, 0.32), (x, -0.9, 0.32)], r=0.008, rad=0.02))
-    # bolts
-    for x in np.linspace(-0.45, 0.45, 6):
-        for y in (-0.45, 0.25):
-            t.add(bolt(0.012, 0.01), Matrix.Translation((x, y, 0.66)))
+        t.add(rail([(x, -0.92, 0.42), (x, -0.96, 0.42), (x, -0.96, 0.3), (x, -0.92, 0.3)], r=0.008, rad=0.02))
+    # roof bolts / weld seams
+    for x in np.linspace(-0.4, 0.4, 5):
+        for y in (-0.48, 0.42):
+            t.add(bolt(0.012, 0.01), Matrix.Translation((x, y, 0.58)))
     return t
 
 def gun_2a72():
     g = B()
-    g.add(box(0.46, 0.16, 0.22, c=(0.0, 0.0, 0.0), bev=0.025, segs=2))       # mantlet
-    # 2A72: recoil sleeve / barrel jacket then thin barrel and muzzle brake
-    g.add(lathe([(0, 0), (0.075, 0), (0.075, 0.08), (0.065, 0.1), (0.065, 0.78), (0.055, 0.82), (0.0, 0.82)], 18, 'y', mat='rolled', c=(0, 0.06, 0)))
+    g.add(box(0.50, 0.18, 0.28, c=(0.0, 0.02, 0.0), bev=0.03, segs=2))       # mantlet
+    g.add(box(0.30, 0.10, 0.16, c=(-0.04, 0.14, 0.0), bev=0.02, segs=2))     # barrel collar housing
+    # 2A72: recoil jacket then long thin barrel and slotted muzzle brake
+    g.add(lathe([(0, 0), (0.07, 0), (0.07, 0.06), (0.06, 0.08), (0.06, 0.72), (0.045, 0.76), (0.0, 0.76)], 18, 'y', mat='rolled', c=(-0.04, 0.12, 0)))
     for i in range(3):
-        g.add(cyl(0.072, 0.03, 18, 'y', c=(0, 0.25 + i * 0.22, 0)))
-    g.add(cyl(0.026, 1.45, 14, 'y', c=(0, 1.58, 0), mat='gunmetal'))
-    g.add(lathe([(0.0, 0), (0.038, 0), (0.042, 0.03), (0.042, 0.2), (0.036, 0.22), (0, 0.22)], 14, 'y', mat='gunmetal', c=(0, 2.26, 0)))
+        g.add(cyl(0.066, 0.025, 18, 'y', c=(-0.04, 0.32 + i * 0.2, 0)))
+    g.add(cyl(0.025, 1.52, 14, 'y', c=(-0.04, 1.62, 0), mat='gunmetal'))
+    g.add(lathe([(0.0, 0), (0.036, 0), (0.04, 0.02), (0.04, 0.16), (0.034, 0.18), (0, 0.18)], 14, 'y', mat='gunmetal', c=(-0.04, 2.37, 0)))
     for i in range(3):
-        g.add(box(0.012, 0.03, 0.09, c=(0.0, 2.33 + i * 0.045, 0), mat='gunmetal').rot('Y', 90, (0, 2.33, 0)))
+        g.add(box(0.09, 0.022, 0.012, c=(-0.04, 2.42 + i * 0.04, 0), mat='gunmetal'))
     # PKTM coax right
-    px = 0.21
-    g.add(cyl(0.03, 0.18, 10, 'y', c=(px, 0.12, 0.0), mat='gunmetal'))
-    g.add(cyl(0.012, 0.36, 8, 'y', c=(px, 0.38, 0.0), mat='gunmetal'))
-    g.add(cyl(0.017, 0.06, 8, 'y', c=(px, 0.58, 0.0), mat='gunmetal'))
-    return g, (0, 2.48, 0), (px, 0.61, 0.0)
+    px = 0.2
+    g.add(cyl(0.03, 0.18, 10, 'y', c=(px, 0.18, -0.03), mat='gunmetal'))
+    g.add(cyl(0.012, 0.36, 8, 'y', c=(px, 0.44, -0.03), mat='gunmetal'))
+    g.add(cyl(0.017, 0.06, 8, 'y', c=(px, 0.64, -0.03), mat='gunmetal'))
+    return g, (-0.04, 2.56, 0), (px, 0.67, -0.03)
 
 # =============================================================================================== build
+SEAT_SPECS = (
+    [dict(x=s * 0.56, y=y, face=(s, 0), type='edge') for y in (-0.45, -1.25, -1.95) for s in (1, -1)] +
+    [dict(x=s * 0.30, y=-2.85, face=(0, 1), type='deck') for s in (1, -1)])
+
 def build(variant):
     t0 = time.time()
     L.reset()
     is82 = variant == 'btr82a'
-    name = variant
     root = L.node_empty('root')
     hullE = L.node_empty('hull', root, (0, 0, 0))
 
     H = hull_shell()
+    shell_bvh = L.bvh_of(H)
+    def hit(o, d):
+        h = shell_bvh.ray_cast(V(o), V(d).normalized())
+        return h[0], h[1]
     # ---- weld seams along main plate joints
     for s in (1, -1):
-        H.add(weld_line([(s * CH_X, -3.0, CH_Z + 0.004), (s * CH_X, 1.2, CH_Z + 0.004)]))
-        H.add(weld_line([(s * (RF_X - 0.005), -3.2, ROOF - 0.004), (s * (RF_X - 0.005), 2.25, ROOF - 0.004)]))
-    H.add(weld_line([(-1.1, 2.73, 1.623), (1.1, 2.73, 1.623)]))
-    H.add(weld_line([(-1.0, 2.29, ROOF - 0.003), (1.0, 2.29, ROOF - 0.003)]))
-    H.add(weld_line([(-0.95, 3.83, 1.045), (0.95, 3.83, 1.045)]))
-    H.add(weld_line([(-1.0, -3.27, ROOF - 0.003), (1.0, -3.27, ROOF - 0.003)]))
-    H.add(weld_line([(-1.2, -3.83, 1.36), (1.2, -3.83, 1.36)]))
-    # roof plate seam lines (engine deck plate edges)
-    H.add(box(2.1, 0.02, 0.012, c=(0, -1.55, ROOF + 0.004)))
+        H.add(weld_line([(s * (RF_X - 0.004), REAR_TOP + 0.05, ROOF - 0.004), (s * (RF_X - 0.03), WS_TOP[0] - 0.03, ROOF - 0.004)]))
+    H.add(weld_line([(-0.86, WS_TOP[0] - 0.01, ROOF - 0.003), (0.86, WS_TOP[0] - 0.01, ROOF - 0.003)]))
+    H.add(weld_line([(-1.02, WS_BOT[0] + 0.005, WS_BOT[1] - 0.004), (1.02, WS_BOT[0] + 0.005, WS_BOT[1] - 0.004)]))
+    H.add(weld_line([(-0.74, NOSE[0] - 0.005, NOSE[1]), (0.74, NOSE[0] - 0.005, NOSE[1])]))
+    H.add(weld_line([(-0.88, REAR_TOP - 0.01, ROOF - 0.004), (0.88, REAR_TOP - 0.01, ROOF - 0.004)]))
+    H.add(weld_line([(-1.12, REAR_LOW[0] + 0.01, REAR_LOW[1]), (1.12, REAR_LOW[0] + 0.01, REAR_LOW[1])]))
+    H.add(box(1.75, 0.02, 0.012, c=(0, -1.32, ROOF + 0.003)))       # engine deck plate seam
 
-    # ---- front: windscreen armour shutters, periscopes, trim vane, headlights, hooks
-    gl_n = V((0, 0.664, 0.747))
-    Mws = L.frame_from_normal(gl_n, V((0, 0, 1)))
+    # ---- crease: fender lip along the widest line + rubber mudguards over the wheels
     for s in (1, -1):
-        c = V((s * 0.47, 2.55, 1.81)) + gl_n * 0.02
-        sh = box(0.78, 0.34, 0.035, bev=0.008, segs=1)
-        sh.add(cyl(0.025, 0.7, 10, 'x', c=(0, 0.19, 0.0)))
-        for x in (-0.28, 0.0, 0.28):
-            sh.add(box(0.06, 0.05, 0.015, c=(x, 0.15, 0.02)))
-        sh.add(rail([(-0.1, -0.08, 0.017), (-0.1, -0.08, 0.06), (0.1, -0.08, 0.06), (0.1, -0.08, 0.017)], r=0.009, rad=0.02))
-        sh.add(box(0.1, 0.012, 0.03, c=(0.22, -0.02, 0.025), mat='glass'))   # vision slit block
-        H.add(sh, L.place(Mws.to_3x3().to_4x4(), c))
+        H.add(box(0.075, 5.33, 0.022, c=(s * (CH_X + 0.02), -0.43, CH_Z - 0.01), bev=0.006, segs=1))
+        k = 0.62
+        H.add(tube([(s * (CH_X + 0.03), 2.2, CH_Z - 0.012), (s * (CH_X - 0.69 * k / 1.61 * 1.0 + 0.03), 2.25 + k, CH_Z - 0.24 * k / 1.61 - 0.012)], 0.02, 6))
+        for y in AXLES:
+            mg = box(0.012, 0.86, 0.12, c=(0, 0, -0.06), mat='skirt', bev=0.004, segs=1)
+            mg.add(box(0.03, 0.88, 0.025, c=(0, 0, 0.0), mat='rolled'))
+            for yy in (-0.3, 0.0, 0.3):
+                mg.add(bolt(0.01, 0.008, 6, 'rolled').rot('Y', 90 * s), Matrix.Translation((s * 0.012, yy, -0.012)))
+            xx = CH_X + 0.045
+            H.add(mg.rot('Y', s * -8), Matrix.Translation((s * xx, y, CH_Z - 0.02)))
+
+    # ---- front: windscreens + shutters, trim vane, headlights, hooks
+    H.add(windscreen(open_=not is82))
+    Mv, tv, (gn, gu) = trim_vane()
+    H.add(tv, Mv)
     for s in (1, -1):
-        for i in range(3):
-            M = Matrix.Translation((s * (0.3 + i * 0.2), 2.28, ROOF - 0.02)) @ Matrix.Rotation(math.radians(s * -10 * (i - 1)), 4, 'Z')
+        p = V((s * 0.84, NOSE[0], NOSE[1])) + gu * 0.98
+        ped = hull([(-0.2, -0.06, -0.08), (0.2, -0.06, -0.08), (-0.2, 0.08, -0.08), (0.2, 0.08, -0.08),
+                    (-0.2, -0.06, 0.03), (0.2, -0.06, 0.03), (-0.2, 0.08, 0.03), (0.2, 0.08, 0.03)])
+        H.add(ped, Matrix.Translation(p))
+        H.add(headlight_cluster(s), Matrix.Translation(p + V((0, 0, 0.03))))
+    for s in (1, -1):
+        H.add(tow_hook().rot('X', -30), Matrix.Translation((s * 0.52, NOSE[0] - 0.14, NOSE[1] - 0.14)))
+    # lower bow: lugs + access plate
+    lb_ang = math.degrees(math.atan2(NOSE[1] - BELLY, NOSE[0] - 2.98))
+    H.add(box(1.0, 0.012, 0.36, c=(0, 3.435, 0.75), bev=0.004, segs=1).rot('X', -(90 - lb_ang), (0, 3.435, 0.75)))
+    for x in (-0.3, 0.3):
+        H.add(lathe([(0.03, -0.015), (0.055, -0.015), (0.055, 0.015), (0.03, 0.015)], 12, 'x', cap=False, c=(x, 3.6, 0.88)))
+    # ---- roof front: driver (left) + commander (right) hatches, periscopes in front of them
+    for s in (1, -1):
+        H.add(hatch_rect(0.56, 0.52, c=(s * 0.45, 1.98, ROOF), hinge='y-'))
+        for i in range(2):
+            M = Matrix.Translation((s * (0.28 + i * 0.3), WS_TOP[0] - 0.04, ROOF - 0.02)) @ Matrix.Rotation(math.radians(s * -14 * i), 4, 'Z')
             H.add(periscope_block(0.17, 0.1, 0.07), M)
-    # upper glacis plane
-    up_n = V((0, 0.482, 0.876))
-    Mg = L.frame_from_normal(up_n, V((0, 0, 1)))
-    def on_glacis(x, y):
-        z = 1.04 + (3.84 - y) * 0.55
-        return V((x, y, z))
-    # trim vane folded on glacis
-    tv = B()
-    tv.add(prism([(-0.7, -0.36), (0.7, -0.36), (0.86, 0.36), (-0.86, 0.36)], 0.025, 'z', c=0.0125, bev=0.008, segs=1))
-    for x in (-0.52, -0.18, 0.18, 0.52):
-        tv.add(box(0.03, 0.66, 0.04, c=(x, 0, 0.04), bev=0.006, segs=1))
-    tv.add(box(1.66, 0.04, 0.04, c=(0, 0.33, 0.04), bev=0.006, segs=1))
-    tv.add(rail([(-0.15, 0.1, 0.025), (-0.15, 0.1, 0.08), (0.15, 0.1, 0.08), (0.15, 0.1, 0.025)], r=0.01, rad=0.02))
-    for x in (-0.55, -0.18, 0.18, 0.55):
-        tv.add(cyl(0.03, 0.16, 10, 'x', c=(x, -0.38, 0.02)))
-    H.add(tv, L.place(Mg.to_3x3().to_4x4(), on_glacis(0, 3.42) + up_n * 0.06))
-    for s in (1, -1):
-        p = on_glacis(s * 0.86, 3.0)
-        H.add(headlight_cluster(s), Matrix.Translation(p) @ Matrix.Rotation(math.radians(-6), 4, 'X'))
-    for s in (1, -1):
-        H.add(tow_hook().rot('X', -25), Matrix.Translation((s * 0.55, 3.72, 0.9)))
-    # winch cable port
-    H.add(box(0.3, 0.06, 0.16, c=(0, 3.62, 0.86), bev=0.01, segs=1).rot('X', -40, (0, 3.62, 0.86)))
-    # front lower glacis bolted access plate
-    H.add(box(1.0, 0.012, 0.3, c=(0, 3.38, 0.75), bev=0.004, segs=1).rot('X', 56, (0, 3.38, 0.75)))
-    # ---- roof hatches: driver (left) + commander (right)
-    for s in (1, -1):
-        H.add(hatch_rect(0.62, 0.58, c=(s * 0.5, 2.0, ROOF), hinge='y+'))
+        # cheek periscope looking forward-outward
+        H.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.1), 2.12, ROOF - 0.015)) @ Matrix.Rotation(-s * 0.9, 4, 'Z'))
     # turret ring collar
-    TY = 0.95
-    H.add(lathe([(0.82, 0), (0.86, 0), (0.86, 0.035), (0.8, 0.05)], 40, 'z', c=(0, TY, ROOF)))
-    # troop hatches behind turret
+    H.add(lathe([(0.80, 0), (0.85, 0), (0.85, 0.03), (0.78, 0.045)], 40, 'z', c=(0, TY, ROOF)))
+    # troop hatches behind the turret
     for s in (1, -1):
-        H.add(hatch_rect(0.55, 0.62, c=(s * 0.48, -0.42, ROOF), hinge='y-'))
-    # engine deck: louvre intakes, access hatch, filler caps
+        H.add(hatch_rect(0.52, 0.62, c=(s * 0.45, -0.40, ROOF), hinge='y-'))
+    # engine deck: two louvred grilles, central access hatch, filler caps, antennas
     for s in (1, -1):
-        H.add(louvre_panel(0.68, 1.0, 10), Matrix.Translation((s * 0.55, -2.35, ROOF)))
-    H.add(hatch_rect(0.32, 1.1, t=0.03, c=(0, -2.35, ROOF), hinge='y+', rad=0.03))
+        H.add(louvre_panel(0.56, 1.15, 11), Matrix.Translation((s * 0.52, -2.36, ROOF)))
+        H.add(lathe([(0, 0.04), (0.06, 0.04), (0.07, 0.02), (0.07, 0)], 16, 'z', c=(s * 0.25, -1.55, ROOF - 0.01)))
+        H.add(antenna_base(), Matrix.Translation((s * 0.78, -3.12, ROOF)))
+    H.add(hatch_rect(0.28, 1.12, t=0.03, c=(0, -2.36, ROOF), hinge='y+', rad=0.03))
+    H.add(hatch_rect(0.9, 0.36, t=0.025, c=(0, -1.6, ROOF), hinge='y+', rad=0.03))
+
+    # ---- sides
     for s in (1, -1):
-        H.add(lathe([(0, 0.04), (0.07, 0.04), (0.08, 0.02), (0.08, 0)], 16, 'z', c=(s * 0.98, -1.75, ROOF - 0.01)))
-        H.add(antenna_base(), Matrix.Translation((s * 0.9, -3.05, ROOF)))
-    # roof grab rails along edges
-    for s in (1, -1):
-        H.add(rail([(s * 1.0, -1.2, ROOF), (s * 1.0, -1.2, ROOF + 0.07), (s * 1.0, -0.2, ROOF + 0.07), (s * 1.0, -0.2, ROOF)], r=0.012, rad=0.04))
-        H.add(rail([(s * 1.0, 1.2, ROOF), (s * 1.0, 1.2, ROOF + 0.07), (s * 1.0, 1.7, ROOF + 0.07), (s * 1.0, 1.7, ROOF)], r=0.012, rad=0.04))
-    # ---- sides: doors, ports, periscopes, exhausts, tools, cable
-    for s in (1, -1):
-        Mu = frame_upper(s)
-        Ml = frame_lower(s)
-        up, lo = door()
-        # local frame: x_local = along hull. frame_from_normal gives x = up x n.
-        # Build explicit matrices so that local +x = +Y(fwd), +y = up-the-plate, +z = normal
-        def plate_M(n, s):
-            n = V((n.x * s, 0, n.z)).normalized()
-            xx = V((0, 1, 0))
-            yy = n.cross(xx) * -1
-            if yy.z < 0:
-                yy = -yy
-            M = Matrix((xx, yy, n)).transposed().to_4x4()
-            if M.to_3x3().determinant() < 0:
-                M = Matrix((xx * -1, yy, n)).transposed().to_4x4()
-            return M
         MU = plate_M(N_UP, s); ML = plate_M(N_LO, s)
-        dy = -0.2
-        cu = V((s * x_upper(CH_Z + 0.01), dy, CH_Z + 0.01))
-        H.add(up if s == 1 else up.scale(1, 1, 1), L.place(MU.to_3x3().to_4x4(), cu))
-        H.add(lo, L.place(ML.to_3x3().to_4x4(), cu))
-        # firing ports + periscopes above
-        for yy in (1.0, -1.05, -1.75):
-            pz = 1.62
-            H.add(firing_port(), L.place(MU.to_3x3().to_4x4(), on_upper(yy, pz, 0.0, s)))
-            H.add(periscope_block(0.16, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.06), yy, ROOF - 0.01)) @ Matrix.Rotation(-s * math.pi / 2, 4, 'Z'))
-        # forward firing port in the angled cab side
-        H.add(firing_port(), L.place(MU.to_3x3().to_4x4(), on_upper(1.85, 1.6, 0.0, s)))
-        H.add(periscope_block(0.16, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.06), 1.85, ROOF - 0.01)) @ Matrix.Rotation(-s * math.pi / 2 + s * 0.4, 4, 'Z'))
-        # exhaust muffler, rear upper side
-        H.add(exhaust_box(s), L.place(MU.to_3x3().to_4x4() if False else Matrix.Identity(4), on_upper(-2.85, 1.4, 0.0, s)))
-        # tow cable on upper side plate
-        c0 = on_upper(0.55, 1.88, 0.04, s); c1 = on_upper(-2.3, 1.88, 0.04, s)
+        mir = (lambda b: b.scale(-1, 1, 1)) if s < 0 else (lambda b: b)   # keep local +x = forward on both sides
+        up, lo = door(upper_h=0.52, lower_h=0.44, w=0.74)
+        cu = V((s * x_upper(CH_Z + 0.012), DOOR_Y, CH_Z + 0.012))
+        H.add(mir(up), L.place(MU, cu))
+        H.add(mir(lo), L.place(ML, cu))
+        # door frame strips (dark gaps read at distance)
+        H.add(mir(box(0.8, 0.02, 0.012, c=(0, 0.535, 0.004), mat='gunmetal')), L.place(MU, cu))
+        H.add(mir(box(0.8, 0.02, 0.012, c=(0, -0.455, 0.004), mat='gunmetal')), L.place(ML, cu))
+        # firing ports (ball mounts + hinged armoured covers) with roof periscopes above
+        for yy in (0.45, -0.95):
+            fp = firing_port()
+            fp.add(cyl(0.1, 0.022, 16, 'z', c=(0, 0.2, 0.012)))           # cover flap swung up
+            fp.add(cyl(0.02, 0.12, 8, 'x', c=(0, 0.125, 0.02)))
+            H.add(fp, L.place(MU, on_upper(yy, 1.6, 0.0, s)))
+            H.add(periscope_block(0.16, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.07), yy, ROOF - 0.01)) @ Matrix.Rotation(-s * math.pi / 2, 4, 'Z'))
+        # forward port inside the angled recess (transverse face at RECESS[0], looking forward)
+        zr = 1.62
+        xr = s * (x_upper(zr) - 0.12)
+        fp = firing_port().scale(0.72)
+        H.add(fp, L.place(L.frame_from_normal(V((0, 1, 0))), V((xr, RECESS[0] + 0.002, zr))))
+        H.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.12), RECESS[0] + 0.12, ROOF - 0.01)) @ Matrix.Rotation(-s * 0.35, 4, 'Z'))
+        # exhaust silencer on the rear quarter
+        H.add(mir(exhaust_muffler(s)), L.place(MU, on_upper(-2.85, CH_Z + 0.06, 0.0, s)))
+        # tow cable behind the door, grab handles
+        c0 = on_upper(-0.72, 1.86, 0.035, s); c1 = on_upper(-2.42, 1.86, 0.035, s)
         H.add(tow_cable(c0, c1, 0.0))
-        for yy in (0.4, -0.9, -2.15):
-            H.add(box(0.06, 0.05, 0.06), L.place(MU.to_3x3().to_4x4(), on_upper(yy, 1.88, 0.02, s)))
-        # side marker light + mirror bracket stub
-        H.add(cyl(0.04, 0.05, 10, 'x', c=(s * (x_upper(1.5) + 0.02), 2.35, 1.5)))
-        H.add(cyl(0.032, 0.008, 10, 'x', c=(s * (x_upper(1.5) + 0.047), 2.35, 1.5), mat='light'))
-        # mud flaps behind wheel 1 and 4
-        for yy in (AXLES[0] - 0.68, AXLES[3] - 0.68):
-            H.add(box(0.36, 0.012, 0.32, c=(s * 1.2, yy, 0.82), mat='skirt', bev=0.004, segs=1))
-    # tools: shovel + crowbar on right upper side
-    sh = tool_shovel()
-    H.add(sh, L.place(plate_M(N_UP, 1), on_upper(1.25, 1.45, 0.03, 1)))
-    for yy in (0.95, 1.55):
-        H.add(box(0.04, 0.06, 0.05), L.place(plate_M(N_UP, 1), on_upper(yy, 1.45, 0.02, 1)))
-    H.add(tube([on_upper(0.4, 1.48, 0.03, -1), on_upper(1.5, 1.48, 0.03, -1)], 0.014, 6, 'bare'))
-    # ---- rear: plates, lights, water-jet flap, tow pintle, rear hatch
+        for yy in (-0.85, -1.6, -2.3):
+            H.add(box(0.06, 0.05, 0.06), L.place(MU, on_upper(yy, 1.86, 0.02, s)))
+        H.add(rail([on_upper(-0.52, 1.79, 0.0, s), on_upper(-0.52, 1.79, 0.06, s), on_upper(0.12, 1.79, 0.06, s), on_upper(0.12, 1.79, 0.0, s)], r=0.012, rad=0.03))
+        # side marker light at the front corner
+        loc, nrm = hit((s * 2.5, 2.42, 1.42), (-s, 0, 0))
+        if loc is not None:
+            ml = cyl(0.04, 0.06, 10, 'z', c=(0, 0, 0.0))
+            ml.add(cyl(0.032, 0.008, 10, 'z', c=(0, 0, 0.032), mat='light'))
+            H.add(ml, L.place(L.frame_from_normal(nrm), loc))
+        # rear mud flaps behind wheels 1 and 4
+        for yy in (AXLES[0] - 0.7, AXLES[3] - 0.7):
+            H.add(box(0.34, 0.012, 0.3, c=(s * 1.2, yy, 0.86), mat='skirt', bev=0.004, segs=1))
+    # tools: shovel (right) + crowbar & axe (left) low on the upper side ahead of the door
+    H.add(tool_shovel(), L.place(plate_M(N_UP, 1), on_upper(0.72, 1.37, 0.03, 1)))
+    for yy in (0.4, 1.0):
+        H.add(box(0.04, 0.06, 0.05), L.place(plate_M(N_UP, 1), on_upper(yy, 1.37, 0.02, 1)))
+        H.add(box(0.04, 0.06, 0.05), L.place(plate_M(N_UP, -1), on_upper(yy, 1.37, 0.02, -1)))
+    H.add(tube([on_upper(0.3, 1.38, 0.03, -1), on_upper(1.12, 1.38, 0.03, -1)], 0.015, 6, 'bare'))
+    ax = box(0.6, 0.03, 0.03, mat='wood', bev=0.008, segs=1)
+    ax.add(box(0.05, 0.14, 0.02, c=(0.3, 0.04, 0), mat='bare'))
+    H.add(ax, L.place(plate_M(N_UP, -1), on_upper(0.7, 1.47, 0.03, -1)))
+
+    # ---- rear: upper plate (access hatch, lights), lower plate (water-jet flap, tow hooks)
+    ru = V((0, REAR_TOP - REAR_LOW[0], ROOF - REAR_LOW[1])).normalized()
+    rn = V((0, -ru.z, ru.y))
+    MR = frame_nu(rn, ru)
+    rmid = V((0, REAR_LOW[0], REAR_LOW[1])) + ru * 0.42
+    hp = box(1.1, 0.42, 0.03, c=(0, 0, 0.015), bev=0.008, segs=1)
+    for x in (-0.36, 0.36):
+        hp.add(rail([(x - 0.09, -0.1, 0.03), (x - 0.09, -0.1, 0.08), (x + 0.09, -0.1, 0.08), (x + 0.09, -0.1, 0.03)], r=0.01, rad=0.02))
+        hp.add(cyl(0.025, 0.12, 10, 'x', c=(x, 0.22, 0.02)))
+    H.add(hp, L.place(MR, rmid))
     for s in (1, -1):
-        rl = box(0.16, 0.06, 0.1, c=(s * 0.98, -3.72, 1.55), bev=0.01, segs=1)
-        rl.add(box(0.12, 0.01, 0.06, c=(s * 0.98, -3.755, 1.55), mat='light'))
-        for x in (-0.09, 0.09):
-            rl.add(rail([(s * 0.98 + x, -3.62, 1.47), (s * 0.98 + x, -3.84, 1.5), (s * 0.98 + x, -3.84, 1.64), (s * 0.98 + x, -3.66, 1.66)], r=0.008, rad=0.03, foot=False))
-        H.add(rl)
-        H.add(tow_hook().rot('Z', 180).rot('X', 20), Matrix.Translation((s * 0.6, -3.66, 0.95)))
-    # water jet outlet with flap
-    wj = lathe([(0, 0.0), (0.2, 0.0), (0.22, 0.03), (0.21, 0.06), (0, 0.06)], 24, 'y', c=(0, -3.62, 0.85))
-    wj.rot('X', -38, (0, -3.62, 0.85))
-    H.add(wj)
-    H.add(lathe([(0.0, 0), (0.06, 0), (0.06, 0.12), (0.0, 0.12)], 12, 'y', c=(0, -3.86, 1.2)).rot('X', 180, (0, -3.86, 1.2)))
-    # rear upper plate hatch (engine access)
-    H.add(box(1.2, 0.03, 0.42, c=(0, -3.58, 1.72), bev=0.008, segs=1).rot('X', -50, (0, -3.58, 1.72)))
-    for x in (-0.4, 0.4):
-        H.add(rail([(x - 0.1, -3.6, 1.62), (x - 0.1, -3.66, 1.62), (x + 0.1, -3.66, 1.62), (x + 0.1, -3.6, 1.62)], r=0.01, rad=0.02))
+        p = V((s * 0.92, REAR_LOW[0], REAR_LOW[1])) + ru * 0.2
+        rl = box(0.18, 0.08, 0.1, c=(0, 0, 0.05), bev=0.01, segs=1)
+        rl.add(box(0.13, 0.06, 0.012, c=(0, 0, 0.1), mat='light'))
+        for x in (-0.1, 0.1):
+            rl.add(rail([(x, -0.06, 0.0), (x, -0.06, 0.16), (x, 0.06, 0.16), (x, 0.06, 0.0)], r=0.008, rad=0.03, foot=False))
+        H.add(rl, L.place(MR, p))
+        H.add(tow_hook().rot('Z', 180).rot('X', 20), Matrix.Translation((s * 0.62, REAR_LOW[0] + 0.12, 1.12)))
+    lu = V((0, REAR_LOW[0] - (-3.18), REAR_LOW[1] - BELLY)).normalized()
+    ln_ = V((0, -lu.z, lu.y))
+    if ln_.y > 0:
+        ln_ = -ln_
+    ML_ = frame_nu(ln_, lu)
+    wjc = V((0, -3.18, BELLY)) + lu * 0.42
+    wj = lathe([(0, 0.0), (0.2, 0.0), (0.22, 0.03), (0.21, 0.05), (0, 0.05)], 24, 'z')
+    wj.add(box(0.5, 0.06, 0.04, c=(0, 0.2, 0.03), bev=0.008, segs=1))
+    for x in (-0.15, 0.15):
+        wj.add(cyl(0.025, 0.1, 10, 'x', c=(x, 0.24, 0.03)))
+    H.add(wj, L.place(ML_, wjc))
+    H.add(box(0.12, 0.2, 0.08, c=(0, -3.8, 1.05), bev=0.01, segs=1))           # tow pintle housing
+    H.add(tube(fillet_path([(0, -3.86, 1.08), (0, -3.98, 1.08), (0, -3.98, 0.98)], 0.04, 3), 0.025, 8))
 
     if is82:
-        # BTR-82A: spall-liner era: additional roof periscope, rear stowage box & tarpaulin roll
-        H.add(box(0.9, 0.35, 0.32, c=(0, -3.0, ROOF + 0.16), bev=0.02, segs=2))
-        H.add(cyl(0.13, 1.6, 16, 'x', c=(0, -1.5, ROOF + 0.13), mat='canvas'))
+        # tarp roll strapped across the rear edge of the roof, stowage box on the rear plate
+        H.add(cyl(0.13, 1.5, 16, 'x', c=(0, -3.17, ROOF + 0.13), mat='canvas'))
         for x in (-0.5, 0.0, 0.5):
-            H.add(lathe([(0.134, -0.02), (0.14, -0.02), (0.14, 0.02), (0.134, 0.02)], 16, 'x', c=(x, -1.5, ROOF + 0.13), mat='bare', cap=False))
+            H.add(lathe([(0.134, -0.02), (0.14, -0.02), (0.14, 0.02), (0.134, 0.02)], 16, 'x', c=(x, -3.17, ROOF + 0.13), mat='bare', cap=False))
+        sb = box(0.9, 0.3, 0.26, c=(0, 0, 0.15), bev=0.015, segs=2)
+        sb.add(box(0.92, 0.32, 0.02, c=(0, 0, 0.28)))
+        H.add(sb, L.place(MR, rmid + ru * 0.02 + V((0, 0, 0))))
     print('  hull tris', H.tris(), '%.1fs' % (time.time() - t0))
+    full_bvh = L.bvh_of(H)
     hull_mesh = L.node_mesh('hull_geo', H, hullE, (0, 0, 0))
 
     # ---------------------------------------------------------------------------- turret + gun
-    tz = ROOF + 0.05
+    tz = ROOF + 0.04
     if is82:
-        TU = turret_bppu(); G, mz, cx = gun_2a72(); trun = (0, 0.66, 0.44)
+        TU = turret_bppu(); G, mz, cx = gun_2a72(); trun = (0, 0.62, 0.34); elev = 70
     else:
-        TU = turret_bpu1(); G, mz, cx = gun_bpu1(); trun = (0, 0.62, 0.24)
+        TU = turret_bpu1(); G, mz, cx = gun_bpu1(); trun = (0, 0.6, 0.22); elev = 60
     TU.move(0, TY, tz)
     turE = L.node_empty('turret', hullE, (0, TY, tz))
     tur_mesh = L.node_mesh('turret_geo', TU, turE, (0, TY, tz))
@@ -616,9 +777,9 @@ def build(variant):
     L.node_empty('muzzle', gunE, (tp[0] + mz[0], tp[1] + mz[1], tp[2] + mz[2]), 0.1)
     L.node_empty('coax_muzzle', gunE, (tp[0] + cx[0], tp[1] + cx[1], tp[2] + cx[2]), 0.1)
     if is82:
-        L.node_empty('smoke_launchers', turE, (0, TY + 0.1, tz + 0.75))
+        L.node_empty('smoke_launchers', turE, (0, TY - 0.46, tz + 0.5))
     else:
-        L.node_empty('smoke_launchers', turE, (0, TY - 0.45, tz + 0.42))
+        L.node_empty('smoke_launchers', turE, (0, TY - 0.6, tz + 0.3))
 
     # ---------------------------------------------------------------------------- wheels
     W = tyre_wheel()
@@ -626,7 +787,6 @@ def build(variant):
     meR = None; meL = None
     wheel_objs = []
     for side, tag in ((1, 'R'), (-1, 'L')):
-        # authoring right = +X; tag 'R' is vehicle right
         for i, y in enumerate(AXLES):
             c = (side * TRACK / 2, y, WZ)
             e = L.node_empty(f'wheel_{tag}{i + 1}', hullE, c)
@@ -646,26 +806,35 @@ def build(variant):
     meR.name = 'wheel_R'; meL.name = 'wheel_L'
 
     # ---------------------------------------------------------------------------- empties
-    L.node_empty('exhaust', hullE, tuple(on_upper(-3.25, 1.52, 0.16, -1)))
-    L.node_empty('dismount_L', hullE, (-1.95, -0.2, 0.0))
-    L.node_empty('dismount_R', hullE, (1.95, -0.2, 0.0))
-    L.node_empty('commander_hatch', hullE, (0.5, 2.0, ROOF + 0.05))
+    L.node_empty('exhaust', hullE, tuple(on_upper(-3.4, CH_Z + 0.16, 0.12, -1)))
+    L.node_empty('dismount_L', hullE, (-1.95, DOOR_Y, 0.0))
+    L.node_empty('dismount_R', hullE, (1.95, DOOR_Y, 0.0))
+    L.node_empty('commander_hatch', hullE, (0.45, 1.98, ROOF + 0.05))
+    seats = S.place_seats(hullE, SEAT_SPECS, full_bvh)
+    blen = math.hypot(mz[1], mz[2])
+    clr = S.clearance(seats, (0, TY, tz), [tur_mesh], tp, blen, elev)
+    print('  seats', [(s['name'], round(s['x'], 2), round(s['y'], 2), round(s['z'], 3)) for s in seats])
+    print('  clearance', clr)
 
     print('  geometry done %.1fs' % (time.time() - t0))
     lod0 = [hull_mesh, tur_mesh, gun_mesh] + wheel_objs
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh,
                 atlas=[hull_mesh, tur_mesh, gun_mesh, wheel_objs[0], wheel_objs[4]],
-                tp=tp, TY=TY, tz=tz)
+                tp=tp, TY=TY, tz=tz, seats=seats, clearance=clr)
 
 def decals_ua(P, N):
     """White crosses (common Ukrainian field ID marks).  Positions in authoring frame -> export frame."""
     m = np.zeros(P.shape[:2], np.float32)
     E = lambda p: (-p[0], -p[1], p[2])
     for s_ in (1, -1):
-        c = (s_ * x_upper(1.6), -2.25, 1.6)
+        c = (s_ * x_upper(1.6), -1.72, 1.6)
         n = (s_ * N_UP.x, 0, N_UP.z)
         m += T.decal_mask(P, N, E(c), E(n), (0, 0, 1), T.cross_shape(0.17, 0.04))
-    m += T.decal_mask(P, N, E((0, -3.55, 1.7)), E((0, -0.74, 0.67)), (0, 0, 1), T.cross_shape(0.16, 0.038))
+    ru = V((0, REAR_TOP - REAR_LOW[0], ROOF - REAR_LOW[1])).normalized()
+    c = V((0, REAR_LOW[0], REAR_LOW[1])) + ru * 0.42
+    m += T.decal_mask(P, N, E(tuple(c + V((0.0, -0.05, 0.0)))), E((0, -ru.z, ru.y)), (0, 0, 1), T.cross_shape(0.15, 0.036))
+    # roof cross (air ID) on the engine deck access hatch area
+    m += T.decal_mask(P, N, E((0, -1.0, ROOF)), E((0, 0, 1)), (0, -1, 0), T.cross_shape(0.22, 0.05))
     return m
 
 def wreck_btr(d):
@@ -689,10 +858,16 @@ def decals_ru(P, N):
 
 def main(variant):
     d = build(variant)
-    scheme = 'ru_green' if variant == 'btr82a' else 'ua_green'
+    scheme = 'ru_green' if variant == 'btr82a' else 'ua_btr'
     dec = decals_ru if variant == 'btr82a' else decals_ua
+    # exhaust soot: outlets at the rear end of both silencers (authoring frame), streaking back/down
+    VB.SOOT[:] = [(tuple(on_upper(-3.3, CH_Z + 0.2, 0.1, s)), 0.42) for s in (1, -1)]
     info = VB.finalize(d, variant, scheme, dec, wreck_btr)
-    print(json.dumps({k: v for k, v in info.items() if k != 'nodes'}))
+    info['ride_seats'] = S.manifest_entries(d['seats'])
+    info['ride_clearance'] = d['clearance']
+    with open(os.path.join(VB.CACHE, variant + '_info.json'), 'w') as f:
+        json.dump(info, f, indent=1)
+    print(json.dumps({k: v for k, v in info.items() if k not in ('nodes', 'hierarchy', 'node_bboxes')}))
     return info
 
 if __name__ == '__main__':

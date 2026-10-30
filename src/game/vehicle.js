@@ -54,6 +54,25 @@ export class Vehicle {
     this.baseTurretRot = this.turret ? this.turret.rotation.y : 0; this.baseGunRot = this.gun ? this.gun.rotation.x : 0;
     this.game.scene.add(root);
   }
+  // desant seats: model empties ride_seat_N (+Z = facing, extras.seat_type) or a fallback layout
+  seats() {
+    if (this._seats) return this._seats;
+    const list = [];
+    for (let i = 1; i <= 10; i++) { const o = this.model.getObjectByName(`ride_seat_${i}`); if (o) list.push({ obj: o, type: o.userData?.seat_type || 'edge' }); }
+    if (!list.length) {
+      const L = this.kind === 'btr' ? [[1.25, 2.05, -0.2, 1], [-1.25, 2.05, -0.2, -1], [1.25, 2.05, -1.2, 1], [-1.25, 2.05, -1.2, -1], [1.25, 2.05, -2.2, 1], [-1.25, 2.05, -2.2, -1], [0.55, 2.1, -3.0, 0], [-0.55, 2.1, -3.0, 0]]
+        : [[1.5, 1.85, -1.4, 1], [-1.5, 1.85, -1.4, -1], [0.7, 1.75, -2.6, 0], [-0.7, 1.75, -2.6, 0], [1.4, 1.75, -2.9, 1], [-1.4, 1.75, -2.9, -1]];
+      for (const [x, y, z, side] of L) { const o = new THREE.Object3D(); o.position.set(x, y, z); o.rotation.y = side ? side * Math.PI / 2 : Math.PI; (this.hull || this.model).add(o); list.push({ obj: o, type: side ? 'edge' : 'deck' }); }
+    }
+    return this._seats = list;
+  }
+  seatCount() { return this.seats().length; }
+  seatType(i) { return this.seats()[i % this.seatCount()].type; }
+  seatWorld(i) {
+    const st = this.seats()[i % this.seatCount()]; this.root.updateMatrixWorld(true);
+    const pos = st.obj.getWorldPosition(new THREE.Vector3()), d = new THREE.Vector3(0, 0, 1).applyQuaternion(st.obj.getWorldQuaternion(new THREE.Quaternion()));
+    return { pos, heading: Math.atan2(d.x, d.z) };
+  }
   place(x, z, h) { this.pos.set(x, 0, z); this.heading = h; this.sync(); }
   doorPos(i, outside = false) {
     const side = i % 2 ? 1 : -1; const f = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading)), r = new THREE.Vector3(f.z, 0, -f.x);
@@ -68,6 +87,7 @@ export class Vehicle {
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
   halt() { this.path = null; this.order = null; }
   update(dt) {
+    this.firedT = (this.firedT ?? 99) + dt;
     if (this.destroyed) { this.updateWreck(dt); return; }
     this.drive(dt);
     this.aimAndFire(dt);

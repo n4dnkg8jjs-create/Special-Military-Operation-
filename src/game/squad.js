@@ -1,16 +1,16 @@
 import * as THREE from 'three';
 import { Soldier } from './soldier.js';
-import { SQUAD_ROLES, TUNING, WEAPONS } from '../config.js';
+import { SQUAD_ROLES, ASSAULT_ROLES, TUNING, WEAPONS } from '../config.js';
 
 let NEXT_ID = 1;
 const V = new THREE.Vector3();
 
 // An infantry squad (8 men). Owns orders, formation, morale and casualty handling.
 export class Squad {
-  constructor(game, side, faction, name) {
+  constructor(game, side, faction, name, kind = 'mech') {
     this.game = game; this.id = NEXT_ID++; this.side = side; this.faction = faction; this.name = name;
-    this.type = 'squad';
-    this.soldiers = SQUAD_ROLES.map((r, i) => new Soldier(this, i, r, faction, game.scene));
+    this.type = 'squad'; this.kind = kind; this.assault = kind === 'assault';
+    this.soldiers = (this.assault ? ASSAULT_ROLES : SQUAD_ROLES).map((r, i) => new Soldier(this, i, r, faction, game.scene));
     this.morale = 82; this.order = null; this.holdFire = false; this.run = false;
     this.carrier = null; this.mounted = false; this.building = null; this.routing = false;
     this.underFireT = 99; this.flankDirs = []; this.selected = false; this.spotted = side === 'player';
@@ -48,7 +48,7 @@ export class Squad {
     const perRank = width < 10 ? Math.ceil(n / 2) : n;
     const sp = Math.max(1.8, Math.min(4.2, width / Math.max(1, perRank - 1)));
     const out = [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < this.soldiers.length; i++) {
       const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp;
       let px = x + right[0] * off - fwd[0] * rank * 3 + (Math.random() - .5) * 0.8, pz = z + right[1] * off - fwd[1] * rank * 3 + (Math.random() - .5) * 0.8;
       // snap to a nearby cell offering cover toward the facing direction
@@ -64,7 +64,7 @@ export class Squad {
     }
     return out;
   }
-  orderMove(x, z, facing = null, width = 18, run = false, queued = false) {
+  orderMove(x, z, facing = null, width = 18, run = false, queued = false, bound = false) {
     if (this.routing) return;
     const c = this.center();
     if (facing == null) facing = Math.atan2(x - c.x, z - c.z);
@@ -79,10 +79,17 @@ export class Squad {
     const lat = p => p[0] * right[0] + p[1] * right[1];
     const ms = [...men].sort((a, b) => lat([a.pos.x, a.pos.z]) - lat([b.pos.x, b.pos.z]));
     const ss = slots.slice(0, ms.length).sort((a, b) => lat(a) - lat(b));
-    ms.forEach((s, i) => { s.goal = ss[i]; s.goalHeading = facing; s.path = null; this.game.requestPath(s, s.pos.x, s.pos.z, ss[i][0], ss[i][1], 0.45); });
+    ms.forEach((s, i) => {
+      s.goal = ss[i]; s.goalHeading = facing; s.path = null;
+      // fire-team bounding: team B (odd) covers and waits until team A has reached its positions
+      if (bound && i % 2 === 1 && ms.length > 3) { s.waitTeam = true; s.waitT = 9; }
+      else { s.waitTeam = false; this.game.requestPath(s, s.pos.x, s.pos.z, ss[i][0], ss[i][1], 0.45); }
+    });
   }
   orderGarrison(b) {
     if (this.routing) return;
+    // building held by the enemy -> storm it (stack up at an entrance, grenades, room clearing)
+    if (b.slots.some(sl => sl.occupant && sl.occupant.squad.side !== this.side && sl.occupant.effective)) return this.orderStorm(b);
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const free = b.slots.filter(sl => !sl.occupant && !sl.panel.gone);
@@ -99,13 +106,29 @@ export class Squad {
       s.goal = [ent.x, ent.z]; s.goalHeading = null; this.game.requestPath(s, s.pos.x, s.pos.z, ent.x, ent.z, 0.45);
     });
   }
+  orderStorm(b) {
+    if (this.mounted) this.dismount();
+    this.leaveBuilding();
+    const c = this.center();
+    const ent = b.entrances.slice().sort((p, q) => p.distanceTo(c) - q.distanceTo(c))[0];
+    this.order = { type: 'storm', building: b, entrance: ent, t: 0 };
+    const f = Math.atan2(ent.x - c.x, ent.z - c.z);
+    this.effective.forEach((s, i) => {
+      const side = (i % 2 ? 1 : -1) * (1.2 + (i >> 1) * 0.9); // stack along the wall either side of the door
+      const r = new THREE.Vector3(Math.cos(b.rot), 0, -Math.sin(b.rot));
+      const [gx, gz] = this.game.nav.nearestFree(ent.x + r.x * side, ent.z + r.z * side, 0.4, 6);
+      s.goal = [gx, gz]; s.goalHeading = f; this.game.requestPath(s, s.pos.x, s.pos.z, gx, gz, 0.45);
+    });
+    this.run = true;
+    if (this.side === 'player') this.game.hud?.alert(`${this.name}: storming the building`);
+  }
   threatScore(b, sl) { const o = b.outward(sl.panel); const enemyDir = this.side === 'player' ? -1 : 1; return o.z * enemyDir - sl.panel.floor * 0.1 + (sl.panel.state >= 2 ? -0.5 : 0); }
   leaveBuilding() {
     if (!this.building) return;
     const b = this.building;
     for (const s of this.soldiers) if (s.slotRef) {
       s.slotRef.occupant = null; s.slotRef = null;
-      if (s.inside && s.inside !== 'btr') { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); s.inside = null; }
+      if (s.inBuilding) { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); s.inside = null; }
     }
     this.building = null;
   }
@@ -120,7 +143,14 @@ export class Squad {
     this.mounted = false; v.passengers = null;
     facing ??= v.heading;
     this.soldiers.forEach((s, i) => {
-      if (s.inside !== 'btr') return;
+      if (s.inside === 'ride' && s.seat) {
+        // jump down off the deck on the seat's side
+        const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
+        const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
+        s.pos.set(w.pos.x + out.x * 1.6, 0, w.pos.z + out.z * 1.6); s.heading = Math.atan2(out.x, out.z); s.jumpT = 1.1;
+        s.inside = null; s.seat = null; return;
+      }
+      if (s.inside !== 'btr' || s.state === 'evac') return;
       const d = v.doorPos(i, true); s.pos.set(d.x, 0, d.z); s.inside = null; s.heading = v.heading + (i % 2 ? 1.57 : -1.57);
     });
     const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
@@ -128,6 +158,19 @@ export class Squad {
     const slots = this.formationSlots(back.x, back.z, facing, 18);
     this.effective.forEach((s, i) => { s.goal = slots[i]; s.goalHeading = facing; this.game.requestPath(s, s.pos.x, s.pos.z, slots[i][0], slots[i][1], 0.45); });
     this.game.sfx('hatch', v.pos);
+  }
+  // ride on top of the vehicle (tank/BTR desant). Overflow rides inside.
+  board(v, instant = false) {
+    const seats = v.seatCount(); let k = 0;
+    for (const s of this.soldiers) {
+      if (s.state === 'dead' || s.state === 'evac' || s.aboard) continue;
+      if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
+      if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
+      else { s.inside = 'btr'; }
+      s.path = null; s.goal = null; s.target = null;
+      if (instant) { const w = v.seatWorld(s.seat ? s.seat.i : 0); s.pos.copy(w.pos); s.heading = w.heading; }
+    }
+    this.mounted = true; this.carrier = v; v.passengers = this; this.order = null;
   }
   orderAttack(target) {
     if (this.routing) return;
@@ -183,27 +226,56 @@ export class Squad {
   }
   // ------------------------------------------------------------ per-frame
   update(dt) {
-    if (this.mounted) { for (const s of this.soldiers) if (s.inside === 'btr' && this.carrier) s.pos.copy(this.carrier.pos); this.updateMorale(dt); this.resupplyTick(dt); return; }
+    if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
     this.updateMorale(dt);
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
     for (const s of this.soldiers) this.updateSoldier(s, dt);
     this.resupplyTick(dt);
   }
+  updateRiders(dt) {
+    const v = this.carrier, g = this.game;
+    for (const s of this.soldiers) {
+      s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt);
+      if (s.inside === 'btr' || s.state === 'evac') { if (v) s.pos.copy(v.pos); s.sync(); continue; }
+      if (s.inside === 'ride' && v) {
+        if (!s.effective) { // hit while riding: falls off the vehicle
+          const w = v.seatWorld(s.seat.i); s.inside = null; s.seat = null; s.pos.set(w.pos.x + (Math.random() - .5) * 3, 0, w.pos.z + (Math.random() - .5) * 3);
+        } else {
+          const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = s.target ? Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z) : w.heading;
+          s.vel.set(Math.sin(v.heading) * v.speed, 0, Math.cos(v.heading) * v.speed); s.stance = 'crouch';
+          if (!this.routing && !this.holdFire) g.combat.soldierCombat(s, dt); else s.target = null;
+        }
+      }
+      if (s.inside === 'ride') { s.animate(dt, g.camDist(s.pos)); s.sync(); }
+      else this.updateSoldier(s, dt);
+    }
+    // whole squad jumps off when the vehicle is hit hard or brews up
+    if (v && (v.destroyed || v.burning > 0)) this.dismount(v.heading + Math.PI);
+    this.underFireT += dt;
+  }
   think() {
+    // fire teams: release the covering half once the moving half has arrived
+    const waiting = this.soldiers.filter(s => s.waitTeam && s.effective);
+    if (waiting.length) {
+      const movers = this.effective.filter(s => !s.waitTeam && s.path && s.pathI < s.path.length);
+      for (const s of waiting) { s.waitT -= 0.5; if (!movers.length || s.waitT <= 0) { s.waitTeam = false; if (s.goal) this.game.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } }
+    }
+    // storming a building
+    if (this.order?.type === 'storm') this.game.combat.stormTick(this, 0.5);
     // mounting completion
     if (this.order?.type === 'mount') {
       const v = this.order.vehicle;
       if (!v || v.destroyed) { this.order = null; for (const s of this.soldiers) if (s.inside === 'btr') s.inside = null; return; }
       const need = this.alive.filter(s => s.state !== 'dead' && !s.inside);
-      for (const s of need) if (s.pos.distanceTo(v.pos) < 4.5) {
+      for (const s of need) if (s.pos.distanceTo(v.pos) < v.def.radius + 3) {
         if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
         if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }
-        s.inside = 'btr'; s.path = null;
+        s.arrived = true; s.path = null;
       }
-      if (this.alive.every(s => s.inside === 'btr' || !s.effective)) {
-        for (const s of this.alive) if (!s.effective && !s.dragger) this.abandonWounded(s);
-        this.mounted = true; v.passengers = this; this.order = null;
+      if (this.effective.every(s => s.arrived || s.inside)) {
+        for (const s of this.soldiers) s.arrived = false;
+        this.board(v, true);
         if (this.side === 'player') this.game.sfx('hatch', v.pos);
       }
     }
@@ -218,8 +290,8 @@ export class Squad {
     }
     // stance from situation
     for (const s of this.effective) {
-      if (s.inside === 'btr') continue;
-      if (s.inside) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
+      if (s.aboard) continue;
+      if (s.inBuilding) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
       const moving = s.path && s.pathI < s.path.length;
       if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
       else {
@@ -248,9 +320,9 @@ export class Squad {
   }
   updateSoldier(s, dt) {
     const g = this.game;
-    s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inside && s.inside !== 'btr' ? 1.4 : 1));
+    s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
     if (s.state === 'dead' || s.state === 'evac') { s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); s.sync(); return; }
-    if (s.inside === 'btr') { s.sync(); return; }
+    if (s.aboard) { s.sync(); return; }
     // bleeding
     if (s.state === 'critical') {
       s.bleed -= dt * (s.dragger && s.dragger.dragPhase === 'treat' ? 0.25 : 1);
@@ -264,9 +336,9 @@ export class Squad {
     // garrison: entering the building through the entrance
     if (s.slotRef && !s.inside && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {
       s.inside = s.slotRef; s.path = null; s.goal = null;
-      this.building.slotPos(s.slotRef, s.pos); s.heading = Math.atan2(this.building.outward(s.slotRef.panel).x, this.building.outward(s.slotRef.panel).z);
+      const bb = s.slotRef.panel.b; bb.slotPos(s.slotRef, s.pos); s.heading = Math.atan2(bb.outward(s.slotRef.panel).x, bb.outward(s.slotRef.panel).z);
     }
-    if (s.inside && s.inside !== 'btr') {
+    if (s.inBuilding) {
       // panel destroyed under him -> he falls back inside but keeps fighting; if the floor is gone he drops
       if (s.inside.panel.state === 3 && s.inside.panel.floor > 0 && Math.random() < dt * 0.3) { g.hitSoldier(s, { dmg: [40, 90], type: 'blast' }, s.pos, true); }
       s.vel.set(0, 0, 0);
@@ -276,7 +348,7 @@ export class Squad {
     if (s.target && s.effective && !(s.path && s.pathI < s.path.length && this.run)) want = Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z);
     else if (s.vel.lengthSq() > 0.05) want = Math.atan2(s.vel.x, s.vel.z);
     else if (s.goalHeading != null) want = s.goalHeading;
-    if (s.inside && s.inside !== 'btr' && s.target) { const o = this.building.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
+    if (s.inBuilding && s.target) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
     if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
     s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);
     // combat
@@ -287,14 +359,16 @@ export class Squad {
   }
   moveStep(s, dt) {
     const g = this.game;
+    if (s.jumpT > 0) { s.vel.set(0, 0, 0); return; }
     const moving = s.path && s.pathI < s.path.length;
     let speed = 0;
     if (moving) {
       const wp = s.path[s.pathI];
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
-      let base = this.run || this.routing ? 4.2 : 1.6;
-      if (s.stance === 'crouch') base = Math.min(base, this.run ? 2.6 : 1.2);
-      if (s.stance === 'prone') base = 0.45;
+      let base = this.run || this.routing ? TUNING.run : TUNING.walk;
+      if (s.stance === 'crouch') base = Math.min(base, this.run ? TUNING.crouchRun : TUNING.crouchWalk);
+      if (s.stance === 'prone') base = TUNING.crawl;
+      if (this.assault) base *= 1.06;
       if (s.state === 'light' && s.legWound) base *= 0.55;
       if (s.state === 'critical') base = 0.3;
       if (s.dragging && s.dragPhase === 'drag') base = TUNING.dragSpeed;

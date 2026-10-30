@@ -77,10 +77,14 @@ export class Renderer {
     scene.add(this.hemi);
 
     // Post
-    const comp = this.composer = new EffectComposer(this.r);
+    // composer targets carry a depth texture so GTAO can reconstruct normals from depth
+    // instead of re-rendering the whole scene into a normal buffer (halves scene draw calls)
+    const rt = new THREE.WebGLRenderTarget(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio(), { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1, THREE.UnsignedIntType) });
+    const comp = this.composer = new EffectComposer(this.r, rt);
+    comp.setSize(innerWidth, innerHeight);
     comp.addPass(new RenderPass(scene, this.camera));
     if (!lo) {
-      const ao = this.ao = new GTAOPass(scene, this.camera, innerWidth, innerHeight);
+      const ao = this.ao = new GTAOPass(scene, this.camera, innerWidth, innerHeight, { depthTexture: comp.readBuffer.depthTexture });
       ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: hi ? 16 : 8 });
       ao.blendIntensity = 0.9;
       comp.addPass(ao);
@@ -108,6 +112,10 @@ export class Renderer {
   }
   render(dt, t) {
     this.grade.uniforms.time.value = t;
+    if (this.ao) { // RenderPass draws into the current read buffer: point GTAO at that buffer's depth
+      const d = this.composer.readBuffer.depthTexture;
+      if (this.ao.depthTexture !== d) { this.ao.depthTexture = d; this.ao.gtaoMaterial.uniforms.tDepth.value = d; this.ao.pdMaterial.uniforms.tDepth.value = d; this.ao.depthRenderMaterial.uniforms.tDepth.value = d; }
+    }
     this.composer.render(dt);
   }
   tick(dt) { const f = this.grade.uniforms.flash; f.value = Math.max(0, f.value - dt * 3); }

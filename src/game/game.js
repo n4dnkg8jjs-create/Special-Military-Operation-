@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Renderer } from '../engine/renderer.js';
 import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
-import { City, OBJECTIVES, SPAWNS, BOUNDS } from '../world/city.js';
+import { City, OBJECTIVES, SPAWNS, BOUNDS, DEPLOY_ZONES } from '../world/city.js';
 import { FX } from '../fx/particles.js';
 import { Audio } from '../audio/sfx.js';
 import { Squad } from './squad.js';
@@ -43,8 +43,10 @@ export class Game {
     this.combat = new Combat(this);
     this.cam = new RTSCamera(this.renderer.camera, canvas, BOUNDS);
     prepareSoldierAssets(this.assets);
-    this.objectives = OBJECTIVES.map(o => ({ ...o, control: 100, owner: 'player', lostT: 0, contested: false }));
+    this.objectives = OBJECTIVES.map(o => ({ ...o, control: 0, owner: 'neutral', lostT: 0, contested: false, captured: false }));
+    this.phase = 'deploy';
     this.objectiveMarkers();
+    this.zoneMarkers();
     this.deploy();
     this.commander = new Commander(this);
     if (Q.has('autoplay')) this.autoDef = new AutoDefender(this);
@@ -53,44 +55,80 @@ export class Game {
     for (const [x, z, s] of [[-320, -380, 1.4], [260, -420, 1.8], [420, -120, 1.1], [-460, 60, 1.2], [80, -520, 2.2]]) this.fx.emitter(new THREE.Vector3(x, 10, z), 'plume', s);
     for (const b of this.city.buildings) for (const p of b.panels) if (p.state === 3 && p.floor > 1 && Math.random() < 0.08) this.fx.emitter(b.panelCenter(p, new THREE.Vector3()), 'fire', 0.8);
     if (this.audio.ok) { this.audio.play('ambience_city', null, { gain: 0.8 }); this.audio.play('ambience_wind', null, { gain: 0.6 }); this.audio.play('ambience_battle', null, { gain: 0.5 }); }
-    this.cam.lookAt(10, 40); this.cam.tYaw = 0.12; this.cam.tDist = 130;
+    this.cam.lookAt(0, 140); this.cam.tYaw = 0.1; this.cam.tDist = 150;
     progress(1, 'Ready');
   }
   // ---------------------------------------------------------------- forces
-  makeSquad(side, x, z, facing, n) {
+  makeSquad(side, x, z, facing, n, kind = 'mech') {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
-    const sq = new Squad(this, side, f, `${n}`); sq.placeAt(x, z, facing); this.squads.push(sq); return sq;
+    const sq = new Squad(this, side, f, `${n}`, kind); sq.placeAt(x, z, facing); this.squads.push(sq); return sq;
   }
   makeVehicle(side, kind, x, z, h) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
     const [fx, fz] = this.nav.nearestFree(x, z, kind === 'tank' ? 2.2 : 2.0, 30);
     const v = new Vehicle(this, side, f, kind); v.place(fx, fz, h); this.vehicles.push(v); return v;
   }
+  garrison(sq, b) {
+    sq.building = b;
+    const free = b.slots.filter(s => !s.occupant && !s.panel.gone).sort((a, c) => sq.threatScore(b, c) - sq.threatScore(b, a));
+    sq.soldiers.forEach((s, i) => { const sl = free[i]; if (!sl) return; sl.occupant = s; s.slotRef = sl; s.inside = sl; b.slotPos(sl, s.pos); const o = b.outward(sl.panel); s.heading = Math.atan2(o.x, o.z); s.stance = 'crouch'; s.sync(); });
+  }
   deploy() {
-    const N = Math.PI; // facing north (−Z)
-    const pf = this.playerFaction;
-    // 1st squad garrisons School No.7, 2nd holds the crossroads, 3rd mounted in reserve
-    const s1 = this.makeSquad('player', -60, 30, N, `1st ${pf.id === 'UA' ? 'Sqd' : 'Otd'}`); s1.name = '1st Squad';
-    const school = this.city.buildings[8];
-    s1.building = school;
-    const free = school.slots.filter(s => !s.occupant).sort((a, b) => s1.threatScore(school, b) - s1.threatScore(school, a));
-    s1.soldiers.forEach((s, i) => { const sl = free[i]; sl.occupant = s; s.slotRef = sl; s.inside = sl; school.slotPos(sl, s.pos); const o = school.outward(sl.panel); s.heading = Math.atan2(o.x, o.z); s.stance = 'crouch'; s.sync(); });
-    const s2 = this.makeSquad('player', 96, 20, N, '2nd Squad'); s2.name = '2nd Squad';
-    const s3 = this.makeSquad('player', 0, 88, N, '3rd Squad'); s3.name = '3rd Squad';
-    const b1 = this.makeVehicle('player', 'btr', -56, 86, N), b2 = this.makeVehicle('player', 'btr', 102, 46, N), b3 = this.makeVehicle('player', 'btr', 2, 92, N);
-    b1.name = `${pf.btrName} #1`; b2.name = `${pf.btrName} #2`; b3.name = `${pf.btrName} #3`;
-    s1.carrier = b1; s2.carrier = b2; s3.carrier = b3;
-    for (const s of s3.soldiers) { s.inside = 'btr'; s.pos.copy(b3.pos); s.sync(); } s3.mounted = true; b3.passengers = s3;
-    const t1 = this.makeVehicle('player', 'tank', -30, 82, N), t2 = this.makeVehicle('player', 'tank', 72, 42, N);
-    t1.name = `${pf.tankName} "Hrim"`; t2.name = `${pf.tankName} "Ludmila"`;
-    if (pf.id === 'RU') { t1.name = `${pf.tankName} #211`; t2.name = `${pf.tankName} #214`; }
-    this.playerUnits = [s1, s2, s3, b1, b2, b3, t1, t2];
+    const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
+    const pf = this.playerFaction, B = this.city.buildings;
+    // --- player: motorized rifle company riding on armour at the southern edge
+    const lineup = [[-140, 186, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]];
+    this.playerUnits = [];
+    let bn = 1, tn = 1;
+    for (const [x, z, kind, sqName] of lineup) {
+      const v = this.makeVehicle('player', kind, x, z, N);
+      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
+      this.playerUnits.push(v);
+      if (sqName) {
+        const sq = this.makeSquad('player', x, z + 6, N, sqName, kind === 'tank' ? 'assault' : 'mech'); sq.name = sqName;
+        sq.board(v, true); this.playerUnits.splice(this.playerUnits.length - 1, 0, sq);
+      }
+    }
+  }
+  zoneMarkers() {
+    this.zoneMeshes = [];
+    for (const [side, z] of Object.entries(DEPLOY_ZONES)) {
+      const col = side === 'player' ? 0x8fb069 : 0xc8483a, w = z.x1 - z.x0, d = z.z1 - z.z0;
+      const g = new THREE.Group();
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.10, depthWrite: false }));
+      fill.rotation.x = -Math.PI / 2; g.add(fill);
+      const pts = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [-w / 2, -d / 2]].map(([x, y]) => new THREE.Vector3(x, 0, y));
+      const edge = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0), 64, 0.35, 4), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, depthWrite: false }));
+      g.add(edge); g.position.set((z.x0 + z.x1) / 2, 0.2, (z.z0 + z.z1) / 2); g.renderOrder = 3;
+      this.scene.add(g); this.zoneMeshes.push(g);
+    }
+  }
+  // clamp a point into the player's staging ground (deployment phase)
+  inZone(x, z, side = 'player', pad = 3) {
+    const Z = DEPLOY_ZONES[side];
+    return [Math.min(Z.x1 - pad, Math.max(Z.x0 + pad, x)), Math.min(Z.z1 - pad, Math.max(Z.z0 + pad, z))];
+  }
+  deployPlace(u, x, z, facing) {
+    [x, z] = this.inZone(x, z);
+    if (u.type === 'vehicle') {
+      const [fx, fz] = this.nav.nearestFree(x, z, u.kind === 'tank' ? 2.2 : 2.0, 30); u.place(fx, fz, facing ?? u.heading); u.path = null;
+      if (u.passengers?.mounted) u.passengers.board(u, true);
+    } else if (u.mounted && u.carrier) this.deployPlace(u.carrier, x, z, facing);
+    else { const [fx, fz] = this.nav.nearestFree(x, z, 0.5, 20); u.placeAt(fx, fz, facing ?? u.facing); for (const s of u.soldiers) { s.path = null; s.goal = null; s.pathReq = null; s.waitTeam = false; } u.order = null; }
+  }
+  startBattle() {
+    if (this.phase !== 'deploy') return;
+    this.phase = 'capture'; this.time = 0;
+    for (const m of this.zoneMeshes) m.visible = false;
+    this.commander.begin();
+    this.hud?.battleStarted();
+    this.sfx('radio'); this.sfx('ui_alert');
   }
   reinforce() {
     const [x, z] = SPAWNS.defender[Math.floor(Math.random() * SPAWNS.defender.length)];
     const v = this.makeVehicle('player', 'btr', x, z, Math.PI); v.name = `${this.playerFaction.btrName} #4`;
     const s = this.makeSquad('player', x, z, Math.PI, '4th Squad'); s.name = '4th Squad (reinf.)';
-    s.carrier = v; s.mounted = true; v.passengers = s; for (const m of s.soldiers) { m.inside = 'btr'; m.pos.copy(v.pos); }
+    s.board(v, true);
     v.orderMove(x, z - 70, Math.PI, true);
     this.playerUnits.push(s, v);
     this.hud?.alert('Reinforcements arriving from the south', 'good'); this.sfx('radio');
@@ -134,7 +172,7 @@ export class Game {
   }
   passengerCasualties(v, p, owner) {
     const sq = v.passengers; if (!sq) return;
-    for (const s of sq.soldiers) if (s.inside === 'btr' && s.effective && Math.random() < p) {
+    for (const s of sq.soldiers) if (s.aboard && s.effective && Math.random() < p * (s.inside === 'ride' ? 1.4 : 1)) {
       s.hp -= 40 + Math.random() * 120;
       if (s.hp <= -20) { s.die(); this.onDeath(s, owner, false); } else if (s.hp <= 0) { s.state = 'critical'; s.bleed = 120; sq.onCasualty(s, false); this.stats[sq.side].wia++; }
     }
@@ -172,31 +210,38 @@ export class Game {
     }
   }
   // ---------------------------------------------------------------- spotting
-  updateSpotting() {
-    const spotters = [];
-    for (const u of this.unitsOf('player')) {
-      if (u.type === 'vehicle') spotters.push([u.pos.x, 2.6, u.pos.z, u.kind === 'tank' ? 220 : 260, u]);
-      else if (!u.mounted) for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, 380, u.building]);
+  // Symmetric spotting: each side only sees (and the AI only engages) what its units have line of sight to.
+  spotFor(side) {
+    const other = side === 'player' ? 'enemy' : 'player', spotters = [];
+    for (const u of this.unitsOf(side)) {
+      if (u.type === 'vehicle') spotters.push([u.pos.x, 2.6, u.pos.z, u.kind === 'tank' ? 190 : 220, u]);
+      else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside === 'ride' ? 220 : 280, u.building]);
     }
-    for (const u of this.unitsOf('enemy')) {
-      const pts = u.type === 'vehicle' ? [[u.pos.x, 1.6, u.pos.z, null]] : u.mounted ? [] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside ? u.building : null]);
+    for (const u of this.unitsOf(other)) {
+      const pts = u.type === 'vehicle' ? [[u.pos.x, 1.6, u.pos.z, null]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null]);
       let seen = false;
-      const recentlyFired = u.type === 'squad' && (u.firedT ?? 99) < 3;
+      const fired = u.type === 'squad' ? (u.firedT ?? 99) < 3 : (u.firedT ?? 99) < 3;
       for (const [x, y, z, ign] of pts) {
         for (const sp of spotters) {
           const d = Math.hypot(sp[0] - x, sp[2] - z);
-          if (d < 25 || (recentlyFired && d < 450)) { seen = true; break; }
-          if (d > sp[3] * (u.type === 'vehicle' ? 1.3 : 1)) continue;
+          if (d < 30 || (fired && d < 300)) { seen = true; break; }
+          const range = sp[3] * (u.type === 'vehicle' ? 1.1 : 1) * (u.type === 'squad' && u.building ? 0.75 : 1);
+          if (d > range) continue;
           if (this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u)) { seen = true; break; }
         }
         if (seen) break;
       }
-      if (seen) u.lastSeen = this.time;
-      u.spotted = u.lastSeen != null && this.time - u.lastSeen < 3;
-      if (u.type === 'squad') for (const s of u.soldiers) s.visible = u.spotted || s.state === 'dead';
+      u.seenBy ||= {};
+      if (seen) u.seenBy[side] = this.time;
+      if (side === 'player') { u.spotted = u.seenBy.player != null && this.time - u.seenBy.player < 3; if (u.type === 'squad') for (const s of u.soldiers) s.visible = u.spotted || s.state === 'dead'; }
     }
+  }
+  updateSpotting() {
+    this.spotFor('player'); this.spotFor('enemy');
     for (const sq of this.squads) if (sq.side === 'player') for (const s of sq.soldiers) s.visible = true;
   }
+  // can `side` currently engage unit u (spotted recently or very close)?
+  seen(side, u, from) { if (u.seenBy?.[side] != null && this.time - u.seenBy[side] < 4) return true; if (!from) return false; const p = u.type === 'vehicle' ? u.pos : (u._c ||= new THREE.Vector3()) && u.center(u._c); return Math.hypot(from.x - p.x, from.z - p.z) < 35; }
   // ---------------------------------------------------------------- objectives
   objectiveMarkers() {
     this.objMeshes = this.objectives.map(o => {
@@ -222,29 +267,31 @@ export class Game {
       else if (e > p * 2.5) o.control -= rate * 0.5 * dt;
       o.control = THREE.MathUtils.clamp(o.control, -100, 100);
       const prev = o.owner;
-      if (o.control <= -100 + 1e-6 || (o.owner === 'player' && o.control < 0)) o.owner = 'enemy';
-      if (o.control >= 0 && o.owner === 'enemy' && o.control > 25) o.owner = 'player';
+      if (o.control < -25 || (o.owner === 'player' && o.control < 0)) o.owner = 'enemy';
+      else if (o.control > 25 || (o.owner === 'enemy' && o.control > 0 && false)) o.owner = 'player';
       if (prev !== o.owner) {
-        if (o.owner === 'enemy') { this.hud?.alert(`Objective ${o.id} — ${o.name} LOST! Retake it within ${TUNING.lostObjectiveGrace}s`, 'bad'); this.sfx('ui_alert'); }
-        else { this.hud?.alert(`Objective ${o.id} — ${o.name} retaken`, 'good'); o.lostT = 0; }
+        if (o.owner === 'enemy') { this.hud?.alert(o.captured ? `Objective ${o.id} — ${o.name} LOST! Retake it within ${TUNING.lostObjectiveGrace}s` : `Enemy has seized ${o.name} — take it from them`, 'bad'); this.sfx('ui_alert'); }
+        else { this.hud?.alert(`Objective ${o.id} — ${o.name} ${o.captured ? 'retaken' : 'CAPTURED'}`, 'good'); o.lostT = 0; o.captured = true; this.sfx('radio'); }
+        if (this.phase === 'capture' && this.objectives.every(q => q.captured)) { this.phase = 'hold'; this.hud?.alert('Both objectives taken — dig in and HOLD until the end', 'good'); }
       }
-      if (o.owner === 'enemy') o.lostT += dt; else o.lostT = 0;
-      o.ring.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : 0xc8483a);
+      if (o.owner === 'enemy' && o.captured) o.lostT += dt; else o.lostT = 0;
+      o.ring.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8);
     }
   }
   checkEnd() {
     if (this.over) return;
-    const lost = this.objectives.filter(o => o.owner === 'enemy');
+    const lost = this.objectives.filter(o => o.owner !== 'player');
     const playerAlive = this.unitsOf('player').length;
     let result = null;
     if (!playerAlive) result = { win: false, title: 'DEFEAT', why: 'Your company was destroyed.' };
-    else if (lost.some(o => o.lostT > TUNING.lostObjectiveGrace)) result = { win: false, title: 'DEFEAT', why: `${lost[0].name} fell and was not retaken.` };
-    else if (lost.length === 2 && lost.every(o => o.lostT > 30)) result = { win: false, title: 'DEFEAT', why: 'Both objectives were overrun.' };
-    else if (this.time >= this.roundLen) result = lost.length ? { win: false, title: 'DEFEAT', why: 'An objective was in enemy hands when time ran out.' } : { win: true, title: 'VICTORY', why: 'Both objectives held for the entire round.' };
+    else if (lost.some(o => o.captured && o.lostT > TUNING.lostObjectiveGrace)) result = { win: false, title: 'DEFEAT', why: `${lost[0].name} fell and was not retaken.` };
+    else if (lost.length === 2 && lost.every(o => o.captured && o.lostT > 30)) result = { win: false, title: 'DEFEAT', why: 'Both objectives were overrun.' };
+    else if (this.time >= this.roundLen) result = lost.length ? { win: false, title: 'DEFEAT', why: lost.some(o => !o.captured) ? `${lost.find(o => !o.captured).name} was never taken.` : 'An objective was in enemy hands when time ran out.' } : { win: true, title: 'VICTORY', why: 'Both objectives captured and held to the end of the round.' };
     if (result) { this.over = true; this.result = result; this.sfx(result.win ? 'victory' : 'defeat'); this.hud?.showEnd(result); }
   }
   // ---------------------------------------------------------------- loop
   update(dt) {
+    if (this.phase === 'deploy') { for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(0); else for (const s of sq.soldiers) { s.animate(0.016, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
     if (this.paused || this.over) { this.servicePaths(4); return; }
     dt = Math.min(dt, 0.05) * this.timeScale;
     this.time += dt; globalThis.__gameTime = this.time;
@@ -260,10 +307,22 @@ export class Game {
     if (!this.reinforced && this.time > this.roundLen * 0.45) { this.reinforced = true; this.reinforce(); }
     this.checkEnd();
   }
+  cullSoldiers() {
+    const cam = this.renderer.camera; cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+    (this._frustum ||= new THREE.Frustum()).setFromProjectionMatrix(this._pm = (this._pm || new THREE.Matrix4()).multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const sph = this._sph ||= new THREE.Sphere(new THREE.Vector3(), 2.2), f = this.cam.focus;
+    for (const sq of this.squads) for (const s of sq.soldiers) {
+      sph.center.set(s.pos.x, s.pos.y + 0.9, s.pos.z);
+      s.inView = this._frustum.intersectsSphere(sph);
+      const near = Math.hypot(s.pos.x - f.x, s.pos.z - f.z) < 70 + this.cam.dist * 0.3;
+      if (near !== s.shadowOn) { s.shadowOn = near; s.root.traverse(o => { if (o.isMesh) o.castShadow = near; }); }
+    }
+  }
   frame(dt) {
+    this.cullSoldiers();
     this.update(dt);
     this.cam.update(Math.min(dt, 0.05));
-    this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt);
+    this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
     const cp = this.renderer.camera.position;
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }

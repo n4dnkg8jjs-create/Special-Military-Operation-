@@ -10,6 +10,7 @@ import bpy  # noqa
 from mathutils.bvhtree import BVHTree
 from mathutils import Vector
 import gear as G, kit as K, assemble as AS, gltfw, meshutil as MU, body as BD, anim as A, bl
+import boots as BT, assault as AT, combo as CB
 from qmath import qmul, qinv, qrot, qeuler
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../..'))
@@ -60,6 +61,8 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
     idx = rig_sk.idx
     for p in parts:
         grp = p.get('group', '')
+        if 'W' in p and p['W'] is not None:
+            continue
         if grp.startswith('armband') or grp.startswith('legband'):
             p['W'] = AS.nearest_weights(p['pos'], ref_pos, ref_W, k=6)
         elif grp == 'kneepads':
@@ -67,8 +70,15 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             side = 'Left' if p['pos'][:, 0].mean() > 0 else 'Right'
             W[:, idx[side + 'Leg']] = 1
             p['W'] = W
-        elif grp == 'helmet':
+        elif grp.startswith('helmet') or grp == 'headset':
             W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Head']] = 1; p['W'] = W
+        elif grp in ('armor_arms', 'elbowpads'):
+            W = np.zeros((len(p['pos']), rig_sk.n), np.float32)
+            sd = p.get('side') or ('Left' if p['pos'][:, 0].mean() > 0 else 'Right')
+            W[:, idx[sd + ('Arm' if grp == 'armor_arms' else 'ForeArm')]] = 1
+            p['W'] = W
+        elif grp == 'armor_groin':
+            W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Hips']] = 1; p['W'] = W
         elif 'local' in p or grp.startswith('pouches') or grp == 'backpack' and 'local' in p:
             c = p['pos'].mean(0, keepdims=True)
             w = AS.nearest_weights(c, ref_pos, ref_W, k=8, bones_allowed=SPINE_BONES, bone_idx=idx)
@@ -103,6 +113,19 @@ def make_gear(R, fac, env, which=None):
         p = K.tape_band(env.trees, J(sd + 'UpLeg'), J(sd + 'Leg'), 0.2, np.array([sx, 0, 0.0]), width=0.05, seed=5 + sx)
         p['group'] = 'legband_' + sd[0]; parts.append(p)
     parts += K.backpack(env, mm, fac)
+    # ---- assault trooper kit
+    parts += AT.armour(env, R, fac)
+    parts += AT.assault_pouches(env, fac)
+    parts += AT.elbowpads(env, R, fac)
+    parts += AT.assault_backpack(env, fac)
+    hA2, hB2 = ('6b47', 'altyn') if fac == 'ru' else ('fast', 'mich')
+    amm = dict(mm, fabric='altyn_steel', webbing='altyn_steel') if fac == 'ru' else mm
+    for kind, nm, ms in ((hA2, 'helmet_assault_A', mm), (hB2, 'helmet_assault_B', amm if fac == 'ru' else mm)):
+        for q in K.helmet(kind, c, r, ms, fac):
+            q['group'] = nm; parts.append(q)
+    parts += AT.headset(c, r, fac)
+    for vn in 'ABC':
+        parts.append(AT.balaclava(R, vn, fac))
     if which:
         parts = [p for p in parts if p['group'] in which]
     return parts
@@ -137,12 +160,13 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
     return W.skinned('body_' + vn, prims, lod=0.28, extras={'default_visible': vn == 'A', 'variant': vn})
 
 
-def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True):
+def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True, combos_on=True):
     R = load()
     sk = R['skel']
     rig = A.Rig(sk, R['hands']['pos'], R['hands']['W'])
     W = AS.SoldierWriter(sk, 'soldier_' + fac)
     g = W.g
+    rec = CB.Recorder(W)
     mc = {}
     for vn in variants:
         write_body(W, R, fac, vn, mc)
@@ -154,18 +178,25 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     gcol = '#3a3a33' if fac == 'ru' else '#5b5040'
     mg = g.material('gloves', color=list(AS.TX.hexc(gcol)) + [1], roughness=0.75)
     W.skinned('gloves', [dict(pos=gp, nrm=hd['nrm'], uv=hd['uv'], idx=hd['tri'], mat=mg, W=hd['W'])], extras={'default_visible': False, 'replaces': 'hands'}, lod=0.28)
-    # boots
+    # boots (parametric combat boots: laced upper, eyelets/speed hooks, lugged outsole)
     B = BD.Base()
-    bcol = '#151413' if fac == 'ru' else '#6e5a42'
-    mb = g.material('boot_leather', color=list(AS.TX.hexc(bcol)) + [1], roughness=0.5 if fac == 'ru' else 0.75, double=True)
-    msol = g.material('boot_sole', color=list(AS.TX.hexc('#141413')) + [1], roughness=0.9)
+    bcol, brough = ('#151413', 0.62) if fac == 'ru' else ('#6e5a42', 0.85)
+    lcol = '#3a3833' if fac == 'ru' else '#4b3d2c'
+    mb = g.material('boot_leather', color=list(AS.TX.hexc(bcol)) + [1], roughness=brough)
+    msol = g.material('boot_sole', color=list(AS.TX.hexc('#161615')) + [1], roughness=0.9)
+    mla = g.material('boot_lace', color=list(AS.TX.hexc(lcol)) + [1], roughness=0.85, double=True)
+    mme = g.material('boot_metal', color=list(AS.TX.hexc('#34332f')) + [1], roughness=0.45, metallic=0.6, double=True)
+    BP = BT.build(B)
     bp = []
-    for b in R['boots']:
-        u = b['upper']; sp, st = b['sole']
-        Wb = AS.nearest_weights(u['pos'], B.vA[:13380], B.W[:13380])
-        Ws = AS.nearest_weights(sp, B.vA[:13380], B.W[:13380])
-        bp += [dict(pos=u['pos'], nrm=u['nrm'], uv=u['uv'], idx=u['tri'], mat=mb, W=Wb),
-               dict(pos=sp, nrm=MU.vertex_normals(sp, st), idx=st, mat=msol, W=Ws)]
+    for side in ('Left', 'Right'):
+        for k, m in (('upper', mb), ('sole', msol), ('laces', mla), ('metal', mme)):
+            d = BP[side][k]
+            Wb = AS.nearest_weights(d['pos'], B.vA[:13380], B.W[:13380])
+            q = dict(pos=d['pos'], nrm=d['nrm'], idx=d['tri'], mat=m, W=Wb)
+            q['uv'] = d['uv'] if 'uv' in d else np.zeros((len(d['pos']), 2))
+            if 'col' in d:
+                q['color'] = d['col']
+            bp.append(q)
     W.skinned('boots', bp, lod=0.3)
     # gear
     env = envelope(R)
@@ -177,8 +208,8 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
             p['nrm'] = MU.vertex_normals(p['pos'], p['tri'])
     if ao:
         body_tris = [(R['variants']['B']['uniform_pos'], R['uniform']['tri'])]
-        vertex_ao([p for p in parts if not p['group'].startswith('helmet')], body_tris)
-        for hn in ('helmet_A', 'helmet_B'):
+        vertex_ao([p for p in parts if not p['group'].startswith('helmet') and not p['group'].startswith('balaclava') and p['group'] != 'headset'], body_tris)
+        for hn in ('helmet_A', 'helmet_B', 'helmet_assault_A', 'helmet_assault_B'):
             vertex_ao([p for p in parts if p['group'] == hn], [(R['variants']['B']['head_pos'], R['head']['tri'])])
     gear_weights(sk, ref_pos, ref_W, parts)
     mats = AS.Mats(g, fac)
@@ -193,13 +224,67 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
             Wm = np.concatenate([p['W'] for p in ps])
             prims.append(dict(pos=m['pos'], nrm=m['nrm'], uv=m['uv'], idx=m['tri'], mat=mats(mname), W=Wm, color=m['col']))
             tri_count[gname] = tri_count.get(gname, 0) + len(m['tri'])
-        hidden = gname in ('helmet_B', 'backpack', 'legband_L', 'kneepads', 'pouches_back')
+        hidden = gname in ('helmet_B', 'backpack', 'legband_L', 'kneepads', 'pouches_back') or gname in ASSAULT_NODES or gname.startswith('balaclava')
         W.skinned(gname, prims, extras={'default_visible': not hidden}, lod=0.28)
+    combos = None
+    if combos_on:
+        bal_masks = {vn: _balaclava_mask(R, vn) for vn in 'ABC'}
+        std, ast = presets(fac)
+        m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks)
+        combos = dict(combos=[d for d in m1 if not d['name'].startswith('assault_')], assault_combos=[d for d in m1 if d['name'].startswith('assault_')])
     if sockets:
         add_sockets(W, rig, R)
     if with_lod:
         W.emit_lods()
+    W.combos = combos
     return W, R, rig, tri_count
+
+
+ASSAULT_NODES = ('armor_assault', 'armor_groin', 'armor_arms', 'pouches_assault', 'elbowpads', 'backpack_assault',
+                 'helmet_assault_A', 'helmet_assault_B', 'headset')
+BANDS = ['armband_L', 'armband_R', 'legband_R']
+BASE = ['boots', 'vest', 'pouches_front']
+
+
+def presets(fac):
+    """standard (combo_<n>) and assault (assault_combo_<n>) presets"""
+    std_spec = [('A', 'A', 'hands', ['pouches_side'], []), ('B', 'B', 'gloves', ['pouches_side', 'backpack'], []),
+                ('C', 'A', 'gloves', ['pouches_side', 'kneepads'], ['legband_L']), ('A', 'B', 'hands', ['pouches_side', 'pouches_back', 'kneepads'], []),
+                ('B', 'A', 'gloves', ['pouches_side', 'backpack'], ['legband_L']), ('C', 'B', 'hands', ['pouches_side', 'pouches_back'], [])]
+    std = []
+    for k, (b, h, hand, extra, bands) in enumerate(std_spec):
+        parts = [f'body_{b}', f'helmet_{h}', hand] + BASE + extra + BANDS + bands
+        std.append(dict(name=f'combo_{k}', body=f'body_{b}', helmet=f'helmet_{h}', hands=hand, backpack='backpack' in extra,
+                        kneepads='kneepads' in extra, pouches_back='pouches_back' in extra, legband_L='legband_L' in bands, parts=parts))
+    AB = ['armor_assault', 'armor_groin', 'armor_arms', 'pouches_assault', 'elbowpads', 'kneepads', 'gloves']
+    if fac == 'ru':
+        as_spec = [('A', 'A', True, True, True), ('B', 'B', True, False, False), ('C', 'A', True, True, True), ('A', 'B', False, True, False)]
+        hdesc = {'A': '6B47 + NVG mount + headset', 'B': 'Altyn-style heavy steel helmet (no visor)'}
+    else:
+        as_spec = [('A', 'A', True, False, True), ('B', 'B', True, True, False), ('C', 'A', True, False, True), ('A', 'B', True, True, True)]
+        hdesc = {'A': 'FAST high-cut + NVG shroud + counterweight + headset', 'B': 'MICH mid-cut + goggles + headset'}
+    ast = []
+    for k, (b, h, hs, bal, pack) in enumerate(as_spec):
+        parts = [f'body_{b}', f'helmet_assault_{h}'] + BASE + AB + BANDS + ['legband_L']
+        if hs:
+            parts.append('headset')
+        if bal:
+            parts.append(f'balaclava_{b}')
+        if pack:
+            parts.append('backpack_assault')
+        ast.append(dict(name=f'assault_combo_{k}', body=f'body_{b}', helmet=f'helmet_assault_{h}', helmet_desc=hdesc[h], headset=hs,
+                        balaclava=bal, backpack_assault=pack, gloves=True, parts=parts))
+    return std, ast
+
+
+def _balaclava_mask(R, vn):
+    """head triangles hidden under the balaclava (dropped from combos that wear one)"""
+    v = R['variants'][vn]; H = R['head']; lm = v['lm']
+    P = v['head_pos']; T = H['tri']; Pc = P[T].mean(1)
+    ec = (lm['eyeL'] + lm['eyeR']) / 2
+    slot = (np.abs(Pc[:, 1] - ec[1]) < 0.024) & (np.abs(Pc[:, 0]) < 0.066) & (Pc[:, 2] > ec[2] - 0.04)
+    low = Pc[:, 1] < lm['neck'][1] - 0.01
+    return ~(slot | low)
 
 
 def add_sockets(W, rig, R):
@@ -233,9 +318,10 @@ if __name__ == '__main__':
     import build_anims as BA
     BA.setup()  # loads weapon reference points into anim.GUN
     info = {}
-    for fac in ('ru', 'ua'):
+    for fac in (sys.argv[1:] or ('ru', 'ua')):
         W, R, rig, tc = build(fac, with_lod=True)
         W.save(f'{ASSETS}/soldier_{fac}.glb')
         info[fac] = W.tris
         print(fac, W.tris)
+        json.dump(W.combos, open(f'{BUILD}/combos_{fac}.json', 'w'), indent=1, default=lambda o: o.tolist() if hasattr(o, 'tolist') else str(o))
     json.dump(info, open(f'{BUILD}/soldier_tris.json', 'w'), indent=1)

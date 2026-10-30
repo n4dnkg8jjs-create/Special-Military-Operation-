@@ -18,7 +18,13 @@ SCHEMES = {
                      wear=1.0, dust_amt=1.0, fade=(86, 92, 64)),
     'ua_green': dict(base=(55, 65, 39), base2=(49, 58, 35), camo=[((31, 31, 28), 0.24), ((98, 84, 60), 0.14)],
                      dust=(136, 126, 106), mud=(64, 54, 42), wear=1.15, dust_amt=0.9, fade=(84, 90, 62)),
+    # UA BTR-80: green base with brown + khaki disruptive patches (2022-24 field repaints)
+    'ua_btr': dict(base=(57, 67, 40), base2=(50, 59, 36), camo=[((84, 66, 44), 0.24), ((128, 114, 80), 0.13)],
+                   dust=(136, 126, 106), mud=(64, 54, 42), wear=1.2, dust_amt=0.95, fade=(84, 90, 62)),
 }
+
+# exhaust soot sources set by a vehicle script before finalize(): [(authoring xyz of the outlet, radius m)]
+SOOT = []
 
 def kind_masks(K):
     ki = T.kind_index(K)
@@ -129,6 +135,18 @@ def compose_paint(d, scheme, decals=None, seed=1):
     col = T.mix(col, C(S['mud']), mud_m * 0.75)
     rough = rough * (1 - mud_m) + 0.8 * mud_m
     height += mud_m * 0.0008 * mudn
+    # ---------------- exhaust soot: dense at the outlet, streaking backward and down the hull
+    for (c, r) in SOOT:
+        ce = np.array((-c[0], -c[1], c[2]), np.float32)           # authoring -> export frame
+        d = P - ce
+        dy = np.where(d[..., 1] > 0, d[..., 1] * 0.42, d[..., 1] * 1.6)    # export +y = vehicle rear
+        dz = np.where(d[..., 2] < 0, d[..., 2] * 0.7, d[..., 2] * 1.5)
+        dist2 = (d[..., 0] * 1.2) ** 2 + dy ** 2 + dz ** 2
+        sm = np.exp(-dist2 / (r * r)) * (0.55 + 0.6 * T.fbm(P, 9, 3, seed + 31))
+        sm = np.clip(sm, 0, 0.95) * (paintable | km['gunmetal'] | km['bare'])
+        col = T.mix(col, C((20, 18, 16)), sm)
+        rough = rough * (1 - sm * 0.5) + 0.9 * sm * 0.5
+        metal *= (1 - sm)
     # ---------------- micro surface
     height += T.fbm(P, 70, 2, seed + 23) * 0.00008
     cast = km['cast']

@@ -17,6 +17,7 @@ import vlib as L
 from vlib import B, box, hull, prism, lathe, cyl, tube, rail, bolt, fillet_path
 import vtex as T
 import vbuild as VB
+import seats as S
 from btr import periscope_block, hatch_rect, louvre_panel, headlight_cluster, tow_hook, tow_cable, antenna_base
 
 TRK_X = 1.395                   # track centre line
@@ -833,6 +834,11 @@ def _alpha_clip(m):
     nt.links.new(rd.outputs[0], bs.inputs['Alpha'])
 
 # ================================================================================================ build
+SEAT_SPECS = (
+    [dict(x=1.42, y=-2.45, face=(1, 0), type='edge'), dict(x=-1.42, y=-2.1, face=(-1, 0), type='edge')] +
+    [dict(x=s * 0.95, y=-2.95, face=(0, 1), type='deck') for s in (1, -1)] +
+    [dict(x=s * 0.35, y=-3.05, face=(0, 1), type='deck') for s in (1, -1)])
+
 def build(variant):
     t0 = time.time()
     L.reset()
@@ -843,6 +849,7 @@ def build(variant):
     hull_details(variant, H)
     H.add(side_skirts(variant))
     print('  hull tris', H.tris(), '%.1fs' % (time.time() - t0))
+    hull_bvh = L.bvh_of(H)          # for the ride seats (node_mesh consumes H)
     hull_mesh = L.node_mesh('hull_geo', H, hullE, (0, 0, 0))
     # ---- turret
     tz = DECK + 0.01
@@ -898,6 +905,13 @@ def build(variant):
     L.node_empty('exhaust', hullE, (-(SUP_X + FEN_X) / 2 - 0.2, -2.65, FEN_Z + 0.12))
     L.node_empty('dismount_L', hullE, (-2.2, -1.0, 0.0))
     L.node_empty('dismount_R', hullE, (2.2, -1.0, 0.0))
+    # desant ride seats: on the fender bins (legs over the side) and the rear engine deck, all outside the
+    # turret / cope-cage sweep
+    seats = S.place_seats(hullE, SEAT_SPECS, hull_bvh)
+    mzl = math.hypot(mz[1], mz[2])
+    clr = S.clearance(seats, (0, TUR_Y, tz), [tur_mesh] + ([cage_mesh] if cage_mesh else []), trun, mzl, 14)
+    print('  seats', [(s['name'], round(s['x'], 2), round(s['y'], 2), round(s['z'], 3)) for s in seats])
+    print('  clearance', clr)
     print('  geometry done %.1fs' % (time.time() - t0))
     extra = [cage_mesh] if cage_mesh else []
     lod0 = [hull_mesh, tur_mesh, gun_mesh] + extra + rg_objs + tracks
@@ -907,7 +921,7 @@ def build(variant):
         if o.data.name not in seen:
             uniq.append(o); seen.add(o.data.name)
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh,
-                cage_obj=cage_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot)
+                cage_obj=cage_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot, seats=seats, clearance=clr)
 
 def wreck_t72(d):
     root = d['root']
@@ -944,6 +958,8 @@ def main(variant):
     info['track_link_pitch_m'] = round(d['pitch'], 4)
     info['track_length_m'] = round(d['track_len'], 3)
     info['track_links'] = 97
+    info['ride_seats'] = S.manifest_entries(d['seats'])
+    info['ride_clearance'] = d['clearance']
     with open(os.path.join(VB.CACHE, variant + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
     print(json.dumps({k: v for k, v in info.items() if k != 'nodes'}))

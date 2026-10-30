@@ -3,9 +3,10 @@
 A 3D real-time tactics game in the style of *Napoleon: Total War*, set in a fictional, shelled-out post-Soviet city in a
 Russo-Ukrainian-style war. Runs in the browser (Three.js / WebGL2, no build step).
 
-You command a motorized rifle company — three 8-man squads with their BTRs and a two-tank section — and must hold
-**Objective A (School No. 7)** and **Objective B (Market Crossroads)** for the whole round (10–16 minutes) against
-waves of mechanized assaults. Play as Ukraine (yellow tape, BTR-80, T-72AV) or Russia (white tape, BTR-82A, T-72B3).
+You command a motorized rifle company — three 8-man squads riding on their BTRs, a 6-man assault squad riding on the
+lead tank, and a two-tank section. **Deploy** your units in the southern staging ground while the enemy AI deploys in
+the north, then **capture Objective A (School No. 7) and Objective B (Market Crossroads)** and **hold both** to the end
+of the round (10–16 minutes) against counterattack waves. Play as Ukraine (yellow tape, BTR-80, T-72AV) or Russia (white tape, BTR-82A, T-72B3).
 
 ![Overview](docs/screenshots/overview.jpg)
 
@@ -28,6 +29,7 @@ GitHub Pages works too (Settings → Pages → deploy from branch `main`, root).
 ### Controls
 | | |
 |---|---|
+| Deployment | Place units inside the green staging ground (right-click / right-drag teleports them), **M** mounts/dismounts, **Enter** or START BATTLE begins |
 | Camera | WASD / arrows / screen-edge pan · Q / E rotate · mouse wheel zoom · middle-drag orbit · Shift = fast |
 | Select | Left-click · drag box · Shift adds · double-click selects all of that type · Ctrl+1–9 make group, 1–9 recall · click a unit card |
 | Move | Right-click ground · **right-drag** to draw a formation line (Total War style), facing away from the camera |
@@ -40,6 +42,9 @@ GitHub Pages works too (Settings → Pages → deploy from branch `main`, root).
 - **Limited ammunition** — every soldier carries individual magazines (AK-74M 30-rd, PKM 100-rd belts, RPG-7 rockets with the
   assistant grenadier carrying spares). Men share mags when one runs dry; BTRs carry a finite resupply stock. Tanks track
   APFSDS vs HE-FRAG separately (39 rounds, 22 in the carousel).
+- **Infantry on armour** — squads ride on top of BTRs and tanks (and can fire from the deck), jump off to dismount, and take
+  casualties if the vehicle is hit. Every squad has an **RPG-22** man; assault squads carry heavier armour, optics and
+  lots of grenades and can **storm garrisoned buildings** (stack-up, grenades, room clearing).
 - **Morale** — per squad: casualties, a downed squad leader, suppression, being flanked, low ammo and nearby vehicle losses
   drain it; cover, garrisons, nearby friendly armour and the leader restore it. Steady → Holding → Shaken → Wavering →
   **Routing** (squads flee to the rear and can rally).
@@ -47,7 +52,7 @@ GitHub Pages works too (Settings → Pages → deploy from branch `main`, root).
   lightly wounded (slower, limping, less accurate) or critically wounded (down, bleeding out). Squadmates — the medic first —
   drag casualties to cover or to the BTR for evacuation and treat them.
 - **Dynamic damage** — buildings are assembled from Soviet large-panel modules; each panel goes intact → damaged → holed →
-  destroyed under fire, with progressive collapse, rubble that changes pathing and cover, and garrison casualties.
+  destroyed under fire; whole entrance **sections collapse** when their lower floors are shot out, rubble that changes pathing and cover, and garrison casualties.
   Vehicles resolve armour by facing (front/side/rear) vs kinetic or shaped-charge penetration: crew casualties, fires,
   immobilisation, gun damage, ammunition cook-off (T-72 turret toss), passengers bailing out.
 - **Suppression & cover** — directional cover from the navigation grid (walls, rubble, wrecks, sandbags), stance changes,

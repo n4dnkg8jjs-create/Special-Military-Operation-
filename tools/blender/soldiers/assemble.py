@@ -137,6 +137,7 @@ SOLIDS = {
     'tape': None, 'tape_red': ('#b01e1e', 0.32, 0.0), 'goggle_lens': ('#1b2026', 0.08, 0.3),
     'helmet_hardware': ('#262624', 0.5, 0.2), 'boot_sole': ('#151514', 0.9, 0.0),
     'kneepad_shell': ('#2b2c28', 0.55, 0.0),
+    'altyn_steel': ('#4d5240', 0.45, 0.25), 'balaclava_ru': ('#2a2b26', 0.95, 0.0), 'balaclava_ua': ('#4a4a3b', 0.95, 0.0),
 }
 
 

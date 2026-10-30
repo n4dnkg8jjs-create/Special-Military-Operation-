@@ -20,7 +20,9 @@ export class HUD {
     this.mm.addEventListener('mousedown', e => this.minimapClick(e));
     this.mm.addEventListener('contextmenu', e => { e.preventDefault(); this.minimapClick(e, true); });
     this.frames = 0; this.fpsT = 0;
+    document.getElementById('startBattle').addEventListener('click', () => game.startBattle());
   }
+  battleStarted() { document.getElementById('deploybar').classList.add('hidden'); this.alert('Battle started — capture School No. 7 and the Market Crossroads', 'good'); }
   // ------------------------------------------------------------ selection rings
   rings() {
     const g = this.g;
@@ -70,6 +72,7 @@ export class HUD {
       el.classList.toggle('dead', dead); el.classList.toggle('sel', this.selected.has(u));
       const q = s => el.querySelector(s);
       if (u.type === 'squad') {
+        if (u.assault) el.querySelector('.ico').style.color = '#e38b3a';
         const eff = u.effective.length, wnd = u.soldiers.filter(s => s.state === 'critical' || s.state === 'stable').length;
         q('.men').textContent = `${eff}${wnd ? '+' + wnd : ''}`;
         q('.hp i').style.width = `${eff / 8 * 100}%`; q('.am i').style.width = `${u.ammoFrac() * 100}%`; q('.mo i').style.width = `${u.morale}%`;
@@ -153,12 +156,12 @@ export class HUD {
     const g = this.g, left = Math.max(0, g.roundLen - g.time);
     this.timerEl.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     const lost = g.objectives.filter(o => o.owner === 'enemy');
-    this.phaseEl.textContent = lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : 'HOLD BOTH OBJECTIVES';
+    this.phaseEl.textContent = g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : 'HOLD BOTH OBJECTIVES';
     for (const o of g.objectives) {
       const el = document.getElementById(`obj-${o.id}`);
       el.querySelector('.fill').style.width = `${(o.control + 100) / 2}%`;
       el.classList.toggle('lost', o.owner === 'enemy'); el.classList.toggle('contested', o.contested);
-      el.querySelector('.state').textContent = o.owner === 'enemy' ? `ENEMY HELD · ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - o.lostT))}s TO RETAKE` : o.contested ? `CONTESTED · ${Math.round(o.p)} vs ${Math.round(o.e)}` : o.e > 0 ? 'UNDER ATTACK' : 'HELD';
+      el.querySelector('.state').textContent = o.owner === 'neutral' ? (o.p || o.e ? `CONTESTED · ${Math.round(o.p || 0)} vs ${Math.round(o.e || 0)}` : 'NEUTRAL') : o.owner === 'enemy' ? (o.captured ? `ENEMY HELD · ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - o.lostT))}s TO RETAKE` : o.p > 0 ? `ASSAULTING · ${Math.round(o.p)} vs ${Math.round(o.e)}` : 'ENEMY HELD — CAPTURE') : o.contested ? `CONTESTED · ${Math.round(o.p)} vs ${Math.round(o.e)}` : o.e > 0 ? 'UNDER ATTACK' : 'HELD';
     }
   }
   // ------------------------------------------------------------ minimap
@@ -173,7 +176,7 @@ export class HUD {
     x.drawImage(this.mmBase, 0, 0, S, S);
     x.fillStyle = '#8b867a';
     for (const b of g.city.buildings) { x.save(); x.translate((b.x + o) * k, (b.z + o) * k); x.rotate(-b.rot); x.fillRect(-b.L / 2 * k, -b.D / 2 * k, b.L * k, b.D * k); x.restore(); }
-    for (const ob of g.objectives) { x.strokeStyle = ob.owner === 'player' ? '#8fb069' : '#c8483a'; x.lineWidth = 2; x.beginPath(); x.arc((ob.x + o) * k, (ob.z + o) * k, TUNING.captureRadius * k, 0, 7); x.stroke(); x.fillStyle = '#fff'; x.font = 'bold 10px sans-serif'; x.fillText(ob.id, (ob.x + o) * k - 3, (ob.z + o) * k + 4); }
+    for (const ob of g.objectives) { x.strokeStyle = ob.owner === 'player' ? '#8fb069' : ob.owner === 'enemy' ? '#c8483a' : '#b8b4a8'; x.lineWidth = 2; x.beginPath(); x.arc((ob.x + o) * k, (ob.z + o) * k, TUNING.captureRadius * k, 0, 7); x.stroke(); x.fillStyle = '#fff'; x.font = 'bold 10px sans-serif'; x.fillText(ob.id, (ob.x + o) * k - 3, (ob.z + o) * k + 4); }
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
       x.fillStyle = sq.side === 'player' ? (this.selected.has(sq) ? '#fff' : sq.faction.color) : '#d0453a';

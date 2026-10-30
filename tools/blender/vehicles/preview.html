@@ -16,7 +16,7 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
 const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(),0.04).texture;
 scene.environmentIntensity = 0.6;
 const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(6,10,5); sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048); scene.add(sun); scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
+sun.shadow.mapSize.set(2048,2048); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03; scene.add(sun); scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
 ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
 const gltf = await new GLTFLoader().loadAsync(q.get('glb'));
@@ -24,6 +24,27 @@ const root = gltf.scene; scene.add(root);
 // opt-in: hide=<regex> hides matching nodes (e.g. LOD1 / wreck variants); only=<regex> shows only matching subtrees
 if (q.get('hide')) { const re = new RegExp(q.get('hide')); root.traverse(o => { if (o.name && re.test(o.name)) o.visible = false; }); }
 if (q.get('only')) { const re = new RegExp(q.get('only')); const keep = new Set(); root.traverse(o => { if (o.name && re.test(o.name)) { o.traverse(c => keep.add(c)); let p = o; while (p) { keep.add(p); p = p.parent; } } }); root.traverse(o => { if (!keep.has(o)) o.visible = false; }); }
+// debug: turret=<deg> traverses the turret, gun=<deg> elevates the gun, seats=1 puts a seated rider proxy on every
+// ride_seat_* empty (same proxy points as tools/blender/vehicles/seats.py: pelvis at origin, facing local +Z)
+if (q.get('turret')) { const t = root.getObjectByName('turret'); if (t) t.rotation.y += (+q.get('turret'))*Math.PI/180; }
+if (q.get('gun')) { const g = root.getObjectByName('gun_pivot'); if (g) g.rotation.x -= (+q.get('gun'))*Math.PI/180; }
+if (q.get('seats')) {
+  const P = { edge: [[0,0.10,0],[0,0.62,-0.06],[0,0.08,0.44],[0,-0.40,0.72]], deck: [[0,0.10,0],[0,0.62,-0.06],[0,0.32,0.38],[0,0.06,0.74]] };
+  const seats = []; root.traverse(o => { if (/^ride_seat_\d+$/.test(o.name)) seats.push(o); });
+  for (const s of seats) {
+    const type = s.userData.seat_type || 'deck';
+    const mat = new THREE.MeshStandardMaterial({ color: type === 'edge' ? 0xff3fd2 : 0x31c4ff, roughness: 0.6 });
+    const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
+    const limb = (a, b, r) => { const d = V3(b).sub(V3(a)); const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(d.length() - 2*r, 0.01), 4, 8), mat);
+      m.position.copy(V3(a).add(V3(b)).multiplyScalar(0.5)); m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), d.normalize()); s.add(m); };
+    const [pel, neck, knee, foot] = P[type];
+    limb(pel, neck, 0.16);                                                     // torso
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), mat); head.position.set(0, 0.82, -0.08); s.add(head);
+    for (const x of [-0.11, 0.11]) { limb([x, pel[1], pel[2]], [x, knee[1], knee[2]], 0.075); limb([x, knee[1], knee[2]], [x, foot[1], foot[2]], 0.06); }
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffff00 })); s.add(dot);
+    s.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0.02,0), 0.6, 0xffff00, 0.12, 0.08));
+  }
+}
 let tris=0; root.traverse(o=>{ let vis=true; for(let p=o;p;p=p.parent) if(!p.visible) vis=false; if(o.isMesh && vis){o.castShadow=o.receiveShadow=true; const g=o.geometry; tris += (g.index?g.index.count:g.attributes.position.count)/3;} });
 if (q.get('anim') && gltf.animations.length){
   const mixer = new THREE.AnimationMixer(root);
@@ -33,6 +54,7 @@ if (q.get('anim') && gltf.animations.length){
 root.updateMatrixWorld(true);
 const box = new THREE.Box3(); root.traverse(o=>{ let vis=true; for(let p=o;p;p=p.parent) if(!p.visible) vis=false; if(o.isMesh&&vis) box.expandByObject(o); }); const size = box.getSize(new THREE.Vector3()); const c = box.getCenter(new THREE.Vector3());
 sun.shadow.camera.left=sun.shadow.camera.bottom=-size.length(); sun.shadow.camera.right=sun.shadow.camera.top=size.length(); sun.shadow.camera.updateProjectionMatrix();
+if (q.get('target')) c.fromArray(q.get('target').split(',').map(Number));   // aim point for close-ups (glTF frame)
 const views = +(q.get('views')||4); const r = size.length()*0.85*(+(q.get('dist')||1));
 const cols = views>1?2:1, rows = Math.ceil(views/cols);
 const cam = new THREE.PerspectiveCamera(35, (W/cols)/(H/rows), 0.01, 2000);
@@ -44,6 +66,7 @@ for(let i=0;i<views;i++){
   const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;
   renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(scene,cam);
 }
-window.__info = {tris:Math.round(tris), size:size.toArray().map(v=>+v.toFixed(3)), anims:gltf.animations.map(a=>a.name+':'+a.duration.toFixed(2)), nodes:(()=>{const n=[];root.traverse(o=>{if(o.name)n.push(o.name)});return n.slice(0,80)})()};
+const seatInfo = []; root.traverse(o => { if (/^ride_seat_\d+$/.test(o.name)) { const p = new THREE.Vector3(), d = new THREE.Vector3(0,0,1); o.getWorldPosition(p); d.applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion())); seatInfo.push(o.name+' '+(o.userData.seat_type||'?')+' pos '+p.toArray().map(v=>v.toFixed(2))+' face '+d.toArray().map(v=>v.toFixed(2))); } });
+window.__info = {seats:seatInfo, tris:Math.round(tris), size:size.toArray().map(v=>+v.toFixed(3)), anims:gltf.animations.map(a=>a.name+':'+a.duration.toFixed(2)), nodes:(()=>{const n=[];root.traverse(o=>{if(o.name)n.push(o.name)});return n.slice(0,80)})()};
 window.__done = true;
 </script></body></html>

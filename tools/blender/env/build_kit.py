@@ -460,8 +460,13 @@ def main():
     paths = [os.path.join(KA.CACHE, f'kit_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
     if not no_atlas or not os.path.exists(paths[0]):
         paths = KA.build_atlas()
+    import city_kit_atlas as CKA, kit_city_parts as KCP, kit_collapse as KCO
+    paths2 = [os.path.join(KA.CACHE, f'kit_atlas_city_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
+    if not no_atlas or not os.path.exists(paths2[0]):
+        paths2 = CKA.build_atlas()
     reset_scene()
     mat = make_material('kit_panel', *paths)
+    mat2 = make_material('kit_city', *paths2)
     pieces = []
     for t in TYPES:
         for s in STATES:
@@ -471,6 +476,7 @@ def main():
                build_balcony('glazed', 'balcony_slab_glazed'), build_balcony_hanging(), build_canopy(),
                build_partition('intact'), build_partition('holed'),
                build_wardrobe(), build_bed(), build_table(), build_radiator_debris()]
+    pieces += KCP.build_all() + KCO.build_all()
     for mb in pieces:   # loose debris sits on the floor
         if mb.name.startswith('debris_'):
             mn, mx = mb.bounds(); mb.transform(mat_trs((0, -mn[1], 0)))
@@ -486,16 +492,17 @@ def main():
         st = name.split('_')[-1] if name.split('_')[-1] in STATES else None
         col = list(dict.fromkeys([p.name.rsplit('_', 1)[0] if p.name.split('_')[-1] in STATES else p.name for p in pieces])).index(base)
         loc = (col * 4.5, 0, -(STATES.index(st) if st else 0) * 5.0)
-        mb.to_object(name, [mat], location=loc)
+        mb.to_object(name, [mat, mat2], location=loc)
         tris = mb.tris()
-        b = st and tris > budgets[st]
+        b = (st and tris > budgets[st]) or tris > {'collapse_pile_large': 12000, 'collapse_pile_small': 6000, 'slab_hanging': 2000}.get(name, 1e9)
         info[name] = {'bbox_min': [round(float(v), 3) for v in mn], 'bbox_max': [round(float(v), 3) for v in mx], 'tris': tris}
         print(f'{name:28s} tris {tris:5d}{"  OVER BUDGET" if b else ""}  bbox {np.round(mn, 2)} {np.round(mx, 2)}')
     size = export_glb(OUT)
     print('panel_kit.glb', size / 1e6, 'MB')
     update_manifest('kit', {'width': W, 'height': H, 'thickness': T})
     update_manifest('panel_kit', {
-        'file': 'panel_kit.glb', 'material': 'kit_panel (single 2048^2 atlas: albedo JPEG, normal PNG, ORM PNG)',
+        'file': 'panel_kit.glb', 'material': 'kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the '
+                    'brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py)',
         'coords': 'glTF Y-up. Wall pieces: x 0..W, y 0..H, z 0 (outside face, +Z normal) .. -T (room side). '
                   'Accessories (balcony*, entrance_canopy) start at the wall face z=0 and extend to +Z.',
         'pieces': info,
@@ -517,6 +524,28 @@ def main():
             'plinth': '3.2 x 0.9 x 0.45 basement plinth with vent grille, same pivot rules as walls',
             'partition_wall_*': 'interior gypsum partition 3.2 x 2.58 x 0.08 with doorway; _intact/_holed',
             'debris_*': 'loose furniture debris (wardrobe, bed, table+chair, radiator), origin on the floor',
+            'brick_<type>_<state>, brick_red_<type>_<state>': 'series 1-447 brick walls, types window/balcony/blank_end/entrance, '
+                'same 3.2 x 2.8 x 0.3 frame, openings and 4 damage states as wall_*; brick_* = white silicate brick, brick_red_* = red '
+                'ceramic brick (two piece sets, same geometry, different atlas cells). Reuse balcony_slab*/entrance_canopy/plinth. '
+                'Holes are stair-stepped along the brick courses; masonry mesh wires instead of rebar',
+            'brick_parapet, brick_red_parapet': 'brick roof parapet 0.69 m with corbelled course + galvanised cap; wall frame (maxZ = 0)',
+            'wall_shopfront_<state>, wall_shopfront_shutter_<state>': 'ground-floor shop panel (converted flat): tiled piers + glazed '
+                'door + 2x2 display window / one wide opening with a steel roller shutter (closed when intact, half-raised and torn when '
+                'damaged, ripped out when holed). Fascia y 2.08..2.8 is left for a sign_* piece. Same frame and states as wall_*',
+            'sign_<shop>_intact|_damaged': 'shop sign mounted on the fascia: place in panel coords with its bottom at y = 2.14 on a '
+                'wall_shopfront* panel. Authored in the accessory frame (centred on x = W/2, starts at the wall face z = 0, extends +Z '
+                'up to 0.17) -> normalise like balcony/entrance_canopy (add ^sign_ to the accessory regex in buildKit). Shops: apteka, '
+                'produkty, khlib, magazyn, perukarnia, gospodarchi, kafe, kvity, ovochi, zootovary. _damaged = right bracket torn, '
+                'hanging tilted (shares the _intact offset)',
+            'roof_machine_room, roof_vent, roof_antenna': 'roof-top pieces, origin at their footprint centre on the roof surface (y = 0), '
+                '+Z front (machine-room door). Place on the roof slab of 9+ storey blocks (machine room above a stair core). buildKit '
+                'normalises them to minX=0/minY=0/maxZ=0: add bbox_min.x / bbox_max.z back to recentre',
+            'collapse_pile_large, collapse_pile_small': 'section-collapse rubble: pancaked floor slabs on a rubble mound with rebar, '
+                'standing facade remnants, leaning/lying panels, balcony, furniture. Origin = footprint centre on the ground, +Z = '
+                'side the section fell towards (street). large ~13 x 13 m, small ~7 x 7 m (see bbox)',
+            'slab_hanging': 'slab_floor frame (x 0..3.2, -z inward): floor slab of the storey above hanging diagonally from its '
+                'interior support line (hinge = slab top at y = H, z = -W) down to the floor below (free edge y ~ 0.05, z ~ -1.6). '
+                'With the generic minX/minY/maxZ normalisation the hinge sits at (x, H - bbox_min.y, -W - bbox_max.z)',
         },
     })
     return info

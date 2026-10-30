@@ -81,9 +81,11 @@ export class Input {
       const sel = [...this.hud.selected]; if (!sel.length) return;
       const g1 = this.groundAt(e.clientX, e.clientY);
       if (d.g0 && g1 && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 25) {
+        if (this.g.phase === 'deploy') { for (const p of this.formationPlan(d.g0, g1)) this.g.deployPlace(p.unit, p.x, p.z, p.facing); this.g.sfx('ui_order'); return; }
         for (const p of this.formationPlan(d.g0, g1)) p.unit.type === 'squad' ? p.unit.orderMove(p.x, p.z, p.facing, p.width, this.runMode || e.altKey) : p.unit.orderMove(p.x, p.z, p.facing, this.runMode);
         this.g.sfx('ui_order'); return;
       }
+      if (this.g.phase === 'deploy') { if (g1) this.moveSelected(g1.x, g1.z, null); return; }
       // click: attack / mount / garrison / move
       const target = this.unitAt(e.clientX, e.clientY);
       if (target && target.side === 'enemy') { for (const u of sel) u.orderAttack(target); this.g.sfx('ui_order'); return; }
@@ -98,6 +100,9 @@ export class Input {
   }
   moveSelected(x, z, facing) {
     const sel = [...this.hud.selected]; if (!sel.length) return;
+    if (this.g.phase === 'deploy') {
+      sel.forEach((u, i) => this.g.deployPlace(u, x + (i - (sel.length - 1) / 2) * 22, z, facing ?? Math.PI)); this.g.sfx('ui_order'); return;
+    }
     // keep relative spacing between units around the click point
     const c = new THREE.Vector3(); sel.forEach(u => c.add(u.center())); c.multiplyScalar(1 / sel.length);
     const f = facing ?? Math.atan2(x - c.x, z - c.z);
@@ -136,6 +141,13 @@ export class Input {
     if (o === 'holdfire') { const v = !sel.every(u => u.holdFire); for (const u of sel) u.holdFire = v; }
     if (o === 'halt') for (const u of sel) u.halt();
     if (o === 'garrison') { const p = this.lastMouse; const b = p && this.buildingAt(p[0], p[1]); for (const u of sel) if (u.type === 'squad') { const bb = b || nearestBuilding(g, u.center()); if (bb) u.orderGarrison(bb); } }
+    if (o === 'mount' && g.phase === 'deploy') {
+      for (const u of sel) { const sq = u.type === 'squad' ? u : u.passengers; const v = u.type === 'vehicle' ? u : u.carrier;
+        if (!sq || !v) continue;
+        if (sq.mounted) { sq.dismount(); for (const s of sq.soldiers) { s.jumpT = 0; s.path = null; s.goal = null; } const p = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -9); g.deployPlace(sq, p.x, p.z, v.heading); }
+        else if (!v.passengers) sq.board(v, true); }
+      g.sfx('ui_click'); this.hud.updateInfo(); return;
+    }
     if (o === 'mount') for (const u of sel) {
       if (u.type === 'squad') { if (u.mounted) u.dismount(); else if (u.carrier && !u.carrier.destroyed && !u.carrier.passengers) u.orderMount(u.carrier); }
       else if (u.kind === 'btr' && u.passengers) u.passengers.dismount();
@@ -146,6 +158,7 @@ export class Input {
       const m = this.lastMouse && this.groundAt(this.lastMouse[0], this.lastMouse[1]); const th = u.effective.find(s => !s.inside); if (!th || !m) continue;
       u.smokes = (u.smokes ?? 2) - 1; g.combat.throwSmoke(th, m);
     }
+    if (o === 'mortar' && g.phase === 'deploy') { g.hud.alert('Fire missions are available once the battle starts'); return; }
     if (o === 'mortar') { if (g.mortars > 0) { this.mode = 'mortar'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mortar: left-click a target area'); } }
     g.sfx('ui_click'); this.hud.updateInfo();
   }
@@ -153,6 +166,7 @@ export class Input {
     if (e.repeat) return; const g = this.g;
     const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke' };
     if (map[e.code]) { this.command(map[e.code]); return; }
+    if (e.code === 'Enter' && g.phase === 'deploy') { g.startBattle(); return; }
     if (e.code === 'Space') { e.preventDefault(); g.paused = !g.paused; document.getElementById('pausebadge').classList.toggle('hidden', !g.paused); }
     if (e.code === 'Escape') { this.mode = null; document.body.style.cursor = ''; this.hud.select([]); this.hud.inspect = null; }
     const m = e.code.match(/^Digit(\d)$/);

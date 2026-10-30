@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as Fallback from '../engine/fallback.js';
-import { WEAPONS, TUNING } from '../config.js';
+import { WEAPONS, TUNING, ARMOR } from '../config.js';
+
+export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22' };
 
 // One infantryman: visual (skinned MakeHuman mesh + gear + weapon), animation state machine and combat state.
 const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
@@ -24,7 +26,10 @@ function pick(arr, r) { return arr[Math.floor(r * arr.length) % arr.length]; }
 export class Soldier {
   constructor(squad, idx, role, faction, scene) {
     this.squad = squad; this.idx = idx; this.role = role; this.faction = faction; this.scene = scene;
-    this.weaponKey = role.weapon; this.weapon = WEAPONS[role.weapon];
+    this.assault = !!squad.assault;
+    const wk = role.weapon === 'primary' ? (faction.id === 'RU' ? 'ak12' : 'ak74o') : role.weapon;
+    this.weaponKey = wk; this.weapon = WEAPONS[wk];
+    this.grenades = role.grenades ?? 2; this.rpg22 = role.rpg22 || 0; this.armor = ARMOR[role.armor || 'standard'];
     this.mags = role.mags; this.inMag = this.weapon.mag; this.sideKey = role.side; this.sideMags = role.sideMags || 0;
     this.rpgCarried = role.carriesRpg || 0;
     this.hp = TUNING.soldierHp; this.state = 'ok'; // ok | light | critical | stable | dead | evac
@@ -47,9 +52,16 @@ export class Soldier {
       const r = () => Math.random();
       const pickOf = (pre) => { const set = new Set(); m.traverse(o => { const mm = o.name.match(new RegExp(`^${pre}_([A-Z])(_LOD1)?$`)); if (mm) set.add(mm[1]); }); return [...set][Math.floor(r() * set.size)]; };
       const body = pickOf('body'), helmet = pickOf('helmet');
-      const gloves = r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : 0.3), knee = r() < 0.45;
+      // pre-merged single-material presets (combo_N / assault_combo_N) are far cheaper to draw
+      const combos = []; m.traverse(o => { const mm = o.name.match(/^((?:assault_)?combo_\d+)$/); if (mm) combos.push(mm[1]); });
+      const wantAssault = this.assault && combos.some(c => c.startsWith('assault_'));
+      const pool = combos.filter(c => c.startsWith('assault_') === wantAssault);
+      const combo = pool.length ? pool[Math.floor(r() * pool.length)] : null;
+      const gloves = this.assault || r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : this.assault ? 0.7 : 0.3), knee = this.assault || r() < 0.45;
       const legL = this.faction.id === 'UA' ? r() < 0.35 : r() < 0.15;
       const vis = core => {
+        if (/^(assault_)?combo_\d+(_tape)?$/.test(core)) return !!combo && (core === combo || core === combo + '_tape');
+        if (combo) return false; // a combo replaces every per-part node
         let mm = core.match(/^body_([A-Z])$/); if (mm) return mm[1] === body;
         mm = core.match(/^helmet_([A-Z])$/); if (mm) return mm[1] === helmet;
         if (core === 'gloves') return gloves; if (core === 'hands') return !gloves;
@@ -63,13 +75,13 @@ export class Soldier {
       for (const o of meshes) {
         o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
         // skinned sub-primitives are children named like the node; walk up to the named node
-        let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband)/.test(n.name)) n = n.parent;
+        let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband|combo_|assault_combo_)/.test(n.name)) n = n.parent;
         const base = n.name.replace(/\.\d+$/, ''), core = base.replace(/_LOD\d$/, '');
         o.userData.variantOn = decided[core] ??= vis(core);
         o.userData.lod = /_LOD1$/.test(base) ? 1 : (names.has(core + '_LOD1') || m.getObjectByName(core + '_LOD1')) ? 0 : -1;
         o.visible = o.userData.variantOn && o.userData.lod !== 1;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((mt, i) => { if (/^tape/i.test(mt.name) || /armband|legband/i.test(base)) { const c = mt.clone(); c.color.set(this.faction.tape); c.roughness = 0.4; if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; } });
+        mats.forEach((mt, i) => { if (/^tape/i.test(mt.name) || /armband|legband|_tape$/i.test(core)) { const c = mt.clone(); c.color.set(this.faction.tape); c.roughness = 0.4; if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; } });
         if (o.userData.lod !== -1) this.lods.push(o);
       }
       if (!this.lods.length) this.lods = null;
@@ -77,13 +89,14 @@ export class Soldier {
       this.actions = {}; this.cur = null;
       this.spine = m.getObjectByName('Spine1') || m.getObjectByName('Spine') || m.getObjectByName('spine_02');
       this.sockets = { R: m.getObjectByName('weapon_socket'), L: m.getObjectByName('weapon_socket_L'), back: m.getObjectByName('weapon_socket_back'), mag: m.getObjectByName('mag_socket_L') };
-      const wg = A.gltf[this.weaponKey];
+      const wg = A.gltf[WEAPON_ASSET[this.weaponKey]] || A.gltf.ak74m;
       if (this.sockets.R && wg) {
         const w = wg.scene.clone(); this.sockets.R.add(w); this.weaponObj = w; this.muzzleObj = w.getObjectByName('muzzle');
         w.traverse(o => { if (o.isMesh) o.castShadow = true; });
         this.mag = w.getObjectByName('magazine'); if (this.mag) { this.magHome = { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() }; }
         this.wSock = 'R';
       }
+      if (A.gltf.rpg22 && this.rpg22) this.rpg22Tpl = A.gltf.rpg22.scene;
       if (this.sideKey && A.gltf[this.sideKey]) { const back = m.getObjectByName('weapon_socket_back'); if (back) back.add(A.gltf[this.sideKey].scene.clone()); }
       this.play('idle_rifle', 0);
     } else {
@@ -97,7 +110,7 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire|reload|throw|hit)/.test(name);
+    const once = /^(death|fire|reload|throw|hit|dismount)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
@@ -114,8 +127,22 @@ export class Soldier {
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
       if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000));
-      else this.weaponTo(name === 'throw_grenade' ? 'L' : /^(drag_wounded|wounded_)/.test(name) ? 'back' : 'R');
+      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded)/.test(name) ? 'back' : 'R');
     }
+  }
+  // RPG-22: shoulder a disposable launcher, fire, throw the empty tube away
+  raiseLauncher() {
+    if (!this.rpg22Tpl || this.launcherObj) return;
+    this.launcherObj = this.rpg22Tpl.clone(); this.launcherObj.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    if (this.weaponObj) this.weaponObj.visible = false;
+    (this.sockets?.R || this.root).add(this.launcherObj);
+    this.muzzleObjSaved = this.muzzleObj; this.muzzleObj = this.launcherObj.getObjectByName('muzzle') || this.muzzleObj;
+  }
+  discardLauncher() {
+    const l = this.launcherObj; if (!l) return; this.launcherObj = null;
+    const p = l.getWorldPosition(new THREE.Vector3()); this.scene.add(l);
+    l.position.set(p.x + (Math.random() - .5), 0.05, p.z + (Math.random() - .5)); l.rotation.set(0, Math.random() * 6.28, Math.PI / 2); l.updateMatrixWorld(true);
+    if (this.weaponObj) this.weaponObj.visible = true; this.muzzleObj = this.muzzleObjSaved || this.muzzleObj;
   }
   weaponTo(k) {
     if (this.wSock === k || !this.sockets[k]) return;
@@ -141,12 +168,18 @@ export class Soldier {
     let clip, ts = 1, alt = [];
     if (this.state === 'dead') { clip = this.deathClip; }
     else if (this.state === 'critical' || this.state === 'stable') {
-      if (this.dragger) clip = 'wounded_ground';
+      if (this.dragger && this.dragger.dragPhase === 'drag') { clip = 'being_dragged'; alt = ['wounded_ground']; }
+      else if (this.state === 'stable') { clip = 'wounded_sit'; alt = ['wounded_ground']; }
       else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
       else clip = 'wounded_ground';
-    } else if (this.dragging) { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
+    } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
+    else if (this.jumpT > 0) { clip = 'dismount_jump'; alt = ['crouch_idle']; }
+    else if (this.launcherT > 0) { clip = this.stance === 'stand' ? 'aim_launcher' : 'aim_launcher_kneel'; alt = ['aim_launcher', 'aim_stand']; }
+    else if (this.dragging && this.dragPhase === 'treat') { clip = 'treat_wounded'; alt = ['crouch_idle']; }
+    else if (this.dragging && this.dragPhase === 'drag') { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
     else if (this.hitT > 0) { clip = 'hit_react'; }
-    else if (this.throwT > 0) { clip = 'throw_grenade'; }
+    else if (this.throwT > 0) { clip = this.throwWindow ? 'throw_grenade_window' : 'throw_grenade'; alt = ['throw_grenade']; }
+    else if (this.stackT > 0) { clip = 'cqb_stack'; alt = ['crouch_idle']; }
     else if (sp > 0.15) {
       if (st === 'prone') { clip = 'prone_crawl'; alt = ['crouch_walk']; }
       else if (this.state === 'light' && this.legWound) clip = 'limp_walk';
@@ -162,7 +195,7 @@ export class Soldier {
       this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
-      const every = camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
+      const every = this.inView === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
       if (this.animAcc >= every) { this.mixer.update(this.animAcc); this.animAcc = 0; if (camDist < 60) this.magTick(); }
       // recoil kick (procedural additive on spine)
       if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
@@ -175,19 +208,22 @@ export class Soldier {
       if (this.state === 'dead' || this.state === 'critical' || this.state === 'stable') { m.rotation.x = -Math.PI / 2 * 0.95; m.scale.y = 1; m.position.y = 0.2; }
       else { m.rotation.x = 0; m.position.y = sp > 0.1 ? Math.abs(Math.sin(performance.now() * 0.012 * sp)) * 0.06 : 0; }
     }
-    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt);
+    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt);
   }
   sync() {
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.heading;
-    this.root.visible = this.visible && !(this.inside === 'btr');
+    this.root.visible = this.visible && this.inside !== 'btr' && this.state !== 'evac' && this.inView !== false;
   }
   muzzleWorld(out = new THREE.Vector3()) {
     if (this.muzzleObj) return this.muzzleObj.getWorldPosition(out);
     const h = this.stance === 'prone' ? 0.3 : this.stance === 'crouch' ? 1.0 : 1.45;
     return out.set(this.pos.x + Math.sin(this.heading) * 0.7, this.pos.y + h, this.pos.z + Math.cos(this.heading) * 0.7);
   }
-  headHeight() { return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? 0.35 : this.stance === 'crouch' ? 1.05 : 1.55; }
+  get inBuilding() { return !!this.inside && typeof this.inside === 'object'; }
+  get bld() { return this.inBuilding ? this.inside.panel.b : null; }
+  get aboard() { return this.inside === 'btr' || this.inside === 'ride'; }
+  headHeight() { if (this.inside === 'ride') return 1.0; return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? 0.35 : this.stance === 'crouch' ? 1.05 : 1.55; }
   die(kind) {
     this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0);
     this.deathClip = kind || pick(['death_front', 'death_back', 'death_crumple'], Math.random());

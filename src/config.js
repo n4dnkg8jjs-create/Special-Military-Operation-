@@ -19,6 +19,9 @@ export const FACTIONS = {
 export const WEAPONS = {
   ak74m:  { name: 'AK-74M', type: 'rifle', range: 300, rof: 600, burst: [1, 3], burstGap: [0.45, 1.3], mag: 30, reload: 2.8, dmg: [30, 70], pen: 4, spread: 2.6, sound: 'rifle', tracerEvery: 4 },
   pkm:    { name: 'PKM', type: 'mg', range: 500, rof: 650, burst: [5, 12], burstGap: [0.6, 1.4], mag: 100, reload: 6.5, dmg: [35, 80], pen: 8, spread: 3.5, sound: 'mg', tracerEvery: 3, suppress: 2.2 },
+  rpg22:  { name: 'RPG-22 Netto', type: 'at', range: 160, rof: 1, mag: 1, reload: 0, dmg: [70, 110], pen: 390, blast: 3, spread: 8, sound: 'rpg', projectile: { speed: 133, gravity: 3 } },
+  ak12:   { name: 'AK-12 (optic)', type: 'rifle', range: 330, rof: 700, burst: [1, 3], burstGap: [0.35, 1.0], mag: 30, reload: 2.4, dmg: [30, 70], pen: 4, spread: 2.0, sound: 'rifle', tracerEvery: 4, optic: true },
+  ak74o:  { name: 'AK-74M (optic)', type: 'rifle', range: 330, rof: 600, burst: [1, 3], burstGap: [0.35, 1.0], mag: 30, reload: 2.5, dmg: [30, 70], pen: 4, spread: 2.0, sound: 'rifle', tracerEvery: 4, optic: true },
   rpg7:   { name: 'RPG-7 (PG-7VL)', type: 'at', range: 200, rof: 1, mag: 1, reload: 6, dmg: [80, 120], pen: 500, blast: 4, spread: 7, sound: 'rpg', projectile: { speed: 120, gravity: 2.5 } },
   // vehicle weapons
   a72:    { name: '2A72 30 mm', type: 'autocannon', range: 900, rof: 330, burst: [3, 6], burstGap: [0.9, 1.8], mag: 300, reload: 0, dmg: [90, 140], pen: 30, blast: 2.2, spread: 1.6, sound: 'cannon30', tracerEvery: 1 },
@@ -33,24 +36,39 @@ export const SQUAD_ROLES = [
   { role: 'MG gunner', weapon: 'pkm', mags: 3 },
   { role: 'Grenadier (RPG)', weapon: 'rpg7', mags: 3, side: 'ak74m', sideMags: 4 },
   { role: 'Asst. grenadier', weapon: 'ak74m', mags: 7, carriesRpg: 2 },
+  { role: 'Rifleman (RPG-22)', weapon: 'ak74m', mags: 7, rpg22: 2 },
   { role: 'Rifleman', weapon: 'ak74m', mags: 8 },
-  { role: 'Rifleman', weapon: 'ak74m', mags: 8 },
-  { role: 'Rifleman', weapon: 'ak74m', mags: 8, medic: true },
+  { role: 'Rifleman (medic)', weapon: 'ak74m', mags: 7, medic: true },
   { role: 'Senior rifleman', weapon: 'ak74m', mags: 8, second: true },
 ];
+
+// Assault squad (6): heavier armour (shoulder/groin/side protection), optics, many grenades,
+// trained for building clearing. weapon 'primary' resolves per faction (AK-12 RU / AK-74M+optic UA).
+export const ASSAULT_ROLES = [
+  { role: 'Assault leader', weapon: 'primary', mags: 9, leader: true, grenades: 4, armor: 'heavy' },
+  { role: 'Assaulter', weapon: 'primary', mags: 9, grenades: 6, armor: 'heavy' },
+  { role: 'Assaulter', weapon: 'primary', mags: 9, grenades: 6, armor: 'heavy' },
+  { role: 'Assaulter (RPG-22)', weapon: 'primary', mags: 8, grenades: 5, rpg22: 2, armor: 'heavy' },
+  { role: 'Assault gunner', weapon: 'pkm', mags: 3, grenades: 3, armor: 'heavy' },
+  { role: 'Assaulter (medic)', weapon: 'primary', mags: 8, grenades: 4, armor: 'heavy', medic: true, second: true },
+];
+export const ARMOR = {
+  standard: { plateCoverage: 0.42, plateStop: 0.85, helmetStop: 0.35 },
+  heavy: { plateCoverage: 0.62, plateStop: 0.92, helmetStop: 0.5 },   // + shoulder/groin/side protection
+};
 
 export const VEHICLES = {
   // armor in mm RHA-equivalent vs chemical energy (CE) and kinetic (KE) rounds by facing.
   btr: {
     kind: 'btr', hp: 900, speed: 11, accel: 3.0, turnRate: 0.75, radius: 2.1, length: 7.6, width: 2.9, height: 2.4,
     armor: { front: { ke: 14, ce: 14 }, side: { ke: 9, ce: 9 }, rear: { ke: 7, ce: 7 }, top: { ke: 7, ce: 7 } },
-    passengers: 8, supply: { rifle: 1500, rpg: 6, mg: 400 },
+    passengers: 8, seats: 8, supply: { rifle: 1500, rpg: 6, mg: 400 },
     turretSpeed: 1.2, wheeled: true,
   },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,
     armor: { front: { ke: 520, ce: 650 }, side: { ke: 90, ce: 260 }, rear: { ke: 50, ce: 60 }, top: { ke: 40, ce: 40 } },
-    passengers: 0, turretSpeed: 0.5, wheeled: false,
+    passengers: 6, seats: 6, turretSpeed: 0.5, wheeled: false,
   },
 };
 
@@ -69,4 +87,6 @@ export const TUNING = {
   captureRate: 0.9,          // control points per second per effective soldier (capped at 6)
   lostObjectiveGrace: 90,    // seconds to retake an objective before defeat
   mortarStrikes: 3,
+  // movement speeds (m/s)
+  walk: 2.1, run: 5.0, crouchWalk: 1.5, crouchRun: 3.3, crawl: 0.5,
 };

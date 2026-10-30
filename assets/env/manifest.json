@@ -6,7 +6,7 @@
  },
  "panel_kit": {
   "file": "panel_kit.glb",
-  "material": "kit_panel (single 2048^2 atlas: albedo JPEG, normal PNG, ORM PNG)",
+  "material": "kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py)",
   "coords": "glTF Y-up. Wall pieces: x 0..W, y 0..H, z 0 (outside face, +Z normal) .. -T (room side). Accessories (balcony*, entrance_canopy) start at the wall face z=0 and extend to +Z.",
   "pieces": {
    "wall_window_intact": {
@@ -424,6 +424,890 @@
      0.0
     ],
     "tris": 44
+   },
+   "brick_window_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 134
+   },
+   "brick_window_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.842
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.476
+    ],
+    "tris": 212
+   },
+   "brick_window_holed": {
+    "bbox_min": [
+     0.0,
+     -0.076,
+     -1.399
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.103
+    ],
+    "tris": 1036
+   },
+   "brick_window_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.074,
+     -1.736
+    ],
+    "bbox_max": [
+     3.2,
+     2.032,
+     1.519
+    ],
+    "tris": 944
+   },
+   "brick_balcony_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 202
+   },
+   "brick_balcony_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.758
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.624
+    ],
+    "tris": 248
+   },
+   "brick_balcony_holed": {
+    "bbox_min": [
+     0.0,
+     -0.868,
+     -1.537
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.107
+    ],
+    "tris": 948
+   },
+   "brick_balcony_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.051,
+     -1.879
+    ],
+    "bbox_max": [
+     3.2,
+     2.097,
+     1.417
+    ],
+    "tris": 944
+   },
+   "brick_blank_end_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 12
+   },
+   "brick_blank_end_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.494
+    ],
+    "tris": 48
+   },
+   "brick_blank_end_holed": {
+    "bbox_min": [
+     0.0,
+     -0.039,
+     -1.491
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.067
+    ],
+    "tris": 972
+   },
+   "brick_blank_end_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.107,
+     -1.79
+    ],
+    "bbox_max": [
+     3.2,
+     2.026,
+     1.567
+    ],
+    "tris": 932
+   },
+   "brick_entrance_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 58
+   },
+   "brick_entrance_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.564
+    ],
+    "tris": 94
+   },
+   "brick_entrance_holed": {
+    "bbox_min": [
+     0.0,
+     -0.115,
+     -1.395
+    ],
+    "bbox_max": [
+     3.226,
+     2.8,
+     1.074
+    ],
+    "tris": 846
+   },
+   "brick_entrance_destroyed": {
+    "bbox_min": [
+     -0.052,
+     -0.059,
+     -1.831
+    ],
+    "bbox_max": [
+     3.2,
+     2.334,
+     2.45
+    ],
+    "tris": 878
+   },
+   "brick_parapet": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.36
+    ],
+    "bbox_max": [
+     3.2,
+     0.69,
+     0.0
+    ],
+    "tris": 70
+   },
+   "brick_red_window_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 134
+   },
+   "brick_red_window_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.803
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.501
+    ],
+    "tris": 212
+   },
+   "brick_red_window_holed": {
+    "bbox_min": [
+     0.0,
+     -0.076,
+     -1.522
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.131
+    ],
+    "tris": 1036
+   },
+   "brick_red_window_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.124,
+     -1.868
+    ],
+    "bbox_max": [
+     3.2,
+     2.115,
+     1.415
+    ],
+    "tris": 944
+   },
+   "brick_red_balcony_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 202
+   },
+   "brick_red_balcony_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.746
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.549
+    ],
+    "tris": 248
+   },
+   "brick_red_balcony_holed": {
+    "bbox_min": [
+     0.0,
+     -0.796,
+     -1.481
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.993
+    ],
+    "tris": 948
+   },
+   "brick_red_balcony_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.134,
+     -2.006
+    ],
+    "bbox_max": [
+     3.2,
+     2.116,
+     1.587
+    ],
+    "tris": 944
+   },
+   "brick_red_blank_end_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 12
+   },
+   "brick_red_blank_end_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.418
+    ],
+    "tris": 48
+   },
+   "brick_red_blank_end_holed": {
+    "bbox_min": [
+     0.0,
+     -0.046,
+     -1.404
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.08
+    ],
+    "tris": 972
+   },
+   "brick_red_blank_end_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.072,
+     -1.9
+    ],
+    "bbox_max": [
+     3.38,
+     2.104,
+     1.53
+    ],
+    "tris": 932
+   },
+   "brick_red_entrance_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 58
+   },
+   "brick_red_entrance_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.607
+    ],
+    "tris": 94
+   },
+   "brick_red_entrance_holed": {
+    "bbox_min": [
+     0.0,
+     -0.115,
+     -1.368
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     1.011
+    ],
+    "tris": 846
+   },
+   "brick_red_entrance_destroyed": {
+    "bbox_min": [
+     -0.058,
+     -0.064,
+     -1.861
+    ],
+    "bbox_max": [
+     3.424,
+     2.258,
+     2.45
+    ],
+    "tris": 878
+   },
+   "brick_red_parapet": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.36
+    ],
+    "bbox_max": [
+     3.2,
+     0.69,
+     0.0
+    ],
+    "tris": 70
+   },
+   "wall_shopfront_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 146
+   },
+   "wall_shopfront_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.754
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 175
+   },
+   "wall_shopfront_holed": {
+    "bbox_min": [
+     -0.27,
+     -0.058,
+     -1.621
+    ],
+    "bbox_max": [
+     3.203,
+     2.8,
+     0.981
+    ],
+    "tris": 326
+   },
+   "wall_shopfront_destroyed": {
+    "bbox_min": [
+     -0.27,
+     -0.198,
+     -1.621
+    ],
+    "bbox_max": [
+     3.2,
+     2.08,
+     0.726
+    ],
+    "tris": 352
+   },
+   "wall_shopfront_shutter_intact": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 60
+   },
+   "wall_shopfront_shutter_damaged": {
+    "bbox_min": [
+     0.0,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.615
+    ],
+    "tris": 206
+   },
+   "wall_shopfront_shutter_holed": {
+    "bbox_min": [
+     0.0,
+     -0.063,
+     -1.156
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.728
+    ],
+    "tris": 502
+   },
+   "wall_shopfront_shutter_destroyed": {
+    "bbox_min": [
+     0.0,
+     -0.143,
+     -1.333
+    ],
+    "bbox_max": [
+     3.2,
+     1.7,
+     1.6
+    ],
+    "tris": 372
+   },
+   "sign_apteka_intact": {
+    "bbox_min": [
+     0.3,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     2.9,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_apteka_damaged": {
+    "bbox_min": [
+     0.156,
+     -0.657,
+     0.0
+    ],
+    "bbox_max": [
+     2.827,
+     0.69,
+     0.357
+    ],
+    "tris": 62
+   },
+   "sign_produkty_intact": {
+    "bbox_min": [
+     0.1,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.1,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_produkty_damaged": {
+    "bbox_min": [
+     -0.033,
+     -0.704,
+     0.0
+    ],
+    "bbox_max": [
+     3.026,
+     0.684,
+     0.389
+    ],
+    "tris": 62
+   },
+   "sign_khlib_intact": {
+    "bbox_min": [
+     0.6,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     2.6,
+     0.62,
+     0.095
+    ],
+    "tris": 44
+   },
+   "sign_khlib_damaged": {
+    "bbox_min": [
+     0.495,
+     -0.372,
+     0.0
+    ],
+    "bbox_max": [
+     2.578,
+     0.672,
+     0.235
+    ],
+    "tris": 56
+   },
+   "sign_magazyn_intact": {
+    "bbox_min": [
+     0.2,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.0,
+     0.62,
+     0.095
+    ],
+    "tris": 44
+   },
+   "sign_magazyn_damaged": {
+    "bbox_min": [
+     0.065,
+     -0.711,
+     0.0
+    ],
+    "bbox_max": [
+     2.919,
+     0.687,
+     0.299
+    ],
+    "tris": 56
+   },
+   "sign_perukarnia_intact": {
+    "bbox_min": [
+     0.1,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.1,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_perukarnia_damaged": {
+    "bbox_min": [
+     -0.028,
+     -0.676,
+     0.0
+    ],
+    "bbox_max": [
+     3.033,
+     0.682,
+     0.389
+    ],
+    "tris": 62
+   },
+   "sign_gospodarchi_intact": {
+    "bbox_min": [
+     0.1,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.1,
+     0.62,
+     0.095
+    ],
+    "tris": 44
+   },
+   "sign_gospodarchi_damaged": {
+    "bbox_min": [
+     -0.015,
+     -0.649,
+     0.0
+    ],
+    "bbox_max": [
+     3.039,
+     0.677,
+     0.315
+    ],
+    "tris": 56
+   },
+   "sign_kafe_intact": {
+    "bbox_min": [
+     0.5,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     2.7,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_kafe_damaged": {
+    "bbox_min": [
+     0.366,
+     -0.499,
+     0.0
+    ],
+    "bbox_max": [
+     2.656,
+     0.685,
+     0.325
+    ],
+    "tris": 62
+   },
+   "sign_kvity_intact": {
+    "bbox_min": [
+     0.6,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     2.6,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_kvity_damaged": {
+    "bbox_min": [
+     0.469,
+     -0.436,
+     0.0
+    ],
+    "bbox_max": [
+     2.566,
+     0.684,
+     0.309
+    ],
+    "tris": 62
+   },
+   "sign_ovochi_intact": {
+    "bbox_min": [
+     0.1,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.1,
+     0.62,
+     0.095
+    ],
+    "tris": 44
+   },
+   "sign_ovochi_damaged": {
+    "bbox_min": [
+     -0.021,
+     -0.688,
+     0.0
+    ],
+    "bbox_max": [
+     3.03,
+     0.681,
+     0.315
+    ],
+    "tris": 56
+   },
+   "sign_zootovary_intact": {
+    "bbox_min": [
+     0.2,
+     0.0,
+     0.0
+    ],
+    "bbox_max": [
+     3.0,
+     0.62,
+     0.17
+    ],
+    "tris": 42
+   },
+   "sign_zootovary_damaged": {
+    "bbox_min": [
+     0.085,
+     -0.552,
+     0.0
+    ],
+    "bbox_max": [
+     2.955,
+     0.675,
+     0.373
+    ],
+    "tris": 62
+   },
+   "roof_machine_room": {
+    "bbox_min": [
+     -2.35,
+     0.0,
+     -1.65
+    ],
+    "bbox_max": [
+     2.35,
+     4.0,
+     1.85
+    ],
+    "tris": 158
+   },
+   "roof_vent": {
+    "bbox_min": [
+     -0.82,
+     0.0,
+     -0.57
+    ],
+    "bbox_max": [
+     1.348,
+     1.37,
+     0.57
+    ],
+    "tris": 112
+   },
+   "roof_antenna": {
+    "bbox_min": [
+     -1.735,
+     0.0,
+     -2.476
+    ],
+    "bbox_max": [
+     2.551,
+     4.564,
+     1.942
+    ],
+    "tris": 168
+   },
+   "collapse_pile_large": {
+    "bbox_min": [
+     -6.5,
+     -0.399,
+     -6.5
+    ],
+    "bbox_max": [
+     6.5,
+     6.74,
+     6.5
+    ],
+    "tris": 9130
+   },
+   "collapse_pile_small": {
+    "bbox_min": [
+     -3.729,
+     -0.714,
+     -3.5
+    ],
+    "bbox_max": [
+     4.114,
+     4.527,
+     3.66
+    ],
+    "tris": 2932
+   },
+   "slab_hanging": {
+    "bbox_min": [
+     0.001,
+     -0.458,
+     -3.6
+    ],
+    "bbox_max": [
+     3.208,
+     2.995,
+     -1.065
+    ],
+    "tris": 482
    }
   },
   "notes": {
@@ -438,7 +1322,14 @@
    "stair_core": "3.2 wide x 2.8 high x 4.5 deep: flight up from z=-4.2 (floor landing provided by slab_floor) to the half-landing at y=1.4 against the facade, second flight back up to y=2.8",
    "plinth": "3.2 x 0.9 x 0.45 basement plinth with vent grille, same pivot rules as walls",
    "partition_wall_*": "interior gypsum partition 3.2 x 2.58 x 0.08 with doorway; _intact/_holed",
-   "debris_*": "loose furniture debris (wardrobe, bed, table+chair, radiator), origin on the floor"
+   "debris_*": "loose furniture debris (wardrobe, bed, table+chair, radiator), origin on the floor",
+   "brick_<type>_<state>, brick_red_<type>_<state>": "series 1-447 brick walls, types window/balcony/blank_end/entrance, same 3.2 x 2.8 x 0.3 frame, openings and 4 damage states as wall_*; brick_* = white silicate brick, brick_red_* = red ceramic brick (two piece sets, same geometry, different atlas cells). Reuse balcony_slab*/entrance_canopy/plinth. Holes are stair-stepped along the brick courses; masonry mesh wires instead of rebar",
+   "brick_parapet, brick_red_parapet": "brick roof parapet 0.69 m with corbelled course + galvanised cap; wall frame (maxZ = 0)",
+   "wall_shopfront_<state>, wall_shopfront_shutter_<state>": "ground-floor shop panel (converted flat): tiled piers + glazed door + 2x2 display window / one wide opening with a steel roller shutter (closed when intact, half-raised and torn when damaged, ripped out when holed). Fascia y 2.08..2.8 is left for a sign_* piece. Same frame and states as wall_*",
+   "sign_<shop>_intact|_damaged": "shop sign mounted on the fascia: place in panel coords with its bottom at y = 2.14 on a wall_shopfront* panel. Authored in the accessory frame (centred on x = W/2, starts at the wall face z = 0, extends +Z up to 0.17) -> normalise like balcony/entrance_canopy (add ^sign_ to the accessory regex in buildKit). Shops: apteka, produkty, khlib, magazyn, perukarnia, gospodarchi, kafe, kvity, ovochi, zootovary. _damaged = right bracket torn, hanging tilted (shares the _intact offset)",
+   "roof_machine_room, roof_vent, roof_antenna": "roof-top pieces, origin at their footprint centre on the roof surface (y = 0), +Z front (machine-room door). Place on the roof slab of 9+ storey blocks (machine room above a stair core). buildKit normalises them to minX=0/minY=0/maxZ=0: add bbox_min.x / bbox_max.z back to recentre",
+   "collapse_pile_large, collapse_pile_small": "section-collapse rubble: pancaked floor slabs on a rubble mound with rebar, standing facade remnants, leaning/lying panels, balcony, furniture. Origin = footprint centre on the ground, +Z = side the section fell towards (street). large ~13 x 13 m, small ~7 x 7 m (see bbox)",
+   "slab_hanging": "slab_floor frame (x 0..3.2, -z inward): floor slab of the storey above hanging diagonally from its interior support line (hinge = slab top at y = H, z = -W) down to the floor below (free edge y ~ 0.05, z ~ -1.6). With the generic minX/minY/maxZ normalisation the hinge sits at (x, H - bbox_min.y, -W - bbox_max.z)"
   }
  },
  "rubble_files": [

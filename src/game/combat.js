@@ -18,7 +18,7 @@ export class Combat {
     if (t.type === 'vehicle') return out.set(t.pos.x, 1.5, t.pos.z);
     return out.set(t.pos.x, t.pos.y + t.headHeight() * 0.75, t.pos.z);
   }
-  bldOf(s) { return s && s.inside && s.inside !== 'btr' ? s.squad.building : null; }
+  bldOf(s) { return s && s.inBuilding ? s.bld : null; }
 
   // ---------------------------------------------------------------- infantry
   soldierCombat(s, dt) {
@@ -26,13 +26,24 @@ export class Combat {
     s.scanT -= dt;
     if (s.reloadT > 0) { s.reloadT -= dt; if (s.reloadT <= 0) this.finishReload(s); return; }
     if (s.scanT <= 0) { s.scanT = 0.7 + Math.random() * 0.5; this.acquire(s); }
+    // RPG-22 sequence in progress: aim, fire, discard tube
+    if (s.launcherT > 0) {
+      s.launcherT -= dt;
+      const tv = s.launcherTarget;
+      if (!s.launchFired && s.launcherT < 0.5 && tv && !tv.destroyed) { s.launchFired = true; this.fireRpg(s, tv, WEAPONS.rpg22, true); }
+      if (s.launcherT <= 0) { s.discardLauncher(); s.launcherTarget = null; }
+      return;
+    }
     const t = s.target; if (!t) return;
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
+    if (s.rpg22 > 0 && t.type === 'vehicle' && s.inside !== 'ride' && Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z) < WEAPONS.rpg22.range && s.vel.lengthSq() < 0.5) {
+      s.rpg22--; s.launcherT = 2.2; s.launchFired = false; s.launcherTarget = t; s.raiseLauncher(); return;
+    }
     // hand grenades at close range (RGD-5 / F-1): into windows or over cover
     if ((s.grenades ?? 2) > 0 && t.type !== 'vehicle' && (s.grenT = (s.grenT ?? 4) - dt) <= 0) {
-      s.grenT = 6 + Math.random() * 6;
+      s.grenT = (s.assault ? 3.5 : 6) + Math.random() * 6;
       const d = Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z);
-      if (d < 28 && d > 7 && Math.random() < 0.55 && !s.inside) { this.throwGrenade(s, t); return; }
+      if (d < (s.assault ? 34 : 28) && d > 7 && Math.random() < (s.assault ? 0.8 : 0.55) && !s.inside) { s.throwWindow = !!t.inBuilding; this.throwGrenade(s, t); return; }
     }
     if (s.vel.lengthSq() > 2.5 && s.weaponKey !== 'ak74m') return; // only rifles fire on the move (badly)
     // facing check
@@ -54,13 +65,13 @@ export class Combat {
     const cands = [];
     const consider = (t, prio) => { const d = Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z); if (d > range) return; cands.push([t, d - prio]); };
     for (const u of g.enemiesOf(sq.side)) {
-      if (u.type === 'vehicle') { if (!u.destroyed) consider(u, s.weaponKey === 'rpg7' ? 120 : -40); continue; }
-      if (u.mounted) continue;
+      if (!g.seen(sq.side, u, s.pos)) continue;
+      if (u.type === 'vehicle') { if (!u.destroyed) consider(u, s.weaponKey === 'rpg7' ? 120 : (s.rpg22 > 0 && Math.hypot(u.pos.x - s.pos.x, u.pos.z - s.pos.z) < 160) ? 90 : -40); continue; }
       const focus = sq.focus === u ? 30 : 0;
-      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr') consider(e, focus + (e.inside ? -10 : 0));
+      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr') consider(e, focus + (e.inBuilding ? -10 : 0));
     }
     if (s.weaponKey === 'rpg7') { // RPG gunner: only vehicles or garrisoned clusters
-      for (let i = cands.length - 1; i >= 0; i--) { const t = cands[i][0]; if (t.type !== 'vehicle' && !(t.inside && cands[i][1] < 120 && Math.random() < 0.25)) cands.splice(i, 1); }
+      for (let i = cands.length - 1; i >= 0; i--) { const t = cands[i][0]; if (t.type !== 'vehicle' && !(t.inBuilding && cands[i][1] < 120 && Math.random() < 0.25)) cands.splice(i, 1); }
       if (!cands.length && s.sideKey && s.sideMags > 0) { this.swapToSide(s); return this.acquire(s); }
     }
     cands.sort((a, b) => a[1] - b[1]);
@@ -101,7 +112,8 @@ export class Combat {
     if (s.squad.morale < 45) p *= 0.8;
     if (t.type === 'vehicle') return Math.min(0.95, p * 4);
     // target modifiers
-    if (t.inside) p *= 0.3;
+    if (t.inBuilding) p *= 0.3;
+    else if (t.inside === 'ride') p *= 0.75;
     else {
       const cov = this.g.nav.coverFrom(t.pos.x, t.pos.z, s.pos.x, s.pos.z);
       p *= 1 - cov * (t.stance === 'stand' ? 0.45 : 0.72);
@@ -133,14 +145,14 @@ export class Combat {
     t.squad.underFireT = 0; t.squad.flankDirs.push(Math.atan2(s.pos.x - t.pos.x, s.pos.z - t.pos.z));
     if (hit) this.hitSoldier(t, W, s.pos, false, s);
     else {
-      const inB = t.inside ? t.squad.building : null;
+      const inB = t.inBuilding ? t.bld : null;
       if (near) g.fx.impact(end, inB ? 'concrete' : 'dirt', 0.6);
       if (g.camDist(end) < 30 && Math.random() < 0.25) g.sfx(Math.random() < 0.5 ? 'bullet_whizz' : (inB ? 'impact_concrete' : 'impact_dirt'), end, { gain: 0.6 });
     }
   }
   throwGrenade(s, t) {
     s.grenades = (s.grenades ?? 2) - 1; s.throwT = 1.2; s.fireCd = 1.5;
-    const to = t.inside ? t.squad.building.panelCenter(t.inside.panel, new THREE.Vector3()) : t.pos.clone();
+    const to = t.inBuilding ? t.bld.panelCenter(t.inside.panel, new THREE.Vector3()) : t.pos.clone();
     to.x += (Math.random() - .5) * 4; to.z += (Math.random() - .5) * 4;
     if (this.g.camDist(s.pos) < 60) this.g.sfx('grenade_pin', s.pos);
     this.projectiles.push({ kind: 'grenade', pos: s.pos.clone().setY(1.6), from: s.pos.clone().setY(1.6), target: to, t: null, speed: 14, owner: s, side: s.squad.side, fuse: 0, arc: true });
@@ -151,19 +163,48 @@ export class Combat {
     const o = this.g.nav.addOccluder(p.x, p.z, 5, 5, 0, 7, null);
     o.smokeUntil = this.g.time + 30;
   }
+  // ---------------------------------------------------------------- close quarters (building storming)
+  stormTick(sq, dt) {
+    const o = sq.order, b = o.building, g = this.g;
+    const defenders = b.slots.map(sl => sl.occupant).filter(d => d && d.effective && d.squad.side !== sq.side);
+    if (!defenders.length) { sq.order = null; sq.orderGarrison(b); if (sq.side === 'player') g.hud?.alert(`${sq.name}: building cleared`, 'good'); return; }
+    const att = sq.effective.filter(s => !s.path || s.pathI >= s.path.length).filter(s => s.pos.distanceTo(o.entrance) < 9);
+    if (att.length < Math.min(2, sq.effective.length)) return; // still stacking up
+    o.t += dt;
+    for (const s of att) s.stackT = 1;
+    if (o.t < 2) return;
+    // grenades through the door / windows, then entry; each tick resolves a short exchange
+    const skill = sq.assault ? 1.6 : 1;
+    for (const s of att) {
+      if (s.grenades > 0 && Math.random() < 0.45) {
+        s.grenades--; s.throwT = 1.2; s.throwWindow = Math.random() < 0.5;
+        const d = defenders[Math.floor(Math.random() * defenders.length)];
+        const at = b.panelCenter(d.inside.panel, new THREE.Vector3()).addScaledVector(b.outward(d.inside.panel), -1.2); at.y = d.pos.y + 0.4;
+        setTimeout(() => this.explode(at, 0.45, s, [60, 150], 5), 1300 / Math.max(1, g.timeScale));
+      } else if (Math.random() < 0.22 * skill) {
+        const d = defenders[Math.floor(Math.random() * defenders.length)];
+        this.hitSoldier(d, s.weapon, s.pos, false, s); g.sfx('rifle_near', s.pos, { gain: 0.8 });
+      }
+    }
+    for (const d of defenders) if (Math.random() < 0.09 * (d.squad.assault ? 1.6 : 1) * (1 - d.suppression / 150)) {
+      const t = att[Math.floor(Math.random() * att.length)]; this.hitSoldier(t, d.weapon, d.pos, false, d); g.sfx('rifle_near', d.pos, { gain: 0.7 });
+    }
+    for (const d of defenders) { d.suppression = Math.min(100, d.suppression + 12); d.squad.underFireT = 0; d.squad.addMorale(-1.2); }
+    sq.underFireT = 0;
+  }
   // ---------------------------------------------------------------- casualties
   hitSoldier(t, W, fromPos, blast = false, shooter = null) {
     if (!t.alive || t.state === 'dead') return;
     const g = this.g; let dmg, head = false;
-    if (blast || W.type === 'blast') { dmg = rf(...(W.dmg || [40, 90])); if (t.stance === 'prone') dmg *= 0.6; }
+    if (blast || W.type === 'blast') { dmg = rf(...(W.dmg || [40, 90])); if (t.stance === 'prone') dmg *= 0.6; if (t.armor?.plateCoverage > 0.5) dmg *= 0.8; }
     else {
       const r = Math.random();
-      if (r < 0.08) { head = true; if (Math.random() < TUNING.helmetStopChance && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else dmg = 160; }
+      if (r < 0.08) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else dmg = 160; }
       else if (r < 0.55) { // torso
-        const stopP = W.type === 'rifle' ? TUNING.plateStopsRifle * TUNING.plateCoverage / 0.47 : W.type === 'mg' ? 0.55 : 0;
+        const A = t.armor || { plateCoverage: TUNING.plateCoverage, plateStop: TUNING.plateStopsRifle }; const stopP = W.type === 'rifle' ? A.plateStop * A.plateCoverage / 0.47 : W.type === 'mg' ? A.plateStop * A.plateCoverage / 0.47 * 0.65 : 0;
         if (Math.random() < Math.min(0.9, stopP)) { dmg = rf(4, 14); t.suppression = Math.min(100, t.suppression + 40); t.hitT = 0.5; }
         else dmg = rf(W.dmg[0], W.dmg[1]) * 1.3;
-      } else { dmg = rf(W.dmg[0] * 0.6, W.dmg[1] * 0.8); if (r > 0.78) t.legWound = true; }
+      } else { dmg = rf(W.dmg[0] * 0.6, W.dmg[1] * 0.8) * (t.armor?.plateCoverage > 0.5 && r < 0.7 ? 0.5 : 1); if (r > 0.78) t.legWound = true; }
       if (W.type === 'hmg' || W.type === 'autocannon') dmg *= 2.5;
     }
     t.hp -= dmg;
@@ -174,7 +215,7 @@ export class Combat {
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut); t.target = null; t.path = null;
         if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
-        if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; if (t.inside && t.inside !== 'btr') { t.inside = null; } }
+        if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; if (t.inBuilding) { t.inside = null; } }
         sq.onCasualty(t, false); g.stats[sq.side].wia++;
         if (g.camDist(t.pos) < 80) g.sfx('pain', t.pos);
         if (shooter) (shooter.squad || shooter).stats.kills += 0.5;
@@ -185,34 +226,34 @@ export class Combat {
     } else t.hitT = 0.4;
   }
   // ---------------------------------------------------------------- RPG / projectiles
-  fireRpg(s, t) {
+  fireRpg(s, t, W = s.weapon, disposable = false) {
     const g = this.g, from = s.muzzleWorld(C).clone(), tp = this.targetPoint(t, B).clone();
-    s.inMag--; s.fireCd = 2; s.kick = 2;
+    if (!disposable) s.inMag--; s.fireCd = 2; s.kick = 2;
     const d = from.distanceTo(tp);
     // accuracy: dispersion grows with range; moving targets harder
-    const sp = (s.weapon.spread / 1000) * d * (1 + s.suppression / 80) * (t.type === 'vehicle' && Math.abs(t.speed) > 2 ? 2 : 1);
+    const sp = (W.spread / 1000) * d * (1 + s.suppression / 80) * (t.type === 'vehicle' && Math.abs(t.speed) > 2 ? 2 : 1);
     tp.x += (Math.random() - .5) * sp * 2; tp.y += (Math.random() - .5) * sp; tp.z += (Math.random() - .5) * sp * 2;
     g.fx.muzzle(from, tp.clone().sub(from).normalize(), 1.6);
     // backblast
     const back = from.clone().sub(tp).normalize();
     for (let i = 0; i < 8; i++) g.fx.smoke.spawn({ x: from.x + back.x * i * 0.5, y: from.y, z: from.z + back.z * i * 0.5, vx: back.x * 8, vy: 0.5, vz: back.z * 8, life: 2.5, size0: 0.6, size1: 3, r: 0.75, g: 0.73, b: 0.7, a0: 0.5, a1: 0, drag: 2 });
     g.sfx('rpg_launch', s.pos);
-    this.projectiles.push({ kind: 'rpg', pos: from.clone(), target: tp, t, speed: 120, owner: s, side: s.squad.side, weapon: s.weapon, trail: 0 });
+    this.projectiles.push({ kind: 'rpg', pos: from.clone(), target: tp, t, speed: W.projectile?.speed || 120, owner: s, side: s.squad.side, weapon: W, trail: 0 });
     s.squad.firedT = 0;
   }
   fireTankGun(v, t, round) {
-    const g = this.g, W = WEAPONS.a46;
+    const g = this.g, W = WEAPONS.a46; v.firedT = 0;
     const from = v.muzzle ? v.muzzle.getWorldPosition(new THREE.Vector3()) : v.pos.clone().setY(2.3);
     const dir = new THREE.Vector3(); let tp;
     // target in building -> aim at his window panel
-    if (t.type !== 'vehicle' && t.inside && t.inside !== 'btr') tp = t.squad.building.panelCenter(t.inside.panel, new THREE.Vector3());
+    if (t.type !== 'vehicle' && t.inBuilding) tp = t.bld.panelCenter(t.inside.panel, new THREE.Vector3());
     else tp = this.targetPoint(t, B).clone();
     const d = from.distanceTo(tp);
     const acc = (round === 'ap' ? 0.92 : 0.85) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.75 : 1) * Math.exp(-d / 1500);
     const hit = Math.random() < acc;
     if (!hit) { tp.x += (Math.random() - .5) * 6; tp.z += (Math.random() - .5) * 6; tp.y = Math.max(0.2, tp.y + (Math.random() - .5) * 2); }
     // first obstruction along the line (buildings) stops the round
-    const occ = g.nav.occluded(from.x, from.y, from.z, tp.x, tp.y, tp.z, null, t.type !== 'vehicle' && t.inside ? t.squad.building : null);
+    const occ = g.nav.occluded(from.x, from.y, from.z, tp.x, tp.y, tp.z, null, t.type !== 'vehicle' && t.inBuilding ? t.bld : null);
     dir.subVectors(tp, from).normalize();
     g.fx.muzzleBlastTank(from, dir);
     g.sfx('tankgun', v.pos); g.cam.addShake(Math.max(0, 0.6 - g.camDist(v.pos) / 250));
@@ -220,15 +261,15 @@ export class Combat {
     this.projectiles.push({ kind: round === 'ap' ? 'apfsds' : 'he', pos: from.clone(), target: tp, t, speed: round === 'ap' ? 1650 : 850, owner: v, side: v.side, weapon: W, occ, hit });
   }
   fireVehicleGun(v, w, t, coax = false) {
-    const g = this.g, W = WEAPONS[w.key];
+    const g = this.g, W = WEAPONS[w.key]; v.firedT = 0;
     const from = (coax ? v.coax : v.muzzle) ? (coax ? v.coax : v.muzzle).getWorldPosition(new THREE.Vector3()) : v.pos.clone().setY(2.2);
-    const tp = (t.type !== 'vehicle' && t.inside && t.inside !== 'btr') ? t.squad.building.panelCenter(t.inside.panel, new THREE.Vector3()) : this.targetPoint(t, B).clone();
+    const tp = (t.type !== 'vehicle' && t.inBuilding) ? t.bld.panelCenter(t.inside.panel, new THREE.Vector3()) : this.targetPoint(t, B).clone();
     const d = from.distanceTo(tp);
     const near = g.camDist(v.pos) < 300;
     if (near) g.fx.muzzle(from, tp.clone().sub(from).normalize(), W.type === 'autocannon' ? 1.6 : W.type === 'hmg' ? 1.3 : 0.9);
     g.sfx(W.sound === 'cannon30' ? 'cannon30' : W.sound === 'hmg' ? 'hmg' : 'mg_near', v.pos);
     let p = (W.type === 'autocannon' ? 0.3 : W.type === 'hmg' ? 0.2 : 0.14) * Math.exp(-d / 350) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.7 : 1);
-    if (t.type !== 'vehicle') { if (t.inside) p *= 0.45; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
+    if (t.type !== 'vehicle') { if (t.inBuilding) p *= 0.45; else if (t.inside === 'ride') p *= 0.8; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
     else p = Math.min(0.9, p * 3);
     const hit = Math.random() < p;
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.01; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }
@@ -242,8 +283,8 @@ export class Combat {
     const sup = (W.suppress || 1.5) * 9;
     for (const o of t.squad.soldiers) if (o.effective && o.pos.distanceToSquared(end) < 25) o.suppression = Math.min(100, o.suppression + sup);
     t.squad.underFireT = 0; t.squad.flankDirs.push(Math.atan2(v.pos.x - t.pos.x, v.pos.z - t.pos.z));
-    if (t.inside && W.type === 'hmg') this.damageBuilding(t.squad.building, end, 4);
-    if (hit) this.hitSoldier(t, W, v.pos, false, v); else if (near) g.fx.impact(end, t.inside ? 'concrete' : 'dirt', W.type === 'hmg' ? 1.2 : 0.7);
+    if (t.inBuilding && W.type === 'hmg') this.damageBuilding(t.bld, end, 4);
+    if (hit) this.hitSoldier(t, W, v.pos, false, v); else if (near) g.fx.impact(end, t.inBuilding ? 'concrete' : 'dirt', W.type === 'hmg' ? 1.2 : 0.7);
   }
   update(dt) {
     const g = this.g;
@@ -275,7 +316,7 @@ export class Combat {
     }
     if (p.kind === 'he' || p.kind === 'rpg' || p.kind === 'he30') {
       // if a building is in the way, burst on the facade
-      if (p.occ === undefined) p.occ = g.nav.occluded(p.owner.pos.x, 2, p.owner.pos.z, at.x, at.y, at.z, p.owner.squad?.building || null, p.t && p.t.type !== 'vehicle' && p.t.inside ? p.t.squad.building : null);
+      if (p.occ === undefined) p.occ = g.nav.occluded(p.owner.pos.x, 2, p.owner.pos.z, at.x, at.y, at.z, p.owner.squad?.building || null, p.t && p.t.type !== 'vehicle' && p.t.inBuilding ? p.t.bld : null);
       if (p.occ && p.occ.ref?.panels) at = this.facadePoint(p.occ, p.owner.pos, at);
       if (p.t && p.t.type === 'vehicle' && p.hit !== false && at.distanceTo(p.t.pos) < p.t.def.length * 0.6 && p.kind === 'rpg') {
         this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ce', p.owner);
@@ -308,7 +349,6 @@ export class Combat {
     if (b) this.damageBuilding(b, at, power * 55);
     // casualties
     for (const sq of g.squads) {
-      if (sq.mounted) continue;
       for (const s of sq.soldiers) {
         if (!s.alive || s.inside === 'btr') continue;
         const d = s.pos.distanceTo(at); if (d > radius * 3) continue;
@@ -316,9 +356,9 @@ export class Combat {
         sq.underFireT = 0;
         if (d > radius) continue;
         let k = Math.pow(1 - d / radius, 1.4);
-        if (s.inside && sq.building) {
-          const pc = sq.building.panelCenter(s.inside.panel, C);
-          if (sq.building === b) { const dd = pc.distanceTo(at); if (dd > 4.5) continue; k = Math.pow(1 - dd / 4.5, 1.2) * 0.9; }
+        if (s.inBuilding) {
+          const pc = s.bld.panelCenter(s.inside.panel, C);
+          if (s.bld === b) { const dd = pc.distanceTo(at); if (dd > 4.5) continue; k = Math.pow(1 - dd / 4.5, 1.2) * 0.9; }
           else k *= 0.35; // outside blast vs. a man behind a concrete panel
         } else {
           // shielded by a wall between blast and soldier?
@@ -354,6 +394,7 @@ export class Combat {
       }
     }
     if (collapsed >= 2) { g.sfx('collapse', at); g.cam.addShake(Math.max(0, 0.5 - g.camDist(at) / 300)); } else if (collapsed) g.sfx('debris', at);
+    for (const si of b.checkCollapse()) g.city.collapseSection(b, si, g);
     // garrison morale
     for (const sq of g.squads) if (sq.building === b) { sq.addMorale(-4 * Math.min(3, changed.length)); sq.underFireT = 0; }
   }
@@ -397,6 +438,7 @@ export class Combat {
     const mainW = WEAPONS[v.weapons[0].key];
     let best = null, bs = -1e9, bestInf = null, bi = 1e9;
     for (const u of g.enemiesOf(v.side)) {
+      if (!g.seen(v.side, u, v.pos)) continue;
       if (u.type === 'vehicle') {
         if (u.destroyed) continue; const d = u.pos.distanceTo(v.pos); if (d > mainW.range) continue;
         if (!this.los(eye.x, eye.y, eye.z, u.pos.x, 1.5, u.pos.z, v, u)) continue;
@@ -405,21 +447,20 @@ export class Combat {
         if (sc > bs) { bs = sc; best = u; }
         continue;
       }
-      if (u.mounted) continue;
-      // infantry: pick a soldier (prefer clusters / garrisons for HE)
+      // infantry: pick a soldier (riders on armour are prime targets) (prefer clusters / garrisons for HE)
       for (const s of u.soldiers) {
         if (!s.effective || s.inside === 'btr') continue;
         const d = s.pos.distanceTo(v.pos); if (d > 700) continue;
         const tp = this.targetPoint(s, B);
         if (!this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s)) continue;
         if (d < bi) { bi = d; bestInf = s; }
-        const sc = 120 - d * 0.25 + (s.inside ? 40 : 0) + (v.focus === u ? 200 : 0) + (s.weaponKey === 'rpg7' ? 60 : 0);
-        if (v.kind === 'tank' && v.weapons[0].he <= 0 && !s.inside) continue;
+        const sc = 120 - d * 0.25 + (s.inBuilding ? 40 : 0) + (s.inside === 'ride' ? 50 : 0) + (v.focus === u ? 200 : 0) + (s.weaponKey === 'rpg7' ? 60 : 0);
+        if (v.kind === 'tank' && v.weapons[0].he <= 0 && !s.inBuilding) continue;
         if (sc > bs) { bs = sc; best = s; }
         break; // one LOS-checked soldier per squad is enough
       }
     }
     v.target = best; v.coaxTarget = bestInf && bi < 500 ? bestInf : null;
-    if (v.target && v.target.type !== 'vehicle' && v.kind === 'tank' && v.target.squad && !v.target.inside && v.weapons[0].he < 6) v.target = null; // save HE for buildings
+    if (v.target && v.target.type !== 'vehicle' && v.kind === 'tank' && v.target.squad && !v.target.inBuilding && v.weapons[0].he < 6) v.target = null; // save HE for buildings
   }
 }
