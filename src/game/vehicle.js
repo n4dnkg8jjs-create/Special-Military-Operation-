@@ -142,6 +142,9 @@ export class Vehicle {
       let want = this.turretYaw;
       if (t) { const tp = t.pos; want = angDiff(Math.atan2(tp.x - this.pos.x, tp.z - this.pos.z), this.heading); }
       else want = this.turretYaw * (1 - dt * 0.3);
+      // riders on the deck: keep the barrel out of them (BTR front arc, T-72 locked forward)
+      const riders = this.passengers?.mounted && this.passengers.soldiers.some(s => s.inside === 'ride');
+      if (riders) { const arc = this.kind === 'tank' ? 0.12 : 0.7; want = THREE.MathUtils.clamp(want, -arc, arc); }
       const rate = this.def.turretSpeed * (this.gunDisabled ? 0.3 : 1);
       const d = angDiff(want, this.turretYaw); this.turretYaw += THREE.MathUtils.clamp(d, -rate * dt, rate * dt);
       this.turretSlewing = Math.abs(d) > 0.02;

@@ -291,7 +291,7 @@ export class Game {
   }
   // ---------------------------------------------------------------- loop
   update(dt) {
-    if (this.phase === 'deploy') { for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(0); else for (const s of sq.soldiers) { s.animate(0.016, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
+    if (this.phase === 'deploy') { for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(0.05, true); else for (const s of sq.soldiers) { s.animate(0.05, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
     if (this.paused || this.over) { this.servicePaths(4); return; }
     dt = Math.min(dt, 0.05) * this.timeScale;
     this.time += dt; globalThis.__gameTime = this.time;

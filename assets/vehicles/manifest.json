@@ -11,7 +11,8 @@
   "materials": "<vehicle>_paint: one 2048 atlas (albedo JPEG 2048, ORM PNG 1024 [R=1, G=roughness, B=metalness], normal PNG 1024) for all painted steel, rubber tyres, wood, canvas, MG metal; glass; light_lens; track (alphaMode MASK) ; <vehicle>_wreck + track_wreck for the burnt variants.",
   "track_uv": "track_L/track_R: U = link index along the loop (1.0 per link, 97 links -> U 0..97), V across the profile. Scroll the track material map/normalMap/roughnessMap offset.x by distance_travelled / track_link_pitch_m (sign by direction; L and R share the material, so clone it per side for skid steering). Guide horns and the gaps between links are alpha-tested, so they scroll with the texture.",
   "cope_cage": "t72b3 only: separate mesh node turret/cope_cage (+LOD1) so the game can toggle it.",
-  "empties": "muzzle, coax_muzzle under gun_pivot; smoke_launchers and (tanks) commander_hatch under turret; exhaust, dismount_L, dismount_R and (BTR) commander_hatch under hull. Tank dismount_L/R mark crew bail-out points beside the hull."
+  "empties": "muzzle, coax_muzzle under gun_pivot; smoke_launchers and (tanks) commander_hatch under turret; exhaust, dismount_L, dismount_R and (BTR) commander_hatch under hull. Tank dismount_L/R mark crew bail-out points beside the hull.",
+  "ride_seats": "Desant riding positions: empties ride_seat_1..N under hull (BTR: 8, T-72: 6), listed per vehicle in ride_seats. Origin = point under the rider pelvis on the sitting surface; local +Z = direction the rider faces, +Y = up. extras.seat_type: \"edge\" = sitting on a deck edge / fender bin with the legs hanging over the side (thighs along +Z, knees ~0.44 m out, shins down; on the BTR the upper hull side below the roof edge slopes outward ~39 deg, so angle the shins out ~30 deg) or \"deck\" = sitting on the deck, legs forward along +Z (knees up). Seats parent to hull, so riders follow hull motion; turret traverse never reaches them (ride_clearance.turret_sweep_radius_m vs min_rider_margin_m, cope cage included), but the gun barrel does: ride_clearance.gun_min_elevation_to_clear_riders_deg is the elevation the gun needs before it may traverse over riders; when gun_can_clear_riders is false (T-72) lock the turret to the forward arc while riders are aboard. The rider proxy used for these checks is drawn by tools/blender/vehicles/preview.html?seats=1."
  },
  "sources": {
   "btr": [
@@ -20,7 +21,8 @@
    "https://warwheels.net/images/BTR80datasheet.pdf (BTR-80: wheel track 2.41 m, tyres 13.00x18 run-flat, clearance 475 mm, 7.55 x 2.95 x 2.41 m)",
    "https://koi.legion.wplus.net/guide/army/ta/btr80.shtml (axle spacing 1.35 + 1.95 + 1.35 m, central tyre inflation, 902V Tucha x6)",
    "https://en.wikipedia.org/wiki/BTR-80 (split side doors between axles 2 and 3, ball-mount firing ports, BPPU on BTR-80A/82A)",
-   "https://www.globalsecurity.org/military/world/russia/btr-80-specs.htm (BTR-80 7.55 x 2.95 x 2.41 m, KPVT + PKT, 6 x 81 mm launchers)"
+   "https://www.globalsecurity.org/military/world/russia/btr-80-specs.htm (BTR-80 7.55 x 2.95 x 2.41 m, KPVT + PKT, 6 x 81 mm launchers)",
+   "https://en.wikipedia.org/wiki/BTR-80 (side doors: upper part opens forward, lower part folds down as a step; round ball-mount ports, the forward ones in angled recesses; rear raised and engine compartment squared off; 6 smoke projectors on the turret rear; KPVT/PKT elevate to 60 deg)"
   ],
   "t72": [
    "https://www.globalsecurity.org/military/world/russia/t-72-specs.htm (hull 6.86-6.91 m, 9.53 m gun forward, width 3.58-3.77 m, turret roof 2.226 m, clearance 0.49 m)",
@@ -55,28 +57,28 @@
    ],
    "markings": "none (plain field-worn 4BO-style green, dust)",
    "file": "assets/vehicles/btr82a.glb",
-   "file_mb": 5.79,
+   "file_mb": 6.29,
    "tris": {
-    "lod0": 67448,
-    "lod1": 20225,
-    "hull_wreck": 15112,
-    "turret_wreck": 1654
+    "lod0": 74153,
+    "lod1": 22223,
+    "hull_wreck": 16058,
+    "turret_wreck": 1962
    },
    "model_bbox_m": {
     "min": [
-     -1.507,
-     -0.028,
-     -3.98
+     -1.531,
+     -0.042,
+     -4.005
     ],
     "max": [
-     1.507,
-     3.075,
-     4.09
+     1.531,
+     3.28,
+     4.12
     ],
     "size": [
-     3.014,
-     3.103,
-     8.07
+     3.062,
+     3.322,
+     8.125
     ]
    },
    "materials": [
@@ -85,6 +87,142 @@
     "glass",
     "light_lens"
    ],
+   "ride_seats": [
+    {
+     "name": "ride_seat_1",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      1.995,
+      -0.45
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_2",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      1.995,
+      -0.45
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_3",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      1.969,
+      -1.25
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_4",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      1.969,
+      -1.25
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_5",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      2.003,
+      -1.95
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_6",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      2.003,
+      -1.95
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_7",
+     "seat_type": "deck",
+     "pos": [
+      -0.3,
+      2.01,
+      -2.85
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_8",
+     "seat_type": "deck",
+     "pos": [
+      0.3,
+      2.01,
+      -2.85
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    }
+   ],
+   "ride_clearance": {
+    "turret_sweep_radius_m": 1.04,
+    "turret_sweep_z_m": [
+     2.0,
+     3.28
+    ],
+    "min_rider_margin_m": 0.121,
+    "per_seat_margin_m": [
+     0.121,
+     0.121,
+     0.882,
+     0.882,
+     1.566,
+     1.566,
+     1.896,
+     1.896
+    ],
+    "gun_trunnion_height_m": 2.34,
+    "gun_min_elevation_to_clear_riders_deg": 50.5,
+    "gun_max_elevation_deg": 70,
+    "gun_can_clear_riders": true
+   },
    "hierarchy": {
     "name": "root",
     "type": "empty",
@@ -107,9 +245,9 @@
         "name": "commander_hatch",
         "type": "empty",
         "pos": [
-         -0.5,
-         2.05,
-         2.0
+         -0.45,
+         2.01,
+         1.98
         ]
        },
        {
@@ -134,15 +272,15 @@
         "name": "exhaust",
         "type": "empty",
         "pos": [
-         1.424,
-         1.607,
-         -3.25
+         1.416,
+         1.505,
+         -3.4
         ]
        },
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 21346,
+        "tris": 23439,
         "pos": [
          0.0,
          0.0,
@@ -153,7 +291,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 6401,
+        "tris": 7021,
         "pos": [
          0.0,
          0.0,
@@ -161,11 +299,83 @@
         ]
        },
        {
+        "name": "ride_seat_1",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         1.995,
+         -0.45
+        ]
+       },
+       {
+        "name": "ride_seat_2",
+        "type": "empty",
+        "pos": [
+         0.56,
+         1.995,
+         -0.45
+        ]
+       },
+       {
+        "name": "ride_seat_3",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         1.969,
+         -1.25
+        ]
+       },
+       {
+        "name": "ride_seat_4",
+        "type": "empty",
+        "pos": [
+         0.56,
+         1.969,
+         -1.25
+        ]
+       },
+       {
+        "name": "ride_seat_5",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         2.003,
+         -1.95
+        ]
+       },
+       {
+        "name": "ride_seat_6",
+        "type": "empty",
+        "pos": [
+         0.56,
+         2.003,
+         -1.95
+        ]
+       },
+       {
+        "name": "ride_seat_7",
+        "type": "empty",
+        "pos": [
+         -0.3,
+         2.01,
+         -2.85
+        ]
+       },
+       {
+        "name": "ride_seat_8",
+        "type": "empty",
+        "pos": [
+         0.3,
+         2.01,
+         -2.85
+        ]
+       },
+       {
         "name": "turret",
         "type": "empty",
         "pos": [
          0.0,
-         2.05,
+         2.0,
          0.95
         ],
         "children": [
@@ -174,47 +384,47 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.49,
-           1.61
+           2.34,
+           1.57
           ],
           "children": [
            {
             "name": "coax_muzzle",
             "type": "empty",
             "pos": [
-             -0.21,
-             2.49,
-             2.22
+             -0.2,
+             2.31,
+             2.24
             ]
            },
            {
             "name": "gun_geo",
             "type": "mesh",
-            "tris": 812,
+            "tris": 920,
             "pos": [
              0.0,
-             2.49,
-             1.61
+             2.34,
+             1.57
             ]
            },
            {
             "name": "gun_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 242,
+            "tris": 276,
             "pos": [
              0.0,
-             2.49,
-             1.61
+             2.34,
+             1.57
             ]
            },
            {
             "name": "muzzle",
             "type": "empty",
             "pos": [
-             0.0,
-             2.49,
-             4.09
+             0.04,
+             2.34,
+             4.13
             ]
            }
           ]
@@ -224,17 +434,17 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.8,
-           1.05
+           2.5,
+           0.49
           ]
          },
          {
           "name": "turret_geo",
           "type": "mesh",
-          "tris": 2890,
+          "tris": 3490,
           "pos": [
            0.0,
-           2.05,
+           2.0,
            0.95
           ]
          },
@@ -242,10 +452,10 @@
           "name": "turret_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 866,
+          "tris": 1046,
           "pos": [
            0.0,
-           2.05,
+           2.0,
            0.95
           ]
          }
@@ -263,7 +473,7 @@
          {
           "name": "wheel_L1_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -274,7 +484,7 @@
           "name": "wheel_L1_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -295,7 +505,7 @@
          {
           "name": "wheel_L2_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -306,7 +516,7 @@
           "name": "wheel_L2_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -327,7 +537,7 @@
          {
           "name": "wheel_L3_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -338,7 +548,7 @@
           "name": "wheel_L3_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -359,7 +569,7 @@
          {
           "name": "wheel_L4_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -370,7 +580,7 @@
           "name": "wheel_L4_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -391,7 +601,7 @@
          {
           "name": "wheel_R1_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -402,7 +612,7 @@
           "name": "wheel_R1_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -423,7 +633,7 @@
          {
           "name": "wheel_R2_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -434,7 +644,7 @@
           "name": "wheel_R2_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -455,7 +665,7 @@
          {
           "name": "wheel_R3_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -466,7 +676,7 @@
           "name": "wheel_R3_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -487,7 +697,7 @@
          {
           "name": "wheel_R4_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -498,7 +708,7 @@
           "name": "wheel_R4_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -513,7 +723,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 15112,
+      "tris": 16058,
       "pos": [
        0.0,
        0.0,
@@ -524,10 +734,10 @@
       "name": "turret_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 1654,
+      "tris": 1962,
       "pos": [
        0.0,
-       1.752,
+       1.702,
        0.95
       ]
      }
@@ -559,30 +769,30 @@
     "7.62 mm PKT coaxial (coax_muzzle)",
     "6 x 81 mm 902V Tucha (smoke_launchers)"
    ],
-   "markings": "white crosses on both hull sides + rear plate; green/black/brown disruptive camo",
+   "markings": "white crosses on both hull sides, rear plate and roof; green base with brown + khaki disruptive patches",
    "file": "assets/vehicles/btr80_ua.glb",
-   "file_mb": 5.73,
+   "file_mb": 6.52,
    "tris": {
-    "lod0": 66716,
-    "lod1": 20004,
-    "hull_wreck": 14906,
-    "turret_wreck": 1516
+    "lod0": 73897,
+    "lod1": 22140,
+    "hull_wreck": 15940,
+    "turret_wreck": 1960
    },
    "model_bbox_m": {
     "min": [
-     -1.507,
-     -0.028,
-     -3.98
+     -1.531,
+     -0.042,
+     -4.005
     ],
     "max": [
-     1.507,
-     2.7,
-     3.898
+     1.531,
+     2.66,
+     3.893
     ],
     "size": [
-     3.014,
-     2.728,
-     7.878
+     3.062,
+     2.702,
+     7.898
     ]
    },
    "materials": [
@@ -591,6 +801,142 @@
     "glass",
     "light_lens"
    ],
+   "ride_seats": [
+    {
+     "name": "ride_seat_1",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      1.995,
+      -0.45
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_2",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      1.995,
+      -0.45
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_3",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      1.969,
+      -1.25
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_4",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      1.969,
+      -1.25
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_5",
+     "seat_type": "edge",
+     "pos": [
+      -0.56,
+      2.003,
+      -1.95
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_6",
+     "seat_type": "edge",
+     "pos": [
+      0.56,
+      2.003,
+      -1.95
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_7",
+     "seat_type": "deck",
+     "pos": [
+      -0.3,
+      2.01,
+      -2.85
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_8",
+     "seat_type": "deck",
+     "pos": [
+      0.3,
+      2.01,
+      -2.85
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    }
+   ],
+   "ride_clearance": {
+    "turret_sweep_radius_m": 0.801,
+    "turret_sweep_z_m": [
+     2.0,
+     2.607
+    ],
+    "min_rider_margin_m": 0.36,
+    "per_seat_margin_m": [
+     0.36,
+     0.36,
+     1.121,
+     1.121,
+     1.805,
+     1.805,
+     2.134,
+     2.134
+    ],
+    "gun_trunnion_height_m": 2.22,
+    "gun_min_elevation_to_clear_riders_deg": 54.1,
+    "gun_max_elevation_deg": 60,
+    "gun_can_clear_riders": true
+   },
    "hierarchy": {
     "name": "root",
     "type": "empty",
@@ -613,9 +959,9 @@
         "name": "commander_hatch",
         "type": "empty",
         "pos": [
-         -0.5,
-         2.05,
-         2.0
+         -0.45,
+         2.01,
+         1.98
         ]
        },
        {
@@ -640,15 +986,15 @@
         "name": "exhaust",
         "type": "empty",
         "pos": [
-         1.424,
-         1.607,
-         -3.25
+         1.416,
+         1.505,
+         -3.4
         ]
        },
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 20886,
+        "tris": 23175,
         "pos": [
          0.0,
          0.0,
@@ -659,7 +1005,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 6263,
+        "tris": 6943,
         "pos": [
          0.0,
          0.0,
@@ -667,11 +1013,83 @@
         ]
        },
        {
+        "name": "ride_seat_1",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         1.995,
+         -0.45
+        ]
+       },
+       {
+        "name": "ride_seat_2",
+        "type": "empty",
+        "pos": [
+         0.56,
+         1.995,
+         -0.45
+        ]
+       },
+       {
+        "name": "ride_seat_3",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         1.969,
+         -1.25
+        ]
+       },
+       {
+        "name": "ride_seat_4",
+        "type": "empty",
+        "pos": [
+         0.56,
+         1.969,
+         -1.25
+        ]
+       },
+       {
+        "name": "ride_seat_5",
+        "type": "empty",
+        "pos": [
+         -0.56,
+         2.003,
+         -1.95
+        ]
+       },
+       {
+        "name": "ride_seat_6",
+        "type": "empty",
+        "pos": [
+         0.56,
+         2.003,
+         -1.95
+        ]
+       },
+       {
+        "name": "ride_seat_7",
+        "type": "empty",
+        "pos": [
+         -0.3,
+         2.01,
+         -2.85
+        ]
+       },
+       {
+        "name": "ride_seat_8",
+        "type": "empty",
+        "pos": [
+         0.3,
+         2.01,
+         -2.85
+        ]
+       },
+       {
         "name": "turret",
         "type": "empty",
         "pos": [
          0.0,
-         2.05,
+         2.0,
          0.95
         ],
         "children": [
@@ -680,8 +1098,8 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.29,
-           1.57
+           2.22,
+           1.55
           ],
           "children": [
            {
@@ -689,38 +1107,38 @@
             "type": "empty",
             "pos": [
              -0.13,
-             2.28,
-             2.28
+             2.2,
+             2.24
             ]
            },
            {
             "name": "gun_geo",
             "type": "mesh",
-            "tris": 876,
+            "tris": 1020,
             "pos": [
              0.0,
-             2.29,
-             1.57
+             2.22,
+             1.55
             ]
            },
            {
             "name": "gun_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 262,
+            "tris": 306,
             "pos": [
              0.0,
-             2.29,
-             1.57
+             2.22,
+             1.55
             ]
            },
            {
             "name": "muzzle",
             "type": "empty",
             "pos": [
-             0.06,
-             2.29,
-             3.34
+             0.05,
+             2.22,
+             3.33
             ]
            }
           ]
@@ -730,17 +1148,17 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.47,
-           0.5
+           2.3,
+           0.35
           ]
          },
          {
           "name": "turret_geo",
           "type": "mesh",
-          "tris": 2554,
+          "tris": 3398,
           "pos": [
            0.0,
-           2.05,
+           2.0,
            0.95
           ]
          },
@@ -748,10 +1166,10 @@
           "name": "turret_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 763,
+          "tris": 1011,
           "pos": [
            0.0,
-           2.05,
+           2.0,
            0.95
           ]
          }
@@ -769,7 +1187,7 @@
          {
           "name": "wheel_L1_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -780,7 +1198,7 @@
           "name": "wheel_L1_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -801,7 +1219,7 @@
          {
           "name": "wheel_L2_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -812,7 +1230,7 @@
           "name": "wheel_L2_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -833,7 +1251,7 @@
          {
           "name": "wheel_L3_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -844,7 +1262,7 @@
           "name": "wheel_L3_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -865,7 +1283,7 @@
          {
           "name": "wheel_L4_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            1.205,
            0.548,
@@ -876,7 +1294,7 @@
           "name": "wheel_L4_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1589,
+          "tris": 1735,
           "pos": [
            1.205,
            0.548,
@@ -897,7 +1315,7 @@
          {
           "name": "wheel_R1_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -908,7 +1326,7 @@
           "name": "wheel_R1_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -929,7 +1347,7 @@
          {
           "name": "wheel_R2_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -940,7 +1358,7 @@
           "name": "wheel_R2_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -961,7 +1379,7 @@
          {
           "name": "wheel_R3_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -972,7 +1390,7 @@
           "name": "wheel_R3_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -993,7 +1411,7 @@
          {
           "name": "wheel_R4_geo",
           "type": "mesh",
-          "tris": 5300,
+          "tris": 5788,
           "pos": [
            -1.205,
            0.548,
@@ -1004,7 +1422,7 @@
           "name": "wheel_R4_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1590,
+          "tris": 1735,
           "pos": [
            -1.205,
            0.548,
@@ -1019,7 +1437,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 14906,
+      "tris": 15940,
       "pos": [
        0.0,
        0.0,
@@ -1030,10 +1448,10 @@
       "name": "turret_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 1516,
+      "tris": 1960,
       "pos": [
        0.0,
-       1.752,
+       1.702,
        0.95
       ]
      }
@@ -1102,6 +1520,112 @@
    "track_link_pitch_m": 0.1416,
    "track_length_m": 13.736,
    "track_links": 97,
+   "ride_seats": [
+    {
+     "name": "ride_seat_1",
+     "seat_type": "edge",
+     "pos": [
+      -1.42,
+      1.415,
+      -2.45
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_2",
+     "seat_type": "edge",
+     "pos": [
+      1.42,
+      1.459,
+      -2.1
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_3",
+     "seat_type": "deck",
+     "pos": [
+      -0.95,
+      1.483,
+      -2.95
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_4",
+     "seat_type": "deck",
+     "pos": [
+      0.95,
+      1.483,
+      -2.95
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_5",
+     "seat_type": "deck",
+     "pos": [
+      -0.35,
+      1.479,
+      -3.05
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_6",
+     "seat_type": "deck",
+     "pos": [
+      0.35,
+      1.479,
+      -3.05
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    }
+   ],
+   "ride_clearance": {
+    "turret_sweep_radius_m": 2.287,
+    "turret_sweep_z_m": [
+     1.482,
+     2.74
+    ],
+    "min_rider_margin_m": 0.161,
+    "per_seat_margin_m": [
+     0.464,
+     0.161,
+     0.227,
+     0.227,
+     0.203,
+     0.203
+    ],
+    "gun_trunnion_height_m": 1.84,
+    "gun_min_elevation_to_clear_riders_deg": 18.2,
+    "gun_max_elevation_deg": 14,
+    "gun_can_clear_riders": false
+   },
    "hierarchy": {
     "name": "root",
     "type": "empty",
@@ -1230,6 +1754,60 @@
            2.86
           ]
          }
+        ]
+       },
+       {
+        "name": "ride_seat_1",
+        "type": "empty",
+        "pos": [
+         -1.42,
+         1.415,
+         -2.45
+        ]
+       },
+       {
+        "name": "ride_seat_2",
+        "type": "empty",
+        "pos": [
+         1.42,
+         1.459,
+         -2.1
+        ]
+       },
+       {
+        "name": "ride_seat_3",
+        "type": "empty",
+        "pos": [
+         -0.95,
+         1.483,
+         -2.95
+        ]
+       },
+       {
+        "name": "ride_seat_4",
+        "type": "empty",
+        "pos": [
+         0.95,
+         1.483,
+         -2.95
+        ]
+       },
+       {
+        "name": "ride_seat_5",
+        "type": "empty",
+        "pos": [
+         -0.35,
+         1.479,
+         -3.05
+        ]
+       },
+       {
+        "name": "ride_seat_6",
+        "type": "empty",
+        "pos": [
+         0.35,
+         1.479,
+         -3.05
         ]
        },
        {
@@ -1932,6 +2510,112 @@
    "track_link_pitch_m": 0.1416,
    "track_length_m": 13.736,
    "track_links": 97,
+   "ride_seats": [
+    {
+     "name": "ride_seat_1",
+     "seat_type": "edge",
+     "pos": [
+      -1.42,
+      1.415,
+      -2.45
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_2",
+     "seat_type": "edge",
+     "pos": [
+      1.42,
+      1.459,
+      -2.1
+     ],
+     "facing": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "name": "ride_seat_3",
+     "seat_type": "deck",
+     "pos": [
+      -0.95,
+      1.483,
+      -2.95
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_4",
+     "seat_type": "deck",
+     "pos": [
+      0.95,
+      1.483,
+      -2.95
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_5",
+     "seat_type": "deck",
+     "pos": [
+      -0.35,
+      1.479,
+      -3.05
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "ride_seat_6",
+     "seat_type": "deck",
+     "pos": [
+      0.35,
+      1.479,
+      -3.05
+     ],
+     "facing": [
+      -0.0,
+      0.0,
+      1.0
+     ]
+    }
+   ],
+   "ride_clearance": {
+    "turret_sweep_radius_m": 1.88,
+    "turret_sweep_z_m": [
+     1.482,
+     2.74
+    ],
+    "min_rider_margin_m": 0.568,
+    "per_seat_margin_m": [
+     0.871,
+     0.568,
+     0.633,
+     0.633,
+     0.61,
+     0.61
+    ],
+    "gun_trunnion_height_m": 1.84,
+    "gun_min_elevation_to_clear_riders_deg": 18.2,
+    "gun_max_elevation_deg": 14,
+    "gun_can_clear_riders": false
+   },
    "hierarchy": {
     "name": "root",
     "type": "empty",
@@ -2060,6 +2744,60 @@
            2.86
           ]
          }
+        ]
+       },
+       {
+        "name": "ride_seat_1",
+        "type": "empty",
+        "pos": [
+         -1.42,
+         1.415,
+         -2.45
+        ]
+       },
+       {
+        "name": "ride_seat_2",
+        "type": "empty",
+        "pos": [
+         1.42,
+         1.459,
+         -2.1
+        ]
+       },
+       {
+        "name": "ride_seat_3",
+        "type": "empty",
+        "pos": [
+         -0.95,
+         1.483,
+         -2.95
+        ]
+       },
+       {
+        "name": "ride_seat_4",
+        "type": "empty",
+        "pos": [
+         0.95,
+         1.483,
+         -2.95
+        ]
+       },
+       {
+        "name": "ride_seat_5",
+        "type": "empty",
+        "pos": [
+         -0.35,
+         1.479,
+         -3.05
+        ]
+       },
+       {
+        "name": "ride_seat_6",
+        "type": "empty",
+        "pos": [
+         0.35,
+         1.479,
+         -3.05
         ]
        },
        {

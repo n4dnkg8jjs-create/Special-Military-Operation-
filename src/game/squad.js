@@ -233,7 +233,7 @@ export class Squad {
     for (const s of this.soldiers) this.updateSoldier(s, dt);
     this.resupplyTick(dt);
   }
-  updateRiders(dt) {
+  updateRiders(dt, frozen = false) {
     const v = this.carrier, g = this.game;
     for (const s of this.soldiers) {
       s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt);
@@ -244,14 +244,14 @@ export class Squad {
         } else {
           const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = s.target ? Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z) : w.heading;
           s.vel.set(Math.sin(v.heading) * v.speed, 0, Math.cos(v.heading) * v.speed); s.stance = 'crouch';
-          if (!this.routing && !this.holdFire) g.combat.soldierCombat(s, dt); else s.target = null;
+          if (!frozen && !this.routing && !this.holdFire) g.combat.soldierCombat(s, dt); else s.target = null;
         }
       }
       if (s.inside === 'ride') { s.animate(dt, g.camDist(s.pos)); s.sync(); }
       else this.updateSoldier(s, dt);
     }
     // whole squad jumps off when the vehicle is hit hard or brews up
-    if (v && (v.destroyed || v.burning > 0)) this.dismount(v.heading + Math.PI);
+    if (!frozen && v && (v.destroyed || v.burning > 0)) this.dismount(v.heading + Math.PI);
     this.underFireT += dt;
   }
   think() {
