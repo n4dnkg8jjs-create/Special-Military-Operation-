@@ -176,7 +176,10 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
     alb, nrm = T[key]
     uname = {('ru', 'camo'): 'emr_camo', ('ua', 'camo'): 'mm14_camo', ('ua', 'multicam'): 'mm14_multicam_camo'}[key]
     if uname not in mats_cache:
-        mats_cache[uname] = g.material(uname, base_tex=g.image(alb, quality=86), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
+        # EMR: colour factor 1 (the 0.5 grey default halved the camo's brightness in game: the light EMR ground rendered as a dark
+        # woodland-like olive; the crew EMR coverall already used 1).  (MM-14 keeps the old factor: UA unchanged)
+        col = (1, 1, 1, 1) if uname == 'emr_camo' else (0.5, 0.5, 0.5, 1)
+        mats_cache[uname] = g.material(uname, color=col, base_tex=g.image(alb, quality=86), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
     mu = mats_cache[uname]
     ha, _ = T[('head', vn)]
     ms = g.material('skin_' + vn, base_tex=g.image(ha, quality=88), roughness=0.55)

@@ -345,7 +345,7 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
     a_pre = sum(_uv_area(u, t) for u, t in zip(pk_uv, pk_tri)); a_post = sum(_uv_area(u, t) for u, t in zip(packed, pk_tri))
     mul = float(np.sqrt(a_post / a_pre))
     log(f'atlas {fac}: density multiplier {mul:.3f} -> uniform texel {0.81 / mul / SRC_SCALE["camo"]:.2f} mm '
-        f'(EMR/MM-14 pixel = {4.5 * mul * SRC_SCALE["camo"] / 0.81:.1f}/{6.0 * mul * SRC_SCALE["camo"] / 0.81:.1f} texels; gear tile '
+        f'(EMR/MM-14 pixel = {1000 * __import__("camo").EMR_PIXEL_M * mul * SRC_SCALE["camo"] / 0.81:.1f}/{6.0 * mul * SRC_SCALE["camo"] / 0.81:.1f} texels; gear tile '
         f'{0.5 / (TILE_PX["emr_gear"] * mul) * 1000:.2f} mm/texel)')
     ROT = [np.array([[1, 0], [0, 1.0]]), np.array([[0, -1], [1, 0.0]]), np.array([[-1, 0], [0, -1.0]]), np.array([[0, 1], [-1, 0.0]])]
     place_xf = {}     # (mat, uvkey) -> {isl: (K, R, T)}

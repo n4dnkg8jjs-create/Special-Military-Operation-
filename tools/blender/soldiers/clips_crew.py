@@ -6,19 +6,19 @@ Model space: +X = character's left, +Y up, +Z forward.
 
 Pistol hold: pm.glb parented to weapon_socket (RightHand) with identity -- same socket and hand pose as the rifles (the PM grip
 rakes 18.7 deg like the AK pistol grip).  The support (left) palm sits on the left grip panel at PISTOL['grip_L'] (gun space)
-with the fingers wrapped forward-down around the front strap over the right fingers (PISTOL['h'] / ['p'] = finger / palm-normal
-directions in gun space)."""
+with the fingers wrapped around the front strap over the right fingers (PISTOL['h'] / ['p'] = finger / palm-normal directions
+in gun space); thumbs forward along the frame (GRIP: finger curls / tilt and thumb directions)."""
 import json, os
 import numpy as np
 import anim as A
 import clips as C
 from anim import FPS, fk_global, smooth
-from qmath import qmul, qinv, qrot, qaxis, qeuler, qslerp, qfrom_mat, qfix_continuity
+from qmath import qmul, qinv, qrot, qaxis, qeuler, qslerp, qfrom_mat, qfix_continuity, qbetween
 from clips_extra import add_euler, noise, osc, hand_q, arm_to, leg_to, to_clip, spline_keys, bone_pt, ground_clamp
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 Y = np.array([0, 1.0, 0])
-PISTOL = dict(grip_L=np.array([0.0235, -0.0140, 0.0040]), h=np.array([-0.22, -0.62, 0.75]), p=np.array([-1.0, 0.0, -0.05]),
+PISTOL = dict(grip_L=np.array([0.0235, -0.0140, 0.0040]), h=np.array([0.0, -0.31, 0.95]), p=np.array([-1.0, 0.0, 0.0]),
               sight=np.array([0, 0.0695, -0.0345]), front=np.array([0, 0.0702, 0.1015]), muzzle=np.array([0, 0.0505, 0.1125]))
 EYE_DIST = 0.33          # right eye -> rear sight (arms extended, isosceles; the rig's shoulder->wrist reach is 0.51 m)
 POLE_R = np.array([-0.45, -0.55, -0.15]); POLE_L = np.array([0.45, -0.55, -0.15])
@@ -41,6 +41,81 @@ def support_target(rig, gun_q, gun_p):
     return palm, hand_q(rig, 'Left', h, p)
 
 
+# thumbs-forward two-handed grip.  The hand rig has one bone for the palm (FingerBase, pivot near the wrist), ONE rigid bone for
+# all four fingers (HandFinger1, pivot at the knuckles) and one for the thumb, and the mesh fingers are modelled slightly
+# fanned, so a grip is built from: palm almost flat on the grip panel, fingers bent ~90 deg at the knuckles so they lie across
+# the front of the firing hand's fingers (the fan then runs along the front strap like stacked fingers), thumbs aimed forward.
+GRIP = dict(curlR=(38, 130, 0),              # firing fingers wrapped round the front strap, lying back along the left grip panel
+            curlL=(45, 100, 0),              # support palm on the left panel, fingers round the front over the firing fingers
+            devR=0.0, devL=15.0,             # ulnar deviation of the finger group (deg, about the palm normal)
+            pitchR=-15.0, pitchL=0.0,        # finger group tilted about the gun X axis (- = tips down): keeps the firing index off the slide
+            thumbR=np.array([-0.08, -0.05, 1.0]),    # gun space: firing thumb forward along the right of the frame (a rigid thumb from the
+                                                     #   web on the right of the backstrap cannot reach the left side without passing through it)
+            thumbL=np.array([-0.15, 0.05, 1.0]),     # support thumb forward along the left of the frame, under the slide
+            thumb_lim=75.0)
+THUMB_DIR = {}
+if os.environ.get('GRIP_OVR'):            # tuning hook: JSON overrides of GRIP / PISTOL h,p
+    for k_, v_ in json.loads(os.environ['GRIP_OVR']).items():
+        (PISTOL if k_ in ('h', 'p') else GRIP)[k_] = np.array(v_) if isinstance(v_, list) and len(v_) == 3 and k_ not in ('curlR', 'curlL') else v_
+
+
+def _thumb_dirs(rig, R):
+    """rest-pose thumb direction (thumb joint -> thumb tip vertex) per side, from the hands mesh"""
+    if THUMB_DIR:
+        return THUMB_DIR
+    P, W = R['hands']['pos'], R['hands']['W']
+    for side, th in (('Left', 'LThumb'), ('Right', 'RThumb')):
+        i = rig.I[th]; hd = rig.sk.head[i]
+        m = (W[:, i] > 0.6) & ((P[:, 0] > 0) == (side == 'Left'))
+        tip = P[m][np.argmax(np.linalg.norm(P[m] - hd, axis=1))]
+        THUMB_DIR[side] = (tip - hd) / np.linalg.norm(tip - hd)
+    return THUMB_DIR
+
+
+def aim_thumbs(rig, gq, gun_q):
+    """turn each thumb (global, minimal rotation, clamped) so it points along GRIP['thumb*'] in gun space"""
+    if not THUMB_DIR:
+        return gq
+    gq = gq.copy(); F = len(gq)
+    for side, th, key in (('Left', 'LThumb', 'thumbL'), ('Right', 'RThumb', 'thumbR')):
+        i = rig.I[th]
+        cur = qrot(gq[:, i], np.broadcast_to(THUMB_DIR[side], (F, 3)))
+        tgt = qrot(gun_q, np.broadcast_to(GRIP[key] / np.linalg.norm(GRIP[key]), (F, 3)))
+        qd = qbetween(cur, tgt)
+        ang = 2 * np.arccos(np.clip(qd[:, 3], -1, 1))
+        lim = np.radians(GRIP['thumb_lim'])
+        k = np.minimum(1.0, lim / np.maximum(ang, 1e-6))
+        qd = np.array([qslerp(np.array([0, 0, 0, 1.0]), qd[f], k[f]) for f in range(F)])
+        gq[:, i] = qmul(qd, gq[:, i])
+    return gq
+
+
+def deviate(rig, gq):
+    """ulnar deviation of the finger group (FingerBase about the palm normal, + = toward the little finger)"""
+    lq = rig.local(gq)
+    for side in ('Left', 'Right'):
+        a = GRIP['dev' + side[0]]
+        if a:
+            H = rig.hand[side]
+            ax = -H['p'] if side == 'Right' else H['p']
+            i = rig.I[side + 'FingerBase']
+            lq[:, i] = qmul(np.broadcast_to(qaxis(ax, np.radians(a)), (len(lq), 4)), lq[:, i])
+    return rig.global_from_local(lq)
+
+
+def pitch_fingers(rig, gq, gun_q):
+    """tilt each finger group (HandFinger1, about its knuckle) around the gun's X axis: + = fingertips down"""
+    gq = gq.copy(); F = len(gq)
+    for side in ('Left', 'Right'):
+        a = GRIP['pitch' + side[0]]
+        if a:
+            ax = qrot(gun_q, np.broadcast_to([1.0, 0, 0], (F, 3)))
+            q = np.array([qaxis(ax[f], np.radians(a)) for f in range(F)])
+            i = rig.I[side + 'HandFinger1']
+            gq[:, i] = qmul(q, gq[:, i])
+    return gq
+
+
 def pistol_hold(rig, gq, root, gun_q, gun_p, poleR=None, poleL=None, left=True):
     F = len(gq)
     gp = fk_global(rig.sk, gq, root)
@@ -49,9 +124,10 @@ def pistol_hold(rig, gq, root, gun_q, gun_p, poleR=None, poleL=None, left=True):
     pL = gp[:, I['LeftArm']] + POLE_L if poleL is None else poleL
     if left:
         palm, qL = support_target(rig, gun_q, gun_p)
-        return A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=palm, left_rot=qL, poleR=pR, poleL=pL,
-                               curlR=(58, 72, 22), curlL=(40, 45, 12))
-    return A.rifle_overlay(rig, gq, root, gun_q, gun_p, left=None, poleR=pR, poleL=pL, curlR=(58, 72, 22))
+        out, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=palm, left_rot=qL, poleR=pR, poleL=pL,
+                                   curlR=GRIP['curlR'], curlL=GRIP['curlL'])
+        return aim_thumbs(rig, pitch_fingers(rig, deviate(rig, out), gun_q), gun_q), err
+    return A.rifle_overlay(rig, gq, root, gun_q, gun_p, left=None, poleR=pR, poleL=pL, curlR=GRIP['curlR'])
 
 
 def eye_world(rig, lm, gq, root):
@@ -102,6 +178,7 @@ def aim_base(rig, lm, stance, plant_feet):
 
 def pistol_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, loco_body):
     setup()
+    _thumb_dirs(rig, R)
     out = {}
     I = rig.I
     base = aim_base(rig, lm, stance, plant_feet)
@@ -116,7 +193,8 @@ def pistol_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, loco_b
         if want('pistol_aim'):
             out['pistol_aim'] = to_clip('pistol_aim', rig, gq2, root, True,
                                         notes=f'isosceles two-handed PM aim: right eye on the sight line {EYE_DIST:.2f} m behind the rear sight, arms extended, '
-                                              f'support palm on the left grip panel (fingers over the right hand); breathing; ik err {_e(err)}')
+                                              f'thumbs-forward grip: support palm on the left grip panel, support fingers wrapped round the front over the firing fingers, both thumbs '
+                                              f'forward along the frame; breathing; ik err {_e(err)}')
     # ---------------- pistol_fire: one shot, 0.267 s (9 frames), first/last frame == pistol_aim frame 0
     if want('pistol_fire'):
         k = np.array([0.0, 1.0, 0.82, 0.58, 0.36, 0.19, 0.08, 0.02, 0.0])

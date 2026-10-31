@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',()=>{window.__done=true});window.addEventListener('unhandledrejection',()=>{window.__done=true});</script>
+<script type="module">
+// Soldier line-up under the GAME's lighting (copied from src/engine/renderer.js: overcast sky dome as image-based light,
+// NeutralToneMapping, sun 2.9 at (48 deg, 215 deg), hemisphere 0.45, fog, + the grade pass's 0.93 saturation; no GTAO / bloom).
+//  actors= glb|node[,node]|x|anims-glb|clip|t ; ...   (one soldier per entry, standing at x metres, facing +Z)
+//  cam= az,el,dist,tx,ty,tz[;...]  (one view per entry)   cols=   w= h=   fov=   ground= hex colour
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 1400), H = +(q.get('h') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.0; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0xb3b7b6, 0.0021);
+const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(215));
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { sunDir: { value: sunDir }, zen: { value: new THREE.Color(0x7d91a6) }, hor: { value: new THREE.Color(0xbfc3c3) }, gnd: { value: new THREE.Color(0x6a665d) }, sunCol: { value: new THREE.Color(0xfff1dc) }, k: { value: 1.0 } },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*p; gl_Position.z = gl_Position.w; }`,
+  fragmentShader: `uniform vec3 sunDir,zen,hor,gnd,sunCol; uniform float k; varying vec3 vDir;
+    float h(vec3 p){ return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453); }
+    float n3(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.-2.*f); return mix(mix(mix(h(i),h(i+vec3(1,0,0)),f.x),mix(h(i+vec3(0,1,0)),h(i+vec3(1,1,0)),f.x),f.y),mix(mix(h(i+vec3(0,0,1)),h(i+vec3(1,0,1)),f.x),mix(h(i+vec3(0,1,1)),h(i+vec3(1,1,1)),f.x),f.y),f.z); }
+    void main(){ vec3 d=normalize(vDir); float y=d.y;
+      vec3 c = y>0. ? mix(hor, zen, pow(clamp(y,0.,1.),0.55)) : mix(hor, gnd, clamp(-y*4.,0.,1.));
+      vec2 uv = d.xz/(max(y,0.04))*1.4; float cl = n3(vec3(uv*1.3,1.))*0.55+n3(vec3(uv*3.1,2.))*0.3+n3(vec3(uv*7.,3.))*0.15;
+      c = mix(c, c*vec3(0.82,0.83,0.85), smoothstep(0.45,0.8,cl)*smoothstep(0.0,0.25,y));
+      float s=max(dot(d,sunDir),0.); c += sunCol*(pow(s,8.)*0.25 + pow(s,64.)*0.6 + pow(s,900.)*4.);
+      gl_FragColor=vec4(c*k,1.); }`,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24), skyMat); sky.frustumCulled = false; sky.renderOrder = -1; scene.add(sky);
+const pm = new THREE.PMREMGenerator(renderer); const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), skyMat));
+scene.environment = pm.fromScene(envScene, 0.02, 1, 1000).texture; scene.environmentIntensity = 0.75;
+const sun = new THREE.DirectionalLight(0xfff0dc, 2.9); sun.position.copy(sunDir).multiplyScalar(20); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 60 }); sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.035; scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xc9d4df, 0x6b6253, 0.45));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: new THREE.Color('#' + (q.get('ground') || '5f5a45')), roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader(); const cache = {};
+const load = p => cache[p] || (cache[p] = loader.loadAsync(p));
+const mixers = [];
+for (const e of (q.get('actors') || '').split(';').filter(Boolean)) {
+  const [glb, nodes, x, anims, clip, t] = e.split('|');
+  const g = await loader.loadAsync(glb); const root = g.scene; root.position.x = +x || 0; scene.add(root);
+  const keep = nodes.split(',');
+  root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; const nm = o.parent && o.parent.type === 'Group' ? o.parent.name : o.name; o.visible = keep.includes(nm) || keep.includes(o.name); } });
+  if (anims && clip) { const cl = (await load(anims)).animations.find(a => a.name === clip); if (cl) { const m = new THREE.AnimationMixer(root); m.clipAction(cl).play(); m.setTime(cl.duration * (+t || 0)); } }
+  root.updateMatrixWorld(true);
+}
+const cams = (q.get('cam') || '20,10,4,0,1,0').split(';').map(s => s.split(',').map(Number));
+const cols = Math.min(cams.length, +(q.get('cols') || cams.length)), rows = Math.ceil(cams.length / cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 42), (W / cols) / (H / rows), 0.05, 1000);
+const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
+renderer.setRenderTarget(rt); renderer.autoClear = false; renderer.clear(); rt.scissorTest = true;
+cams.forEach(([az, el, d, tx, ty, tz], i) => {
+  const a = az * Math.PI / 180, e = el * Math.PI / 180;
+  cam.position.set(tx + d * Math.cos(e) * Math.sin(a), ty + d * Math.sin(e), tz + d * Math.cos(e) * Math.cos(a)); cam.lookAt(tx, ty, tz);
+  const x = (i % cols) * W / cols, y = (rows - 1 - Math.floor(i / cols)) * H / rows;
+  rt.viewport.set(x, y, W / cols, H / rows); rt.scissor.set(x, y, W / cols, H / rows); renderer.setRenderTarget(rt); renderer.render(scene, cam);
+});
+// post: Neutral tone mapping (render targets are not tone mapped) + the grade's 0.93 saturation, to the screen
+renderer.setRenderTarget(null);
+const post = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms: { t: { value: rt.texture } }, depthTest: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }',
+  fragmentShader: 'uniform sampler2D t; varying vec2 vUv; void main(){ vec4 c=texture2D(t,vUv); c.rgb=toneMapping(c.rgb); float l=dot(c.rgb,vec3(.2126,.7152,.0722)); c.rgb=mix(vec3(l),c.rgb,0.93); gl_FragColor=linearToOutputTexel(c); }' }));
+const ps = new THREE.Scene(); ps.add(post); const oc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+renderer.render(ps, oc);   // scene pass into the target is linear; Neutral tone mapping applied here, then the grade
+window.__info = { actors: scene.children.length };
+window.__done = true;
+</script></body></html>

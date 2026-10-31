@@ -12,6 +12,7 @@ wounded_crawl injured soldier dragging himself on his belly: arms alternately re
 
 Both are seamless in-place loops (horizontal root motion stripped, the planted contacts slide back at ground_speed_mps, i.e. they
 stay still in the world when the game moves the root at that speed)."""
+import os, json
 import numpy as np
 import anim as A
 import clips as C
@@ -304,6 +305,9 @@ def _arms_clear(rig, gq, root, gun_q, gun_p, poles, clear=0.035):
 
 
 # ====================================================================================== wounded_crawl
+WC = dict(spine=(10, 16, 20), neck=30, head=12, reach=0.36)      # back extension (LowerBack, Spine, Spine1), neck, head (deg)
+if os.environ.get('WC_OVR'):
+    WC.update(json.loads(os.environ['WC_OVR']))
 def wounded_crawl(rig, T=2.0, speed=0.24):
     """belly drag: palms reach & plant (fixed in the world) and pull alternately, left leg short frog push, right leg dead"""
     I = rig.I
@@ -312,7 +316,10 @@ def wounded_crawl(rig, T=2.0, speed=0.24):
     ph = 2 * np.pi * t / T
     c, s = np.cos(ph), np.sin(ph)
     lq, root = lying_base(rig, F, hip_pitch=86.0)
-    for b, e in (('LowerBack', (-6, 0, 0)), ('Spine', (-10, 0, 0)), ('Spine1', (-12, 0, 0)), ('Neck', (-34, 0, 0)), ('Head', (-14, 0, 0))):
+    # back arched so the upper chest is propped up on the reaching / pulling arms (belly and pelvis stay on the ground), head up
+    # looking forward along the crawl direction (face well clear of the ground)
+    sp = WC['spine']
+    for b, e in (('LowerBack', (-sp[0], 0, 0)), ('Spine', (-sp[1], 0, 0)), ('Spine1', (-sp[2], 0, 0)), ('Neck', (-WC['neck'], 0, 0)), ('Head', (-WC['head'], 0, 0))):
         lq[:, I[b]] = qeuler(*e, order='YXZ')
     # arms: right palm planted 0..0.5 (pulling), left 0.5..1; chest rolls / yaws toward the pulling arm; effortful head bob
     add_euler(rig, lq, 'Hips', 0, 4 * c, -4 + 3 * c)
@@ -345,7 +352,7 @@ def wounded_crawl(rig, T=2.0, speed=0.24):
         u = ((t / T) - u0) % 1.0
         sh = gp[:, I[side + 'Arm']]
         shm = sh.mean(0)
-        z_front = shm[2] + 0.36
+        z_front = shm[2] + WC['reach']
         z = np.where(u < 0.5, z_front - stride * (u / 0.5), z_front - stride + stride * smooth((u - 0.5) / 0.5))
         y = 0.022 + np.where(u < 0.5, 0.0, 0.10 * np.sin(np.pi * (u - 0.5) / 0.5))
         x = np.full(F, sx * 0.24)
@@ -367,7 +374,7 @@ def wounded_crawl(rig, T=2.0, speed=0.24):
     gq = rig.global_from_local(lq)
     return to_clip('wounded_crawl', rig, gq, root, True, speed,
                    notes=f'wounded belly drag, {T:.1f} s loop: arms alternately reach forward, plant the palm (fixed in the world) and pull the body '
-                         f'(right 0-{T / 2:.1f} s, left {T / 2:.1f}-{T:.1f} s), chest rolls toward the pulling arm, effortful head bob; left leg pushes in a short '
+                         f'(right 0-{T / 2:.1f} s, left {T / 2:.1f}-{T:.1f} s), back arched so the upper chest is propped up on the arms (belly / pelvis on the ground), head up looking forward along the crawl direction (head joint ~0.50 m, face clear of the ground), chest rolls toward the pulling arm, effortful head bob; left leg pushes in a short '
                          f'frog kick, right leg dead (dragged, boot rolled out); no weapon (sling it: weapon_socket_back, or drop); planted palms / boot slide back '
                          f'at exactly {speed:.2f} m/s in the in-place clip',
                    events={'right_pull': [0.0, T / 2], 'left_pull': [T / 2, T]})

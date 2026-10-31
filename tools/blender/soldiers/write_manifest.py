@@ -38,8 +38,12 @@ def main():
     pal = lambda d: {k: v for k, v in d.items()}
     out['references'] = {
         'ratnik_emr_camo': dict(palette=pal(C.EMR), pixel_size_m=C.EMR_PIXEL_M,
-                                notes='EMR ("tsifra") summer: light grey-green ground with dark-green, brown and black pixel clusters forming '
-                                      'larger deforming blobs (Flecktarn-like micro/macro structure). Proportions used: ground ~45%, green 28%, brown 27% (black ~9% inside the dark clusters).'),
+                                area_fractions=dict(C.EMR_FRAC, bg=round(1 - sum(C.EMR_FRAC.values()), 2)),
+                                notes='EMR ("tsifra", Ratnik) summer, matched to photos of issue fabric: light grey-green (sage) ground with a faint '
+                                      'light-khaki tone, medium-green pixel blotches (~1/3 of the cloth; macro shapes ~5-15 cm with stepped, ragged pixel edges '
+                                      'and ground-coloured holes), small dark-brown and brownish-black pixel clusters / chains scattered through and along '
+                                      'the green. Square ~5 mm pixels on the cloth (uniform atlas ~1 mm/texel: ~5 texels per pixel). Palette = sRGB albedo '
+                                      'as rendered (EMR materials use base colour factor 1).'),
         'mm14_camo': dict(palette=pal(C.MM14), pixel_size_m=C.MM14_PIXEL_M,
                           notes='MM-14: five-tone digital pattern (light beige, light green, swamp green, grey-green, dark grey); slightly horizontally elongated shapes.'),
         'multicam': dict(palette=pal(C.MULTICAM), notes='UA plate carriers / helmet covers / some tops; organic 6-tone pattern, procedural approximation.'),

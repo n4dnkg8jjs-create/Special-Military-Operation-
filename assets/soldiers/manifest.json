@@ -9,13 +9,21 @@
  "references": {
   "ratnik_emr_camo": {
    "palette": {
-    "bg": "#7d8463",
-    "green": "#4b5638",
-    "brown": "#5c4a36",
-    "black": "#262520"
+    "bg": "#6e755d",
+    "khaki": "#7d7a64",
+    "green": "#405033",
+    "brown": "#43372a",
+    "black": "#1f201a"
    },
-   "pixel_size_m": 0.0045,
-   "notes": "EMR (\"tsifra\") summer: light grey-green ground with dark-green, brown and black pixel clusters forming larger deforming blobs (Flecktarn-like micro/macro structure). Proportions used: ground ~45%, green 28%, brown 27% (black ~9% inside the dark clusters)."
+   "pixel_size_m": 0.005,
+   "area_fractions": {
+    "khaki": 0.05,
+    "green": 0.34,
+    "brown": 0.11,
+    "black": 0.1,
+    "bg": 0.4
+   },
+   "notes": "EMR (\"tsifra\", Ratnik) summer, matched to photos of issue fabric: light grey-green (sage) ground with a faint light-khaki tone, medium-green pixel blotches (~1/3 of the cloth; macro shapes ~5-15 cm with stepped, ragged pixel edges and ground-coloured holes), small dark-brown and brownish-black pixel clusters / chains scattered through and along the green. Square ~5 mm pixels on the cloth (uniform atlas ~1 mm/texel: ~5 texels per pixel). Palette = sRGB albedo as rendered (EMR materials use base colour factor 1)."
   },
   "mm14_camo": {
    "palette": {
@@ -93,7 +101,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 16814416,
+  "size_bytes": 17155884,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -4929,7 +4937,7 @@
     "ground_speed_mps": 0.24,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "wounded belly drag, 2.0 s loop: arms alternately reach forward, plant the palm (fixed in the world) and pull the body (right 0-1.0 s, left 1.0-2.0 s), chest rolls toward the pulling arm, effortful head bob; left leg pushes in a short frog kick, right leg dead (dragged, boot rolled out); no weapon (sling it: weapon_socket_back, or drop); planted palms / boot slide back at exactly 0.24 m/s in the in-place clip",
+    "notes": "wounded belly drag, 2.0 s loop: arms alternately reach forward, plant the palm (fixed in the world) and pull the body (right 0-1.0 s, left 1.0-2.0 s), back arched so the upper chest is propped up on the arms (belly / pelvis on the ground), head up looking forward along the crawl direction (head joint ~0.50 m, face clear of the ground), chest rolls toward the pulling arm, effortful head bob; left leg pushes in a short frog kick, right leg dead (dragged, boot rolled out); no weapon (sling it: weapon_socket_back, or drop); planted palms / boot slide back at exactly 0.24 m/s in the in-place clip",
     "events": {
      "weapon": "drop or weapon_socket_back",
      "right_pull": [
@@ -5484,7 +5492,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "isosceles two-handed PM aim: right eye on the sight line 0.33 m behind the rear sight, arms extended, support palm on the left grip panel (fingers over the right hand); breathing; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "isosceles two-handed PM aim: right eye on the sight line 0.33 m behind the rear sight, arms extended, thumbs-forward grip: support palm on the left grip panel, support fingers wrapped round the front over the firing fingers, both thumbs forward along the frame; breathing; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
     }

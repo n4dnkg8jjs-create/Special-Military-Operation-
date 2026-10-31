@@ -6,9 +6,13 @@ import numpy as np
 from scipy import ndimage
 from tex import value_noise, hexc
 
-# Ratnik EMR ("tsifra") summer: light green-grey ground with dark green, brown and black pixel clusters
-EMR = dict(bg='#7d8463', green='#4b5638', brown='#5c4a36', black='#262520')
-EMR_PIXEL_M = 0.0045
+# Ratnik EMR ("tsifra", ЕМР) summer, matched to photos of issue Ratnik / VKPO fabric: a light grey-green (sage) ground,
+# medium-green pixel blotches covering about a third of the cloth (macro shapes ~5-15 cm with stepped, ragged pixel edges and
+# ground-coloured holes), small dark-brown and brownish-black pixel clusters / "tetris" chains scattered through and along the
+# green, and a faint light-khaki tone in the ground.  Square pixels ~5 mm on the cloth.
+EMR = dict(bg='#6e755d', khaki='#7d7a64', green='#405033', brown='#43372a', black='#1f201a')
+EMR_PIXEL_M = 0.005
+EMR_FRAC = dict(khaki=0.05, green=0.34, brown=0.11, black=0.10)   # resulting area shares (ground = the rest, ~0.40)
 # MM-14 (Ukraine, 2014): five-tone digital: light beige, light green, swamp green, grey-green, dark grey
 MM14 = dict(beige='#a59b78', light_green='#7c805b', swamp='#53573a', grey_green='#666754', dark='#36352d')
 MM14_PIXEL_M = 0.006
@@ -29,21 +33,44 @@ def up(pal, idx, cell, res):
     return pal[idx[r][:, c]]
 
 
+def _z(f):
+    return (f - f.mean()) / (f.std() + 1e-9)
+
+
+def emr_index(shape, rng, macro=0.075):
+    """EMR pixel map (one cell = one EMR_PIXEL_M square), periodic in both directions.
+    0 ground, 1 khaki, 2 green, 3 brown, 4 black.  Thresholds on multi-scale noise: smooth octaves give the macro blotches
+    (~macro m), the per-pixel white-noise term breaks every edge into stepped, ragged pixel runs (no smooth M81-style blobs)."""
+    s = macro / EMR_PIXEL_M / 2.6           # gaussian sigma (pixels) giving blotches of ~macro size after thresholding
+    wn = lambda: rng.standard_normal(shape).astype(np.float32)
+    # green: macro blotches + mid-scale break-up + pixel noise (ragged edges, ground-coloured holes, stray pixels)
+    fg = _z(pnoise(shape, s, rng, 3, 0.6)) + 0.75 * _z(pnoise(shape, s * 0.33, rng, 2, 0.5)) + 0.6 * wn()
+    # dark clusters: a mid-scale field (leaning toward the green areas) gated by near-pixel-scale noise -> small chains / clumps
+    mid = _z(pnoise(shape, s * 0.30, rng, 2, 0.5)) + 0.35 * _z(fg)
+    fd = _z(mid) + 0.85 * _z(pnoise(shape, 0.8, rng, 1)) + 0.3 * wn()
+    fl = _z(pnoise(shape, s * 0.8, rng, 2, 0.5)) + 0.7 * wn()
+    fk = 0.5 * _z(mid) + _z(pnoise(shape, 0.7, rng, 1))
+    fr = EMR_FRAC
+    idx = np.zeros(shape, np.uint8)
+    idx[fl > np.quantile(fl, 1 - fr['khaki'] * 2.4)] = 1          # (about half of it is covered by green / dark below)
+    idx[fg > np.quantile(fg, 1 - fr['green'] * 1.4)] = 2          # (the dark clusters cover ~30 % of the green)
+    dk = fr['brown'] + fr['black']
+    d = fd > np.quantile(fd, 1 - dk)
+    idx[d] = 3
+    idx[d & (fk > np.quantile(fk[d], 1 - fr['black'] / dk))] = 4
+    return idx
+
+
+def emr_palette():
+    return np.array([hexc(EMR[k]) for k in ('bg', 'khaki', 'green', 'brown', 'black')])
+
+
 def emr(res, px_per_m, seed=1):
+    """EMR albedo (res x res) for a UV layout with px_per_m texels per metre of cloth"""
     rng = np.random.default_rng(seed)
     cell = max(EMR_PIXEL_M * px_per_m, 1.0)
-    gh, gw = int(np.ceil(res / cell)) + 1, int(np.ceil(res / cell)) + 1
-    blob = 0.11 * px_per_m / cell  # blob scale in pixels (~11 cm)
-    f_green = value_noise((gh, gw), blob, rng, 4, 0.6) + 0.12 * rng.standard_normal((gh, gw))
-    f_brown = value_noise((gh, gw), blob * 0.8, rng, 4, 0.6) + 0.12 * rng.standard_normal((gh, gw))
-    f_black = f_brown * 0.7 + value_noise((gh, gw), blob * 0.3, rng, 2, 0.6) * 0.6 + 0.12 * rng.standard_normal((gh, gw))
-    idx = np.zeros((gh, gw), np.uint8)
-    idx[f_green > np.quantile(f_green, 1 - 0.28)] = 1
-    idx[f_brown > np.quantile(f_brown, 1 - 0.27)] = 2
-    blk = (f_black > np.quantile(f_black, 1 - 0.09)) & (idx > 0)
-    idx[blk] = 3
-    pal = np.array([hexc(EMR[k]) for k in ('bg', 'green', 'brown', 'black')])
-    return up(pal, idx, cell, res)
+    g = int(np.ceil(res / cell)) + 1
+    return up(emr_palette(), emr_index((g, g), rng), cell, res)
 
 
 def mm14(res, px_per_m, seed=2):
@@ -116,18 +143,10 @@ def pnoise(shape, sigma, rng, octaves=3, persist=0.55):
 
 
 def emr_tile(res=1024, tile_m=0.5, seed=11):
+    """seamless EMR tile (gear fabric), tile_m metres per repeat"""
     rng = np.random.default_rng(seed)
     n = int(round(tile_m / EMR_PIXEL_M))
-    blob = 0.11 / EMR_PIXEL_M / 2.2
-    fg = pnoise((n, n), blob, rng, 4, 0.6) + 0.12 * rng.standard_normal((n, n))
-    fb = pnoise((n, n), blob * 0.8, rng, 4, 0.6) + 0.12 * rng.standard_normal((n, n))
-    fk = fb * 0.7 + pnoise((n, n), blob * 0.3, rng, 2) * 0.6 + 0.12 * rng.standard_normal((n, n))
-    idx = np.zeros((n, n), np.uint8)
-    idx[fg > np.quantile(fg, 1 - 0.28)] = 1
-    idx[fb > np.quantile(fb, 1 - 0.27)] = 2
-    idx[(fk > np.quantile(fk, 1 - 0.09)) & (idx > 0)] = 3
-    pal = np.array([hexc(EMR[k]) for k in ('bg', 'green', 'brown', 'black')])
-    return up(pal, idx, res / n, res)
+    return up(emr_palette(), emr_index((n, n), rng), res / n, res)
 
 
 def mm14_tile(res=1024, tile_m=0.5, seed=12):
