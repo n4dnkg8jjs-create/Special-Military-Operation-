@@ -77,8 +77,8 @@ export class City {
           // height blending: each layer's own luminance acts as height so transitions follow the texture
           float hd = dot(dirt, vec3(0.33)), hg = dot(grass, vec3(0.33)), hr = dot(rub, vec3(0.33));
           float fine = vn(wp * 1.7);
-          float wg = smoothstep(0.0, 1.0, clamp(sp.r * 1.7 - 0.35 + (hg - hd) * 1.4 + (fine - 0.5) * 0.5, 0.0, 1.0));
-          float wr = smoothstep(0.0, 1.0, clamp(sp.g * 1.7 - 0.35 + (hr - 0.45) * 1.6 + (fine - 0.5) * 0.4, 0.0, 1.0));
+          float wg = smoothstep(0.0, 1.0, clamp(sp.r * 1.3 - 0.12 + (hg - hd) * 0.7 + (fine - 0.5) * 0.35 + (vn(wp * 0.45) - 0.5) * 0.3, 0.0, 1.0));
+          float wr = smoothstep(0.0, 1.0, clamp(sp.g * 1.4 - 0.2 + (hr - 0.45) * 1.0 + (fine - 0.5) * 0.35, 0.0, 1.0));
           float wm = smoothstep(0.0, 1.0, clamp(sp.b * 1.6 - 0.3 + (0.5 - hd) * 1.2 + (vn(wp * 0.7) - 0.5) * 0.6, 0.0, 1.0));
           vec3 col = dirt;
           col = mix(col, dirt * vec3(1.12, 1.08, 1.0), sp.a);            // trampled paths
@@ -100,7 +100,7 @@ export class City {
     const R = this.rng;
     // rubble/gravel around blocks, rubble piles and craters
     const rub = layer(), rx = rub.getContext('2d'); rx.filter = `blur(${5 * k}px)`; rx.fillStyle = '#fff';
-    for (const b of this.buildings) { rx.save(); rx.translate(...toPx(b.x, b.z)); rx.rotate(-b.rot); rx.globalAlpha = 0.4 + R() * 0.25; rx.fillRect((-b.L / 2 - 3.5) * k, (-b.D / 2 - 3.5) * k, (b.L + 7) * k, (b.D + 7) * k); rx.restore(); }
+    for (const b of this.buildings) { rx.save(); rx.translate(...toPx(b.x, b.z)); rx.rotate(-b.rot); rx.globalAlpha = 0.22 + R() * 0.15; rx.fillRect((-b.L / 2 - 3.5) * k, (-b.D / 2 - 3.5) * k, (b.L + 7) * k, (b.D + 7) * k); rx.restore(); }
     rx.globalAlpha = 0.6; const v = new THREE.Vector3();
     for (const list of this.rubbleInstances || []) for (const M of list) { v.setFromMatrixPosition(M); rx.beginPath(); for (let i = 0; i <= 10; i++) { const a = i / 10 * 6.28, rr = 2.2 + R() * 2.2; const [a1, b1] = toPx(v.x + Math.cos(a) * rr, v.z + Math.sin(a) * rr); i ? rx.lineTo(a1, b1) : rx.moveTo(a1, b1); } rx.fill(); }
     // worn paths: each entrance to the nearest road edge, plus along the courtyard face
@@ -123,14 +123,14 @@ export class City {
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
     lx.globalCompositeOperation = 'destination-out'; lx.fillStyle = '#000'; lx.strokeStyle = '#000'; lx.lineCap = 'butt';
     for (const r of ROADS) lx.fillRect(...toPx(r.x0 - SIDEWALK - 0.8, r.z0 - SIDEWALK - 0.8), (r.x1 - r.x0 + SIDEWALK * 2 + 1.6) * k, (r.z1 - r.z0 + SIDEWALK * 2 + 1.6) * k);
-    for (const b of this.buildings) { lx.save(); lx.translate(...toPx(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 2.6) * k, (-b.D / 2 - 2.6) * k, (b.L + 5.2) * k, (b.D + 5.2) * k); lx.restore(); }
+    for (const b of this.buildings) { lx.save(); lx.translate(...toPx(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 1.3) * k, (-b.D / 2 - 1.3) * k, (b.L + 2.6) * k, (b.D + 2.6) * k); lx.restore(); }
     for (const b of this.buildings) for (const e of b.entrances) {
       let best = null, bd = 1e9; for (const r of ROADS) { const cx = Math.max(r.x0 - SIDEWALK, Math.min(r.x1 + SIDEWALK, e.x)), cz = Math.max(r.z0 - SIDEWALK, Math.min(r.z1 + SIDEWALK, e.z)); const d = Math.hypot(cx - e.x, cz - e.z); if (d < bd) { bd = d; best = [cx, cz]; } }
-      if (best && bd < 90) { lx.lineWidth = 2.2 * k; lx.beginPath(); lx.moveTo(...toPx(e.x, e.z)); if (Math.abs(best[0] - e.x) > 0.5 && Math.abs(best[1] - e.z) > 0.5) lx.lineTo(...toPx(e.x, best[1])); lx.lineTo(...toPx(best[0], best[1])); lx.stroke(); }
+      if (best && bd < 90) { lx.lineWidth = 1.7 * k; lx.beginPath(); lx.moveTo(...toPx(e.x, e.z)); if (Math.abs(best[0] - e.x) > 0.5 && Math.abs(best[1] - e.z) > 0.5) lx.lineTo(...toPx(e.x, best[1])); lx.lineTo(...toPx(best[0], best[1])); lx.stroke(); }
     }
     for (const [x, z, r, rot] of this.dirtYards || []) { lx.save(); lx.translate(...toPx(x, z)); lx.rotate(-rot); lx.fillRect(-r * k, -r * 0.7 * k, r * 2 * k, r * 1.4 * k); lx.restore(); }
     lx.globalCompositeOperation = 'source-over';
-    const lawnB = layer(), lb = lawnB.getContext('2d'); lb.filter = `blur(${0.7 * k}px)`; lb.drawImage(lawn, 0, 0);
+    const lawnB = layer(), lb = lawnB.getContext('2d'); lb.filter = `blur(${2.2 * k}px)`; lb.drawImage(lawn, 0, 0);
     const g1 = rx.getImageData(0, 0, N, N).data, g2 = px.getImageData(0, 0, N, N).data, g3 = mx.getImageData(0, 0, N, N).data, g4 = lb.getImageData(0, 0, N, N).data;
     const out = new Uint8Array(N * N * 4);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -138,7 +138,9 @@ export class City {
       const rubble = g1[p] / 255, path = g2[p] / 255, lw = g4[p] / 255;
       const n1 = this.noise2(x / 14, z / 14, 1);
       // lawns are full; only shell-churned / heavily walked spots wear through
-      let grass = lw * (0.82 + n1 * 0.18) * (1 - rubble * 0.85) * (1 - path * 0.6);
+      // soft, irregular lawn edges: grass thins out over a couple of metres instead of stopping on a line
+      const edge = Math.min(1, Math.max(0, lw + (this.noise2(x / 3.5, z / 3.5, 6) - 0.5) * 0.45 * (1 - Math.abs(lw * 2 - 1))));
+      let grass = Math.max(edge * (0.84 + n1 * 0.16), 0.22 * this.noise2(x / 6, z / 6, 3)) * (1 - rubble * 0.6) * (1 - path * 0.5);
       const mudv = g3[p] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
       out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = Math.max(path, (1 - lw) * 0.5) * 255;
     }
@@ -176,7 +178,7 @@ export class City {
     const gg = mergeGeometries(qs); const nrm = gg.attributes.normal; for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0); // light like the ground
     const tpl = new THREE.Mesh(gg, mat);
     const N = this.splatN, k = N / MAP_SIZE, o = MAP_SIZE / 2, mats = [], cols = [];
-    const maxN = this.grassMax || 52000;
+    const maxN = this.grassMax || 80000;
     for (let i = 0; i < maxN * 3.2 && mats.length < maxN; i++) {
       const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
@@ -350,7 +352,7 @@ export class City {
         if (p.state < 2 || p.floor > 3) continue;
         if (p.state === 2 && this.rng() < 0.6) continue;
         const c = b.panelCenter(p), o = b.outward(p);
-        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = T[0].userData.r * sc * 0.85 + 0.6 + this.rng() * 1.5;
+        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = T[0].userData.r * sc * 0.42 + this.rng() * 0.5;
         add(c.x + o.x * off, c.z + o.z * off, sc, this.rng() * 6.28, b);
       }
       if (b.pancaked) for (let c = b.pancaked[0]; c <= b.pancaked[1]; c++) for (let k = 0; k < 3; k++) {
@@ -363,7 +365,12 @@ export class City {
       }
     }
     // scattered debris on streets
-    for (let i = 0; i < (this.streetDebris ?? 60); i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); add(x, z, 0.35 + this.rng() * 0.4, this.rng() * 6.28); }
+    // loose debris lies along the foot of the walls it fell from, not in the middle of yards
+    for (let i = 0; i < (this.streetDebris ?? 60) && this.buildings.length; i++) {
+      const b = this.buildings[Math.floor(this.rng() * this.buildings.length)], side = Math.floor(this.rng() * 4), s = 0.35 + this.rng() * 0.4, rr = T[0].userData.r * s * 0.45;
+      const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
+      add(w.x, w.z, s, this.rng() * 6.28, b);
+    }
     T.forEach((t, k) => place[k].length && instance(this.scene, t, place[k]));
     this.rubbleInstances = place;
   }
@@ -532,12 +539,18 @@ export class City {
         if (R() < 0.3) this.addCrater(hx + (R() - .5) * 12, hz + (R() - .5) * 12, 2 + R() * 3);
       }
     }
-    // district heating mains with expansion loops
-    for (const [x0, z0, x1, z1] of [[-128, -88, -50, -88], [52, 92, 128, 92], [-80, 125, -10, 125], [110, -95, 175, -95], [-190, 20, -190, 90]]) {
+    // district heating mains with expansion loops, run along the street verges like the real above-ground mains
+    for (const [x0, z0, x1, z1] of [[-190, -121, -112, -121], [100, -121, 190, -121], [-112, -95, -112, -22], [99, 22, 99, 92], [-80, 116, 70, 116], [-196, 20, -196, 92]]) {
       const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 6), ry = Math.atan2(x1 - x0, z1 - z0) + Math.PI / 2;
       for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; put(i === Math.floor(n / 2) && T.pipeLoop ? 'pipeLoop' : 'pipe', x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, ry, 7); }
     }
-    for (const [x, z] of [[-115, 42], [62, -95], [128, 42], [-62, 132], [175, 185], [-175, -185]]) put('sub', x, z, R() * 4);
+    // transformer substations (ТП): one per pair of residential blocks, on the courtyard side at the block end
+    // next to the access driveway, squared to the block — as in a planned Soviet microdistrict
+    let subN = 0;
+    this.buildings.forEach((b, i) => {
+      if (!/khrushchyovka|brick|nine/.test(b.kind) || i % 2) return;
+      for (const sx of [1, -1]) { const p = b.toWorld(sx * (b.L / 2 + 4.5), 0, -(b.D / 2 + 5)); if (put('sub', p.x, p.z, b.rot + (sx > 0 ? 0 : Math.PI))) { subN++; break; } }
+    });
     put('church', -184, 128, 0); put('church', 184, -178, Math.PI);
     for (const [x, z, r] of [[122, 46, Math.PI], [134, 46, Math.PI], [146, 46, Math.PI], [128, 56, 0]]) put('pav', x, z, r);
     for (const [x, z, r] of [[60, 16, Math.PI], [-120, -17, 0], [170, 17, Math.PI]]) put('bill', x, z, r, 6);

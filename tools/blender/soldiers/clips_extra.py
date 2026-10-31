@@ -209,7 +209,7 @@ def launcher_clips(rig, lm, R, want, stance_fn, plant_feet, kneel, kneel_legs):
     L = LAUNCHER['rpg22']
     I = rig.I
     variants = []
-    if want('aim_launcher') or want('fire_launcher'):
+    if want('aim_launcher'):
         gq1, root1, feet = stance_fn(rig, 1, drop=0.04, hip_yaw=-22, spine=(5, 6, 4, 6), lfoot=(0.16, 0.17), rfoot=(-0.13, -0.14),
                                      lyaw=-14, ryaw=-38, head=(0, 4))
         gq1 = plant_feet(rig, gq1, root1, feet)
@@ -236,25 +236,7 @@ def launcher_clips(rig, lm, R, want, stance_fn, plant_feet, kneel, kneel_legs):
             out[name] = to_clip(name, rig, gq2, root, True,
                                 notes=f'launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err {err:.3f} m; ik {ierr}',
                                 events={'launcher_socket': 'weapon_socket (identity)'})
-        if name == 'aim_launcher' and want('fire_launcher'):
-            Ff = int(1.0 * FPS) + 1
-            t = np.arange(Ff) / FPS
-            kick = np.where(t < 0.05, t / 0.05, np.exp(-(t - 0.05) / 0.12)) * (t > 0.0)
-            kick = kick * (1 - smooth(np.clip((t - 0.6) / 0.3, 0, 1)))
-            lqf = np.repeat(lq_aim, Ff, 0); rootf = np.repeat(root1, Ff, 0) - np.outer(kick, [0, 0.008, 0.02])
-            add_euler(rig, lqf, 'Spine1', -3.0 * kick, 0, 1.0 * kick)
-            add_euler(rig, lqf, 'Spine', -1.5 * kick, 0, 0)
-            add_euler(rig, lqf, 'Head', -4.0 * kick, 0, 0)
-            add_euler(rig, lqf, 'RightShoulder', 0, 3.0 * kick, 2.0 * kick)
-            gqf = rig.global_from_local(lqf)
-            gqf = legs(gqf, rootf)
-            cq, cp = A.chest_frame(rig.sk, gqf, rootf)
-            gun_q = qmul(qmul(cq, relq[None]), qaxis([1, 0, 0], -np.radians(3.5) * kick))
-            gun_p = cp + qrot(cq, np.broadcast_to(relp, (Ff, 3)))
-            gqf2, ierr = launcher_hands(rig, gqf, rootf, gun_q, gun_p, L)
-            out['fire_launcher'] = to_clip('fire_launcher', rig, gqf2, rootf, False,
-                                           notes='launcher shot from aim_launcher: rocket leaves at 0.05 s (muzzle/backblast flash), tube jumps ~3.5 deg, shoulders absorb, back to aim at 0.9 s',
-                                           events={'shot': 0.05, 'backblast': 0.05})
+        # fire_launcher / fire_launcher_kneel / launcher_raise*: clips_combat.launcher_v2 (same aim bases)
     return out
 
 

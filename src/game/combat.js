@@ -19,7 +19,7 @@ export class Combat {
   targetPoint(t, out = B) {
     if (t.type === 'vehicle') return out.set(t.pos.x, 1.5, t.pos.z);
     const k = t.peek ? (t.peekAmt || 0) : 0, pv = t.peekVec;
-    return out.set(t.pos.x + (k ? pv[0] * k : 0), t.pos.y + t.headHeight() * 0.75, t.pos.z + (k ? pv[1] * k : 0));
+    return out.set(t.pos.x + (k ? pv[0] * k * 0.78 : 0), t.pos.y + t.headHeight() * 0.75, t.pos.z + (k ? pv[1] * k * 0.78 : 0));
   }
   // standing at a wall corner with the target hidden: can he lean out left/right and see it?
   tryPeek(s, cands, ignA) {
@@ -49,7 +49,7 @@ export class Combat {
     if (s.launcherT > 0) {
       s.launcherT -= dt;
       const tv = s.launcherTarget;
-      if (!s.launchFired && s.launcherT < 0.5 && tv && !tv.destroyed) { s.launchFired = true; this.fireRpg(s, tv, WEAPONS.rpg22, true); }
+      if (!s.launchFired && s.launcherT < 1.0 && tv && !tv.destroyed) { s.launchFired = true; this.fireRpg(s, tv, WEAPONS.rpg22, true); }
       if (s.launcherT <= 0) { s.discardLauncher(); s.launcherTarget = null; }
       return;
     }
@@ -58,7 +58,7 @@ export class Combat {
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
     if (s.peek && s.peekAmt < 0.85) return;                          // still leaning out from the corner
     if (s.rpg22 > 0 && t.type === 'vehicle' && s.inside !== 'ride' && Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z) < WEAPONS.rpg22.range && s.vel.lengthSq() < 0.5) {
-      s.rpg22--; s.launcherT = 2.2; s.launchFired = false; s.launcherTarget = t; s.raiseLauncher(); return;
+      s.rpg22--; s.launcherT = 2.7; s.launchFired = false; s.launcherTarget = t; s.raiseLauncher(); return;
     }
     // hand grenades at close range (RGD-5 / F-1): into windows or over cover
     if ((s.grenades ?? 2) > 0 && t.type !== 'vehicle' && (s.grenT = (s.grenT ?? 4) - dt) <= 0) {
@@ -449,7 +449,7 @@ export class Combat {
       if (p.state >= 2) { g.fx.dustCloud(c, 3, 2, 8); if (g.camDist(c) < 160 && Math.random() < 0.5) g.sfx('glass_break', c); }
       if (p.state === 3 || p.gone) {
         collapsed++;
-        const r = g.city.spawnRubble(c.x + o.x * 3.2, c.z + o.z * 3.2, 0.55 + Math.random() * 0.35);
+        const rs = 0.55 + Math.random() * 0.35, ro = (g.city.rubbleTemplates()[0]?.userData.r || 3) * rs * 0.45; const r = g.city.spawnRubble(c.x + o.x * ro, c.z + o.z * ro, rs);
         g.fx.dustCloud(c.clone().setY(Math.max(1, c.y - 2)), 6, c.y, 18);
         // occupants of that panel fall / are hurt
         for (const sl of b.slots) if (sl.panel === p && sl.occupant) this.hitSoldier(sl.occupant, { dmg: [50, 140], type: 'blast' }, c, true);

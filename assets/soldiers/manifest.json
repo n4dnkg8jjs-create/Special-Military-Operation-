@@ -3992,10 +3992,22 @@
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 1857944,
+  "size_bytes": 2226368,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest",
-  "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales (walk ~2.0, run ~5.0, crouch ~1.5 m/s). walk_rifle is a 2.1 m/s brisk walk (CMU 07_12) and run_rifle a 3.6 m/s fast run with a 17 deg combat lean (CMU 09_11) so the scaled cadence stays plausible (x1.0 / x1.4).",
+  "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
+  "rifle_fire": {
+   "clips": "fire_stand / fire_crouch / fire_prone / fire_peek_left / fire_peek_right / fire_peek_crouch_left / fire_peek_crouch_right",
+   "cycle": "each clip is ONE shot (0.133 s, 5 frames): event shot at 0.0 (muzzle flash / tracer / sound), peak kick at 0.033 s (butt drives the shoulder ~2 cm back, muzzle climbs ~3 deg pivoting at the butt, chest and cheek absorb), recovered by 0.133 s. First and last frame == the matching aim pose (aim_stand / aim_crouch / aim_prone / peek_* frame 0), so the clip loops seamlessly during a burst (one recoil cycle per loop) and cross-fades back into the aim clip."
+  },
+  "peeks": {
+   "clips": "peek_left / peek_right (standing), peek_crouch_left / peek_crouch_right (kneeling), 2 s loops",
+   "geometry": "leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 24-27 deg about the aim axis to the named side (the soldier's own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted 11-22 deg, right eye on the sight line. The head sits 0.27-0.35 m to the lean side of the root (events.head_out_m): with the corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it."
+  },
+  "cover": {
+   "cover_duck": "deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below a 0.9-1.0 m parapet (see events.head_top_m), rifle vertical and close, flinches (events.flinch); 3 s loop",
+   "pinned_prone": "flat prone, face down, left forearm over the helmet, rifle lying on its side beside the body (still in weapon_socket), flinches (events.flinch); 3 s loop"
+  },
   "launchers": {
    "socket": "weapon_socket (identity) for both rpg22.glb and rpg7.glb in aim_launcher / aim_launcher_kneel / fire_launcher",
    "authored_for": "RPG-22: right eye on the rear-sight line, tube underside on the right trapezius, right hand on the tube under the firing housing (= launcher origin), left palm under the front tube (rpg22 grip_L).",
@@ -4013,7 +4025,8 @@
      0.0,
      0.0
     ]
-   }
+   },
+   "sequence": "launcher_raise[_kneel] (0.8 s, plays once: ready stance with the launcher carried low in both hands -> on the right shoulder; last frame == aim_launcher[_kneel] frame 0) -> aim_launcher[_kneel] (loop) -> fire_launcher[_kneel] (1.0 s, plays once from the aim pose: shot / backblast at 0.05 s, tube jump, head flinch, standing half step back; recoil done by ~0.45 s, then the head comes off the sight and the empty tube dips). Attach rpg22.glb to weapon_socket when the raise starts."
   },
   "riding": {
    "frame": "ride_sit_edge / ride_sit_deck / ride_aim: root = ride_seat_N empty (point on the sitting surface under the pelvis), +Z = seat facing; Hips joint 0.118 m above and 0.035 m behind the seat point; place the soldier root exactly on the seat empty (position + heading), no ground snapping.",
@@ -4026,7 +4039,7 @@
    "treat_wounded": "medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root",
    "wounded_sit": "back against a wall plane 0.30 m behind the root (-Z)"
   },
-  "sources": "CMU mocap: walk 07_12, run 09_11, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
+  "sources": "CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
   "clips": {
    "idle_rifle": {
     "duration_s": 4.0,
@@ -4048,38 +4061,25 @@
     "root_motion": false,
     "notes": "shouldered, cheek weld butt-to-pocket err 0.053 m; ik err {'R': 1.0374052500944784e-15, 'L': 1.0540725709916734e-15}"
    },
-   "fire_stand": {
-    "duration_s": 0.4,
-    "frames": 13,
-    "fps": 30,
-    "loop": false,
-    "ground_speed_mps": 0.0,
-    "direction": "in place",
-    "root_motion": false,
-    "notes": "one shot recoil cycle (0.4 s); loop for auto fire, muzzle flash at t=0",
-    "events": {
-     "shot": 0.0
-    }
-   },
    "walk_rifle": {
-    "duration_s": 0.867,
-    "frames": 27,
+    "duration_s": 1.1,
+    "frames": 34,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 2.093,
+    "ground_speed_mps": 1.466,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "tactical brisk walk: CMU 07_12 (brisk walk, ~2 m/s) cycle (10, 26); rifle at patrol; ik err {'R': 4.965068306494546e-16, 'L': 7.713104172907411e-16}"
+    "notes": "tactical walk: CMU 07_01 (normal walk, 1.47 m/s, 109 steps/min) cycle (9, 33), pelvis lowered 4.5 cm (soft, bent knees; planted foot pinned to the ground), +7 deg forward lean, head level, rifle at low ready; planted-foot slip 0.000 m/s; ik err {'R': 5.578801654593729e-16, 'L': 0.005612531796269708, 'foot_lock_corr': {'Left': 0.027, 'Right': 0.025}}"
    },
    "run_rifle": {
-    "duration_s": 0.767,
-    "frames": 24,
+    "duration_s": 0.7,
+    "frames": 22,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 3.576,
+    "ground_speed_mps": 4.166,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "combat sprint: CMU 09_11 (fast run) cycle (6, 23), +17 deg forward lean, head level, rifle at port across the chest; reads well time-scaled to ~5 m/s; ik err {'R': 5.959374814064025e-16, 'L': 9.157499910099985e-16}"
+    "notes": "combat run: CMU 16_45 (run/jog, 4.17 m/s, 171 steps/min) cycle (6, 21), pelvis lowered 3.5 cm (bent-knee, loaded gait; planted foot pinned to the ground), +12 deg forward lean, head level, rifle at port across the chest; planted-foot slip 0.000 m/s; ik err {'R': 6.77599954797753e-16, 'L': 5.865315305387853e-16, 'foot_lock_corr': {'Left': 0.025, 'Right': 0.012}}"
    },
    "crouch_walk": {
     "duration_s": 1.3,
@@ -4121,21 +4121,6 @@
     "root_motion": false,
     "notes": "kneeling aim; butt err 0.034; ik err {'R': 8.326672684688674e-16, 'L': 1.0835344452754878e-15}"
    },
-   "reload_crouch": {
-    "duration_s": 2.6,
-    "frames": 79,
-    "fps": 30,
-    "loop": false,
-    "ground_speed_mps": 0.0,
-    "direction": "in place",
-    "root_motion": false,
-    "notes": "mag change: magazine leaves gun at 0.70 s (attach to mag_socket_L), new mag in at 1.80 s, charging handle 2.05-2.2 s; ik err {'R': 7.771561172376096e-16, 'L': 7.28550816809042e-16}",
-    "events": {
-     "mag_out": 0.7,
-     "mag_in": 1.8,
-     "charging_handle": 2.1
-    }
-   },
    "suppressed_cower": {
     "duration_s": 3.0,
     "frames": 91,
@@ -4146,21 +4131,6 @@
     "root_motion": false,
     "notes": "kneeling, hunched, head down, rifle clutched; ik err {'R': 1.0641874625968417e-15, 'L': 8.968369378123981e-16}"
    },
-   "reload_stand": {
-    "duration_s": 2.6,
-    "frames": 79,
-    "fps": 30,
-    "loop": false,
-    "ground_speed_mps": 0.0,
-    "direction": "in place",
-    "root_motion": false,
-    "notes": "mag change: magazine leaves gun at 0.70 s (attach to mag_socket_L), new mag in at 1.80 s, charging handle 2.05-2.2 s; ik err {'R': 4.577566798522237e-16, 'L': 8.355534721610419e-16}",
-    "events": {
-     "mag_out": 0.7,
-     "mag_in": 1.8,
-     "charging_handle": 2.1
-    }
-   },
    "aim_prone": {
     "duration_s": 3.0,
     "frames": 91,
@@ -4169,7 +4139,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "prone aim, elbows down; butt err 0.041; ik err {'R': 8.608703982599288e-16, 'L': 0.07299427232897494}"
+    "notes": "prone aim, elbows down, support hand at the rear of the lower handguard; butt err 0.041; ik err {'R': 8.608703982599288e-16, 'L': 9.634823471110655e-16}"
    },
    "prone_idle": {
     "duration_s": 4.0,
@@ -4373,20 +4343,6 @@
      "launcher_socket": "weapon_socket (identity)"
     }
    },
-   "fire_launcher": {
-    "duration_s": 1.0,
-    "frames": 31,
-    "fps": 30,
-    "loop": false,
-    "ground_speed_mps": 0.0,
-    "direction": "in place",
-    "root_motion": false,
-    "notes": "launcher shot from aim_launcher: rocket leaves at 0.05 s (muzzle/backblast flash), tube jumps ~3.5 deg, shoulders absorb, back to aim at 0.9 s",
-    "events": {
-     "shot": 0.05,
-     "backblast": 0.05
-    }
-   },
    "aim_launcher_kneel": {
     "duration_s": 3.0,
     "frames": 91,
@@ -4483,6 +4439,273 @@
       1.8,
       -1.6
      ]
+    }
+   },
+   "fire_stand": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.3 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_stand pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "fire_crouch": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.4 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_crouch pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "fire_prone": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.4 deg, butt/shoulder 0.9 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_prone pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "peek_left": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "standing at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg, left foot 7 cm out), rifle shouldered and canted 22 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.078 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.31 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "events": {
+     "lean_side": "left",
+     "head_out_m": 0.31
+    }
+   },
+   "fire_peek_left": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.4 deg, butt/shoulder 1.8 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "peek_right": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "standing at a wall corner, trunk (hips->neck) leaning 27 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg, right foot 7 cm out), rifle shouldered and canted 12 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.026 m; ik err {'R': 0.0, 'L': 0.0007}. The head is 0.35 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "events": {
+     "lean_side": "right",
+     "head_out_m": 0.35
+    }
+   },
+   "fire_peek_right": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0071}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "peek_crouch_left": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 24 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg), rifle shouldered and canted 20 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.069 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.27 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "events": {
+     "lean_side": "left",
+     "head_out_m": 0.27
+    }
+   },
+   "fire_peek_crouch_left": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.3 deg, butt/shoulder 2.0 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "peek_crouch_right": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg), rifle shouldered and canted 11 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.015 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.32 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "events": {
+     "lean_side": "right",
+     "head_out_m": 0.32
+    }
+   },
+   "fire_peek_crouch_right": {
+    "duration_s": 0.133,
+    "frames": 5,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.0
+    }
+   },
+   "reload_stand": {
+    "duration_s": 2.6,
+    "frames": 79,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "standing magazine change from/to the aim pose: rifle into the workspace (canted, in front of the chest), left hand grabs the mag (thumb on the release) and rocks it out (mag_out 0.70 s: attach the magazine to mag_socket_L preserving its world transform, e.g. THREE Object3D.attach), down to the front pouch (1.04-1.26 s) and back, front lug in and rocked home (mag_in 1.80 s: the left palm is at the same rifle-relative pose as at mag_out, so restoring the home transform is seamless; rifle dips with the slap), racks the charging handle over the top (2.05-2.2 s), back on the shoulder at 2.55 s; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "mag_out": 0.7,
+     "mag_in": 1.8,
+     "charging_handle": 2.1
+    }
+   },
+   "reload_crouch": {
+    "duration_s": 2.6,
+    "frames": 79,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling magazine change from/to the aim pose: rifle into the workspace (canted, in front of the chest), left hand grabs the mag (thumb on the release) and rocks it out (mag_out 0.70 s: attach the magazine to mag_socket_L preserving its world transform, e.g. THREE Object3D.attach), down to the front pouch (1.04-1.26 s) and back, front lug in and rocked home (mag_in 1.80 s: the left palm is at the same rifle-relative pose as at mag_out, so restoring the home transform is seamless; rifle dips with the slap), racks the charging handle over the top (2.05-2.2 s), back on the shoulder at 2.55 s; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "mag_out": 0.7,
+     "mag_in": 1.8,
+     "charging_handle": 2.1
+    }
+   },
+   "cover_duck": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "deep squat tight behind a low wall / sill in front (+Z, face of the wall ~0.42 m ahead of the root), back rounded, head ducked (helmet top <= 0.94 m, i.e. under a ~0.9-1.0 m parapet), rifle vertical and close (muzzle up beside the head), flinches at 0.55 s and 2.0 s, fast breathing + tremor; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "flinch": [
+      0.55,
+      2.0
+     ],
+     "head_top_m": 0.94,
+     "wall_front_z": 0.42
+    }
+   },
+   "pinned_prone": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "pinned in the open: flat on the belly, face down (turned right), left forearm over the back of the helmet, right hand on the rifle lying on its side beside the body (weapon_socket as usual), flinches at 0.8 s and 2.15 s, fast breathing; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "flinch": [
+      0.8,
+      2.15
+     ]
+    }
+   },
+   "launcher_raise": {
+    "duration_s": 0.8,
+    "frames": 25,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "standing RPG-22 raise (0.8 s): from the ready stance with the extended launcher carried low in both hands (right hand = weapon_socket on the grip, left palm under the front tube), left foot steps 10 cm forward into the launcher stance; the tube swings up the right side and over the shoulder (0.15-0.6 s), settles onto the trapezius, cheek comes down to the sight last; last frame == aim_launcher frame 0; attach rpg22.glb to weapon_socket at t=0 and hide the rifle; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "launcher_socket": "weapon_socket (identity)",
+     "on_shoulder": 0.62
+    }
+   },
+   "fire_launcher": {
+    "duration_s": 1.0,
+    "frames": 31,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "standing RPG-22 shot from aim_launcher frame 0: brief brace, rocket leaves at 0.05 s (muzzle flash + backblast from the rear empty), tube jumps ~6 deg pivoting on the shoulder, head flinches up/away from the tube, chest rocks back; rear (right) foot takes an 8 cm half step back (0.09-0.29 s); settled by ~0.45 s, then the head comes off the sight and the empty tube dips (0.55-0.95 s) ready to be discarded; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.05,
+     "backblast": 0.05
+    }
+   },
+   "launcher_raise_kneel": {
+    "duration_s": 0.8,
+    "frames": 25,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling RPG-22 raise (0.8 s): from the ready stance with the extended launcher carried low in both hands (right hand = weapon_socket on the grip, left palm under the front tube); the tube swings up the right side and over the shoulder (0.15-0.6 s), settles onto the trapezius, cheek comes down to the sight last; last frame == aim_launcher_kneel frame 0; attach rpg22.glb to weapon_socket at t=0 and hide the rifle; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "launcher_socket": "weapon_socket (identity)",
+     "on_shoulder": 0.62
+    }
+   },
+   "fire_launcher_kneel": {
+    "duration_s": 1.0,
+    "frames": 31,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling RPG-22 shot from aim_launcher_kneel frame 0: brief brace, rocket leaves at 0.05 s (muzzle flash + backblast from the rear empty), tube jumps ~6 deg pivoting on the shoulder, head flinches up/away from the tube, chest rocks back over the kneeling knee; settled by ~0.45 s, then the head comes off the sight and the empty tube dips (0.55-0.95 s) ready to be discarded; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "shot": 0.05,
+     "backblast": 0.05
     }
    }
   }

@@ -177,7 +177,7 @@ export class Soldier {
     else if (this.launcherT > 0) {
       const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;
       if (this.launchFired) { clip = 'fire_launcher' + k; alt = ['fire_launcher', aim]; }
-      else if (this.launcherT > 1.4) { clip = 'launcher_raise' + k; alt = ['launcher_raise', aim, 'aim_launcher']; }
+      else if (this.launcherT > 1.9) { clip = 'launcher_raise' + k; alt = ['launcher_raise', aim, 'aim_launcher']; }
       else { clip = aim; alt = ['aim_launcher', 'aim_stand']; }
     }
     else if (this.dragging && this.dragPhase === 'treat') { clip = 'treat_wounded'; alt = ['crouch_idle']; }
@@ -224,7 +224,7 @@ export class Soldier {
   }
   sync() {
     this.root.position.copy(this.pos);
-    if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.7; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.7; }
+    if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.45; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.45; }
     this.root.rotation.y = this.heading;
     this.root.visible = this.visible && this.inside !== 'btr' && this.state !== 'evac' && this.inView !== false;
   }

@@ -79,7 +79,7 @@ def make_loop(gq, root, a, p, blend=6):
         if src < 0:
             continue
         seg_q[i] = qslerp(seg_q[i], gq[src], w)
-        seg_r[i] = seg_r[i] * (1 - w) + (root[src] + stride) * w
+        seg_r[i] = seg_r[i] * (1 - w) + (root[src] + stride * [1, 0, 1]) * w   # horizontal stride only: vertical must close the loop
     seg_q[-1] = seg_q[0]
     for j in range(seg_q.shape[1]):
         seg_q[:, j] = qfix_continuity(seg_q[:, j])

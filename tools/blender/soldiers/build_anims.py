@@ -66,7 +66,7 @@ def osc(F, cycles, phase=0.0):
 
 
 # ------------------------------------------------------------------ locomotion from mocap
-def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=8, poleL=None, poleR=None, curl=None):
+def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=8, poleL=None, poleR=None, curl=None, sink=0.0):
     gq, root = C.mocap(rig, bvh, t0, t1)
     gq, root = C.face_forward(rig, gq, root)
     root = C.ground_fix(rig, gq, root, ground_pct)
@@ -81,7 +81,14 @@ def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=
     lq[:, I['Neck']] = qmul(lq[:, I['Neck']], qeuler(-lean * 0.7, 0, 0, order='YXZ')[None])
     gq = rig.global_from_local(lq)
     root = C.strip_root(root)
+    lock = None
+    if sink:
+        import clips_combat as CC
+        gq, root = CC.sink(rig, gq, root, sink)
+        gq, lock = CC.foot_lock(rig, gq, root, speed)     # pin the planted foot to the (sliding) ground, both feet to one ground height
     gq, err = C.carry(rig, gq, root, gunpose, poleL=poleL, poleR=poleR)
+    if lock is not None:
+        err = dict(err, foot_lock_corr=lock)
     return gq, root, speed, err, (a, p)
 
 
@@ -94,7 +101,7 @@ def build_all(rig, R, only=None):
         return only is None or n in only
 
     # ---------------- idle_rifle: authored stance, low ready, breathing, slight weight shift, look around
-    if want('idle_rifle') or want('aim_stand') or want('fire_stand'):
+    if want('idle_rifle'):
         F = 4 * FPS + 1
         gq, root, feet = stance(rig, F)
         lq = rig.local(gq)
@@ -108,7 +115,7 @@ def build_all(rig, R, only=None):
         if want('idle_rifle'):
             out['idle_rifle'] = to_clip('idle_rifle', rig, gq2, root, True, notes=f'authored stance, low ready; ik err {err}')
     # ---------------- aim_stand / fire_stand
-    if want('aim_stand') or want('fire_stand') or want('reload_stand'):
+    if want('aim_stand'):
         F1 = 1
         gq1, root1, feet = stance(rig, F1, drop=0.035, hip_yaw=-28, spine=(4, 8, 6, 9), lfoot=(0.14, 0.14), rfoot=(-0.12, -0.12), lyaw=-18, ryaw=-40, head=(0, 6))
         gq1 = plant_feet(rig, gq1, root1, feet)
@@ -130,36 +137,21 @@ def build_all(rig, R, only=None):
         aim_state = dict(lq=lq, root=root, gqg=gqg, gpg=gpg, feet=feet, rel=(rel_q, rel_p))
         if want('aim_stand'):
             out['aim_stand'] = to_clip('aim_stand', rig, gqa, root, True, notes=f'shouldered, cheek weld butt-to-pocket err {eerr:.3f} m; ik err {err}')
-        if want('fire_stand'):
-            # single shot recoil cycle 0.4 s (loop it for automatic fire): gun kicks back/up, shoulder & head absorb
-            F = int(0.4 * FPS) + 1
-            t = np.arange(F) / FPS
-            kick = np.where(t < 0.04, t / 0.04, np.exp(-(t - 0.04) / 0.07)) * (t < 0.36)
-            kick = kick * (1 - smooth_(np.clip((t - 0.25) / 0.15, 0, 1)))
-            lqf = np.repeat(lq_aim, F, 0); rootf = np.repeat(root1, F, 0)
-            C.add_local(rig, lqf, 'Spine1', lambda f: (-2.5 * kick, 0 * kick, 0.6 * kick))
-            C.add_local(rig, lqf, 'Spine', lambda f: (-1.2 * kick, 0 * kick, 0 * kick))
-            C.add_local(rig, lqf, 'RightShoulder', lambda f: (0 * kick, 3.5 * kick, 0 * kick))
-            C.add_local(rig, lqf, 'Head', lambda f: (-1.5 * kick, 0 * kick, 0 * kick))
-            gqf = rig.global_from_local(lqf)
-            gqf = plant_feet(rig, gqf, rootf, feet)
-            cq, cp = A.chest_frame(rig.sk, gqf, rootf)
-            muzzle_up = qaxis([1, 0, 0], -np.radians(4.5) * kick)
-            gq_g = qmul(qmul(cq, rel_q[None]), muzzle_up)
-            gp_g = cp + qrot(cq, np.broadcast_to(rel_p, (F, 3))) - qrot(gq_g, np.broadcast_to([0, 0, 0.025], (F, 3))) * kick[:, None]
-            pR = fk_global(rig.sk, gqf, rootf)[:, I['RightArm']] + [-0.5, -0.35, -0.2]
-            pL = fk_global(rig.sk, gqf, rootf)[:, I['LeftArm']] + [0.15, -0.8, 0.1]
-            gqf2, err = A.rifle_overlay(rig, gqf, rootf, gq_g, gp_g, poleR=pR, poleL=pL)
-            out['fire_stand'] = to_clip('fire_stand', rig, gqf2, rootf, False, notes='one shot recoil cycle (0.4 s); loop for auto fire, muzzle flash at t=0')
     # ---------------- locomotion
     if want('walk_rifle'):
-        gq, root, sp, err, cyc = loco(rig, '07_12', 0.0, None, 26, 40, 'patrol', lean=8)
-        out['walk_rifle'] = to_clip('walk_rifle', rig, gq, root, True, sp, notes=f'tactical brisk walk: CMU 07_12 (brisk walk, ~2 m/s) cycle {cyc}; rifle at patrol; ik err {err}')
+        import clips_combat as CC
+        gq, root, sp, err, cyc = loco(rig, '07_01', 0.0, None, 26, 45, 'low_ready', lean=7, sink=0.045)
+        slide = CC.foot_slide(rig, gq, root, sp)
+        out['walk_rifle'] = to_clip('walk_rifle', rig, gq, root, True, sp,
+                                    notes=f'tactical walk: CMU 07_01 (normal walk, {sp:.2f} m/s, {2 * 60 * FPS / cyc[1]:.0f} steps/min) cycle {cyc}, pelvis lowered 4.5 cm '
+                                          f'(soft, bent knees; planted foot pinned to the ground), +7 deg forward lean, head level, rifle at low ready; planted-foot slip {slide:.3f} m/s; ik err {err}')
     if want('run_rifle'):
-        gq, root, sp, err, cyc = loco(rig, '09_11', 0.0, None, 18, 24, 'port', lean=17)
+        import clips_combat as CC
+        gq, root, sp, err, cyc = loco(rig, '16_45', 0.0, None, 16, 26, 'port', lean=12, sink=0.035)
+        slide = CC.foot_slide(rig, gq, root, sp)
         out['run_rifle'] = to_clip('run_rifle', rig, gq, root, True, sp,
-                                   notes=f'combat sprint: CMU 09_11 (fast run) cycle {cyc}, +17 deg forward lean, head level, rifle at port across the chest; '
-                                         f'reads well time-scaled to ~5 m/s; ik err {err}')
+                                   notes=f'combat run: CMU 16_45 (run/jog, {sp:.2f} m/s, {2 * 60 * FPS / cyc[1]:.0f} steps/min) cycle {cyc}, pelvis lowered 3.5 cm '
+                                         f'(bent-knee, loaded gait; planted foot pinned to the ground), +12 deg forward lean, head level, rifle at port across the chest; planted-foot slip {slide:.3f} m/s; ik err {err}')
     if want('crouch_walk'):
         gq, root, sp, err, cyc = loco(rig, '136_09', 2.0, 8.5, 30, 60, 'low_ready', lean=10)
         out['crouch_walk'] = to_clip('crouch_walk', rig, gq, root, True, sp, notes=f'CMU 136_09 walk crouched cycle {cyc}; ik err {err}')
@@ -167,7 +159,7 @@ def build_all(rig, R, only=None):
         gq, root, sp, err, cyc = loco(rig, '77_19', 1.5, 7.5, 40, 80, 'patrol', lean=6)
         out['limp_walk'] = to_clip('limp_walk', rig, gq, root, True, sp, notes=f'CMU 77_19 limping (hurt right leg) cycle {cyc}; ik err {err}')
     # ---------------- kneeling family: crouch_idle, aim_crouch, reload_crouch, suppressed_cower
-    if any(want(n) for n in ('crouch_idle', 'aim_crouch', 'reload_crouch', 'suppressed_cower')):
+    if any(want(n) for n in ('crouch_idle', 'aim_crouch', 'suppressed_cower')):
         kq, kr, kfeet = kneel(rig, 1)
         if want('crouch_idle'):
             F = 4 * FPS + 1
@@ -178,7 +170,7 @@ def build_all(rig, R, only=None):
             gq = kneel_legs(rig, gq, root, kfeet)
             gq2, err = C.carry(rig, gq, root, 'low_ready')
             out['crouch_idle'] = to_clip('crouch_idle', rig, gq2, root, True, notes=f'kneeling on right knee, low ready; ik err {err}')
-        if want('aim_crouch') or want('reload_crouch'):
+        if want('aim_crouch'):
             lq1 = rig.local(kq)
             lq1[0, I['Hips']] = qmul(lq1[0, I['Hips']], qeuler(0, -10, 0, order='YXZ'))
             lq_aim, gun_q, gun_p, eerr = C.solve_aim(rig, lm, lq1, kr)
@@ -195,8 +187,6 @@ def build_all(rig, R, only=None):
             gqa, err = A.rifle_overlay(rig, gq, root, gqg, gpg, poleR=gpos[:, I['RightArm']] + [-0.5, -0.35, -0.2], poleL=gpos[:, I['LeftArm']] + [0.15, -0.8, 0.1])
             if want('aim_crouch'):
                 out['aim_crouch'] = to_clip('aim_crouch', rig, gqa, root, True, notes=f'kneeling aim; butt err {eerr:.3f}; ik err {err}')
-            if want('reload_crouch'):
-                out['reload_crouch'] = reload_clip(rig, 'reload_crouch', lq_aim, kr, relq, relp, legs=lambda g, r: kneel_legs(rig, g, r, kfeet))
         if want('suppressed_cower'):
             F = 3 * FPS + 1
             lq = np.repeat(rig.local(kq), F, 0); root = np.repeat(kr, F, 0) - [0, 0.04, 0]
@@ -213,14 +203,6 @@ def build_all(rig, R, only=None):
             gq = kneel_legs(rig, gq, root, kfeet)
             gq2, err = C.carry(rig, gq, root, 'cower')
             out['suppressed_cower'] = to_clip('suppressed_cower', rig, gq2, root, True, notes=f'kneeling, hunched, head down, rifle clutched; ik err {err}')
-    if want('reload_stand'):
-        gq1, root1, feet = stance(rig, 1, drop=0.03, hip_yaw=-24, spine=(5, 6, 5, 6), lfoot=(0.14, 0.13), rfoot=(-0.12, -0.11), lyaw=-18, ryaw=-38, head=(0, 6))
-        gq1 = plant_feet(rig, gq1, root1, feet)
-        lq1 = rig.local(gq1)
-        lq_aim, gun_q, gun_p, eerr = C.solve_aim(rig, lm, lq1, root1)
-        cq0, cp0 = A.chest_frame(rig.sk, rig.global_from_local(lq_aim), root1)
-        relq = qmul(qinv(cq0[0]), gun_q); relp = qrot(qinv(cq0[0]), gun_p - cp0[0])
-        out['reload_stand'] = reload_clip(rig, 'reload_stand', lq_aim, root1, relq, relp, legs=lambda g, r: plant_feet(rig, g, r, feet))
     # ---------------- prone family
     if any(want(n) for n in ('prone_idle', 'aim_prone', 'prone_crawl')):
         pq, pr = prone(rig)
@@ -235,8 +217,9 @@ def build_all(rig, R, only=None):
             cq, cp = A.chest_frame(rig.sk, gq, root)
             gqg = qmul(cq, relq[None]); gpg = cp + qrot(cq, np.broadcast_to(relp, (F, 3)))
             gpos = fk_global(rig.sk, gq, root)
-            gqa, err = A.rifle_overlay(rig, gq, root, gqg, gpg, poleR=gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], poleL=gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
-            out['aim_prone'] = to_clip('aim_prone', rig, gqa, root, True, notes=f'prone aim, elbows down; butt err {eerr:.3f}; ik err {err}')
+            import clips_combat as CC   # support hand at the rear of the handguard (mid-handguard is out of reach with the elbows down)
+            gqa, err = CC.prone_overlay(rig, gq, root, gqg, gpg, gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
+            out['aim_prone'] = to_clip('aim_prone', rig, gqa, root, True, notes=f'prone aim, elbows down, support hand at the rear of the lower handguard; butt err {eerr:.3f}; ik err {err}')
         if want('prone_idle'):
             F = 4 * FPS + 1
             lq = np.repeat(rig.local(pq), F, 0); root = np.repeat(pr, F, 0)
@@ -302,6 +285,9 @@ def build_all(rig, R, only=None):
         out['cqb_stack'] = CX.cqb_stack(rig, stance, plant_feet)
     if want('dismount_jump'):
         out['dismount_jump'] = CX.dismount_jump(rig, lm)
+    # ---------------- combat v2 (clips_combat.py): recoil cycles, corner peeks, cover duck, pinned prone, launcher raise/fire, reloads
+    import clips_combat as CC
+    out.update(CC.combat_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, prone))
     return out
 
 
@@ -714,13 +700,28 @@ def write(rig, clips, path, sockets=True):
 
 
 if __name__ == '__main__':
-    only = sys.argv[1:] or None
+    # build_anims.py                 -> rebuild every clip -> assets/soldiers/soldier_anims.glb + .cache/clips.pkl
+    # build_anims.py a b ...         -> only clips a, b -> .cache/anims_test.glb + .cache/clips_test.pkl (preview; assets untouched)
+    # build_anims.py --merge a b ... -> rebuild a, b and merge them into the cached full set (.cache/clips.pkl: every other clip is kept
+    #                                   as previously built, order kept, new names appended) -> assets/soldiers/soldier_anims.glb
+    args = sys.argv[1:]
+    merge = '--merge' in args
+    only = [a for a in args if not a.startswith('--')] or None
     R, rig = setup()
     t0 = time.time()
     clips = build_all(rig, R, only)
     for n, c in clips.items():
         print(n, '%.2fs' % c['dur'], 'speed %.2f' % c['speed'], c['notes'])
-    path = f'{ASSETS}/soldier_anims.glb' if only is None else f'{BUILD}/anims_test.glb'
+    if only and merge:
+        full = pickle.load(open(f'{BUILD}/clips.pkl', 'rb'))
+        missing = [n for n in only if n not in clips]
+        if missing:
+            sys.exit(f'not built: {missing}')
+        full.update(clips)
+        clips = full
+        print('merged ->', len(clips), 'clips')
+    test = bool(only) and not merge
+    path = f'{BUILD}/anims_test.glb' if test else f'{ASSETS}/soldier_anims.glb'
     write(rig, clips, path)
-    pickle.dump({n: {k: v for k, v in c.items()} for n, c in clips.items()}, open(f'{BUILD}/clips{"_test" if only else ""}.pkl', 'wb'))
+    pickle.dump({n: {k: v for k, v in c.items()} for n, c in clips.items()}, open(f'{BUILD}/clips{"_test" if test else ""}.pkl', 'wb'))
     print('done', time.time() - t0)

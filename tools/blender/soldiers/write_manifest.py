@@ -142,9 +142,28 @@ def main():
     out['soldier_anims'] = dict(file='soldier_anims.glb', size_bytes=os.path.getsize(f'{ASSETS}/soldier_anims.glb'),
                                 contents='skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear',
                                 in_place='loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest',
-                                time_scaling='ground_speed_mps is the clip\'s natural speed; the game time-scales (walk ~2.0, run ~5.0, crouch ~1.5 m/s). '
-                                             'walk_rifle is a 2.1 m/s brisk walk (CMU 07_12) and run_rifle a 3.6 m/s fast run with a 17 deg combat lean (CMU 09_11) '
-                                             'so the scaled cadence stays plausible (x1.0 / x1.4).',
+                                time_scaling='ground_speed_mps is the clip\'s natural speed; the game time-scales by speed / ground_speed_mps. '
+                                             f'walk_rifle is a native {clips["walk_rifle"]["speed"]:.2f} m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; '
+                                             f'game 1.55 m/s = x{1.55 / clips["walk_rifle"]["speed"]:.2f}) and run_rifle a native {clips["run_rifle"]["speed"]:.2f} m/s weighty combat run '
+                                             f'(CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x{4.2 / clips["run_rifle"]["speed"]:.2f}). The planted foot is pinned to the '
+                                             'ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.',
+                                rifle_fire=dict(
+                                    clips='fire_stand / fire_crouch / fire_prone / fire_peek_left / fire_peek_right / fire_peek_crouch_left / fire_peek_crouch_right',
+                                    cycle='each clip is ONE shot (0.133 s, 5 frames): event shot at 0.0 (muzzle flash / tracer / sound), peak kick at 0.033 s '
+                                          '(butt drives the shoulder ~2 cm back, muzzle climbs ~3 deg pivoting at the butt, chest and cheek absorb), recovered by 0.133 s. '
+                                          'First and last frame == the matching aim pose (aim_stand / aim_crouch / aim_prone / peek_* frame 0), so the clip loops '
+                                          'seamlessly during a burst (one recoil cycle per loop) and cross-fades back into the aim clip.'),
+                                peeks=dict(
+                                    clips='peek_left / peek_right (standing), peek_crouch_left / peek_crouch_right (kneeling), 2 s loops',
+                                    geometry='leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 24-27 deg about the aim axis to the '
+                                             'named side (the soldier\'s own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted '
+                                             '11-22 deg, right eye on the sight line. The head sits 0.27-0.35 m to the lean side of the root (events.head_out_m): with the '
+                                             'corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it.'),
+                                cover=dict(
+                                    cover_duck='deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below '
+                                               'a 0.9-1.0 m parapet (see events.head_top_m), rifle vertical and close, flinches (events.flinch); 3 s loop',
+                                    pinned_prone='flat prone, face down, left forearm over the helmet, rifle lying on its side beside the body (still in '
+                                                 'weapon_socket), flinches (events.flinch); 3 s loop'),
                                 launchers=dict(
                                     socket='weapon_socket (identity) for both rpg22.glb and rpg7.glb in aim_launcher / aim_launcher_kneel / fire_launcher',
                                     authored_for='RPG-22: right eye on the rear-sight line, tube underside on the right trapezius, right hand on the tube under the '
@@ -152,7 +171,11 @@ def main():
                                     rpg7_offset=dict(position=[0.0, 0.0, 0.0], note='RPG-7 also fits with identity: its tube axis is 7 mm higher and its PGO-7 eyepiece '
                                                      'sits 5 cm left / 4 cm below the eye (head over the tube instead of beside it). For an exact PGO-7 sight picture '
                                                      'offset the launcher by [-0.051, 0.042, 0.0] (launcher local), at the cost of a 4 cm gap above the shoulder.'),
-                                    rpg22_offset=dict(position=[0.0, 0.0, 0.0])),
+                                    rpg22_offset=dict(position=[0.0, 0.0, 0.0]),
+                                    sequence='launcher_raise[_kneel] (0.8 s, plays once: ready stance with the launcher carried low in both hands -> on the right '
+                                             'shoulder; last frame == aim_launcher[_kneel] frame 0) -> aim_launcher[_kneel] (loop) -> fire_launcher[_kneel] (1.0 s, plays '
+                                             'once from the aim pose: shot / backblast at 0.05 s, tube jump, head flinch, standing half step back; recoil done by ~0.45 s, '
+                                             'then the head comes off the sight and the empty tube dips). Attach rpg22.glb to weapon_socket when the raise starts.'),
                                 riding=dict(
                                     frame='ride_sit_edge / ride_sit_deck / ride_aim: root = ride_seat_N empty (point on the sitting surface under the pelvis), '
                                           '+Z = seat facing; Hips joint 0.118 m above and 0.035 m behind the seat point; place the soldier root exactly on the seat '
@@ -167,7 +190,7 @@ def main():
                                          '(Spine1) at (0, 0.50, 0.42) in the casualty frame = (0, 0.50, 0.58) in the dragger frame (both hands).',
                                     treat_wounded='medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root',
                                     wounded_sit='back against a wall plane 0.30 m behind the root (-Z)'),
-                                sources='CMU mocap: walk 07_12, run 09_11, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. '
+                                sources='CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. '
                                         'Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. '
                                         'Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.',
                                 clips=cl)
