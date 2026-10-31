@@ -108,7 +108,12 @@ export class City {
           vec2 wp = vWPos.xz;
           vec2 wob = vec2(vn(wp * 0.21) - 0.5, vn(wp * 0.21 + 31.0) - 0.5) * 2.2;   // break up blurred mask edges
           vec4 sp = texture2D(tSplat, clamp((wp + wob) / splatSize + 0.5, 0.002, 0.998));
-          vec3 dirt = tile(tDirt, wp / 6.0), grass = mix(tile(tGrass, wp / 3.5) * vec3(0.72, 0.74, 0.62), dirt * vec3(0.9, 0.92, 0.82), smoothstep(0.45, 0.75, vn(wp * 0.35)) * 0.45), rub = tile(tRubble, wp / 5.0);
+          vec3 dirt = tile(tDirt, wp / 6.0), grass = tile(tGrass, wp / 3.5), rub = tile(tRubble, wp / 5.0);
+          // dry, sun-bleached grass: match the dirt's brightness, desaturate toward straw, let dirt show through
+          float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
+          grass = mix(vec3(gl), grass, 0.7) * vec3(1.0, 1.0, 0.84);
+          grass *= clamp(dl / max(gl, 0.02), 1.0, 1.45);
+          grass = mix(grass, dirt * vec3(1.0, 0.98, 0.88), smoothstep(0.45, 0.75, vn(wp * 0.35)) * 0.4);
           // height blending: each layer's own luminance acts as height so transitions follow the texture
           float hd = dot(dirt, vec3(0.33)), hg = dot(grass, vec3(0.33)), hr = dot(rub, vec3(0.33));
           float fine = vn(wp * 1.7);
@@ -174,8 +179,9 @@ export class City {
     const c = document.createElement('canvas'); c.width = 256; c.height = 256; const x = c.getContext('2d');
     for (let i = 0; i < 160; i++) {
       const bx = 128 + (Math.random() - .5) * 220, h = 70 + Math.random() * 170, lean = (Math.random() - .5) * 70, w = 2 + Math.random() * 3;
-      const g = Math.random(); const col = g < 0.45 ? [190 + Math.random() * 40, 175 + Math.random() * 30, 105 + Math.random() * 25] : g < 0.8 ? [140 + Math.random() * 30, 155 + Math.random() * 30, 80] : [215, 195, 140];
-      x.fillStyle = `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`;
+      const g = Math.random(); const col = g < 0.45 ? [128 + Math.random() * 30, 134 + Math.random() * 26, 74 + Math.random() * 18] : g < 0.85 ? [168 + Math.random() * 26, 156 + Math.random() * 22, 104 + Math.random() * 16] : [104, 122, 62];
+      const gr = x.createLinearGradient(0, 256, 0, 256 - h); gr.addColorStop(0, `rgb(${col[0] * 0.55 | 0},${col[1] * 0.55 | 0},${col[2] * 0.5 | 0})`); gr.addColorStop(0.45, `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`); gr.addColorStop(1, `rgb(${Math.min(255, col[0] * 1.12) | 0},${Math.min(255, col[1] * 1.08) | 0},${col[2] * 1.05 | 0})`);
+      x.fillStyle = gr;
       x.beginPath(); x.moveTo(bx - w, 256); x.quadraticCurveTo(bx + lean * 0.4 - w * 0.5, 256 - h * 0.55, bx + lean, 256 - h); x.quadraticCurveTo(bx + lean * 0.4 + w * 0.5, 256 - h * 0.55, bx + w, 256); x.fill();
       if (Math.random() < 0.12) { x.fillStyle = 'rgb(160,140,96)'; x.beginPath(); x.ellipse(bx + lean, 256 - h, 2.5, 7, lean * 0.01, 0, 7); x.fill(); }
     }
@@ -203,7 +209,7 @@ export class City {
       if (gw < 0.35 || this.rng() > gw) continue;
       if (onRoad(px, pz, SIDEWALK + 0.4)) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
       const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
-      cols.push(new THREE.Color().setHSL(0.13 + (this.rng() - .5) * 0.06, 0.2 + this.rng() * 0.2, 0.82 + this.rng() * 0.18));
+      cols.push(new THREE.Color().setHSL(0.16 + (this.rng() - .5) * 0.06, 0.1 + this.rng() * 0.15, 0.78 + this.rng() * 0.2));
     }
     instance(this.scene, tpl, mats, { shadows: false, colors: cols });
   }
