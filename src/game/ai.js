@@ -15,8 +15,10 @@ export class Commander {
     // [fraction of remaining time, foot squads, mounted squads, tanks, assault squads]
     // finite reserves: three counterattack waves (about the size of the player's company in total), and a wave
     // waits while the enemy still has plenty of men in the field — no endless stream
-    this.plan = [[0.06, 1, 1, 0, 0], [0.38, 1, 0, 1, 1], [0.68, 1, 1, 0, 0]];
-    this.fieldCap = 5;
+    // parity: the enemy's starting force matches the player's company (4 squads, 4 vehicles) and it gets the same
+    // single reinforcement the player gets (one mounted squad), at about the same point in the round
+    this.plan = [[0.2, 0, 1, 0, 0]];
+    this.fieldCap = 4;
     this.deployArmy();
   }
   // Initial army laid out in the enemy staging ground during the deployment phase.
@@ -50,7 +52,7 @@ export class Commander {
     }
     if (this.counter && this.waveI < this.waves.length && g.time >= this.waves[this.waveI].t) {
       const inField = g.squads.filter(q => q.side === 'enemy' && !q.destroyed && q.effective.length >= 3 && !q.routing).length;
-      if (inField < this.fieldCap) { this.spawnWave(this.waves[this.waveI++]); if (this.waveI >= this.waves.length) setTimeout(() => g.hud?.alert('Intercepts: the enemy has committed his last reserves', 'good'), 20000); }
+      if (inField < this.fieldCap) { this.spawnWave(this.waves[this.waveI++]); if (this.waveI >= this.waves.length) setTimeout(() => g.hud?.alert('Intercepts: the enemy has committed his last reserve', 'good'), 15000); }
       else this.waves[this.waveI].t = g.time + 20; // hold the wave back until the field thins out
     }
     for (const b of this.units) if (!b.dead) { b.t -= dt; if (b.t <= 0) { b.t = 1.2 + Math.random() * 0.6; this.think(b); } }
@@ -138,6 +140,22 @@ export class Commander {
     if (b.state === 'hold') { if (g.objectives.every(o => o.owner === 'enemy')) return; if (Math.random() < 0.04) { b.state = 'advance'; b.obj = b.obj === 'A' ? 'B' : 'A'; } return; }
     if (dObj < 22) { b.state = 'hold'; const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
     if (sq.building && sq.underFireT < 4 && Math.random() < 0.7) { b.wait = 5; return; }
+    // in contact: fire and manoeuvre — one fire team keeps the enemy's heads down while the other bounds to
+    // cover on a flank; if clearly outnumbered locally, go to ground in the best cover and wait for support
+    const contact = this.contactNear(sq, c, 170);
+    if (contact) {
+      const T = contact.p, local = this.threatsNear(c, 90).n, friends = this.friendsNear(c, 70);
+      if (local > friends + 1 && sq.morale < 60) { const cv = this.coverSpot(c, T, 14); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 12, true); b.wait = 8 + Math.random() * 6; return; }
+      const flank = b.flank || (Math.random() < 0.5 ? -1 : 1); b.flank = flank;
+      const ax = T.x - c.x, az = T.z - c.z, L = Math.hypot(ax, az) || 1, ux = ax / L, uz = az / L;
+      const want = Math.min(32, Math.max(12, L - 45));
+      const base = new THREE.Vector3(c.x + ux * want - uz * flank * 20, 0, c.z + uz * want + ux * flank * 20);
+      const cv = this.coverSpot(base, T, 16) || [base.x, base.z];
+      const open = g.nav.coverFrom(cv[0], cv[1], T.x, T.z) < 0.5;
+      if (open && (b.smokes ?? 2) > 0 && Math.random() < 0.6) { const th = sq.effective.find(s => !s.inside); if (th) { b.smokes = (b.smokes ?? 2) - 1; g.combat.throwSmoke(th, new THREE.Vector3((c.x + T.x) / 2, 0, (c.z + T.z) / 2)); } }
+      sq.focus = contact.u; sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 16, true, false, true);
+      b.wait = 6 + Math.random() * 6; b.bound++; return;
+    }
     // next bound: ~30–40 m along the route, offset to the flank while still far out
     const path = g.nav.findPath(c.x, c.z, ox, oz, 0.45, false, 60000);
     if (!path || path.length < 2) { sq.orderMove(ox, oz, null, 16, true); return; }
@@ -173,6 +191,23 @@ export class Commander {
     if (t.rpg > 0 && sq.center().distanceTo(v.pos) > 35 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(v.pos.x - ox, 0, v.pos.z - oz).normalize(); const p = v.pos.clone().addScaledVector(back, 45); v.orderMove(p.x, p.z); return; }
     if (v.pos.distanceTo(c) > 70 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(c.x - ox, 0, c.z - oz).normalize(); const p = c.clone().addScaledVector(back, 35); v.orderMove(p.x, p.z); }
     if (v.hp < v.def.hp * 0.4 && !b.retreated) { b.retreated = true; const [x, z] = this.stagingFor(b.obj); v.orderMove(x, z - 60); }
+  }
+  // nearest spotted player unit within r of this squad (position + unit)
+  contactNear(sq, c, r) {
+    let best = null, bd = r;
+    for (const u of this.g.unitsOf('player')) { if (u.type === 'squad' && u.mounted) continue; if (!this.g.seen('enemy', u, c)) continue; const p = u.type === 'vehicle' ? u.pos : u.center(); const d = p.distanceTo(c); if (d < bd) { bd = d; best = { u, p: p.clone(), d }; } }
+    return best;
+  }
+  // best cover cell against threat T within r of p (directional cover from the nav grid, then distance)
+  coverSpot(p, T, r) {
+    const nav = this.g.nav; let best = null, bs = 0.3;
+    for (let rr = 0; rr <= r; rr += 2) for (let a = 0; a < 16; a++) {
+      const x = p.x + Math.cos(a / 16 * 6.283) * rr, z = p.z + Math.sin(a / 16 * 6.283) * rr, i = nav.idx(x, z);
+      if (!nav.passable(i, 0.45)) continue;
+      const sc = nav.coverFrom(x, z, T.x, T.z) - rr * 0.015 + (nav.low[i] ? 0.05 : 0);
+      if (sc > bs) { bs = sc; best = [x, z]; }
+    }
+    return best;
   }
   nearBuilding(c, r, sq) {
     let best = null, bd = r;

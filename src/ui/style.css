@@ -104,3 +104,4 @@ button{font:inherit;cursor:pointer}
 #menu .brief{font-size:16px}
 #menu .menu-grid{margin:18px 0}
 @media (max-height:780px){#menu .brief{font-size:14.5px;line-height:1.35}#menu h1{font-size:44px}}
+#forces{margin-top:3px;font-size:11px;letter-spacing:.12em;color:var(--dim);white-space:pre}

@@ -89,7 +89,8 @@ export class Combat {
       if (!g.seen(sq.side, u, s.pos)) continue;
       if (u.type === 'vehicle') { if (!u.destroyed) consider(u, s.weaponKey === 'rpg7' ? 120 : (s.rpg22 > 0 && Math.hypot(u.pos.x - s.pos.x, u.pos.z - s.pos.z) < 160) ? 90 : -40); continue; }
       const focus = sq.focus === u ? 30 : 0;
-      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr') consider(e, focus + (e.inBuilding ? -10 : 0));
+      // priority: machine gunners and anti-tank gunners first, then leaders; men in the open over men behind cover
+      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr') consider(e, focus + (e.inBuilding ? -10 : 0) + (e.weaponKey === 'pkm' ? 25 : 0) + (e.weaponKey === 'rpg7' || e.rpg22 > 0 ? 18 : 0) + (e.role?.leader ? 10 : 0) + (e.vel.lengthSq() > 1 ? 12 : 0) - (this.g.nav.coverFrom(e.pos.x, e.pos.z, s.pos.x, s.pos.z) * 15));
     }
     if (s.weaponKey === 'rpg7') { // RPG gunner: only vehicles or garrisoned clusters
       for (let i = cands.length - 1; i >= 0; i--) { const t = cands[i][0]; if (t.type !== 'vehicle' && !(t.inBuilding && cands[i][1] < 120 && Math.random() < 0.25)) cands.splice(i, 1); }

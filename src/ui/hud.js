@@ -158,6 +158,9 @@ export class HUD {
     const g = this.g, left = Math.max(0, g.roundLen - g.time);
     this.timerEl.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     const lost = g.objectives.filter(o => o.owner === 'enemy');
+    const men = side => g.squads.reduce((n, q) => n + (q.side === side && !q.destroyed ? q.effective.length : 0), 0), veh = side => g.vehicles.filter(v => v.side === side && !v.destroyed).length;
+    const res = g.commander ? Math.max(0, (g.commander.waves?.length ?? g.commander.plan.length) - g.commander.waveI) : 0;
+    (this.forcesEl ||= document.getElementById('forces')).textContent = `YOU ${men('player')} MEN · ${veh('player')} VEH${g.reinforced ? '' : ' (+1 RESERVE)'}   ENEMY ≈${men('enemy')} · ${veh('enemy')}${res ? ` (+${res} RESERVE)` : ''}`;
     this.phaseEl.textContent = g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : 'HOLD BOTH OBJECTIVES';
     for (const o of g.objectives) {
       const el = document.getElementById(`obj-${o.id}`);

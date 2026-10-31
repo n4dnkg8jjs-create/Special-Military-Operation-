@@ -298,6 +298,7 @@ export class Squad {
       const h = helpers[0]; if (h.pos.distanceTo(w.pos) > 60) continue;
       h.dragging = w; h.dragPhase = 'reach'; h.goal = [w.pos.x, w.pos.z]; this.game.requestPath(h, h.pos.x, h.pos.z, w.pos.x, w.pos.z, 0.45);
     }
+    this.seekCover();
     // stance from situation
     for (const s of this.effective) {
       if (s.aboard) continue;
@@ -314,6 +315,28 @@ export class Squad {
         else if (this.underFireT < 4) s.stance = s.weaponKey === 'pkm' ? 'prone' : 'crouch';
         else s.stance = s.weaponKey === 'pkm' && s.target ? 'prone' : 'stand';
       }
+    }
+  }
+  // individual initiative: a man caught in the open while his squad is halted and taking fire scrambles to the
+  // nearest real cover against his target (a few metres, never far from where he was ordered)
+  seekCover() {
+    if (this.mounted || this.routing || this.building || this.order?.type === 'storm' || this.order?.type === 'mount') return;
+    if (this.underFireT > 2.5) return;
+    const nav = this.game.nav, now = this.game.time;
+    for (const s of this.effective) {
+      if (s.inside || s.dragging || (s.path && s.pathI < s.path.length) || s.pathReq || s.waitTeam || !s.target || (s.coverT || 0) > now) continue;
+      const tp = s.target.pos; if (nav.coverFrom(s.pos.x, s.pos.z, tp.x, tp.z) >= 0.55) continue;
+      s.coverT = now + 7 + Math.random() * 4;
+      const ax = s.goal ? s.goal[0] : s.pos.x, az = s.goal ? s.goal[1] : s.pos.z;
+      let best = null, bs = 0.5;
+      for (let r = 1.5; r <= 9; r += 1.5) for (let a = 0; a < 12; a++) {
+        const x = ax + Math.cos(a / 12 * 6.283) * r, z = az + Math.sin(a / 12 * 6.283) * r, i = nav.idx(x, z);
+        if (!nav.passable(i, 0.45)) continue;
+        if (this.soldiers.some(o => o !== s && o.alive && Math.hypot(o.pos.x - x, o.pos.z - z) < 1.3)) continue;
+        const sc = nav.coverFrom(x, z, tp.x, tp.z) - Math.hypot(x - s.pos.x, z - s.pos.z) * 0.03;
+        if (sc > bs) { bs = sc; best = [x, z]; }
+      }
+      if (best) { s.goal = best; this.game.requestPath(s, s.pos.x, s.pos.z, best[0], best[1], 0.45); }
     }
   }
   evacuate(s) { s.state = 'evac'; s.root.visible = false; s.inside = 'btr'; this.game.stats[this.side].evac++; if (s.dragger) { s.dragger.dragging = null; s.dragger = null; } }
