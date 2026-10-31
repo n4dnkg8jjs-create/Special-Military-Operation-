@@ -213,7 +213,7 @@ def bus_paz(name='bus_paz_burnt', seed=2):
         rim(mb, (s * 0.75, 0.36, -1.4), r_=0.33, w=0.2)
     # chassis rails visible under the floor
     for x in (-0.55, 0.55):
-        mb.box((x - 0.06, 0.25, -3.2), (x + 0.06, floor, 3.2), fit('steel_rust', (0.2, 3.0), 9), faces='+x-x-y')
+        mb.box((x - 0.06, 0.25, -3.2), (x + 0.06, floor, 3.2), fit('steel_burnt', (0.2, 3.0), 9), faces='+x-x-y')
     return mb
 
 
@@ -482,24 +482,25 @@ def playground():
 def kiosk(name, burnt=False, seed=9):
     mb = MB(name); r = rng(seed)
     Wk, Dk, Hk = 2.6, 2.0, 2.5
-    panel = 'kiosk_panel' if not burnt else 'steel_rust'
+    panel = 'kiosk_panel' if not burnt else 'steel_burnt'
     pr = R[panel]
+    frame = 'steel_paint' if not burnt else 'steel_burnt'
     side = lambda P, n: [pr.uv(((p[0] + p[2]) % 1.3) / 1.3 if False else (0.5 + 0.5 * (p[0] if abs(n[2]) > 0.5 else p[2]) / max(Wk, Dk)), p[1] / 1.0) for p in P]
     # lower panels
     mb.box((-Wk / 2, 0, -Dk / 2), (Wk / 2, 1.0, Dk / 2), side, faces='+x-x+z-z')
     # glazed band 1.0..2.1 with frame posts; front glass broken, one side shuttered
     for x in np.linspace(-Wk / 2, Wk / 2, 5):
-        mb.box((x - 0.03, 1.0, Dk / 2 - 0.05), (x + 0.03, 2.1, Dk / 2), fit('steel_paint', (0.1, 1.1), int(abs(x) * 10)), faces='+z+x-x')
+        mb.box((x - 0.03, 1.0, Dk / 2 - 0.05), (x + 0.03, 2.1, Dk / 2), fit(frame, (0.1, 1.1), int(abs(x) * 10)), faces='+z+x-x')
     for z in np.linspace(-Dk / 2, Dk / 2, 4):
         for s in (-1, 1):
-            mb.box((s * Wk / 2 - 0.05 * (s > 0), 1.0, z - 0.03), (s * Wk / 2 + 0.05 * (s < 0), 2.1, z + 0.03), fit('steel_paint', (0.1, 1.1), int(abs(z) * 10) + 3), faces='+x-x+z')
+            mb.box((s * Wk / 2 - 0.05 * (s > 0), 1.0, z - 0.03), (s * Wk / 2 + 0.05 * (s < 0), 2.1, z + 0.03), fit(frame, (0.1, 1.1), int(abs(z) * 10) + 3), faces='+x-x+z')
     gl = R['glass_dark']
     for i, x in enumerate(np.linspace(-Wk / 2, Wk / 2, 5)[:-1]):
         if burnt or i == 1:
             continue
         mb.poly([(x + 0.03, 1.0, Dk / 2 - 0.02), (x + Wk / 4 - 0.03, 1.0, Dk / 2 - 0.02), (x + Wk / 4 - 0.03, 2.1, Dk / 2 - 0.02), (x + 0.03, 2.1, Dk / 2 - 0.02)],
                 lambda P, n: [gl.uv(0, 0), gl.uv(1, 0), gl.uv(1, 1), gl.uv(0, 1)])
-    sh = R['shutter']
+    sh = R['shutter' if not burnt else 'steel_burnt']
     for s in (-1, 1):
         x = s * Wk / 2
         P = [(x, 1.0, -Dk / 2), (x, 1.0, Dk / 2), (x, 2.1, Dk / 2), (x, 2.1, -Dk / 2)]
@@ -511,13 +512,13 @@ def kiosk(name, burnt=False, seed=9):
     # roof with overhang + sign box
     roof_tilt = mat_trs((0, 0, 0)) if not burnt else rot_axis((1, 0, 0), 0.18, origin=(0, 2.1, -Dk / 2))
     tmp = MB()
-    tmp.box((-Wk / 2 - 0.15, 2.1, -Dk / 2 - 0.15), (Wk / 2 + 0.15, 2.22, Dk / 2 + 0.2), fit('roofing' if not burnt else 'steel_rust', (2.9, 2.3), 2))
-    ks = R['kiosk_sign'] if not burnt else R['steel_rust']
+    tmp.box((-Wk / 2 - 0.15, 2.1, -Dk / 2 - 0.15), (Wk / 2 + 0.15, 2.22, Dk / 2 + 0.2), fit('roofing' if not burnt else 'steel_burnt', (2.9, 2.3), 2))
+    ks = R['kiosk_sign'] if not burnt else R['steel_burnt']
     tmp.box((-Wk / 2, 2.22, Dk / 2 - 0.1), (Wk / 2, 2.62, Dk / 2 + 0.05), lambda P, n: [ks.uv((p[0] + Wk / 2) / Wk, (p[1] - 2.22) / 0.4) for p in P], faces='+z+y')
-    tmp.box((-Wk / 2, 2.22, Dk / 2 - 0.1), (Wk / 2, 2.62, Dk / 2 + 0.05), fit('steel_paint', (2.6, 0.4), 3), faces='-z+x-x')
+    tmp.box((-Wk / 2, 2.22, Dk / 2 - 0.1), (Wk / 2, 2.62, Dk / 2 + 0.05), fit(frame, (2.6, 0.4), 3), faces='-z+x-x')
     mb.merge(tmp, roof_tilt)
     # counter flap + scattered newspapers / debris
-    mb.box((-0.6, 0.98, Dk / 2), (0.6, 1.02, Dk / 2 + 0.3), fit('steel_paint', (1.2, 0.3), 4), faces='+y-y+z')
+    mb.box((-0.6, 0.98, Dk / 2), (0.6, 1.02, Dk / 2 + 0.3), fit(frame, (1.2, 0.3), 4), faces='+y-y+z')
     for k in range(6):
         x, z = r.uniform(-1.6, 1.6), r.uniform(Dk / 2 + 0.2, Dk / 2 + 1.5)
         mb.poly([(x, 0.01, z), (x + 0.3, 0.01, z + 0.05), (x + 0.28, 0.01, z + 0.25), (x - 0.02, 0.01, z + 0.2)], fit('bag_white' if not burnt else 'ash', (0.3, 0.3), 20 + k))

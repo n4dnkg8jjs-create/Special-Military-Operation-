@@ -12,6 +12,7 @@ from texlib import (spectral, norm01, colorize, srgb, lerp, to8, normal_from_hei
                     quantize_normal, voronoi, rng, cavity_ao, bake_shade, stamp_disc)
 import texlib
 import city_atlas as CA
+import burnt_tex as B
 
 S = 2048
 C = 256
@@ -19,7 +20,7 @@ GRID = [
     ['brick_white', 'brick_white_soot', 'concrete', 'conc_panel', 'slate', 'slate_old', 'tin_galv', 'corr_rust'],
     ['wood_raw', 'wood_grey', 'wood_green', 'picket', 'logs_end', 'bark_acacia', 'charred', 'plaster_white'],
     ['hay_side', 'hay_end', 'hay_burnt', 'straw', 'soil', 'trench_floor', 'sandbag', 'sod'],
-    ['mtz_blue', 'mtz_red', 'tyre_tread', 'metal_dark', 'burnt_metal', 'niva_red', 'grille', 'glass_dark'],
+    ['mtz_blue', 'mtz_red', 'tyre_tread', 'metal_dark', 'burnt_metal', 'burnt_ash', 'grille', 'glass_dark'],
     ['window_barn', 'gate_barn', 'door_blue', 'gate_green', 'mosaic', 'conc_painted', 'rushnyk', 'cross_wood'],
     ['tank_rust', 'tank_holed', 'silo_steel', 'silo_conc', 'metal_rust_paint', 'felt_roof', 'steel_rust', 'paint_white'],
     ['ground', 'ash', 'soot', 'rubber', 'brick_red', 'cable', 'mtz_cab', 'mtz_face'],
@@ -199,15 +200,19 @@ def paint(name, rect, seed):
         alb = lerp(alb, srgb('#77736a'), smoothstep(0.5, 1.5, spectral(0, 2, seed + 7, fmin=2, fmax=20, shape=shape)) * 0.3)
         hgt = spiral * 1.2 + m; rough[:] = 1.0
     elif name == 'hay_burnt':
-        F1, F2, ids = voronoi(0, 70, seed + 2, shape=shape, warp=4)
-        cr = smoothstep(3, 0.5, F2 - F1)
-        alb = colorize(norm01(n), [(0, '#0e0d0c'), (1, '#2b2724')])
-        ashm = smoothstep(0.4, 1.4, spectral(0, 1.6, seed + 3, fmin=3, fmax=60, shape=shape))
-        alb = lerp(alb, srgb('#8a857d'), ashm * 0.7)
-        m, t = strands(shape, 900, seed + 4, ang=0, spread=0.4, L=(8, 30))
-        alb = lerp(alb, colorize(t, [(0, '#3d342a'), (1, '#7a6a48')]), m * smoothstep(0.6, 1.5, -n) * 0.8)
-        alb = lerp(alb, srgb('#7a3a1a'), cr * smoothstep(0.8, 1.6, f) * 0.5)
-        hgt = (1 - cr) * 1.5 + m * 0.5; rough[:] = 0.98
+        # burnt-out bale: black charcoal straw with a crazed crust, a skin of pale grey-white ash flakes, a few
+        # charred-brown straw ends; no glowing / orange tones
+        F1, F2, ids = voronoi(0, 30, seed + 2, shape=shape, warp=6)
+        cr = smoothstep(3, 0.5, F2 - F1) * 0.7
+        alb = colorize(norm01(n), [(0, '#0d0c0b'), (0.6, '#1a1816'), (1, '#2c2926')])
+        m, t = strands(shape, 1400, seed + 4, ang=0, spread=0.35, L=(8, 30))
+        alb = lerp(alb, colorize(t, [(0, '#16130f'), (1, '#3a3127')]), m * 0.8)
+        ashm = smoothstep(-0.2, 1.4, spectral(0, 2.2, seed + 3, fmin=1.5, fmax=14, shape=shape))
+        ash_c = colorize(norm01(f + n * 0.3), [(0, '#6e6a64'), (0.6, '#9a958d'), (1, '#b8b3aa')])
+        alb = lerp(alb, ash_c, ashm * 0.75 * (1 - cr * 0.7))
+        alb = lerp(alb, srgb('#4a3726'), smoothstep(0.9, 1.7, -n) * (1 - ashm) * 0.5)
+        alb = lerp(alb, srgb('#080807'), cr * 0.8)
+        hgt = (1 - cr) * 1.5 + m * 0.5 + ashm * 0.5; rough[:] = 0.98
     elif name == 'straw':
         base = colorize(norm01(n), [(0, '#5a5040'), (1, '#7f7256')])
         m, t = strands(shape, 3200, seed + 3, ang=np.pi / 2, spread=0.7, L=(10, 40))
@@ -283,20 +288,20 @@ def paint(name, rect, seed):
         alb = colorize(norm01(n * 0.6 + f * 0.4), [(0, '#1e1e1d'), (1, '#3e3d3a')])
         alb = lerp(alb, srgb('#5c3a22'), smoothstep(0.9, 1.6, f) * 0.5); alb = lerp(alb, srgb('#7a705c'), smoothstep(0.8, 1.6, n) * 0.25)
         metal[:] = 0.5; rough[:] = 0.6
-    elif name in ('burnt_metal', 'burnt_paint'):
-        rustn = spectral(0, 1.6, seed + 2, fmin=2, fmax=60, shape=shape)
-        # burnt-out steel: charcoal soot over most of it, dull brown-orange heat rust in patches, grey-white ash
-        alb = colorize(norm01(rustn * 0.6 + f * 0.4), [(0, '#2a1d16'), (0.4, '#4a2c1e'), (0.75, '#6a3e26'), (1, '#7e5236')])
-        soot = smoothstep(-0.6, 0.6, spectral(0, 1.8, seed + 3, fmin=2, fmax=40, shape=shape))
-        alb = lerp(alb, colorize(norm01(f), [(0, '#141312'), (1, '#2a2826')]), soot * 0.85)
-        ashm = smoothstep(1.0, 1.7, spectral(0, 1.4, seed + 4, fmin=3, fmax=60, shape=shape))
-        alb = lerp(alb, srgb('#8d887f'), ashm * 0.55)
-        if name == 'burnt_paint':   # blistered paint patches left (colour stays readable: red Niva / blue MTZ)
-            keep = smoothstep(0.5, 1.2, spectral(0, 2.0, seed + 5, fmin=2, fmax=20, shape=shape))
-            paintc = colorize(norm01(f), [(0, '#4a1d16'), (1, '#6d2a1e')])
-            alb = lerp(alb, paintc, keep * 0.8)
-            alb = lerp(alb, srgb('#2a2420'), (r.random(shape) > 0.985)[..., None] * keep[..., None])
-        hgt = f * 0.8 + rustn * 0.3; metal = 0.25 * (1 - soot); rough = 0.85 + 0.1 * soot
+    elif name in ('burnt_metal', 'burnt_paint', 'burnt_ash'):
+        # burnt-out steel (shared painter burnt_tex): charcoal soot, flaked grey steel with heat tint, grey-white ash /
+        # burnt primer, only small rust streaks.  Tiled ~1.2 m swatches, so low contrast (large-scale variation comes from
+        # picking burnt_ash for the upper skins and burnt_metal for sides / chassis).  burnt_paint keeps blistered
+        # remnants of the red Niva paint low on the panels; burnt_ash = the light chalky ash of bonnets / roofs.
+        low = smoothstep(h * 0.6, h, yy) * 0.35
+        if name == 'burnt_paint':
+            keep = smoothstep(0.8, 1.7, spectral(0, 2.4, seed + 5, fmin=1, fmax=5, shape=shape)) * 0.55
+            alb, hgt, rough, metal = B.burnt_steel(shape, seed, ash=0.4, rust=0.07, paint=srgb('#56271e'), paint_keep=keep,
+                                                   low_soot=low, contrast=0.32, bias=-0.07, freq=0.5)
+        elif name == 'burnt_ash':
+            alb, hgt, rough, metal = B.burnt_steel(shape, seed, ash=0.7, rust=0.04, contrast=0.32, bias=0.17, freq=0.5)
+        else:
+            alb, hgt, rough, metal = B.burnt_steel(shape, seed, ash=0.4, rust=0.06, low_soot=low, contrast=0.32, bias=-0.07, freq=0.5)
     elif name == 'grille':
         sl = ((yy % 10) < 5).astype(np.float32)
         alb = colorize(norm01(n), [(0, '#151515'), (1, '#2a2928')]) * (0.6 + 0.4 * sl)[..., None]

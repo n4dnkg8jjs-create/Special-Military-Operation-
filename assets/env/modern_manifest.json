@@ -1,0 +1,539 @@
+{
+ "file": "modern.glb",
+ "nodes": {
+  "kindergarten": {
+   "size": [
+    43.0,
+    9.17,
+    25.5
+   ],
+   "tris": 6812,
+   "bbox_min": [
+    -21.5,
+    -0.02,
+    -12.75
+   ],
+   "bbox_max": [
+    21.5,
+    9.15,
+    12.75
+   ],
+   "notes": "H-plan 42 x 24 m, 2 storeys (eave 7.2 m, ridge 9.15 m); main entrance +Z (centre block), two courtyard side entrances; 4 ground-floor windows sandbagged, ground floor blast-taped."
+  },
+  "kindergarten_damaged": {
+   "size": [
+    44.37,
+    9.42,
+    25.97
+   ],
+   "tris": 7908,
+   "bbox_min": [
+    -21.5,
+    -0.27,
+    -12.75
+   ],
+   "bbox_max": [
+    22.87,
+    9.15,
+    13.22
+   ],
+   "notes": "same footprint; shell hole in the centre roof, 6 burnt-out windows with soot plumes, +X/+Z wing corner collapsed to a rubble mound (slabs hanging, interior exposed)."
+  },
+  "boiler_house": {
+   "size": [
+    29.64,
+    30.25,
+    14.9
+   ],
+   "tris": 2558,
+   "bbox_min": [
+    -14.82,
+    0.0,
+    -7.45
+   ],
+   "bbox_max": [
+    14.82,
+    30.25,
+    7.45
+   ],
+   "notes": "18 x 12 m brick hall (6.2 m + parapet) at x<0 of the footprint; 30 m steel stack with 2 tiers of 3 guy wires to anchors 8 m out (the footprint includes the anchors)."
+  },
+  "boiler_house_damaged": {
+   "size": [
+    29.64,
+    17.11,
+    18.06
+   ],
+   "tris": 3540,
+   "bbox_min": [
+    -14.82,
+    -0.2,
+    -7.45
+   ],
+   "bbox_max": [
+    14.82,
+    16.91,
+    10.61
+   ],
+   "notes": "stack torn at 17 m, upper section lying across the caved-in hall roof, snapped guys hanging, front breach, burnt windows."
+  },
+  "supermarket": {
+   "size": [
+    40.1,
+    5.9,
+    28.4
+   ],
+   "tris": 1470,
+   "bbox_min": [
+    -20.05,
+    0.0,
+    -14.2
+   ],
+   "bbox_max": [
+    20.05,
+    5.9,
+    14.2
+   ],
+   "notes": "40 x 22 m box, 5.2 m, storefront on +Z with signs, entrance canopy 22 x 5 m over the parking edge (+Z); some glazing shot out / boarded."
+  },
+  "supermarket_damaged": {
+   "size": [
+    40.1,
+    6.07,
+    29.4
+   ],
+   "tris": 2558,
+   "bbox_min": [
+    -20.05,
+    -0.22,
+    -14.2
+   ],
+   "bbox_max": [
+    20.05,
+    5.85,
+    15.2
+   ],
+   "notes": "storefront blown in, shelves visible, roof sagging + holed, sign hanging, canopy half collapsed, glass / panel debris."
+  },
+  "pharmacy_kiosk": {
+   "size": [
+    7.15,
+    3.23,
+    4.3
+   ],
+   "tris": 416,
+   "bbox_min": [
+    -3.57,
+    0.0,
+    -2.15
+   ],
+   "bbox_max": [
+    3.57,
+    3.23,
+    2.15
+   ],
+   "notes": "6 x 4 x 3.1 m glass pavilion, door +Z, green-cross box at the front-right corner."
+  },
+  "kiosk_modern_burnt": {
+   "size": [
+    7.46,
+    3.1,
+    5.35
+   ],
+   "tris": 438,
+   "bbox_min": [
+    -3.52,
+    0.0,
+    -2.1
+   ],
+   "bbox_max": [
+    3.93,
+    3.1,
+    3.25
+   ],
+   "notes": "burnt-out twin of pharmacy_kiosk (same footprint)."
+  },
+  "garage_row": {
+   "size": [
+    20.3,
+    2.89,
+    7.59
+   ],
+   "tris": 666,
+   "bbox_min": [
+    -10.15,
+    0.0,
+    -3.8
+   ],
+   "bbox_max": [
+    10.15,
+    2.89,
+    3.8
+   ],
+   "notes": "6 garages 3.3 x 6 m (row 19.8 x 6), gates to +Z; 2 open, one burnt with a sagging roof."
+  },
+  "window_sandbags": {
+   "size": [
+    1.88,
+    2.27,
+    0.77
+   ],
+   "tris": 384,
+   "bbox_min": [
+    -0.94,
+    -0.01,
+    -0.38
+   ],
+   "bbox_max": [
+    0.94,
+    2.26,
+    0.38
+   ],
+   "notes": "stack for a 1.5 m ground-floor window: 1.8 m wide, 2.3 m high, 0.7 m deep at the base; back face at z = -0.35 goes against the facade (place with the stack centre 0.37 m in front of the wall)."
+  },
+  "car_hatch_modern": {
+   "size": [
+    4.07,
+    1.43,
+    2.0
+   ],
+   "tris": 366,
+   "bbox_min": [
+    -2.04,
+    0.0,
+    -1.0
+   ],
+   "bbox_max": [
+    2.04,
+    1.43,
+    1.0
+   ],
+   "notes": "Lanos / Sens-like 5-door hatchback 4.07 x 1.68 x 1.43 m, cherry red, front +X."
+  },
+  "car_hatch_modern_burnt": {
+   "size": [
+    4.12,
+    1.39,
+    1.72
+   ],
+   "tris": 766,
+   "bbox_min": [
+    -2.06,
+    -0.03,
+    -0.86
+   ],
+   "bbox_max": [
+    2.06,
+    1.37,
+    0.86
+   ],
+   "notes": "burnt-out twin: on bare rims (~0.11 m lower), glass gone, gutted, soot / ash paint."
+  },
+  "car_suv_modern": {
+   "size": [
+    4.32,
+    1.7,
+    2.16
+   ],
+   "tris": 386,
+   "bbox_min": [
+    -2.16,
+    0.0,
+    -1.08
+   ],
+   "bbox_max": [
+    2.16,
+    1.7,
+    1.08
+   ],
+   "notes": "compact crossover 4.32 x 1.80 x 1.65 m, silver, black plastic cladding, roof rails, front +X."
+  },
+  "car_suv_modern_burnt": {
+   "size": [
+    4.37,
+    1.59,
+    1.89
+   ],
+   "tris": 766,
+   "bbox_min": [
+    -2.19,
+    -0.03,
+    -0.95
+   ],
+   "bbox_max": [
+    2.18,
+    1.57,
+    0.94
+   ],
+   "notes": "burnt-out twin of car_suv_modern."
+  },
+  "car_van": {
+   "size": [
+    5.93,
+    2.62,
+    2.38
+   ],
+   "tris": 346,
+   "bbox_min": [
+    -2.96,
+    0.0,
+    -1.19
+   ],
+   "bbox_max": [
+    2.96,
+    2.62,
+    1.19
+   ],
+   "notes": "Sprinter-like high-roof van 5.93 x 1.99 x 2.62 m, white, front +X."
+  },
+  "car_van_medevac": {
+   "size": [
+    5.94,
+    2.74,
+    2.38
+   ],
+   "tris": 368,
+   "bbox_min": [
+    -2.97,
+    0.0,
+    -1.19
+   ],
+   "bbox_max": [
+    2.96,
+    2.74,
+    1.19
+   ],
+   "notes": "car_van with red-cross markings (sides, rear, roof) and a blue light bar."
+  },
+  "car_van_burnt": {
+   "size": [
+    5.98,
+    2.55,
+    2.12
+   ],
+   "tris": 692,
+   "bbox_min": [
+    -2.99,
+    -0.03,
+    -1.06
+   ],
+   "bbox_max": [
+    2.99,
+    2.52,
+    1.06
+   ],
+   "notes": "burnt-out van: cab glass gone, cargo box burnt, on rims."
+  },
+  "bus_burnt_modern": {
+   "size": [
+    12.1,
+    2.93,
+    2.69
+   ],
+   "tris": 1196,
+   "bbox_min": [
+    -6.05,
+    -0.04,
+    -1.34
+   ],
+   "bbox_max": [
+    6.05,
+    2.89,
+    1.34
+   ],
+   "notes": "burnt-out 12 m low-floor city bus (Bogdan / Electron type) 12.0 x 2.55 x 3.05 m: window band open, roof sagging and holed, seat frames, on rims; front +X."
+  },
+  "bus_stop_modern": {
+   "size": [
+    4.5,
+    2.73,
+    2.64
+   ],
+   "tris": 141,
+   "bbox_min": [
+    -2.25,
+    0.0,
+    -1.32
+   ],
+   "bbox_max": [
+    2.25,
+    2.73,
+    1.32
+   ],
+   "notes": "4.2 x 1.6 m shelter, open side +Z, back glass at -Z (alpha, cracked / shot out)."
+  },
+  "playground_modern": {
+   "size": [
+    14.0,
+    3.31,
+    10.0
+   ],
+   "tris": 776,
+   "bbox_min": [
+    -7.0,
+    -0.01,
+    -5.0
+   ],
+   "bbox_max": [
+    7.0,
+    3.3,
+    5.0
+   ],
+   "notes": "14 x 10 m rubber-surfaced playground (tower + slide, swings, spring riders, carousel)."
+  },
+  "outdoor_gym": {
+   "size": [
+    6.0,
+    2.6,
+    4.0
+   ],
+   "tris": 410,
+   "bbox_min": [
+    -3.0,
+    0.0,
+    -2.0
+   ],
+   "bbox_max": [
+    3.0,
+    2.6,
+    2.0
+   ],
+   "notes": "street-workout set on a 6 x 4 m mat."
+  },
+  "parking_barrier": {
+   "size": [
+    4.62,
+    1.12,
+    0.7
+   ],
+   "tris": 90,
+   "bbox_min": [
+    -2.31,
+    0.0,
+    -0.35
+   ],
+   "bbox_max": [
+    2.31,
+    1.12,
+    0.35
+   ],
+   "notes": "housing at x = -0.15, 4 m boom along +X to the rest post."
+  },
+  "waste_pad": {
+   "size": [
+    5.13,
+    2.2,
+    3.3
+   ],
+   "tris": 310,
+   "bbox_min": [
+    -2.56,
+    -0.2,
+    -1.65
+   ],
+   "bbox_max": [
+    2.56,
+    2.0,
+    1.65
+   ],
+   "notes": "5 x 2.6 m concrete U-pad (open side +Z), 3 euro bins (one tipped out of the pad)."
+  },
+  "bench_modern": {
+   "size": [
+    1.8,
+    0.88,
+    0.6
+   ],
+   "tris": 136,
+   "bbox_min": [
+    -0.9,
+    0.0,
+    -0.3
+   ],
+   "bbox_max": [
+    0.9,
+    0.88,
+    0.3
+   ],
+   "notes": "1.8 m park bench, seat facing +Z."
+  },
+  "lamp_led": {
+   "size": [
+    2.2,
+    8.29,
+    0.32
+   ],
+   "tris": 114,
+   "bbox_min": [
+    -1.1,
+    0.0,
+    -0.16
+   ],
+   "bbox_max": [
+    1.1,
+    8.29,
+    0.16
+   ],
+   "notes": "8 m LED street light, arm and head reach +X 1.65 m."
+  },
+  "ad_column": {
+   "size": [
+    1.4,
+    3.3,
+    1.36
+   ],
+   "tris": 266,
+   "bbox_min": [
+    -0.7,
+    0.0,
+    -0.68
+   ],
+   "bbox_max": [
+    0.7,
+    3.3,
+    0.68
+   ],
+   "notes": "round advertising column 1.2 m dia x 3.3 m."
+  },
+  "checkpoint_blocks": {
+   "size": [
+    10.01,
+    1.9,
+    3.56
+   ],
+   "tris": 800,
+   "bbox_min": [
+    -5.0,
+    0.0,
+    -1.78
+   ],
+   "bbox_max": [
+    5.0,
+    1.9,
+    1.78
+   ],
+   "notes": "10 x 4 m FBS-block chicane with sandbags, tyres, hedgehog, stop board."
+  },
+  "antidrone_net_frame": {
+   "size": [
+    8.5,
+    5.22,
+    9.21
+   ],
+   "tris": 634,
+   "bbox_min": [
+    -4.25,
+    -0.0,
+    -4.61
+   ],
+   "bbox_max": [
+    4.25,
+    5.22,
+    4.61
+   ],
+   "notes": "net tunnel over an 8 m road section along X, 6.4 m between the pole lines, 5.2 m high; netting = modern_alpha."
+  }
+ },
+ "notes": "Two materials: modern_atlas (2048^2 opaque, tools/blender/env/modern_atlas.py; brick / concrete / glass / ground regions shared with city_atlas, sandbag / ash with farmland_atlas) and modern_alpha (1024^2 RGBA, alphaMode MASK 0.5, double sided: anti-drone netting, cracked glazing).  Each asset = empty <id> + child mesh <id>_geo (quantised; instancing must keep the child transform).  Origin = ground centre of the footprint bbox (shared by intact / damaged twins), +Y up, long axis along X; cars / bus front = +X.  COLOR_0 = baked AO / soot multiplier (linear).  Burnt vehicles use burnt_tex.py: charcoal soot + grey-white ash, heat-tinted bare steel, small rust streaks, tyres burnt to the rims, glass gone, gutted interiors.",
+ "refs": "Photo record 2022-24 of Kharkiv (Saltivka, Pivnichna Saltivka), Mariupol, Irpin / Bucha, Chernihiv, Kherson microdistricts: renovated 1970s type-project kindergartens (H / P plans, EIFS insulation in pastel render, white PVC windows, added metal gable roofs) with taped and sandbagged windows and shell damage; district boiler houses with guyed steel stacks; ATB / Silpo-type single-storey retail boxes with shot-out storefronts; MAF pharmacy pavilions; GSK garage rows; street-workout sets and modern playgrounds; Lanos / Sens hatchbacks, compact crossovers, Sprinter vans incl. volunteer medevac vans; burnt-out cars and city buses (Bogdan / Electron 12 m); FBS-block checkpoints with tyres, sandbags and hedgehogs; anti-drone net tunnels over frontline roads (Kostiantynivka / Kramatorsk / Kherson 2024-25)."
+}

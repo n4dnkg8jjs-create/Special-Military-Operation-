@@ -33,7 +33,7 @@ export class City {
     this.ground(); this.roads();
     this.placeBuildings(); this.facadeDecals();
     this.rubbleAndDebris();
-    this.trees(); this.poles(); this.props(); this.dressing(); this.defences();
+    this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences();
     this.craters(); this.paintGround(); this.skyline();
     this.nav.finalize();
   }
@@ -496,7 +496,7 @@ export class City {
     const yards = [];
     for (const b of this.buildings) { if (b.kind === 'school' || b.kind === 'shop' || b.kind === 'tower') continue; for (const f of [-0.25, 0.25]) { const p = b.toWorld(f * b.L, 0, -b.D / 2 - 15); yards.push([p.x, p.z, b.rot]); } }
     const takeYard = (r) => { for (let i = 0; i < 40 && yards.length; i++) { const j = Math.floor(this.rng() * yards.length), [x, z, rot] = yards[j]; yards.splice(j, 1); if (free(x, z, r)) return [x, z, rot]; } return null; };
-    put('bus', 72, 3, 0.25, 1, 1, BLOCK);
+    if (!this.assets.gltf.modern) put('bus', 72, 3, 0.25, 1, 1, BLOCK);
     if (free(100, -16.5, 1)) put('busstop', 100, -16.5, Math.PI, 1, 1, BLOCK);
     for (const [x, z, r] of [[104, 17.5, Math.PI * 0.95], [126, 17.5, Math.PI], [-60, 17.5, Math.PI]]) if (free(x, z, 2)) put('kiosk', x, z, r, 1, 1, BLOCK);
     // courtyard plan: playgrounds between the five-storey rows, garage cooperatives and dirt yards at the edges
@@ -566,7 +566,7 @@ export class City {
     if (T.po2) { for (let x = -86; x < -32; x += 4.0) put('po2', x, 86, 0, 7); }
     for (const [x, z] of [[-60, 78], [-36, 78]]) put('goal', x, z, Math.PI / 2, 6);
     // street furniture
-    for (let x = -E + 20; x < E - 20; x += 30) { put('lamp', x + 15, -16.6, 0, 0); put('lamp', x, 16.6, Math.PI, 0); }
+    if (!this.assets.gltf.modern) for (let x = -E + 20; x < E - 20; x += 30) { put('lamp', x + 15, -16.6, 0, 0); put('lamp', x, 16.6, Math.PI, 0); }
     for (const b of this.buildings) for (const e of b.entrances) { if (R() < 0.6) put('bench', e.x + (R() - .5) * 3, e.z + (R() - .5) * 2, b.rot, 0); if (R() < 0.35) put('bin', e.x + 4 * (R() < .5 ? 1 : -1), e.z, b.rot, 6); if (R() < 0.15) put('laundry', e.x + (R() - .5) * 10, e.z - 8, R() * 3, 0); }
     for (let i = 0; i < 26; i++) { const r = ROADS[Math.floor(R() * ROADS.length)], horiz = (r.x1 - r.x0) > (r.z1 - r.z0), t = R(), sd = R() < 0.5;
       const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd ? r.x0 - 2.6 : r.x1 + 2.6), z = horiz ? (sd ? r.z0 - 2.6 : r.z1 + 2.6) : r.z0 + t * (r.z1 - r.z0);
@@ -574,6 +574,56 @@ export class City {
     for (const v of Object.values(place)) instance(this.scene, v.t, v.m);
     this.buildCrushables();
   }
+  // 2020s layer on the Soviet plan (modern.glb): renovated retail, boiler houses, garage cooperatives, new playgrounds
+  // and street gym, LED lamps, parking bays of modern cars along the driveways, euro-bin pads, checkpoints and
+  // anti-drone nets over the arterial approaches, a burnt-out city bus.
+  modernDressing() {
+    const g = this.assets.gltf.modern; if (!g) return;
+    const R = this.rng, place = {};
+    const tpl = n => { const o = g.scene.getObjectByName(n); if (o && !o.userData.bb) o.userData.bb = new THREE.Box3().setFromObject(o); return o; };
+    const mput = (n, x, z, ry, { cost = BLOCK, road = true, occ = false } = {}) => {
+      const t = tpl(n); if (!t) return false; const bb = t.userData.bb, hx = (bb.max.x - bb.min.x) / 2, hz = (bb.max.z - bb.min.z) / 2;
+      if (road && onRoad(x, z, Math.min(hx, hz) * 0.8)) return false;
+      if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + Math.max(hx, hz) * 0.7 && Math.abs(lz) < b.D / 2 + Math.max(hx, hz) * 0.7; })) return false;
+      (place[n] ||= { t, m: [] }).m.push(trs(x, 0, z, ry));
+      if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
+      if (occ) this.nav.addOccluder(x, z, hx * 0.95, hz * 0.95, ry, (bb.max.y - bb.min.y) * 0.8, null);
+      return true;
+    };
+    // retail and services at the market crossroads
+    mput('supermarket_damaged', 116, -46, 0, { occ: true });
+    mput('pharmacy_kiosk', 104, 34, Math.PI); mput('kiosk_modern_burnt', 132, -18, 0); mput('bus_burnt_modern', 64, 4, 0.12, { road: false });
+    for (const [x, z, r] of [[100, -15.8, Math.PI], [-60, 15.8, 0], [-150, -15.8, Math.PI], [160, 15.8, 0]]) mput('bus_stop_modern', x, z, r, { road: false, cost: 6 });
+    // boiler houses and garage cooperatives at the microdistrict edges
+    for (const [x, z, r] of this.mapYards('boilers')) mput(R() < 0.5 ? 'boiler_house_damaged' : 'boiler_house', x, z, r, { occ: true });
+    for (const [x, z, r] of this.mapYards('garages')) mput('garage_row', x, z + (r ? -9 : 9), r);
+    // new playgrounds + street-workout corners in the courtyards
+    for (const [x, z, r] of this.mapYards('playgrounds')) { mput('playground_modern', x + 6, z, r, { cost: 6 }); mput('outdoor_gym', x - 9, z, r, { cost: 6 }); }
+    // LED lamps along the arterials, ad columns at the crossroads
+    for (let t = -E + 20; t < E - 20; t += 28) { mput('lamp_led', t, -16.2, 0, { road: false, cost: 0 }); mput('lamp_led', t + 14, 16.2, Math.PI, { road: false, cost: 0 }); }
+    for (let t = -E + 20; t < E - 20; t += 32) { mput('lamp_led', 74.6, t, Math.PI / 2, { road: false, cost: 0 }); }
+    mput('ad_column', 72, -17, 0, { road: false, cost: 5 }); mput('ad_column', 98, 18, 0, { road: false, cost: 5 });
+    // parking bays along the courtyard driveways: hatchbacks, crossovers, vans; a few burnt out
+    const cars = ['car_hatch_modern', 'car_suv_modern', 'car_hatch_modern', 'car_van'];
+    for (const r of ROADS) {
+      if (r.type !== 'drive') continue;
+      const horiz = (r.x1 - r.x0) > (r.z1 - r.z0), side = R() < 0.5 ? -1 : 1, off = (horiz ? (r.z1 - r.z0) : (r.x1 - r.x0)) / 2 + 2.4;
+      const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, a0 = horiz ? r.x0 : r.z0, a1 = horiz ? r.x1 : r.z1;
+      for (let t = a0 + 14; t < a1 - 14; t += 2.9) {
+        if (R() > 0.55) { t += 6; continue; }
+        const burnt = R() < 0.22, n = cars[Math.floor(R() * cars.length)] + (burnt ? '_burnt' : '');
+        const x = horiz ? t : cx + side * off, z = horiz ? cz + side * off : t;
+        mput(n, x, z, (horiz ? Math.PI / 2 : 0) + (R() - .5) * 0.12 + (R() < 0.5 ? Math.PI : 0), { road: false });
+      }
+    }
+    // euro-bin pads by the block entrances (one per block)
+    for (const b of this.buildings) { const e = b.entrances[Math.floor(R() * b.entrances.length)]; if (!e || b.kind === 'tower' && R() < 0.5) continue; const o = b.toWorld(0, 0, 0); const dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; mput('waste_pad', e.x + dx / d * 7 + (R() - .5) * 6, e.z + dz / d * 7, b.rot, { cost: 6 }); }
+    // wartime: checkpoints on the arterial entries, anti-drone netting over the approaches to the crossroads
+    for (const [x, z, r] of [[85, -182, 0], [85, 182, 0], [-190, 0, Math.PI / 2], [190, 0, Math.PI / 2]]) mput('checkpoint_blocks', x + (r ? 0 : 3.5), z, r, { road: false, cost: 7 });
+    for (const [x, z, r] of [[40, 0, Math.PI / 2], [150, 0, Math.PI / 2], [85, -40, 0], [85, 60, 0]]) mput('antidrone_net_frame', x, z, r, { road: false, cost: 0 });
+    for (const v of Object.values(place)) instance(this.scene, v.t, v.m);
+  }
+  mapYards(k) { return MAP.yards?.[k] || []; }
   // Crushable street furniture: own InstancedMeshes (index per item kept) + a spatial grid
   buildCrushables() {
     const items = this.crushables || []; this.crushGrid = new Map();

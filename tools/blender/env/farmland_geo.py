@@ -238,7 +238,7 @@ def barn(name, damaged=False, seed=20):
                 M = rot_axis(du, sgn * 0.18 * (1 if i == 3 else -1), origin=o + du * (Lu if i == 3 else 0))
             ncol = int(round(Lu / 1.13))
             for c_ in range(ncol):
-                old = r.random() < (0.3 if damaged else 0.05)
+                old = damaged and r.random() < 0.3      # intact roof: uniform sheets (odd old columns read as stripes)
                 tquad(mb, o + du * Lu * c_ / ncol, du, dv, Lu / ncol, slope_len, 'slate_old' if old else 'slate', (Lu / ncol, 1.75), M=M)
             # underside (dark), visible from below / through damage
             P = [o, o + dv * slope_len, o + dv * slope_len + du * Lu, o + du * Lu]
@@ -537,7 +537,7 @@ def mtz80(name, burnt=False, seed=60):
     for xs in (1, -1):
         q = [(xs * 0.42, y0h, 0.05), (xs * 0.4, y0h, 2.25), (xs * 0.36, y1h - 0.05, 2.25), (xs * 0.38, y1h, 0.05)]
         mb.poly(q if xs < 0 else q[::-1], G.fit(blue, (2.2, 0.8)))
-    mb.poly([(-0.38, y1h, 0.05), (-0.36, y1h - 0.05, 2.25), (0.36, y1h - 0.05, 2.25), (0.38, y1h, 0.05)][::-1], G.fit(blue, (0.8, 2.2)))
+    mb.poly([(-0.38, y1h, 0.05), (-0.36, y1h - 0.05, 2.25), (0.36, y1h - 0.05, 2.25), (0.38, y1h, 0.05)][::-1], G.fit('burnt_ash' if burnt else blue, (0.8, 2.2)))
     face = RS('mtz_face', 0, 0.5, 1, 1) if not burnt else 'burnt_metal'
     mb.poly([(-0.4, y0h, 2.25), (0.4, y0h, 2.25), (0.36, y1h - 0.05, 2.25), (-0.36, y1h - 0.05, 2.25)], G.uvq(face, ((0.12, 0.05), (0.88, 0.05), (0.85, 0.95), (0.15, 0.95))) if not burnt else G.fit('burnt_metal', (1, 1)))
     # side panels with louvres / badge
@@ -563,7 +563,7 @@ def mtz80(name, burnt=False, seed=60):
         for (za, ya), (zb, yb) in zip(pts[:-1], pts[1:]):
             A = (x0, yr_ + ya, zr + za); B = (x1, yr_ + ya, zr + za); C = (x1, yr_ + yb, zr + zb); D = (x0, yr_ + yb, zr + zb)
             q = [A, D, C, B] if xs > 0 else [B, C, D, A]
-            mb.poly(q, G.fit(cabr if False else blue, (0.6, 0.6)))
+            mb.poly(q, G.fit(('burnt_ash' if burnt and ya > 0.5 * (Rr + 0.12) else blue), (0.6, 0.6)))
             mb.poly(q[::-1], G.fit(dark, (0.6, 0.6)))
     tbox(mb, (-0.58, yr_ + 0.35, zr - 0.5), (0.58, yr_ + 0.42, zr + 0.75), RS('grille', 0, 0, 1, 1) if not burnt else 'burnt_metal', (1.2, 1.3))
     # cab: 4 posts + roof + glazing (+ door handles); burnt: frame only, roof sagging
@@ -573,7 +573,7 @@ def mtz80(name, burnt=False, seed=60):
         tbox(mb, (x - 0.035, cy0, z - 0.035), (x + 0.035, cy1, z + 0.035), cabr, (1, 1), faces='+x-x+z-z')
     rf = 0.06 if not burnt else 0.03
     Mroof = None if not burnt else rot_axis((1, 0, 0), 0.06, origin=(0, cy1, cz1))
-    tbox(mb, (-0.66, cy1, cz0 - 0.1), (0.66, cy1 + 0.12, cz1 + 0.1), cabr, (1.4, 1.4), M=Mroof)
+    tbox(mb, (-0.66, cy1, cz0 - 0.1), (0.66, cy1 + 0.12, cz1 + 0.1), cabr, (1.4, 1.4), M=Mroof, regs={'+y': 'burnt_ash'} if burnt else None)
     if not burnt:
         for P in ([(-0.52, cy0 + 0.35, cz1), (0.52, cy0 + 0.35, cz1), (0.52, cy1, cz1), (-0.52, cy1, cz1)],
                   [(0.52, cy0 + 0.35, cz0), (-0.52, cy0 + 0.35, cz0), (-0.52, cy1, cz0), (0.52, cy1, cz0)],
@@ -593,7 +593,7 @@ def mtz80(name, burnt=False, seed=60):
         beam(mb, (xs * 0.3, yr_ - 0.2, zr - 0.55), (xs * 0.4, yr_ - 0.45, zr - 1.3), 0.05, 0.08, dark, (1, 1))
     beam(mb, (0, yr_ + 0.05, zr - 0.55), (0, yr_ - 0.15, zr - 1.25), 0.05, 0.08, dark, (1, 1))
     if burnt:
-        tint(mb, lambda p: 0.5 + 0.3 * min(1, p[1] / 2.2) * (0.8 + 0.2 * math.sin(p[2] * 3 + p[0] * 5)))
+        tint(mb, lambda p: 0.62 + 0.38 * min(1, p[1] / 1.8) * (0.85 + 0.15 * math.sin(p[2] * 3 + p[0] * 5)))
     else:
         tint(mb, lambda p: 0.8 + 0.2 * min(1, p[1] / 1.5))
     return mb
@@ -610,12 +610,12 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     yf, yr_ = Rf - 0.12, Rr - 0.08
     # main body (thresher): box with sloped front
     prof = [(-1.45, 0.75, -3.4), (1.45, 0.75, -3.4)]
-    tbox(mb, (-1.4, 0.75, -3.5), (1.4, 2.7, 1.2), red, (1.2, 1.2))
+    tbox(mb, (-1.4, 0.75, -3.5), (1.4, 2.7, 1.2), red, (1.2, 1.2), regs={'+y': 'burnt_ash'})
     # front feeder housing sloping down to the header
     q = [(-0.6, 0.9, 1.2), (0.6, 0.9, 1.2), (0.6, 0.5, 3.4), (-0.6, 0.5, 3.4)]
     for xs in (1, -1):
         mb.poly([(xs * 0.6, 0.9, 1.2), (xs * 0.6, 0.5, 3.4), (xs * 0.6, 1.1, 3.4), (xs * 0.6, 1.9, 1.2)][::(1 if xs < 0 else -1)], G.fit(red, (2.3, 1.4)))
-    mb.poly([(-0.6, 1.9, 1.2), (-0.6, 1.1, 3.4), (0.6, 1.1, 3.4), (0.6, 1.9, 1.2)][::-1], G.fit(red, (1.2, 2.3)))
+    mb.poly([(-0.6, 1.9, 1.2), (-0.6, 1.1, 3.4), (0.6, 1.1, 3.4), (0.6, 1.9, 1.2)][::-1], G.fit('burnt_ash', (1.2, 2.3)))
     # header: 4.1 m wide trough with reel (bats bent) and divider points
     hz0, hz1 = 3.3, 5.0
     tquad(mb, (-2.05, 0.3, hz1), (1, 0, 0), (0, 0, -1), 4.1, hz1 - hz0, burnt, (1.2, 1.2))
@@ -635,11 +635,11 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     # grain tank on top (open, lid sprung) + cab front-left
     tbox(mb, (-1.3, 2.7, -2.0), (1.0, 3.6, 0.6), red, (1.2, 1.2), faces='+x-x+z-z')
     tquad(mb, (-1.3, 2.75, 0.6), (1, 0, 0), (0, 0, -1), 2.3, 2.6, 'ash', (1.2, 1.2))
-    tquad(mb, (-1.3, 3.6, -2.0), (1, 0, 0), (0, 0.6, -0.8), 2.3, 1.2, burnt, (1.2, 1.2), double=True)
+    tquad(mb, (-1.3, 3.6, -2.0), (1, 0, 0), (0, 0.6, -0.8), 2.3, 1.2, 'burnt_ash', (1.2, 1.2), double=True)
     cx0, cx1, cz0, cz1, cy0, cy1 = -1.35, -0.1, 0.6, 1.8, 2.3, 3.75
     for (x, z) in ((cx0, cz0), (cx1, cz0), (cx0, cz1), (cx1, cz1)):
         tbox(mb, (x - 0.04, cy0, z - 0.04), (x + 0.04, cy1, z + 0.04), burnt, (1, 1), faces='+x-x+z-z')
-    tbox(mb, (cx0 - 0.1, cy1, cz0 - 0.05), (cx1 + 0.1, cy1 + 0.1, cz1 + 0.15), burnt, (1.4, 1.4), M=rot_axis((0, 0, 1), -0.05, origin=(cx0, cy1, 0)))
+    tbox(mb, (cx0 - 0.1, cy1, cz0 - 0.05), (cx1 + 0.1, cy1 + 0.1, cz1 + 0.15), burnt, (1.4, 1.4), M=rot_axis((0, 0, 1), -0.05, origin=(cx0, cy1, 0)), regs={'+y': 'burnt_ash'})
     tquad(mb, (cx0, cy0, cz1), (1, 0, 0), (0, 0, -1), cx1 - cx0, cz1 - cz0, 'ash', (1.2, 1.2))
     tquad(mb, (cx0, 1.9, cz1), (1, 0, 0), (0, 1, 0), cx1 - cx0, 0.4, red, (1.2, 0.4))
     # unloading auger folded along the left side
@@ -655,7 +655,7 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     for xs in (1, -1):
         wheel(mb, (xs * 1.55, yf, zf - 0.3), Rf, 0.55, 0.62, burnt=True, segs=18)
         wheel(mb, (xs * 1.15, yr_, zr), Rr, 0.3, 0.36, burnt=True, segs=12)
-    tint(mb, lambda p: 0.5 + 0.38 * min(1, p[1] / 3.0) * (0.85 + 0.15 * math.sin(p[2] * 2.1 + p[0] * 3.3)))
+    tint(mb, lambda p: 0.62 + 0.38 * min(1, p[1] / 2.6) * (0.85 + 0.15 * math.sin(p[2] * 2.1 + p[0] * 3.3)))
     return mb
 
 
@@ -999,12 +999,11 @@ def trench_segment(name='trench_segment', seed=200):
         if k % 2 == 0:
             tbox(mb, (-0.32, 0.16, -0.18), (0.32, 0.3, 0.18), RS('sandbag', 0.5, 0.17, 1, 0.34), (0.64, 0.14), M=M @ T(0.18, 0, 0))
     def f(p):
+        if abs(abs(p[2]) - 0.48) < 0.07 and p[1] < 0.7:
+            return 0.16 + 0.12 * min(1, p[1] / 0.6)  # revetment boards: damp, in the trench's shadow (VC is linear)
         if p[1] < 0.06:
             return 0.5
-        k = 0.7 + 0.3 * min(1, p[1] / 0.6)
-        if abs(abs(p[2]) - 0.48) < 0.05:
-            k *= 0.6      # revetment boards in shadow of the trench
-        return k
+        return 0.7 + 0.3 * min(1, p[1] / 0.6)
     tint(mb, f)
     return mb
 

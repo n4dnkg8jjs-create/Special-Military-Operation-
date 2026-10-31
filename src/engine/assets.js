@@ -22,7 +22,7 @@ export class Assets {
       ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'],
       ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
     ];
-    if (opts.rural) jobs.push(['farmland', 'assets/env/farmland.glb']);
+    if (opts.rural) jobs.push(['farmland', 'assets/env/farmland.glb']); else jobs.push(['modern', 'assets/env/modern.glb']);
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};
     // rubble files are discovered from the env manifest (or a default list)
     const rubbleList = (this.manifest.env.rubble_files) || ['rubble_1', 'rubble_2', 'rubble_3', 'rubble_4', 'rubble_5', 'rubble_6'];

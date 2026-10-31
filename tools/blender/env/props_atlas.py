@@ -5,6 +5,7 @@ import cv2
 from PIL import Image, ImageDraw, ImageFont
 from texlib import (spectral, norm01, colorize, srgb, lerp, to8, normal_from_height, smoothstep, blur, CACHE,
                     quantize_normal, voronoi, rng, cavity_ao, bake_shade)
+import burnt_tex as B
 
 S = 2048
 C = 256
@@ -19,7 +20,7 @@ for i, n in enumerate(_cells):
 for i, n in enumerate(['shutter', 'busstop_sign', 'wood', 'soil', 'asphalt_chunk']):
     x0 = 768 + i * C
     REG[n] = (x0, 1024, x0 + C, 1280)
-for i, n in enumerate(['ash', 'paint_green', 'steel_paint', 'tarp', 'chrome_burnt']):
+for i, n in enumerate(['ash', 'paint_green', 'steel_paint', 'tarp', 'chrome_burnt', 'steel_burnt']):
     REG[n] = (i * C, 1280, i * C + C, 1536)
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
@@ -32,28 +33,41 @@ def _shape(r):
     x0, y0, x1, y1 = r; return (y1 - y0, x1 - x0)
 
 
-def burnt_metal(shape, seed, paint=None, paint_mask=None):
-    h, w = shape
+def burnt_metal(shape, seed, paint=None, paint_mask=None, ash=0.5, rust=0.06, low_soot=None):
+    """Burnt-out steel (shared painter burnt_tex.burnt_steel): charcoal soot + grey-white ash, flaked grey steel with
+    heat tint, small rust streaks; optional surviving blistered paint."""
+    return B.burnt_steel(shape, seed, ash=ash, rust=rust, paint=paint, paint_keep=paint_mask, low_soot=low_soot)
+
+
+def rusty_metal(shape, seed):
+    """The pre-2024 burnt_metal look, kept for genuinely rusty steel (hedgehogs, bus-stop frame, garage doors)."""
     n = spectral(0, 1.5, seed, fmin=3, fmax=120, shape=shape); f = spectral(0, 0.6, seed + 1, fmin=40, shape=shape)
     rust = colorize(norm01(n * 0.7 + f * 0.3), [(0, '#2e2622'), (0.3, '#4f3528'), (0.55, '#6a4a36'), (0.75, '#5c534b'), (1, '#9a958c')])
     soot = smoothstep(-0.2, 1.2, spectral(0, 1.8, seed + 2, fmin=2, fmax=60, shape=shape))
     alb = lerp(rust, colorize(norm01(f), [(0, '#141312'), (1, '#2a2826')]), soot * 0.75)
     ash = smoothstep(0.5, 1.6, spectral(0, 1.3, seed + 3, fmin=5, fmax=80, shape=shape))
     alb = lerp(alb, srgb('#a9a69e'), ash * 0.55)
-    if paint is not None:
-        alb = lerp(alb, paint * (0.8 + 0.2 * norm01(f))[..., None], paint_mask)
-    rough = 0.85 - soot * 0.0 + ash * 0.1
+    rough = 0.85 + ash * 0.1
     metal = np.clip(0.35 - soot * 0.25 - ash * 0.2, 0, 1)
-    hgt = f * 0.5 + n * 0.3
-    return alb, hgt, rough, metal
+    return alb, f * 0.5 + n * 0.3, rough, metal
 
 
 def paint_car(shape):
     h, w = shape
-    alb, hgt, rough, metal = burnt_metal(shape, 11)
-    A = np.zeros(shape, np.float32)  # dark lines mask
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     pz = lambda z: int((2.07 - z) / CAR_L * w)
     py = lambda y: int((1.0 - y) / 1.0 * 256)
+    # soot: dense along the sills, plumes above the wheel arches (burnt tyres) and along the window line / roof edges
+    soot = np.zeros(shape, np.float32)
+    soot[:256] += smoothstep(py(0.55), py(0.2), yy[:256]) * 0.75
+    for zc in (1.21, -1.21):
+        B.plume(soot, pz(zc), py(0.55), 0.55 / CAR_L * w, 150, 0.9)
+    soot[:256] += smoothstep(py(0.7), py(0.87), yy[:256]) * 0.5
+    soot[256:448] += (smoothstep(0.75, 1.0, np.abs((yy[256:448] - 352) / 96))) * 0.7      # roof / bonnet side edges
+    soot[448:] += 0.55
+    soot = np.clip(soot * (0.75 + 0.25 * norm01(spectral(0, 1.6, 13, fmin=3, fmax=60, shape=shape))), 0, 1)
+    alb, hgt, rough, metal = burnt_metal(shape, 11, ash=0.55, low_soot=soot)
+    A = np.zeros(shape, np.float32)  # dark lines mask
     # side view (rows 0..256): door gaps, arches, handles, sill rust, faded paint remnant low on the doors
     for z in (0.72, -0.25, -1.18):
         cv2.line(A, (pz(z), py(0.25)), (pz(z), py(0.86)), 1.0, 2)
@@ -63,9 +77,9 @@ def paint_car(shape):
     for z in (0.5, -0.45):
         cv2.rectangle(A, (pz(z), py(0.72)), (pz(z) + 10, py(0.70)), 1.0, -1)
     paint_m = np.zeros(shape, np.float32)
-    paint_m[py(0.55):py(0.3), :] = 1
-    paint_m *= smoothstep(0.2, 0.9, norm01(spectral(0, 1.6, 12, fmin=4, fmax=60, shape=shape)))
-    alb = lerp(alb, srgb('#b9b3a0'), paint_m * 0.6)   # ghost of the original beige paint
+    paint_m[py(0.62):py(0.42), :] = 1
+    paint_m *= smoothstep(0.55, 0.95, norm01(spectral(0, 1.6, 12, fmin=4, fmax=60, shape=shape)))
+    alb = lerp(alb, srgb('#8f866e') * 0.85, paint_m * 0.55)   # small ghost patches of the original beige paint, blistered
     # top view (rows 256..448): hood/trunk lid outlines, scorched roof
     tz = lambda z: int((2.07 - z) / CAR_L * w)
     tx = lambda x: int(256 + (x + 0.8) / 1.6 * 192)
@@ -89,8 +103,17 @@ def paint_bus(shape):
     pm = np.zeros(shape, np.float32)
     # PAZ livery remnants: yellow lower body + white upper band survive at the bottom edge / front
     pm[int(256 * (1 - 1.15 / BUS_H)):256, :] = 1.0
-    pm *= smoothstep(0.1, 0.8, norm01(spectral(0, 1.4, 21, fmin=3, fmax=50, shape=shape))) * smoothstep(80, 256, yy)
-    alb, hgt, rough, metal = burnt_metal(shape, 22, srgb('#c99a2a'), pm * 0.75)
+    pm *= smoothstep(0.55, 0.9, norm01(spectral(0, 1.4, 21, fmin=3, fmax=50, shape=shape))) * smoothstep(150, 256, yy)
+    soot = np.zeros(shape, np.float32)
+    py_ = lambda y: int((BUS_H - y) / BUS_H * 256)
+    soot[:256] += smoothstep(py_(0.75), py_(0.38), yy[:256]) * 0.7                         # skirt
+    soot[:256] += smoothstep(py_(0.95), py_(1.15), yy[:256]) * 0.65                        # under the window line
+    for zc in (2.25, -1.4):
+        B.plume(soot, int((3.5 - zc) / BUS_L * w), py_(0.95), 0.9 / BUS_L * w, 110, 0.8)
+    soot[256:448] += smoothstep(0.55, 1.0, np.abs((yy[256:448] - 352) / 96)) * 0.85      # roof edges above the windows
+    soot[448:] += 0.4
+    soot = np.clip(soot * (0.7 + 0.3 * norm01(spectral(0, 1.6, 23, fmin=3, fmax=60, shape=shape))), 0, 1)
+    alb, hgt, rough, metal = burnt_metal(shape, 22, srgb('#9a7a2e'), pm * 0.5, ash=0.55, low_soot=soot)
     A = np.zeros(shape, np.float32)
     pz = lambda z: int((3.5 - z) / BUS_L * w)
     py = lambda y: int((BUS_H - y) / BUS_H * 256)
@@ -187,7 +210,11 @@ def swatch(name, shape, seed):
     rough = np.full(shape, 0.85, np.float32); metal = np.zeros(shape, np.float32); hgt = f * 0.3
     if name == 'interior_burnt':
         spring = ((np.sin(xx * 0.5) > 0.6) | (np.sin(yy * 0.5) > 0.6)).astype(np.float32)
-        alb = lerp(colorize(norm01(n), [(0, '#151413'), (1, '#3a3632')]), srgb('#5a3a26'), spring * 0.8); hgt = spring * 2; metal = spring * 0.4
+        # gutted: seat foam / trim burnt away to black char and grey ash, bare spring frames (dull grey, a little rust)
+        alb = colorize(norm01(n), [(0, '#100f0e'), (0.7, '#232120'), (1, '#3c3a37')])
+        alb = lerp(alb, srgb('#7d7973'), smoothstep(0.7, 1.7, f) * 0.5)
+        alb = lerp(alb, colorize(norm01(f), [(0, '#45423f'), (0.8, '#5e5953'), (1, '#6a4a34')]), spring * 0.85)
+        hgt = spring * 2; metal = spring * 0.35
     elif name == 'rim':
         alb, hgt, rough, metal = burnt_metal(shape, seed)
         ring = np.abs(np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2) - w * 0.3) < 6
@@ -207,9 +234,12 @@ def swatch(name, shape, seed):
         stitch = (np.abs(yy - h * 0.92) < 2).astype(np.float32)
         alb = lerp(alb, srgb('#2e2a24'), stitch * 0.6)
         hgt = weave * 0.5 + n * 0.5; rough[:] = 0.95
-    elif name == 'steel_rust':
-        alb, hgt, rough, metal = burnt_metal(shape, seed)
+    elif name == 'steel_rust':      # weathered rusty steel (hedgehogs, bus stop frame, garage doors)
+        alb, hgt, rough, metal = rusty_metal(shape, seed)
         alb = lerp(alb, srgb('#4a2a18'), 0.3)
+    elif name == 'steel_burnt':     # burnt kiosk / bus chassis sheet steel
+        soot = smoothstep(h * 0.55, h, yy) * 0.6
+        alb, hgt, rough, metal = burnt_metal(shape, seed, ash=0.45, low_soot=soot)
     elif name in ('garage_door', 'garage_door2'):
         col = '#3f5a3c' if name == 'garage_door' else '#5a3a2a'
         alb = srgb(col) * (0.85 + 0.15 * norm01(n))[..., None] + np.zeros((h, w, 3))
@@ -252,7 +282,9 @@ def swatch(name, shape, seed):
         alb = lerp(colorize(norm01(f), [(0, '#3c3a36'), (1, '#55524d')]), colorize(norm01(n), [(0, '#4a443c'), (1, '#6e665a')]), 1 - top)
         alb = alb + agg[..., None] * 0.2; hgt = agg * 1.5
     elif name == 'chrome_burnt':
-        alb = colorize(norm01(n), [(0, '#3a3532'), (1, '#6d6762')]); metal[:] = 0.7; rough[:] = 0.5
+        alb = colorize(norm01(n), [(0, '#2c2a28'), (0.6, '#55524e'), (1, '#77736c')])
+        alb = lerp(alb, srgb('#55607a'), smoothstep(0.6, 1.6, f) * 0.3)          # heat tint
+        metal[:] = 0.6; rough[:] = 0.55
     elif name == 'ash':
         alb = colorize(norm01(n + f), [(0, '#1a1918'), (0.6, '#4a4743'), (1, '#8d8a84')]); rough[:] = 0.98
     elif name == 'tarp':

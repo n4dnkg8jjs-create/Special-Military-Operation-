@@ -513,6 +513,8 @@ def export_glb(path, selection=None):
 
 
 def update_manifest(section, data):
+    if os.environ.get('NO_MANIFEST'):      # QA iterations: leave assets/env/manifest.json alone
+        print('NO_MANIFEST set: manifest section', section, 'not written'); return
     p = os.path.join(REPO, 'assets', 'env', 'manifest.json')
     m = {}
     if os.path.exists(p):
