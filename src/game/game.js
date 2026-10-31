@@ -224,7 +224,7 @@ export class Game {
   spotFor(side) {
     const other = side === 'player' ? 'enemy' : 'player', spotters = [];
     for (const u of this.unitsOf(side)) {
-      if (u.type === 'vehicle') spotters.push([u.pos.x, 2.6, u.pos.z, u.kind === 'tank' ? 190 : 220, u]);
+      if (u.type === 'vehicle') spotters.push([u.pos.x, 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1), u]); // buttoned-up crews see little
       else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside === 'ride' ? 220 : 280, u.building]);
     }
     for (const u of this.unitsOf(other)) {

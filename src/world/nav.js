@@ -25,6 +25,7 @@ export class NavGrid {
     this.clear = new Float32Array(N);   // distance to nearest blocked cell (m)
     this.cover = new Uint8Array(N);     // 8-direction cover bitmask
     this.low = new Uint8Array(N);       // 1 = low cover (rubble, sandbags, wrecks) vs 0 = wall
+    this.road = new Uint8Array(N);      // 2 = paved road, 1 = dirt track (vehicles prefer and drive faster on them)
     this.g = new Float32Array(N); this.from = new Int32Array(N); this.stamp = new Uint32Array(N); this.closed = new Uint32Array(N); this.gen = 1;
     this.occluders = []; // {cx,cz,hx,hz,cos,sin,h, ref}
     this.occGrid = new Map(); this.occCell = 24;
@@ -48,6 +49,10 @@ export class NavGrid {
       if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) { this.cost[i] = val; this.low[i] = low; } }
     }
   }
+  markRoad(x0, z0, x1, z1, v) {
+    for (let z = z0; z <= z1; z += this.cell) for (let x = x0; x <= x1; x += this.cell) { const i = this.idx(x, z); if (i >= 0) this.road[i] = Math.max(this.road[i], v); }
+  }
+  roadAt(x, z) { const i = this.idx(x, z); return i < 0 ? 0 : this.road[i]; }
   circle(cx, cz, r, val, lowCover = false) {
     for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
       if ((x - cx) ** 2 + (z - cz) ** 2 > r * r) continue;
@@ -120,6 +125,7 @@ export class NavGrid {
         if (!this.passable(kk, clearance)) continue;
         if (q >= 4 && (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance))) continue;
         let c = this.cost[kk]; if (vehicle && c > 1) c = c * 2.5; // rubble slows armour more
+        if (vehicle) c *= this.road[kk] === 2 ? 0.8 : this.road[kk] === 1 ? 0.9 : 1.15; // prefer roads when they're roughly on the way
         // stay off walls: prefer cells with more clearance
         // vehicles keep off walls; infantry hug them (move along facades and fences, not across open ground)
         const cl = this.clear[kk];

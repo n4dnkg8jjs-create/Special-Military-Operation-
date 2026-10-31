@@ -13,7 +13,10 @@ export class Commander {
     this.g = game; this.units = []; this.waveI = 0; this.artT = 70 + Math.random() * 40; this.n = 0;
     this.counter = false;
     // [fraction of remaining time, foot squads, mounted squads, tanks, assault squads]
-    this.plan = [[0.02, 1, 1, 0, 1], [0.16, 1, 2, 1, 0], [0.3, 2, 1, 1, 1], [0.46, 1, 2, 1, 1], [0.62, 2, 1, 1, 1], [0.78, 2, 2, 1, 1]];
+    // finite reserves: three counterattack waves (about the size of the player's company in total), and a wave
+    // waits while the enemy still has plenty of men in the field — no endless stream
+    this.plan = [[0.06, 1, 1, 0, 0], [0.38, 1, 0, 1, 1], [0.68, 1, 1, 0, 0]];
+    this.fieldCap = 5;
     this.deployArmy();
   }
   // Initial army laid out in the enemy staging ground during the deployment phase.
@@ -45,7 +48,11 @@ export class Commander {
       this.waves = this.plan.map(([f, a, b, c, d]) => ({ t: g.time + 25 + f * rem, foot: a, mech: b, tank: c, assault: d }));
       g.hud?.alert('Enemy is massing for a counterattack from the north', 'bad');
     }
-    while (this.counter && this.waveI < this.waves.length && g.time >= this.waves[this.waveI].t) this.spawnWave(this.waves[this.waveI++]);
+    if (this.counter && this.waveI < this.waves.length && g.time >= this.waves[this.waveI].t) {
+      const inField = g.squads.filter(q => q.side === 'enemy' && !q.destroyed && q.effective.length >= 3 && !q.routing).length;
+      if (inField < this.fieldCap) { this.spawnWave(this.waves[this.waveI++]); if (this.waveI >= this.waves.length) setTimeout(() => g.hud?.alert('Intercepts: the enemy has committed his last reserves', 'good'), 20000); }
+      else this.waves[this.waveI].t = g.time + 20; // hold the wave back until the field thins out
+    }
     for (const b of this.units) if (!b.dead) { b.t -= dt; if (b.t <= 0) { b.t = 1.2 + Math.random() * 0.6; this.think(b); } }
     // artillery on spotted player concentrations
     this.artT -= dt;

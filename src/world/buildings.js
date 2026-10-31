@@ -66,6 +66,7 @@ export class Building {
     this.cos = Math.cos(this.rot); this.sin = Math.sin(this.rot);
     this.rng = mulberry(this.seed || (Math.abs(this.x * 31 + this.z * 17) | 0) + 1);
     this.tint = new THREE.Color().setHSL(0.09 + this.rng() * 0.04, 0.05 + this.rng() * 0.08, 0.86 + this.rng() * 0.1);
+    if (opts.tint != null) this.tint = new THREE.Color(opts.tint).offsetHSL(0, 0, (this.rng() - 0.5) * 0.04); // renovated, insulated facade
     this.layout();
   }
   // local -> world
@@ -142,7 +143,14 @@ export class Building {
     }
     // structural plausibility: a blown-out panel cracks the panels above it (nothing intact floats over a hole)
     const at = new Map(); for (const p of this.panels) at.set(p.side + ':' + p.col + ':' + p.floor, p);
-    for (const p of this.panels) if (p.state === 3) { const a = at.get(p.side + ':' + p.col + ':' + (p.floor + 1)), b2 = at.get(p.side + ':' + p.col + ':' + (p.floor + 2)); if (a) a.state = Math.max(a.state, 2); if (b2) b2.state = Math.max(b2.state, 1); }
+    // shell holes don't stack in neat columns: break up vertical runs of identical holes, crack what's above
+    const top = this.floors - 1, cornerZone = p => this.collapsedCorner && p.floor >= this.floors - 2 && (p.side === this.collapsedCorner || Math.abs(p.col - (this.collapsedCorner === 'right' ? this.modules - 1 : 0)) <= 1);
+    for (const p of this.panels) {
+      if (p.state < 2 || cornerZone(p)) continue;
+      const below = at.get(p.side + ':' + p.col + ':' + (p.floor - 1));
+      if (below && below.state >= 2 && !cornerZone(below) && r() < 0.75) p.state = Math.max(1, p.state - (r() < 0.6 ? 2 : 1));
+    }
+    for (const p of this.panels) if (p.state === 3 && p.floor < top && !cornerZone(p)) { const a = at.get(p.side + ':' + p.col + ':' + (p.floor + 1)); if (a) a.state = Math.max(a.state, 1); }
     this.panelMap = at;
   }
   // Pancake a vertical slice of the building (all floors) between cols a..b.
@@ -152,7 +160,7 @@ export class Building {
   }
   requestKit(pool) {
     const c = this.cell;
-    for (const p of this.panels) for (const s of STATES) pool.request(`${p.type}_${s}`, 1, c);
+    for (const p of this.panels) { p.var ??= Math.floor(this.rng() * 3); for (let k = 0; k < STATES.length; k++) pool.request(this.pieceName(p, k), 1, c); }
     for (const p of this.panels) if (p.balcony) pool.request('balcony_slab', 1, c);
     for (const p of this.panels) if (p.entrance) pool.request('entrance_canopy', 1, c);
     this.signs = this.signs || this.panels.filter(p => p.shop && p.col % 3 === 0).map((p, i) => ({ p, name: this.signNames?.[i % this.signNames.length] }));
@@ -174,7 +182,7 @@ export class Building {
       col.copy(this.tint).offsetHSL(0, 0, (this.rng() - 0.5) * 0.04);
       if (p.state > 0) col.multiplyScalar(p.state === 1 ? 0.86 + this.rng() * 0.14 : 0.7 + this.rng() * 0.22); // uneven soot / weathering
       p.color = col.clone();
-      pool.add(`${p.type}_${STATES[p.state]}`, this.panelMatrix(p, tmpM), p, p.color);
+      pool.add(this.pieceName(p), this.panelMatrix(p, tmpM), p, p.color);
       if (p.balcony && p.state < 2) { p.acc = { slot: -1, cell: this.cell }; pool.add('balcony_slab', tmpM, p.acc, p.color); }
       if (p.entrance) {
         p.acc = { slot: -1, cell: this.cell }; const m2 = tmpM.clone(); m2.multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.8, 0));
@@ -218,17 +226,23 @@ export class Building {
       tmpM.compose(tmpV, tmpQ, tmpS.set(W + 0.01, 0.3, this.D)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
     }
   }
+  // damage variants (_v2/_v3) keep a facade from repeating the same hole over and over
+  pieceName(p, st = p.state) {
+    const base = `${p.type}_${STATES[st]}`;
+    if (st >= 2 && p.var) { const v = `${base}_v${p.var + 1}`; if (this.kit.pieces[v]) return v; }
+    return base;
+  }
   setGone(p) {
     if (p.gone) return false;
-    if (p.slot >= 0) this.pool.remove(`${p.type}_${STATES[p.state]}`, p);
+    if (p.slot >= 0) this.pool.remove(this.pieceName(p), p);
     if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? 'balcony_slab' : 'entrance_canopy', p.acc);
     p.gone = true; p.state = 3; return true;
   }
   setState(p, s) {
     if (p.gone || s <= p.state) return false;
-    this.pool.remove(`${p.type}_${STATES[p.state]}`, p);
+    this.pool.remove(this.pieceName(p), p);
     p.state = Math.min(3, s);
-    this.pool.add(`${p.type}_${STATES[p.state]}`, this.panelMatrix(p, tmpM), p, p.color);
+    this.pool.add(this.pieceName(p), this.panelMatrix(p, tmpM), p, p.color);
     if (p.balcony && p.acc && p.state >= 2 && p.acc.slot >= 0) this.pool.remove('balcony_slab', p.acc);
     return true;
   }

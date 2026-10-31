@@ -131,8 +131,51 @@ class System {
   }
 }
 
+// Tracer streaks: camera-facing ribbons a few metres long, at least ~2 px wide at any zoom, HDR-bright so bloom
+// picks them up. (A single tiny glow sprite vanished at RTS camera distances.)
+class Tracers {
+  constructor(scene, max = 400) {
+    this.max = max; this.list = [];
+    const g = new THREE.BufferGeometry();
+    this.pos = new Float32Array(max * 4 * 3); this.col = new Float32Array(max * 4 * 3); const uv = new Float32Array(max * 4 * 2), idx = [];
+    for (let i = 0; i < max; i++) { uv.set([0, 0, 0, 1, 1, 0, 1, 1], i * 8); const o = i * 4; idx.push(o, o + 1, o + 2, o + 2, o + 1, o + 3); }
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
+    const c = document.createElement('canvas'); c.width = 64; c.height = 32; const x = c.getContext('2d');
+    for (let i = 0; i < 64; i++) { const along = i / 63; const gr = x.createLinearGradient(0, 0, 0, 32); const a = Math.pow(along, 0.6); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.35, `rgba(255,255,255,${a * 0.5})`); gr.addColorStop(0.5, `rgba(255,255,255,${a})`); gr.addColorStop(0.65, `rgba(255,255,255,${a * 0.5})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(i, 0, 1, 32); }
+    const tex = new THREE.CanvasTexture(c);
+    this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide }));
+    this.mesh.frustumCulled = false; this.mesh.renderOrder = 13; g.setDrawRange(0, 0); scene.add(this.mesh);
+  }
+  add(a, b, speed, color) {
+    const d = new THREE.Vector3().subVectors(b, a), L = d.length(); if (L < 1) return;
+    if (this.list.length >= this.max) this.list.shift();
+    speed = Math.min(speed, 560); this.list.push({ a: a.clone(), dir: d.divideScalar(L), L, speed, t: 0, color, len: Math.min(9, 2 + speed * 0.008) });
+  }
+  update(dt, cam) {
+    const tmp = new THREE.Vector3(), head = new THREE.Vector3(), tail = new THREE.Vector3(), side = new THREE.Vector3();
+    this.list = this.list.filter(t => (t.t += dt) * t.speed < t.L + t.len);
+    let n = 0;
+    for (const t of this.list) {
+      const hd = Math.min(t.L, t.t * t.speed), tl = Math.max(0, t.t * t.speed - t.len);
+      if (hd - tl < 0.05) continue;
+      head.copy(t.a).addScaledVector(t.dir, hd); tail.copy(t.a).addScaledVector(t.dir, Math.min(tl, hd));
+      tmp.addVectors(head, tail).multiplyScalar(0.5);
+      const dist = tmp.distanceTo(cam), w = Math.max(0.05, dist * 0.0022);
+      side.subVectors(cam, tmp).cross(t.dir).normalize().multiplyScalar(w);
+      const o = n * 12;
+      this.pos.set([tail.x - side.x, tail.y - side.y, tail.z - side.z, tail.x + side.x, tail.y + side.y, tail.z + side.z, head.x - side.x, head.y - side.y, head.z - side.z, head.x + side.x, head.y + side.y, head.z + side.z], o);
+      const k = 4.5, c = t.color; for (let v = 0; v < 4; v++) this.col.set([c[0] * k, c[1] * k, c[2] * k], o + v * 3);
+      if (++n >= this.max) break;
+    }
+    const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true; g.setDrawRange(0, n * 6);
+  }
+}
+
 export class FX {
   constructor(scene, sunDir, quality) {
+    this.tracers = new Tracers(scene);
     this.scene = scene; this.q = quality;
     const mul = quality === 'low' ? 0.5 : 1;
     this.smoke = new System(scene, Math.round(3500 * mul), false, puffAtlas(), sunDir);
@@ -166,6 +209,7 @@ export class FX {
     if (big >= 1) this.light(pos, 0xffb265, 6 * big, 6 + 6 * big, 0.06);
   }
   tracer(a, b, speed = 750, color = [1, 0.55, 0.25]) {
+    this.tracers.add(a, b, speed, color);
     const d = new THREE.Vector3().subVectors(b, a); const L = d.length(); d.normalize();
     this.glow.spawn({ x: a.x, y: a.y, z: a.z, vx: d.x * speed, vy: d.y * speed, vz: d.z * speed, life: Math.max(0.02, L / speed), size0: 0.07, size1: 0.07, stretch: 6, r: color[0], g: color[1], b: color[2], a0: 5, a1: 4, drag: 0, frame: 0 });
   }
@@ -269,7 +313,7 @@ export class FX {
     this.debris.length = Math.min(w, 600); this.debrisMesh.count = this.debris.length; this.debrisMesh.instanceMatrix.needsUpdate = true;
     for (const r of this.rings) { r.t += dt; const f = r.t / r.life; r.m.scale.setScalar(0.5 + f * r.r); r.m.material.opacity = 0.35 * (1 - f); if (f >= 1) { this.scene.remove(r.m); r.m.material.dispose(); r.dead = true; } }
     this.rings = this.rings.filter(r => !r.dead);
-    this.time += dt; this.flames.update(dt, this.time);
+    this.time += dt; this.flames.update(dt, this.time); if (camPos) this.tracers.update(dt, camPos);
     this.smoke.update(dt, camPos); this.glow.update(dt, null); this.fire.update(dt, null);
   }
 }

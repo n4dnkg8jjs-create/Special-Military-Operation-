@@ -6,6 +6,41 @@ import { angDiff } from './squad.js';
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
 
+// Burnt-out look for wrecks: paint burnt off to charcoal and grey-white ash, heat-blued steel, only faint rust,
+// glowing embers while the fire is still going. Applied on top of whatever the wreck texture is.
+export function charMaterial(m, emberUniform = { value: 0 }) {
+  if (!m || m.userData?.charred) return m;
+  const n = m.clone(); n.userData = { charred: true }; n.roughness = 0.95; n.metalness = 0.12; if (n.color) n.color.setRGB(1, 1, 1);
+  n.emissive = new THREE.Color(0xff5a1a); n.emissiveIntensity = 1;
+  n.onBeforeCompile = sh => {
+    sh.uniforms.uEmber = emberUniform;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCharP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharP = position;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vCharP; uniform float uEmber;
+      float ch(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+      float cn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+        return mix(mix(mix(ch(i), ch(i+vec3(1,0,0)), f.x), mix(ch(i+vec3(0,1,0)), ch(i+vec3(1,1,0)), f.x), f.y),
+                   mix(mix(ch(i+vec3(0,0,1)), ch(i+vec3(1,0,1)), f.x), mix(ch(i+vec3(0,1,1)), ch(i+vec3(1,1,1)), f.x), f.y), f.z); }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+        float n1 = cn(vCharP * 2.2) * 0.65 + cn(vCharP * 7.0) * 0.35, n2 = cn(vCharP * 1.3 + 17.0), n3 = cn(vCharP * 9.0 + 5.0);
+        vec3 soot = vec3(0.05, 0.047, 0.044) * (0.7 + lum * 0.8);
+        vec3 ash = vec3(0.46, 0.45, 0.43) * (0.75 + 0.25 * n3);
+        vec3 steel = vec3(0.17, 0.18, 0.21);
+        vec3 rust = vec3(0.23, 0.12, 0.06);
+        vec3 c = soot;
+        c = mix(c, ash, smoothstep(0.6, 0.78, n1) * 0.85);
+        c = mix(c, steel, smoothstep(0.68, 0.82, n2) * 0.6);
+        c = mix(c, rust, smoothstep(0.82, 0.92, n3) * 0.35);
+        diffuseColor.rgb = c;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= uEmber * smoothstep(0.78, 0.92, cn(vCharP * 4.0 + 3.0)) * (0.6 + 0.4 * sin(vCharP.x * 13.0 + vCharP.z * 7.0));`);
+  };
+  n.customProgramCacheKey = () => 'charred';
+  return n;
+}
+export function charObject(o, u) { const cache = new Map(), f = m => cache.get(m) || cache.set(m, charMaterial(m, u)).get(m); o.traverse(x => { if (x.isMesh) x.material = Array.isArray(x.material) ? x.material.map(f) : f(x.material); }); }
+
 export class Vehicle {
   constructor(game, side, faction, kind) {
     this.game = game; this.id = NEXT++; this.side = side; this.faction = faction; this.kind = kind; this.type = 'vehicle';
@@ -92,6 +127,7 @@ export class Vehicle {
     this.drive(dt);
     this.aimAndFire(dt);
     // fire progression
+    if (this.ember) this.ember.value = this.fire && !this.fire.dead ? Math.max(0.15, 1 - this.burning / 200) * (0.8 + 0.2 * Math.sin(this.burning * 5.3)) : Math.max(0, this.ember.value - dt * 0.02);
     if (this.burning > 0) {
       this.burning += dt;
       this.hp -= dt * (this.kind === 'tank' ? 10 : 25);
@@ -113,8 +149,9 @@ export class Vehicle {
       turn = THREE.MathUtils.clamp(err * 2, -1, 1);
       const cornering = Math.abs(err) > 0.6 ? (def.wheeled ? 0.35 : 0) : 1;
       targetSpeed = def.speed * (this.fast ? 1 : 0.7) * cornering * Math.min(1, d / 8 + (last ? 0 : 0.6));
-      // rubble slows
+      // rubble slows; roads are fast, open fields slower (wheels more than tracks)
       const c = this.game.nav.cost[this.game.nav.idx(this.pos.x, this.pos.z)] || 1; if (c > 2) targetSpeed *= 0.55;
+      const rd = this.game.nav.roadAt(this.pos.x, this.pos.z); targetSpeed *= rd === 2 ? 1.25 : rd === 1 ? 1.08 : def.wheeled ? 0.85 : 0.92;
       // wait for blocking friendly vehicles
       for (const o of this.game.vehicles) if (o !== this && !o.destroyed) { const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z, od = Math.hypot(ox, oz); if (od < def.radius + o.def.radius + 3 && (ox * Math.sin(this.heading) + oz * Math.cos(this.heading)) > 0) targetSpeed *= 0.15; }
     } else if (this.order?.facing != null && !this.immobile) { const err = angDiff(this.order.facing, this.heading); if (Math.abs(err) > 0.05) turn = THREE.MathUtils.clamp(err * 2, -1, 1) * (def.wheeled ? 0 : 1); }
@@ -232,10 +269,8 @@ export class Vehicle {
     if (this.wreckParts?.length) {
       if (this.hull && this.hull !== this.model) this.hull.visible = false;
       else this.model.traverse(o => { if (o.isMesh && !/_wreck/i.test(o.name) && !/_wreck/i.test(o.parent?.name || '')) o.visible = false; });
-      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); }
-    } else {
-      this.model.traverse(o => { if (o.isMesh) { const mats = Array.isArray(o.material) ? o.material : [o.material]; const c = mats.map(m => { const n = m.clone(); n.color?.multiplyScalar(0.25); n.color?.offsetHSL(0.02, 0.1, 0); n.roughness = 1; n.metalness = 0.1; return n; }); o.material = Array.isArray(o.material) ? c : c[0]; } });
-    }
+      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }); }
+    } else charObject(this.model, this.ember ||= { value: 1 });
     if (catastrophic && this.turret) {
       // ammunition cook-off: turret thrown into the air
       const tw = (this.wreckParts || []).find(w => /turret/i.test(w.name)) || this.turret;

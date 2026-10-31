@@ -122,7 +122,7 @@ export class City {
     // out roads + pavements, a trampled apron around every block, straight footpaths and the dirt yards
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
     lx.globalCompositeOperation = 'destination-out'; lx.fillStyle = '#000'; lx.strokeStyle = '#000'; lx.lineCap = 'butt';
-    for (const r of ROADS) lx.fillRect(...toPx(r.x0 - SIDEWALK - 0.8, r.z0 - SIDEWALK - 0.8), (r.x1 - r.x0 + SIDEWALK * 2 + 1.6) * k, (r.z1 - r.z0 + SIDEWALK * 2 + 1.6) * k);
+    for (const r of ROADS) { const sw = (r.type === 'drive' ? 1.3 : SIDEWALK) + 0.6; lx.fillRect(...toPx(r.x0 - sw, r.z0 - sw), (r.x1 - r.x0 + sw * 2) * k, (r.z1 - r.z0 + sw * 2) * k); }
     for (const b of this.buildings) { lx.save(); lx.translate(...toPx(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 1.3) * k, (-b.D / 2 - 1.3) * k, (b.L + 2.6) * k, (b.D + 2.6) * k); lx.restore(); }
     for (const b of this.buildings) for (const e of b.entrances) {
       let best = null, bd = 1e9; for (const r of ROADS) { const cx = Math.max(r.x0 - SIDEWALK, Math.min(r.x1 + SIDEWALK, e.x)), cz = Math.max(r.z0 - SIDEWALK, Math.min(r.z1 + SIDEWALK, e.z)); const d = Math.hypot(cx - e.x, cz - e.z); if (d < bd) { bd = d; best = [cx, cz]; } }
@@ -194,9 +194,10 @@ export class City {
     const walk = this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const curbMat = new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
     const uvPlane = (w, d, scale) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / scale, uv.getY(i) * d / scale); return g; };
+    for (const r of ROADS) this.nav.markRoad(r.x0, r.z0, r.x1, r.z1, 2);
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      const s = new THREE.Mesh(uvPlane(w + SIDEWALK * 2, d + SIDEWALK * 2, 4), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
+      const sw = r.type === 'drive' ? 1.3 : SIDEWALK, s = new THREE.Mesh(uvPlane(w + sw * 2, d + sw * 2, 4), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
     }
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
@@ -400,10 +401,16 @@ export class City {
       T = { bare: [mk(1), mk(2), mk(3)], leafy: [mk(4, true)] };
     }
     const spots = [];
-    // avenue rows
-    for (let x = -E + 8; x < E - 8; x += 11) for (const z of [-15.5, 15.5]) if (!onRoad(x, z, 1) && this.rng() < 0.8) spots.push([x + (this.rng() - .5) * 2, z]);
-    // side streets
-    for (const sx of [-106, -84, 74, 96]) for (let z = -E + 8; z < E - 8; z += 13) if (!onRoad(sx, z, 1) && this.rng() < 0.6) spots.push([sx, z + (this.rng() - .5) * 3]);
+    // street trees: rows along both verges of every road (avenue limes/chestnuts, poplars on the driveways)
+    for (const r of ROADS) {
+      const horiz = (r.x1 - r.x0) > (r.z1 - r.z0), step = r.type === 'drive' ? 13 : 11, off = (horiz ? (r.z1 - r.z0) : (r.x1 - r.x0)) / 2 + SIDEWALK + 2.2;
+      const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, a0 = horiz ? r.x0 : r.z0, a1 = horiz ? r.x1 : r.z1;
+      for (let t = a0 + 6; t < a1 - 6; t += step) for (const sd of [-1, 1]) {
+        if (this.rng() > (r.w === 'avenue' ? 0.85 : 0.6)) continue;
+        const x = horiz ? t + (this.rng() - .5) * 1.5 : cx + sd * off, z = horiz ? cz + sd * off : t + (this.rng() - .5) * 1.5;
+        if (!onRoad(x, z, 1.5)) spots.push([x, z]);
+      }
+    }
     // courtyards
     for (let i = 0; i < 110; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); if (!onRoad(x, z, 4)) spots.push([x, z]); }
     const by = {};
@@ -449,8 +456,10 @@ export class City {
       instance(this.scene, tpl, mats);
     };
     run(trolley, -E + 5, -13.5, E - 5, -13.5, 32, 0, 0.6); run(trolley, -E + 5, 13.5, E - 5, 13.5, 32, Math.PI, 0.6);
-    run(pole, -105.5, -E + 5, -105.5, E - 5, 36, Math.PI / 2, 1.3); run(pole, 95.5, -E + 5, 95.5, E - 5, 36, -Math.PI / 2, 1.3);
-    run(pole, -E + 5, 114, E - 5, 114, 36, 0, 1.3); run(pole, -E + 5, -190, E - 5, -190, 36, 0, 1.5); run(pole, -E + 5, 190, E - 5, 190, 36, Math.PI, 1.5);
+    run(pole, 95.5, -E + 5, 95.5, E - 5, 36, -Math.PI / 2, 1.3);
+    run(pole, -200, -119.5, -20, -119.5, 36, 0, 1.3); run(pole, -200, 113.5, -20, 113.5, 36, Math.PI, 1.3);
+    run(pole, 92, -115.5, 198, -115.5, 36, 0, 1.3); run(pole, 92, 113.5, 198, 113.5, 36, Math.PI, 1.3);
+    run(pole, -E + 5, -190, E - 5, -190, 36, 0, 1.5); run(pole, -E + 5, 190, E - 5, 190, 36, Math.PI, 1.5);
     // trolleybus contact wires spanning the avenue between the two pole rows
     for (let x = -E + 18; x < E - 5; x += 32) { if (this.rng() < 0.25) continue; lines.push(catenary(new THREE.Vector3(x, 6.6, -13.2), new THREE.Vector3(x, 6.6, 13.2), 0.35)); }
     for (const z of [-2.1, 2.1]) for (let x = -E + 18; x < E - 37; x += 32) { if (this.rng() < 0.3) continue; lines.push(catenary(new THREE.Vector3(x, 6.4, z), new THREE.Vector3(x + 32, 6.4, z), 0.25)); }
@@ -489,12 +498,10 @@ export class City {
     put('bus', 72, 3, 0.25, 1, 1, BLOCK);
     if (free(100, -16.5, 1)) put('busstop', 100, -16.5, Math.PI, 1, 1, BLOCK);
     for (const [x, z, r] of [[104, 17.5, Math.PI * 0.95], [126, 17.5, Math.PI], [-60, 17.5, Math.PI]]) if (free(x, z, 2)) put('kiosk', x, z, r, 1, 1, BLOCK);
-    // garage rows in courtyards
-    // fixed courtyards: playgrounds behind these residential blocks, garage rows behind those
-    const yardOf = (bi, r) => { const b = this.buildings[bi]; if (!b) return null; for (const f of [0, -0.25, 0.25]) for (const d of [15, 19, 12]) { const p = b.toWorld(f * b.L, 0, -b.D / 2 - d); if (free(p.x, p.z, r)) return [p.x, p.z, b.rot]; } return null; };
+    // courtyard plan: playgrounds between the five-storey rows, garage cooperatives and dirt yards at the edges
     this.dirtYards = [];
-    for (const bi of [11, 15, 3, 7]) { const y = yardOf(bi, 6); if (y) { put('playground', y[0], y[1], y[2], 1, 1, 6); this.dirtYards.push([y[0], y[1], 9, y[2]]); } }
-    for (const bi of [6, 16, 0, 13]) { const y = yardOf(bi, 9); if (!y) continue; const [x, z, rot] = y; const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 4; i++) put('garage', x + dx * (i - 1.5), z + dz * (i - 1.5), rot, 1, 1, BLOCK); this.dirtYards.push([x, z, 11, rot]); }
+    for (const [x, z, rot] of MAP.yards?.playgrounds || []) { if (free(x, z, 4)) { put('playground', x, z, rot, 1, 1, 6); this.dirtYards.push([x, z, 8, rot]); } }
+    for (const [x, z, rot] of MAP.yards?.garages || []) { const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 6; i++) put('garage', x + dx * (i - 2.5), z + dz * (i - 2.5), rot, 1, 1, BLOCK); this.dirtYards.push([x, z, 14, rot]); }
     for (let i = 0; i < 45; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) put('tyre', x, z, this.rng() * 6, 1, 0); }
     for (const v of Object.values(placeList)) instance(this.scene, v.t, v.m);
     this.put = put; this._pl = placeList;
@@ -530,7 +537,7 @@ export class City {
       return true;
     };
     // private-house sectors (приватний сектор) at the four outer corners, lanes left clear for deployment
-    for (const [x0, x1, z0, z1] of [[-252, -150, 206, 252], [150, 252, 206, 252], [-252, -150, -252, -206], [150, 252, -252, -206], [-198, -130, 140, 186], [160, 196, -100, -60]]) {
+    for (const [x0, x1, z0, z1] of [[-252, -150, 206, 252], [150, 252, 206, 252], [-252, -150, -252, -206], [150, 252, -252, -206]]) {
       for (let x = x0 + 10; x < x1 - 6; x += 21) for (let z = z0 + 10; z < z1 - 6; z += 23) {
         if (R() < 0.15) continue;
         const ry = (R() < 0.5 ? 0 : Math.PI) + (R() - .5) * 0.15, hx = x + (R() - .5) * 4, hz = z + (R() - .5) * 4;
@@ -540,7 +547,7 @@ export class City {
       }
     }
     // district heating mains with expansion loops, run along the street verges like the real above-ground mains
-    for (const [x0, z0, x1, z1] of [[-190, -121, -112, -121], [100, -121, 190, -121], [-112, -95, -112, -22], [99, 22, 99, 92], [-80, 116, 70, 116], [-196, 20, -196, 92]]) {
+    for (const [x0, z0, x1, z1] of [[-196, -122, -30, -122], [96, -118, 194, -118], [-196, 116, -30, 116], [96, 116, 194, 116], [99, 30, 99, 96]]) {
       const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 6), ry = Math.atan2(x1 - x0, z1 - z0) + Math.PI / 2;
       for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; put(i === Math.floor(n / 2) && T.pipeLoop ? 'pipeLoop' : 'pipe', x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, ry, 7); }
     }
@@ -551,12 +558,12 @@ export class City {
       if (!/khrushchyovka|brick|nine/.test(b.kind) || i % 2) return;
       for (const sx of [1, -1]) { const p = b.toWorld(sx * (b.L / 2 + 4.5), 0, -(b.D / 2 + 5)); if (put('sub', p.x, p.z, b.rot + (sx > 0 ? 0 : Math.PI))) { subN++; break; } }
     });
-    put('church', -184, 128, 0); put('church', 184, -178, Math.PI);
-    for (const [x, z, r] of [[122, 46, Math.PI], [134, 46, Math.PI], [146, 46, Math.PI], [128, 56, 0]]) put('pav', x, z, r);
+    put('church', -107, 152, 0);
+    for (const [x, z, r] of MAP.yards?.markets || []) put('pav', x, z, r);
     for (const [x, z, r] of [[60, 16, Math.PI], [-120, -17, 0], [170, 17, Math.PI]]) put('bill', x, z, r, 6);
     // concrete ПО-2 fences around the school yard and garage rows
-    if (T.po2) { for (let x = -96; x < -36; x += 4.0) put('po2', x, 84, 0, 7); }
-    for (const [x, z] of [[-50, 78], [-20, 78]]) put('goal', x, z, Math.PI / 2, 6);
+    if (T.po2) { for (let x = -86; x < -32; x += 4.0) put('po2', x, 86, 0, 7); }
+    for (const [x, z] of [[-60, 78], [-36, 78]]) put('goal', x, z, Math.PI / 2, 6);
     // street furniture
     for (let x = -E + 20; x < E - 20; x += 30) { put('lamp', x + 15, -16.6, 0, 0); put('lamp', x, 16.6, Math.PI, 0); }
     for (const b of this.buildings) for (const e of b.entrances) { if (R() < 0.6) put('bench', e.x + (R() - .5) * 3, e.z + (R() - .5) * 2, b.rot, 0); if (R() < 0.35) put('bin', e.x + 4 * (R() < .5 ? 1 : -1), e.z, b.rot, 6); if (R() < 0.15) put('laundry', e.x + (R() - .5) * 10, e.z - 8, R() * 3, 0); }
@@ -614,7 +621,7 @@ export class City {
     if (!T.sandbag) { const sb = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x7c7058, roughness: 1 }); for (let r = 0; r < 3; r++) for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.4, 3, 8), m); b.rotation.z = Math.PI / 2; b.scale.set(1, 1, 0.75); b.position.set(-1.2 + i * 0.6 + (r % 2) * 0.3, 0.15 + r * 0.26, 0); sb.add(b); } sb.traverse(o => o.isMesh && (o.castShadow = true)); T.sandbag = [sb]; }
     // School: sandbagged positions along the avenue side and the gap between wings
     for (let x = -78; x <= -44; x += 4.2) if (this.rng() < 0.75) put('sandbag', x, 30, 0);
-    for (const [x, z, r] of [[-94, 45, Math.PI / 2], [-94, 52, Math.PI / 2], [-70, 76, 0.3]]) put('sandbag', x, z, r);
+    for (const [x, z, r] of [[-86, 45, Math.PI / 2], [-86, 52, Math.PI / 2], [-70, 76, 0.3]]) put('sandbag', x, z, r);
     // Crossroads: barricade of hedgehogs across the intersection mouths + sandbag nests at corners
     for (let x = 80; x <= 90; x += 2.6) put('hedgehog', x, -14, this.rng() * 3);
     for (let z = -6; z <= 6; z += 2.6) put('hedgehog', 70, z, this.rng() * 3);
@@ -626,7 +633,7 @@ export class City {
     const bb = new THREE.Box3().setFromObject(coil); const len = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z); const alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z);
     const m = [];
     const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; const x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
-    belt(-84, 22, -40, 22); belt(100, -24, 125, -24); belt(60, -20, 72, -20);
+    belt(-84, 24, -40, 24); belt(60, -20, 72, -20);
     instance(this.scene, coil, m);
   }
   craters() {

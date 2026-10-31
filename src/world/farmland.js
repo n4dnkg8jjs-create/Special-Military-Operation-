@@ -253,6 +253,7 @@ export class Farmland extends City {
     const trackMat = new THREE.MeshStandardMaterial({ map: trackTex ? trackTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color: T.track ? 0xffffff : 0xb0a28a, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     if (trackMat.map) { trackMat.map.wrapS = trackMat.map.wrapT = THREE.RepeatWrapping; trackMat.map.needsUpdate = true; }
     const strip = (w, len, texW) => { const g = new THREE.PlaneGeometry(w, len); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), uv.getY(i) * len / texW); return g; };
+    for (const r of ROADS) this.nav.markRoad(r.x0 - (r.type === 'track' ? 0.6 : 0), r.z0 - (r.type === 'track' ? 0.6 : 0), r.x1 + (r.type === 'track' ? 0.6 : 0), r.z1 + (r.type === 'track' ? 0.6 : 0), r.type === 'track' ? 1 : 2);
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0, horiz = w > d, len = horiz ? w : d, wid = horiz ? d : w;
       const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;

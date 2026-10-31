@@ -7,60 +7,76 @@ export const MAPS = {
   city: {
     id: 'city', name: 'Novozavodsk', blurb: 'Shelled-out Soviet panel-block microdistrict. Tight street-to-street fighting, collapsible blocks, garrisons.',
     size: 'Medium', sizeM: 520, bounds: 245, kind: 'urban',
+    // A planned Soviet microdistrict (mikrorayon) as it looked by 2022: arterial Prospekt Myru and vul. Zavodska
+    // cut the district into four superblocks; inside, narrow driveways loop between parallel rows of five-storeys,
+    // nine-storey slabs with shops line the avenue, the school and kindergartens sit in the green courtyards,
+    // garages and boiler houses at the edges. Some blocks have renovated insulated facades (pastel tints).
     roads: [
-  { x0: -E_C, x1: E_C, z0: -10, z1: 10, w: 'avenue' },       // Prospekt Myru (E–W)
-  { x0: -102, x1: -88, z0: -E_C, z1: E_C },                   // vul. Shkilna (N–S)
-  { x0: 78, x1: 92, z0: -E_C, z1: E_C },                      // vul. Zavodska (N–S)
-  { x0: -E_C, x1: E_C, z0: -116, z1: -104 },                  // north E–W
-  { x0: -E_C, x1: E_C, z0: 99, z1: 111 },                     // south E–W
-  { x0: -E_C, x1: E_C, z0: -201, z1: -193 },                  // northern outskirts lane
-  { x0: -E_C, x1: E_C, z0: 193, z1: 201 },                    // southern outskirts lane
-  { x0: -208, x1: -200, z0: -E_C, z1: E_C },                  // western ring road
-  { x0: 198, x1: 206, z0: -E_C, z1: E_C },                    // eastern ring road
-],
+      { x0: -E_C, x1: E_C, z0: -10, z1: 10, w: 'avenue' },         // Prospekt Myru (E–W arterial)
+      { x0: 78, x1: 92, z0: -E_C, z1: E_C },                       // vul. Zavodska (N–S arterial)
+      { x0: -E_C, x1: E_C, z0: -201, z1: -193 },                   // northern outskirts lane
+      { x0: -E_C, x1: E_C, z0: 193, z1: 201 },                     // southern outskirts lane
+      { x0: -208, x1: -200, z0: -E_C, z1: E_C },                   // western ring road
+      { x0: 198, x1: 206, z0: -E_C, z1: E_C },                     // eastern ring road
+      // internal driveways (proizdy): loops off the arterials, not a through grid
+      { x0: -200, x1: -20, z0: -116, z1: -110, type: 'drive' }, { x0: -98, x1: -92, z0: -110, z1: -10, type: 'drive' }, { x0: -26, x1: -20, z0: -116, z1: -10, type: 'drive' },
+      { x0: 92, x1: 198, z0: -112, z1: -106, type: 'drive' }, { x0: 140, x1: 146, z0: -106, z1: -10, type: 'drive' },
+      { x0: -200, x1: -20, z0: 104, z1: 110, type: 'drive' }, { x0: -98, x1: -92, z0: 10, z1: 104, type: 'drive' }, { x0: -26, x1: -20, z0: 10, z1: 110, type: 'drive' },
+      { x0: 92, x1: 198, z0: 104, z1: 110, type: 'drive' }, { x0: 140, x1: 146, z0: 10, z1: 104, type: 'drive' },
+    ],
     objectives: [
-  { id: 'A', name: 'School No. 7', x: -62, z: 50 },
-  { id: 'B', name: 'Market Crossroads', x: 95, z: 12 },
-],
+      { id: 'A', name: 'School No. 7', x: -62, z: 50 },
+      { id: 'B', name: 'Market Crossroads', x: 95, z: 12 },
+    ],
     deployZones: {
-  player: { x0: -240, x1: 240, z0: 203, z1: 250 },
-  enemy: { x0: -240, x1: 240, z0: -250, z1: -203 },
-},
+      player: { x0: -240, x1: 240, z0: 203, z1: 250 },
+      enemy: { x0: -240, x1: 240, z0: -250, z1: -203 },
+    },
     spawns: {
-  attacker: [[-95, -240], [85, -240], [-30, -235], [150, -238]],
-  defender: [[-95, 240], [85, 240], [0, 235]],
-},
+      attacker: [[-95, -240], [85, -240], [-30, -235], [150, -238]],
+      defender: [[-95, 240], [85, 240], [0, 235]],
+    },
     buildings: [
-  [-150, -150, 0, 15, 5, 4, 3, 'brick', 1.0], [-150, -60, 0, 15, 9, 4, 3, 'nine', 1.2],
-  [-30, -150, 0, 18, 5, 4, 4, 'khrushchyovka', 0.9], [-40, -60, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.3],
-  [30, -68, 0, 12, 9, 4, 2, 'nine', 1.4], [150, -150, Math.PI / 2, 15, 5, 4, 3, 'khrushchyovka', 0.8],
-  [150, -55, 0, 12, 5, 4, 3, 'brick', 1.2], [40, -160, 0, 10, 5, 4, 2, 'khrushchyovka', 0.7],
-  [-60, 40, Math.PI, 10, 3, 4, 2, 'school', 1.0], [-78, 62, Math.PI / 2, 6, 3, 4, 1, 'school', 0.9],
-  [-150, 50, Math.PI / 2, 15, 9, 4, 3, 'nine', 1.1], [10, 60, 0, 12, 5, 4, 3, 'brick', 1.0],
-  [40, 28, Math.PI, 12, 5, 4, 3, 'khrushchyovka', 1.2, { shops: true }], [140, 70, 0, 14, 5, 4, 3, 'khrushchyovka', 0.9],
-  [112, 26, Math.PI, 6, 2, 3, 1, 'shop', 1.0, { shops: true }], [-140, 150, 0, 15, 5, 4, 3, 'khrushchyovka', 0.6],
-  [-20, 150, 0, 18, 9, 4, 3, 'nine', 0.7], [140, 160, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 0.5],
-  // infill (appended so indices above stay stable)
-  [-70, -160, Math.PI / 2, 8, 5, 4, 2, 'khrushchyovka', 1.0], [-140, -30, 0, 12, 5, 4, 3, 'brick', 1.3, { shops: true }],
-  [-65, -80, Math.PI / 2, 10, 9, 4, 2, 'nine', 1.3], [30, -35, 0, 10, 5, 4, 2, 'khrushchyovka', 1.4, { shops: true }],
-  [130, -80, 0, 10, 5, 4, 2, 'khrushchyovka', 1.1], [120, -160, Math.PI / 2, 10, 5, 4, 2, 'khrushchyovka', 0.8],
-  [-150, 128, 0, 10, 5, 4, 2, 'brick', 0.6], [55, 75, Math.PI / 2, 8, 5, 4, 2, 'khrushchyovka', 0.9],
-  [150, 30, Math.PI / 2, 8, 9, 4, 2, 'nine', 1.0], [-20, 25, Math.PI, 8, 5, 4, 2, 'brick', 1.1, { shops: true }],
-  [50, 150, 0, 12, 5, 4, 3, 'khrushchyovka', 0.5],
-  // outer ring: 9-storeys, 12–16-storey point towers, brick blocks
-  [232, -150, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [232, -45, 0, 6, 16, 6, 1, 'tower', 1.1], [232, 72, Math.PI / 2, 14, 5, 4, 3, 'brick', 0.8],
-  [232, 160, 0, 6, 12, 6, 1, 'tower', 0.6], [-232, -150, Math.PI / 2, 14, 5, 4, 3, 'brick', 1.0], [-232, -45, 0, 6, 16, 6, 1, 'tower', 1.2],
-  [-232, 60, Math.PI / 2, 15, 9, 4, 3, 'nine', 0.9], [-232, 160, 0, 6, 12, 6, 1, 'tower', 0.5],
-  [-10, -88, 0, 6, 14, 6, 1, 'tower', 1.3], [150, 124, 0, 10, 5, 4, 2, 'brick', 0.7, { shops: true }],
-],
-    pancakes: [[4, 4, 6], [1, 9, 10]],
+      // NW superblock — avenue frontage (nine-storeys with shops), interior rows, kindergarten, north row
+      [-172, -22, 0, 14, 9, 4, 3, 'nine', 1.0, { shops: true }], [-125, -22, 0, 12, 9, 4, 3, 'nine', 1.2, { shops: true, tint: 0xe3d3b4 }],
+      [-59, -22, 0, 18, 9, 4, 3, 'nine', 1.3, { shops: true }], [24, -22, 0, 16, 5, 4, 3, 'khrushchyovka', 1.3, { shops: true }],
+      [-184, -66, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 0.9], [-152, -66, Math.PI / 2, 12, 5, 4, 3, 'brick', 1.1], [-120, -66, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.0, { tint: 0xd8c8b8 }],
+      [-59, -74, 0, 10, 2, 5, 2, 'school', 1.0, { tint: 0xe9d6b6 }],                    // kindergarten No. 12 (renovated)
+      [12, -72, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.4], [58, -62, 0, 6, 14, 6, 1, 'tower', 1.3, { tint: 0xd6dadb }],
+      [-150, -150, 0, 15, 5, 4, 3, 'brick', 1.0], [-60, -150, 0, 18, 9, 4, 3, 'nine', 1.2], [20, -152, 0, 15, 5, 4, 3, 'khrushchyovka', 0.9],
+      // NE superblock
+      [118, -22, 0, 6, 2, 3, 1, 'shop', 1.0, { shops: true }], [172, -22, 0, 12, 5, 4, 3, 'brick', 1.2, { shops: true }],
+      [172, -66, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [116, -78, 0, 12, 5, 4, 3, 'khrushchyovka', 1.1, { tint: 0xe0cdb9 }],
+      [145, -150, Math.PI / 2, 15, 5, 4, 3, 'khrushchyovka', 0.8], [180, -150, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0],
+      // SW superblock — school No. 7 (objective A) in the courtyard
+      [-172, 22, Math.PI, 14, 9, 4, 3, 'nine', 1.1, { shops: true, tint: 0xddd0bb }], [-125, 22, Math.PI, 12, 5, 4, 3, 'brick', 1.0, { shops: true }],
+      [-60, 40, Math.PI, 10, 3, 4, 2, 'school', 1.0], [-78, 62, Math.PI / 2, 6, 3, 4, 1, 'school', 0.9],
+      [24, 22, Math.PI, 16, 5, 4, 3, 'khrushchyovka', 1.2, { shops: true }],
+      [-184, 66, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.0], [-152, 66, Math.PI / 2, 12, 5, 4, 3, 'brick', 0.9], [-120, 66, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.1, { tint: 0xe6d2c0 }],
+      [30, 72, 0, 10, 2, 5, 2, 'school', 0.9, { tint: 0xd9dcc8 }],                       // kindergarten No. 31
+      [62, 66, Math.PI / 2, 10, 9, 4, 2, 'nine', 1.0],
+      [-150, 150, 0, 15, 5, 4, 3, 'khrushchyovka', 0.6], [-60, 150, 0, 18, 9, 4, 3, 'nine', 0.7, { tint: 0xe2d6c2 }], [20, 150, 0, 12, 5, 4, 3, 'brick', 0.6],
+      // SE superblock — market square at the crossroads (objective B)
+      [118, 24, Math.PI, 6, 2, 3, 1, 'shop', 1.0, { shops: true }], [172, 22, Math.PI, 12, 5, 4, 3, 'khrushchyovka', 0.9, { shops: true }],
+      [116, 80, 0, 12, 5, 4, 3, 'brick', 0.8], [172, 66, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0, { tint: 0xd5d9da }],
+      [120, 150, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 0.5], [172, 150, 0, 6, 12, 6, 1, 'tower', 0.6],
+      // beyond the ring roads: the neighbouring microdistricts
+      [232, -150, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [232, -45, 0, 6, 16, 6, 1, 'tower', 1.1], [232, 72, Math.PI / 2, 14, 5, 4, 3, 'brick', 0.8],
+      [232, 160, 0, 6, 12, 6, 1, 'tower', 0.6], [-232, -150, Math.PI / 2, 14, 5, 4, 3, 'brick', 1.0], [-232, -45, 0, 6, 16, 6, 1, 'tower', 1.2],
+      [-232, 60, Math.PI / 2, 15, 9, 4, 3, 'nine', 0.9], [-232, 160, 0, 6, 12, 6, 1, 'tower', 0.5],
+    ],
+    pancakes: [[2, 7, 9], [11, 11, 13]],
+    // courtyard furniture plan (used by the city dressing): playgrounds, garage cooperatives, boiler houses
+    yards: { playgrounds: [[-168, -66, Math.PI / 2], [-136, -66, Math.PI / 2], [-168, 66, Math.PI / 2], [-136, 66, Math.PI / 2], [30, 96, 0], [145, 66, 0], [-59, -98, 0]],
+      garages: [[-172, -178, 0], [-108, -178, 0], [-176, 177, Math.PI], [118, -180, 0]], boilers: [[62, -176, 0], [176, 176, Math.PI]],
+      markets: [[110, 46, Math.PI], [122, 46, Math.PI], [128, 58, 0]] },
     lineup: [[-112, 188, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]],
     ai: {
-      staging: { A: [[-62, -38], [-95, -52], [-20, -28], [-120, -25]], B: [[85, -62], [120, -32], [60, -40], [150, -25]] },
-      overwatch: { A: [[-95, -70], [-10, -40]], B: [[85, -95], [110, -40]] },
+      staging: { A: [[-62, -38], [-95, -52], [-23, -40], [-108, -40]], B: [[85, -62], [143, -40], [60, -40], [150, -32]] },
+      overwatch: { A: [[-95, -70], [-10, -40]], B: [[85, -95], [143, -60]] },
       army: [[-95, -168, 'mech', 'A'], [-30, -172, 'assault', 'A'], [85, -168, 'mech', 'B'], [130, -172, 'foot', 'B'], [-60, -180, 'tank', 'A'], [40, -180, 'tank', 'B']],
     },
-    smoulder: [[-150, -60, 1.2], [30, -68, 1.4], [-40, -60, 1], [150, -150, 0.8], [140, 70, 0.7]],
+    smoulder: [[-152, -66, 1.2], [12, -72, 1.4], [-59, -22, 1], [145, -150, 0.8], [172, 66, 0.7]],
     plumes: [[-320, -380, 1.4], [260, -420, 1.8], [420, -120, 1.1], [-460, 60, 1.2], [80, -520, 2.2]],
     cam: [0, 140, 150], fog: 0.0021, ambience: 'ambience_city',
   },

@@ -164,7 +164,7 @@ export class Combat {
     s.shots = (s.shots || 0) + 1;
     // tracers: Russian green, Ukrainian red, about every 3rd–4th round
     s.nextTracer ??= 3 + Math.floor(Math.random() * 2);
-    if (--s.nextTracer <= 0) { s.nextTracer = 3 + Math.floor(Math.random() * 2); if (near) g.fx.tracer(from, end, 800, TRACER[s.faction.id]); }
+    if (--s.nextTracer <= 0) { s.nextTracer = 3 + Math.floor(Math.random() * 2); if (g.camDist(s.pos) < 450) g.fx.tracer(from, end, 800, TRACER[s.faction.id]); }
     if (t.type === 'vehicle') {
       if (hit) { if (near) g.fx.impact(end, 'metal'); this.hitVehicle(t, W, s.pos, 'ke', s); if (Math.random() < 0.2) g.sfx('ricochet', end); }
       return;
@@ -327,7 +327,7 @@ export class Combat {
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.02; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }
     w.shots = (w.shots || 0) + 1;
     // BTR weapons trace every round; tank coax every 3rd
-    if (near && (v.kind === 'btr' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
+    if (g.camDist(v.pos) < 500 && (v.kind === 'btr' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
     if (W.type === 'autocannon') { // HE-frag 30 mm: every round bursts
       this.projectiles.push({ kind: 'he30', pos: from.clone(), target: end, t, speed: 960, owner: v, side: v.side, weapon: W, hit });
       return;
@@ -513,7 +513,8 @@ export class Combat {
       // infantry: pick a soldier (riders on armour are prime targets) (prefer clusters / garrisons for HE)
       for (const s of u.soldiers) {
         if (!s.effective || s.inside === 'btr') continue;
-        const d = s.pos.distanceTo(v.pos); if (d > 700) continue;
+        // a vehicle only engages infantry it could plausibly make out itself (or that is shooting at it)
+        const d = s.pos.distanceTo(v.pos); if (d > ((u.firedT ?? 99) < 3 ? 420 : v.side === 'enemy' ? 200 : 260)) continue;
         const tp = this.targetPoint(s, B);
         if (!this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s)) continue;
         if (d < bi) { bi = d; bestInf = s; }
