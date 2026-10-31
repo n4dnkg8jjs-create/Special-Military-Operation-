@@ -30,8 +30,9 @@ export class City {
     this.burning = []; this.wrecks = [];
   }
   build() {
+    this.lots = (MAP.yards?.lots || []).map(l => [...l]);
     this.ground(); this.roads();
-    this.placeBuildings(); this.facadeDecals();
+    this.placeBuildings();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences();
     this.craters(); this.paintGround(); this.skyline();
@@ -48,7 +49,7 @@ export class City {
   // Ground: one large plane with a splat-mapped shader (dry grass, worn paths, rubble/gravel, mud)
   // and anti-tiling (two rotated samples blended by noise + macro tint), painted from the layout.
   ground() {
-    const S = MAP_SIZE + 400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const S = MAP_SIZE + 1400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
     const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t; };
     const nrm = T.dirt?.normalMap ? T.dirt.normalMap.clone() : null; if (nrm) { nrm.needsUpdate = true; nrm.repeat.set(S / 6, S / 6); }
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, normalMap: nrm, normalScale: new THREE.Vector2(0.8, 0.8) });
@@ -68,6 +69,8 @@ export class City {
           vec2 wp = vWPos.xz;
           vec2 wob = vec2(vn(wp * 0.21) - 0.5, vn(wp * 0.21 + 31.0) - 0.5) * 2.2;   // break up blurred mask edges
           vec4 sp = texture2D(tSplat, clamp((wp + wob) / splatSize + 0.5, 0.002, 0.998));
+          float outside = smoothstep(splatSize * 0.5 - 6.0, splatSize * 0.5 + 4.0, max(abs(wp.x), abs(wp.y)));
+          sp = mix(sp, vec4(smoothstep(0.35, 0.6, vn(wp * 0.03)) * 0.85, 0.0, 0.0, 0.25), outside);
           vec3 dirt = tile(tDirt, wp / 6.0), grass = tile(tGrass, wp / 3.5), rub = tile(tRubble, wp / 5.0);
           // dry, sun-bleached grass: match the dirt's brightness, desaturate toward straw, let dirt show through
           float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
@@ -122,6 +125,7 @@ export class City {
     // out roads + pavements, a trampled apron around every block, straight footpaths and the dirt yards
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
     lx.globalCompositeOperation = 'destination-out'; lx.fillStyle = '#000'; lx.strokeStyle = '#000'; lx.lineCap = 'butt';
+    for (const l of this.lots || []) lx.fillRect(...toPx(l[0] - 1, l[1] - 1), (l[2] - l[0] + 2) * k, (l[3] - l[1] + 2) * k);
     for (const r of ROADS) { const sw = (r.type === 'drive' ? 1.3 : SIDEWALK) + 0.6; lx.fillRect(...toPx(r.x0 - sw, r.z0 - sw), (r.x1 - r.x0 + sw * 2) * k, (r.z1 - r.z0 + sw * 2) * k); }
     for (const b of this.buildings) { lx.save(); lx.translate(...toPx(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 1.3) * k, (-b.D / 2 - 1.3) * k, (b.L + 2.6) * k, (b.D + 2.6) * k); lx.restore(); }
     for (const b of this.buildings) for (const e of b.entrances) {
@@ -154,8 +158,8 @@ export class City {
     const c = document.createElement('canvas'); c.width = 256; c.height = 256; const x = c.getContext('2d');
     for (let i = 0; i < 160; i++) {
       const bx = 128 + (Math.random() - .5) * 220, h = 70 + Math.random() * 170, lean = (Math.random() - .5) * 70, w = 2 + Math.random() * 3;
-      const g = Math.random(); const col = g < 0.45 ? [128 + Math.random() * 30, 134 + Math.random() * 26, 74 + Math.random() * 18] : g < 0.85 ? [168 + Math.random() * 26, 156 + Math.random() * 22, 104 + Math.random() * 16] : [104, 122, 62];
-      const gr = x.createLinearGradient(0, 256, 0, 256 - h); gr.addColorStop(0, `rgb(${col[0] * 0.55 | 0},${col[1] * 0.55 | 0},${col[2] * 0.5 | 0})`); gr.addColorStop(0.45, `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`); gr.addColorStop(1, `rgb(${Math.min(255, col[0] * 1.12) | 0},${Math.min(255, col[1] * 1.08) | 0},${col[2] * 1.05 | 0})`);
+      const g = Math.random(); const col = g < 0.5 ? [150 + Math.random() * 22, 150 + Math.random() * 18, 92 + Math.random() * 14] : [170 + Math.random() * 22, 158 + Math.random() * 18, 106 + Math.random() * 14];
+      const gr = x.createLinearGradient(0, 256, 0, 256 - h); gr.addColorStop(0, `rgb(${col[0] * 0.78 | 0},${col[1] * 0.78 | 0},${col[2] * 0.72 | 0})`); gr.addColorStop(0.45, `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`); gr.addColorStop(1, `rgb(${Math.min(255, col[0] * 1.12) | 0},${Math.min(255, col[1] * 1.08) | 0},${col[2] * 1.05 | 0})`);
       x.fillStyle = gr;
       x.beginPath(); x.moveTo(bx - w, 256); x.quadraticCurveTo(bx + lean * 0.4 - w * 0.5, 256 - h * 0.55, bx + lean, 256 - h); x.quadraticCurveTo(bx + lean * 0.4 + w * 0.5, 256 - h * 0.55, bx + w, 256); x.fill();
       if (Math.random() < 0.12) { x.fillStyle = 'rgb(160,140,96)'; x.beginPath(); x.ellipse(bx + lean, 256 - h, 2.5, 7, lean * 0.01, 0, 7); x.fill(); }
@@ -165,6 +169,9 @@ export class City {
     const wind = this.windUniform = { value: 0 };
     mat.onBeforeCompile = sh => {
       sh.uniforms.uTime = wind;
+      // double-sided cards: three.js flips the normal on back faces, which lit the far side of every clump
+      // as a dark, almost black blade — keep the (upward) normal on both sides so all blades shade alike
+      sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  normal = normalize( vNormal );');
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
@@ -183,9 +190,9 @@ export class City {
       const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
       if (gw < 0.35 || this.rng() > gw) continue;
-      if (onRoad(px, pz, SIDEWALK + 0.4)) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
+      if (onRoad(px, pz, SIDEWALK + 0.4) || (this.lots || []).some(l => px > l[0] && px < l[2] && pz > l[1] && pz < l[3])) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
       const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
-      cols.push(new THREE.Color().setHSL(0.16 + (this.rng() - .5) * 0.06, 0.1 + this.rng() * 0.15, 0.78 + this.rng() * 0.2));
+      cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08));
     }
     instance(this.scene, tpl, mats, { shadows: false, colors: cols, cullDist: this.grassCull || 340 });
   }
@@ -368,7 +375,7 @@ export class City {
     }
     // scattered debris on streets
     // loose debris lies along the foot of the walls it fell from, not in the middle of yards
-    for (let i = 0; i < (this.streetDebris ?? 60) && this.buildings.length; i++) {
+    for (let i = 0; i < (this.streetDebris ?? 18) && this.buildings.length; i++) {
       const b = this.buildings[Math.floor(this.rng() * this.buildings.length)], side = Math.floor(this.rng() * 4), s = 0.35 + this.rng() * 0.4, rr = T[0].userData.r * s * 0.45;
       const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
       add(w.x, w.z, s, this.rng() * 6.28, b);
@@ -414,8 +421,9 @@ export class City {
     }
     // courtyards
     for (let i = 0; i < 110; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); if (!onRoad(x, z, 4)) spots.push([x, z]); }
-    const by = {};
+    const by = {}, inLot = (x, z) => (this.lots || []).some(l => x > l[0] - 2 && x < l[2] + 2 && z > l[1] - 2 && z < l[3] + 2);
     for (const [x, z] of spots) {
+      if (inLot(x, z)) continue;
       const i = this.nav.idx(x, z); if (i < 0 || this.nav.cost[i] === BLOCK) continue;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 3 && Math.abs(lz) < b.D / 2 + 3; })) continue;
       const roll = this.rng();
@@ -482,9 +490,10 @@ export class City {
       const k = Math.floor(this.rng() * list.length); (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, ry, s));
       if (navR) { const bb = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]); const sx = (bb.max.x - bb.min.x) / 2 * s, sz = (bb.max.z - bb.min.z) / 2 * s; this.nav.rect(x, z, sx, sz, ry, cost, 0.2); for (let a = 0; a < 1; a++) { const idx = this.nav.idx(x, z); if (idx >= 0) this.nav.low[idx] = 1; } }
     };
-    // burnt cars along kerbs
-    for (let i = 0; i < 34; i++) {
-      const r = ROADS[Math.floor(this.rng() * ROADS.length)], horiz = (r.x1 - r.x0) > (r.z1 - r.z0);
+    // a handful of shot-up wrecks on the arterials (not a scrapyard on every kerb)
+    const arterials = ROADS.filter(r => r.type !== 'drive');
+    for (let i = 0; i < 9; i++) {
+      const r = arterials[Math.floor(this.rng() * arterials.length)], horiz = (r.x1 - r.x0) > (r.z1 - r.z0);
       const t = this.rng(); const side = this.rng() < 0.5;
       const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (side ? r.x0 + 1.4 : r.x1 - 1.4);
       const z = horiz ? (side ? r.z0 + 1.4 : r.z1 - 1.4) : r.z0 + t * (r.z1 - r.z0);
@@ -497,13 +506,13 @@ export class City {
     for (const b of this.buildings) { if (b.kind === 'school' || b.kind === 'shop' || b.kind === 'tower') continue; for (const f of [-0.25, 0.25]) { const p = b.toWorld(f * b.L, 0, -b.D / 2 - 15); yards.push([p.x, p.z, b.rot]); } }
     const takeYard = (r) => { for (let i = 0; i < 40 && yards.length; i++) { const j = Math.floor(this.rng() * yards.length), [x, z, rot] = yards[j]; yards.splice(j, 1); if (free(x, z, r)) return [x, z, rot]; } return null; };
     if (!this.assets.gltf.modern) put('bus', 72, 3, 0.25, 1, 1, BLOCK);
-    if (free(100, -16.5, 1)) put('busstop', 100, -16.5, Math.PI, 1, 1, BLOCK);
-    for (const [x, z, r] of [[104, 17.5, Math.PI * 0.95], [126, 17.5, Math.PI], [-60, 17.5, Math.PI]]) if (free(x, z, 2)) put('kiosk', x, z, r, 1, 1, BLOCK);
+    const modern = !!this.assets.gltf.modern;
+    if (!modern && free(100, -16.5, 1)) put('busstop', 100, -16.5, Math.PI, 1, 1, BLOCK);
     // courtyard plan: playgrounds between the five-storey rows, garage cooperatives and dirt yards at the edges
     this.dirtYards = [];
-    for (const [x, z, rot] of MAP.yards?.playgrounds || []) { if (free(x, z, 4)) { put('playground', x, z, rot, 1, 1, 6); this.dirtYards.push([x, z, 8, rot]); } }
+    for (const [x, z, rot] of MAP.yards?.playgrounds || []) { if (free(x, z, 4)) { if (!modern) put('playground', x, z, rot, 1, 1, 6); this.dirtYards.push([x, z, 11, rot]); } }
     for (const [x, z, rot] of MAP.yards?.garages || []) { const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 6; i++) put('garage', x + dx * (i - 2.5), z + dz * (i - 2.5), rot, 1, 1, BLOCK); this.dirtYards.push([x, z, 14, rot]); }
-    for (let i = 0; i < 45; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) put('tyre', x, z, this.rng() * 6, 1, 0); }
+    if (!modern) for (let i = 0; i < 45; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) put('tyre', x, z, this.rng() * 6, 1, 0); }
     for (const v of Object.values(placeList)) instance(this.scene, v.t, v.m);
     this.put = put; this._pl = placeList;
   }
@@ -547,11 +556,6 @@ export class City {
         if (R() < 0.3) this.addCrater(hx + (R() - .5) * 12, hz + (R() - .5) * 12, 2 + R() * 3);
       }
     }
-    // district heating mains with expansion loops, run along the street verges like the real above-ground mains
-    for (const [x0, z0, x1, z1] of [[-196, -122, -30, -122], [96, -118, 194, -118], [-196, 116, -30, 116], [96, 116, 194, 116], [99, 30, 99, 96]]) {
-      const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 6), ry = Math.atan2(x1 - x0, z1 - z0) + Math.PI / 2;
-      for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; put(i === Math.floor(n / 2) && T.pipeLoop ? 'pipeLoop' : 'pipe', x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, ry, 7); }
-    }
     // transformer substations (ТП): one per pair of residential blocks, on the courtyard side at the block end
     // next to the access driveway, squared to the block — as in a planned Soviet microdistrict
     let subN = 0;
@@ -560,17 +564,15 @@ export class City {
       for (const sx of [1, -1]) { const p = b.toWorld(sx * (b.L / 2 + 4.5), 0, -(b.D / 2 + 5)); if (put('sub', p.x, p.z, b.rot + (sx > 0 ? 0 : Math.PI))) { subN++; break; } }
     });
     put('church', -107, 152, 0);
+    // market: intact closed pavilions in a neat row (no half-collapsed burnt ones)
+    if (T.pav) { const ok = T.pav.filter(t => /closed/i.test(t.name)); if (ok.length) T.pav = ok; }
     for (const [x, z, r] of MAP.yards?.markets || []) put('pav', x, z, r);
-    for (const [x, z, r] of [[60, 16, Math.PI], [-120, -17, 0], [170, 17, Math.PI]]) put('bill', x, z, r, 6);
     // concrete ПО-2 fences around the school yard and garage rows
     if (T.po2) { for (let x = -86; x < -32; x += 4.0) put('po2', x, 86, 0, 7); }
     for (const [x, z] of [[-60, 78], [-36, 78]]) put('goal', x, z, Math.PI / 2, 6);
     // street furniture
     if (!this.assets.gltf.modern) for (let x = -E + 20; x < E - 20; x += 30) { put('lamp', x + 15, -16.6, 0, 0); put('lamp', x, 16.6, Math.PI, 0); }
-    for (const b of this.buildings) for (const e of b.entrances) { if (R() < 0.6) put('bench', e.x + (R() - .5) * 3, e.z + (R() - .5) * 2, b.rot, 0); if (R() < 0.35) put('bin', e.x + 4 * (R() < .5 ? 1 : -1), e.z, b.rot, 6); if (R() < 0.15) put('laundry', e.x + (R() - .5) * 10, e.z - 8, R() * 3, 0); }
-    for (let i = 0; i < 26; i++) { const r = ROADS[Math.floor(R() * ROADS.length)], horiz = (r.x1 - r.x0) > (r.z1 - r.z0), t = R(), sd = R() < 0.5;
-      const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd ? r.x0 - 2.6 : r.x1 + 2.6), z = horiz ? (sd ? r.z0 - 2.6 : r.z1 + 2.6) : r.z0 + t * (r.z1 - r.z0);
-      if (Math.abs(x) < BOUNDS && Math.abs(z) < BOUNDS) put('car', x, z, horiz ? Math.PI / 2 : 0, BLOCK); }
+    for (const b of this.buildings) for (const e of b.entrances) { if (this.assets.gltf.modern) { if (R() < 0.5) put('bench', e.x + 2.2, e.z, b.rot, 0); continue; } if (R() < 0.6) put('bench', e.x + (R() - .5) * 3, e.z + (R() - .5) * 2, b.rot, 0); if (R() < 0.35) put('bin', e.x + 4 * (R() < .5 ? 1 : -1), e.z, b.rot, 6); if (R() < 0.15) put('laundry', e.x + (R() - .5) * 10, e.z - 8, R() * 3, 0); }
     for (const v of Object.values(place)) instance(this.scene, v.t, v.m);
     this.buildCrushables();
   }
@@ -591,7 +593,8 @@ export class City {
       return true;
     };
     // retail and services at the market crossroads
-    mput('supermarket_damaged', 116, -46, 0, { occ: true });
+    // neighbourhood supermarket set back from the avenue behind its own car park (as ATB/Silpo boxes are)
+    if (mput('supermarket_damaged', 117, -62, 0, { occ: true })) this.parkingLot(97, -44, 137, -17, mput);
     mput('pharmacy_kiosk', 104, 34, Math.PI); mput('kiosk_modern_burnt', 132, -18, 0); mput('bus_burnt_modern', 64, 4, 0.12, { road: false });
     for (const [x, z, r] of [[100, -15.8, Math.PI], [-60, 15.8, 0], [-150, -15.8, Math.PI], [160, 15.8, 0]]) mput('bus_stop_modern', x, z, r, { road: false, cost: 6 });
     // boiler houses and garage cooperatives at the microdistrict edges
@@ -620,10 +623,38 @@ export class City {
     for (const b of this.buildings) { const e = b.entrances[Math.floor(R() * b.entrances.length)]; if (!e || b.kind === 'tower' && R() < 0.5) continue; const o = b.toWorld(0, 0, 0); const dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; mput('waste_pad', e.x + dx / d * 7 + (R() - .5) * 6, e.z + dz / d * 7, b.rot, { cost: 6 }); }
     // wartime: checkpoints on the arterial entries, anti-drone netting over the approaches to the crossroads
     for (const [x, z, r] of [[85, -182, 0], [85, 182, 0], [-190, 0, Math.PI / 2], [190, 0, Math.PI / 2]]) mput('checkpoint_blocks', x + (r ? 0 : 3.5), z, r, { road: false, cost: 7 });
-    for (const [x, z, r] of [[40, 0, Math.PI / 2], [150, 0, Math.PI / 2], [85, -40, 0], [85, 60, 0]]) mput('antidrone_net_frame', x, z, r, { road: false, cost: 0 });
+    // sandbagged ground-floor windows on the school, kindergartens and the avenue frontage
+    const swin = tpl('window_sandbags');
+    if (swin) for (const b of this.buildings) {
+      if (!(b.kind === 'school' || (b.shops && Math.abs(b.z) < 30))) continue;
+      for (const p of b.panels) {
+        if (p.floor !== 0 || p.gone || p.entrance || p.shop || /blank/.test(p.type) || R() > 0.55) continue;
+        const c = b.panelCenter(p), o = b.outward(p);
+        (place.window_sandbags ||= { t: swin, m: [] }).m.push(trs(c.x + o.x * 0.37, 0, c.z + o.z * 0.37, b.rot + p.rot));
+        const i = this.nav.idx(c.x + o.x * 0.8, c.z + o.z * 0.8); if (i >= 0) { this.nav.cost[i] = Math.max(this.nav.cost[i], 6); this.nav.low[i] = 1; }
+      }
+    }
     for (const v of Object.values(place)) instance(this.scene, v.t, v.m);
   }
   mapYards(k) { return MAP.yards?.[k] || []; }
+  // asphalt car park with painted bays, a few cars (some burnt), lamps and a barrier at the entry
+  parkingLot(x0, z0, x1, z1, mput) {
+    const w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 7, uv.getY(i) * d / 7);
+    const asphalt = this.mat('asphalt', 1, { color: 0xbdb9b0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const lot = new THREE.Mesh(g, asphalt); lot.position.set(cx, 0.045, cz); lot.receiveShadow = true; this.scene.add(lot);
+    const line = new THREE.PlaneGeometry(0.12, 5); line.rotateX(-Math.PI / 2);
+    const lm = new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.9, transparent: true, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -3 });
+    const mats = [], R = this.rng, cars = ['car_hatch_modern', 'car_suv_modern', 'car_hatch_modern'];
+    for (const row of [z0 + 3, z1 - 3]) for (let x = x0 + 2; x <= x1 - 2; x += 2.7) {
+      mats.push(trs(x, 0.055, row, 0));
+      if (x < x1 - 4 && R() < 0.4) mput(cars[Math.floor(R() * cars.length)] + (R() < 0.3 ? '_burnt' : ''), x + 1.35, row, Math.PI / 2 + (R() - .5) * 0.1 + (row < cz ? 0 : Math.PI), { road: false });
+    }
+    instance(this.scene, new THREE.Mesh(line, lm), mats, { shadows: false });
+    mput('lamp_led', x0 + 1, cz, 0, { road: false, cost: 0 }); mput('lamp_led', x1 - 1, cz, Math.PI, { road: false, cost: 0 });
+    mput('parking_barrier', x0 + 3, z1 - 0.5, 0, { road: false, cost: 0 });
+    this.nav.markRoad(x0, z0, x1, z1, 2);
+  }
   // Crushable street furniture: own InstancedMeshes (index per item kept) + a spatial grid
   buildCrushables() {
     const items = this.crushables || []; this.crushGrid = new Map();
@@ -681,8 +712,7 @@ export class City {
     const bb = new THREE.Box3().setFromObject(coil); const len = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z); const alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z);
     const m = [];
     const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; const x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
-    belt(-84, 24, -40, 24); belt(60, -20, 72, -20);
-    instance(this.scene, coil, m);
+    // (no concertina wire in the district)
   }
   craters() {
     const T = this.propT?.crater;
@@ -700,17 +730,71 @@ export class City {
     c.setMatrixAt(c.count++, trs(x, 0.07 + c.count * 0.0004, z, Math.random() * 6.28, size)); c.instanceMatrix.needsUpdate = true;
   }
   // distant city silhouette beyond the playable area
+  // The city carries on past the playable area: more microdistricts as cheap facade-shaded blocks (panel joints,
+  // window grid, balcony bands, flat roofs; a few burnt-out windows), the arterials continue, tree belts in between.
   skyline() {
-    const m = new THREE.MeshStandardMaterial({ color: 0x77736b, roughness: 1 });
-    const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
-    const mats = [];
-    for (let i = 0; i < 70; i++) {
-      const a = this.rng() * Math.PI * 2, r = MAP_SIZE * 0.78 + this.rng() * 220;
-      const h = 15 + this.rng() * 30 * (this.rng() < 0.3 ? 1.6 : 1);
-      const M = new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng() * 3), new THREE.Vector3(12 + this.rng() * 50, h, 12 + this.rng() * 4));
-      mats.push(M);
+    const half = MAP_SIZE / 2, R = this.rng, mats = [], cols = [], boxes = [];
+    const clearOf = (x, z, hx, hz) => Math.abs(z) > hz + 22 && Math.abs(x - 85) > hx + 18 && Math.abs(x + 204) > hx + 14 && Math.abs(x - 202) > hx + 14 && Math.abs(z - 197) > hz + 12 && Math.abs(z + 197) > hz + 12;
+    for (let gx = -760; gx < 760; gx += 120) for (let gz = -760; gz < 760; gz += 120) {
+      const cx = gx + 60, cz = gz + 60;
+      if (Math.max(Math.abs(cx), Math.abs(cz)) < half + 50) continue;
+      const rows = 2 + Math.floor(R() * 2), along = R() < 0.5;
+      for (let i = 0; i < rows; i++) {
+        const tall = R() < 0.35, tower = R() < 0.12;
+        const L = tower ? 19 : 38 + Math.floor(R() * 4) * 9.6, D = tower ? 19 : 12.8, H = tower ? 2.8 * (12 + Math.floor(R() * 5)) : 2.8 * (tall ? 9 : 5) + 0.6;
+        const off = (i - (rows - 1) / 2) * 38 + (R() - .5) * 6;
+        const x = cx + (along ? (R() - .5) * 20 : off), z = cz + (along ? off : (R() - .5) * 20);
+        const [hx, hz] = along ? [L / 2, D / 2] : [D / 2, L / 2];
+        if (Math.max(Math.abs(x) - hx, Math.abs(z) - hz) < half + 12 || !clearOf(x, z, hx, hz)) continue;
+        mats.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), along ? 0 : Math.PI / 2), new THREE.Vector3(L, H, D)));
+        cols.push(new THREE.Color().setHSL(0.09 + R() * 0.05, 0.06 + R() * 0.12, 0.5 + R() * 0.14));
+        boxes.push([x, z, hx, hz]);
+      }
     }
-    const im = new THREE.InstancedMesh(box, m, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M)); im.castShadow = false; this.scene.add(im);
+    const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92 });
+    m.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vFP; varying vec3 vFN;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\n vec3 isc = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));\n vFP = position * isc; vFN = normal;\n#endif');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vFP; varying vec3 vFN;
+        float fh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+          vec3 an = abs(vFN);
+          if (an.y > 0.5) { diffuseColor.rgb *= 0.32; }
+          else {
+            float u = an.x > 0.5 ? vFP.z : vFP.x, v = vFP.y;
+            vec2 cell = vec2(floor(u / 3.2), floor(v / 2.8)); vec2 f = vec2(fract(u / 3.2), fract(v / 2.8));
+            float joint = 1.0 - 0.18 * (1.0 - smoothstep(0.0, 0.025, f.x) * smoothstep(1.0, 0.975, f.x) * smoothstep(0.0, 0.03, f.y) * smoothstep(1.0, 0.97, f.y));
+            float win = step(0.26, f.x) * step(f.x, 0.74) * step(0.31, f.y) * step(f.y, 0.82);
+            float band = step(0.82, f.y) * step(mod(cell.y, 1.0), 0.5) * step(0.5, fh(vec2(floor(vFP.x * 0.01 + vFP.z * 0.013), 3.0)));
+            float burnt = step(0.965, fh(cell + floor(vFP.xz * 0.02)));
+            vec3 c = diffuseColor.rgb * joint;
+            c = mix(c, vec3(0.42, 0.5, 0.56) * diffuseColor.rgb, band * 0.6);
+            c = mix(c, mix(vec3(0.07, 0.075, 0.08), vec3(0.16, 0.17, 0.19), fh(cell * 1.7)), win);
+            c = mix(c, vec3(0.03, 0.028, 0.025), burnt * smoothstep(0.1, 0.5, 1.0 - abs(f.x - 0.5) * 1.6));
+            diffuseColor.rgb = c * (v < 0.6 ? 0.8 : 1.0);
+          }`);
+    };
+    const im = new THREE.InstancedMesh(box, m, mats.length); mats.forEach((M, i) => { im.setMatrixAt(i, M); im.setColorAt(i, cols[i]); });
+    im.castShadow = false; im.receiveShadow = true; this.scene.add(im);
+    // arterials continue out of the district
+    const asphalt = this.mat('asphalt', 1, { color: 0xd0ccc4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const ext = (cx, cz, w, d) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 7, uv.getY(i) * d / 7); const a = new THREE.Mesh(g, asphalt); a.position.set(cx, 0.05, cz); a.receiveShadow = true; this.scene.add(a); };
+    for (const sgn of [-1, 1]) {
+      ext(sgn * (half + 2 + 240), 0, 480, 20); ext(85, sgn * (half + 2 + 240), 14, 480);
+      ext(-204, sgn * (half + 2 + 240), 8, 480); ext(202, sgn * (half + 2 + 240), 8, 480);
+      ext(sgn * (half + 2 + 240), -197, 480, 8); ext(sgn * (half + 2 + 240), 197, 480, 8);
+    }
+    // tree belts between the outer blocks (cheap leafy lumps; fog does the rest)
+    const tm = new THREE.MeshStandardMaterial({ color: 0x3c4527, roughness: 1, flatShading: true }), tg = new THREE.IcosahedronGeometry(1, 1); tg.translate(0, 0.85, 0);
+    const tmats = [];
+    for (let i = 0; i < 900; i++) {
+      const x = (R() - .5) * 1500, z = (R() - .5) * 1500; if (Math.max(Math.abs(x), Math.abs(z)) < half + 15) continue;
+      if (boxes.some(([bx, bz, hx, hz]) => Math.abs(x - bx) < hx + 4 && Math.abs(z - bz) < hz + 4) || Math.abs(z) < 16 || Math.abs(x - 85) < 12) continue;
+      const s = 3 + R() * 2.5; tmats.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion(), new THREE.Vector3(s, s * (1.1 + R() * 0.4), s)));
+    }
+    const ti = new THREE.InstancedMesh(tg, tm, tmats.length); tmats.forEach((M, i) => ti.setMatrixAt(i, M)); ti.castShadow = false; this.scene.add(ti);
   }
   // ---------------------------------------------------------------- section collapse
   rebuildOccluders(b) {
@@ -734,7 +818,7 @@ export class City {
     for (const p of b.panelsOfSection(si)) {
       const m = b.panelMatrix(p, new THREE.Matrix4());
       this.falling.push({ b, p, m, t: -p.floor * 0.12 - Math.random() * 0.25, v: 0, rx: (Math.random() - .5) * 0.6, rz: (Math.random() - .5) * 0.4, out: b.outward(p).multiplyScalar(0.6 + Math.random()) });
-      if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? 'balcony_slab' : 'entrance_canopy', p.acc);
+      if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? (p.balPiece || 'balcony_slab') : 'entrance_canopy', p.acc);
     }
     for (let col = a; col <= c; col++) {
       b.goneCols.add(col);
@@ -776,7 +860,8 @@ export class City {
     const Y = new THREE.Vector3(0, 1, 0), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
     const face = (xcut, sign) => {
       for (let f = 0; f < b.floors; f++) for (let j = 0; j < b.depthModules; j++) {
-        const r = Math.random(), name = (f > b.floors - 3 && r < 0.5) || r < 0.25 ? 'wall_blank_end_destroyed' : 'wall_blank_end_holed';
+        // the cross wall left standing beside a collapsed section: intact-ish below, torn only at the top storey
+        const r = Math.random(), name = f === b.floors - 1 ? 'wall_blank_end_destroyed' : r < 0.25 ? 'wall_blank_end_holed' : 'wall_blank_end_damaged';
         const piece = kit[name] || kit.wall_blank_end_holed; if (!piece) continue;
         const pz = sign > 0 ? b.D / 2 - j * W : -b.D / 2 + j * W;
         b.toWorld(xcut, f * H, pz, v); q.setFromAxisAngle(Y, b.rot + sign * Math.PI / 2); m.compose(v, q, one);

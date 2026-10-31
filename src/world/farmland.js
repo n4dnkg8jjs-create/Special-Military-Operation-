@@ -24,7 +24,7 @@ export class Farmland extends City {
   build() {
     this.layoutFields();
     this.ground(); this.roads();
-    this.placeBuildings(); this.facadeDecals();
+    this.placeBuildings();
     this.farm(); this.villages(); this.treelines();
     this.rubbleAndDebris();
     this.poles(); this.props(); this.defences();
@@ -252,6 +252,7 @@ export class Farmland extends City {
     const alpha = new THREE.CanvasTexture(a); alpha.wrapT = THREE.RepeatWrapping;
     const trackMat = new THREE.MeshStandardMaterial({ map: trackTex ? trackTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color: T.track ? 0xffffff : 0xb0a28a, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     if (trackMat.map) { trackMat.map.wrapS = trackMat.map.wrapT = THREE.RepeatWrapping; trackMat.map.needsUpdate = true; }
+    if (T.track?.normalMap) { trackMat.normalMap = T.track.normalMap.clone(); trackMat.normalMap.wrapS = trackMat.normalMap.wrapT = THREE.RepeatWrapping; trackMat.normalMap.needsUpdate = true; trackMat.normalScale = new THREE.Vector2(0.9, 0.9); }
     const strip = (w, len, texW) => { const g = new THREE.PlaneGeometry(w, len); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), uv.getY(i) * len / texW); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0 - (r.type === 'track' ? 0.6 : 0), r.z0 - (r.type === 'track' ? 0.6 : 0), r.x1 + (r.type === 'track' ? 0.6 : 0), r.z1 + (r.type === 'track' ? 0.6 : 0), r.type === 'track' ? 1 : 2);
     for (const r of ROADS) {
@@ -435,7 +436,7 @@ export class Farmland extends City {
     const C = this.wireT?.concertina?.[0];
     if (C) { const bb = new THREE.Box3().setFromObject(C), len = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z), alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z), m = [];
       const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { if (R() < 0.15) continue; const f = (i + 0.5) / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
-      belt(-250, 2, -100, 2); belt(205, 32, 320, 32); instance(this.scene, C, m); }
+      /* no concertina wire */ }
   }
   putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, 0, z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
   putSandbag(x, z, r) { this.putProp('sandbag', x, z, r, 7); const i = this.nav.idx(x, z); if (i >= 0) this.nav.low[i] = 1; }

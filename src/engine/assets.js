@@ -86,7 +86,7 @@ export class Assets {
     const bboxOf = parts => { const b = new THREE.Box3(); for (const p of parts) { p.geometry.computeBoundingBox(); b.union(p.geometry.boundingBox); } return b; };
     const offsets = {};
     for (const name of Object.keys(raw)) {
-      const base = name.replace(/_(intact|damaged|holed|destroyed)$/, '');
+      const base = name.replace(/_(intact|damaged|holed|destroyed)(_v\d+)?$/, '');
       const ref = raw[base + '_intact'] || raw[name];
       if (!offsets[base]) {
         const b = bboxOf(ref.parts), sz = b.getSize(new THREE.Vector3());

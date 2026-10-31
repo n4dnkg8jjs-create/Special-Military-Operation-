@@ -137,7 +137,9 @@ export class Building {
       const endCol = side === 'right' ? this.modules - 1 : 0;
       for (const p of this.panels) {
         const near = (p.side === side) || ((p.side === 'front' || p.side === 'back') && Math.abs(p.col - endCol) <= 1);
-        if (near && p.floor >= this.floors - 2) p.state = 3;
+        // the top storey at the corner is gone entirely; the one below is blown out (no stacked jagged half-walls)
+        if (near && p.floor === this.floors - 1) { p.state = 3; p.gone = true; }
+        else if (near && p.floor === this.floors - 2) p.state = 3;
       }
       this.collapsedCorner = side;
     }
@@ -161,7 +163,8 @@ export class Building {
   requestKit(pool) {
     const c = this.cell;
     for (const p of this.panels) { p.var ??= Math.floor(this.rng() * 3); for (let k = 0; k < STATES.length; k++) pool.request(this.pieceName(p, k), 1, c); }
-    for (const p of this.panels) if (p.balcony) pool.request('balcony_slab', 1, c);
+    // lived-in variety: many Soviet balconies were glazed in by their owners over the decades
+    for (const p of this.panels) if (p.balcony) { const r = this.rng(); p.balPiece = r < 0.45 && this.kit.pieces.balcony_slab_glazed ? 'balcony_slab_glazed' : r < 0.6 && this.kit.pieces.balcony_slab_open ? 'balcony_slab_open' : 'balcony_slab'; pool.request(p.balPiece, 1, c); if (p.balPiece === 'balcony_slab_glazed') pool.request(this.kit.pieces.balcony_slab_open ? 'balcony_slab_open' : 'balcony_slab', 1, c); }
     for (const p of this.panels) if (p.entrance) pool.request('entrance_canopy', 1, c);
     this.signs = this.signs || this.panels.filter(p => p.shop && p.col % 3 === 0).map((p, i) => ({ p, name: this.signNames?.[i % this.signNames.length] }));
     for (const sg of this.signs) if (sg.name) pool.request(sg.name, 1, c);
@@ -183,7 +186,7 @@ export class Building {
       if (p.state > 0) col.multiplyScalar(p.state === 1 ? 0.86 + this.rng() * 0.14 : 0.7 + this.rng() * 0.22); // uneven soot / weathering
       p.color = col.clone();
       pool.add(this.pieceName(p), this.panelMatrix(p, tmpM), p, p.color);
-      if (p.balcony && p.state < 2) { p.acc = { slot: -1, cell: this.cell }; pool.add('balcony_slab', tmpM, p.acc, p.color); }
+      if (p.balcony && p.state < 2) { p.acc = { slot: -1, cell: this.cell }; if (p.state === 1 && p.balPiece === 'balcony_slab_glazed') p.balPiece = this.kit.pieces.balcony_slab_open ? 'balcony_slab_open' : 'balcony_slab'; pool.add(p.balPiece || 'balcony_slab', tmpM, p.acc, p.color); }
       if (p.entrance) {
         p.acc = { slot: -1, cell: this.cell }; const m2 = tmpM.clone(); m2.multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.8, 0));
         pool.add('entrance_canopy', m2, p.acc, p.color);
@@ -235,7 +238,7 @@ export class Building {
   setGone(p) {
     if (p.gone) return false;
     if (p.slot >= 0) this.pool.remove(this.pieceName(p), p);
-    if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? 'balcony_slab' : 'entrance_canopy', p.acc);
+    if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? (p.balPiece || 'balcony_slab') : 'entrance_canopy', p.acc);
     p.gone = true; p.state = 3; return true;
   }
   setState(p, s) {
@@ -243,7 +246,7 @@ export class Building {
     this.pool.remove(this.pieceName(p), p);
     p.state = Math.min(3, s);
     this.pool.add(this.pieceName(p), this.panelMatrix(p, tmpM), p, p.color);
-    if (p.balcony && p.acc && p.state >= 2 && p.acc.slot >= 0) this.pool.remove('balcony_slab', p.acc);
+    if (p.balcony && p.acc && p.state >= 2 && p.acc.slot >= 0) this.pool.remove(p.balPiece || 'balcony_slab', p.acc);
     return true;
   }
   // Find the panel nearest to a world-space point on the facade.

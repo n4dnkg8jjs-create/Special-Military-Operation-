@@ -45,8 +45,8 @@ export const MAPS = {
       [12, -72, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.4], [58, -62, 0, 6, 14, 6, 1, 'tower', 1.3, { tint: 0xd6dadb }],
       [-150, -150, 0, 15, 5, 4, 3, 'brick', 1.0], [-60, -150, 0, 18, 9, 4, 3, 'nine', 1.2], [20, -152, 0, 15, 5, 4, 3, 'khrushchyovka', 0.9],
       // NE superblock
-      [118, -22, 0, 6, 2, 3, 1, 'shop', 1.0, { shops: true }], [172, -22, 0, 12, 5, 4, 3, 'brick', 1.2, { shops: true }],
-      [172, -66, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [116, -78, 0, 12, 5, 4, 3, 'khrushchyovka', 1.1, { tint: 0xe0cdb9 }],
+      [172, -22, 0, 12, 5, 4, 3, 'brick', 1.2, { shops: true }],
+      [172, -66, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [116, -92, 0, 12, 5, 4, 3, 'khrushchyovka', 1.1, { tint: 0xe0cdb9 }],
       [145, -150, Math.PI / 2, 15, 5, 4, 3, 'khrushchyovka', 0.8], [180, -150, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0],
       // SW superblock — school No. 7 (objective A) in the courtyard
       [-172, 22, Math.PI, 14, 9, 4, 3, 'nine', 1.1, { shops: true, tint: 0xddd0bb }], [-125, 22, Math.PI, 12, 5, 4, 3, 'brick', 1.0, { shops: true }],
@@ -69,7 +69,8 @@ export const MAPS = {
     // courtyard furniture plan (used by the city dressing): playgrounds, garage cooperatives, boiler houses
     yards: { playgrounds: [[-168, -66, Math.PI / 2], [-136, -66, Math.PI / 2], [-168, 66, Math.PI / 2], [-136, 66, Math.PI / 2], [30, 96, 0], [145, 66, 0], [-59, -98, 0]],
       garages: [[-172, -178, 0], [-108, -178, 0], [-176, 177, Math.PI], [118, -180, 0]], boilers: [[62, -176, 0], [176, 176, Math.PI]],
-      markets: [[110, 46, Math.PI], [122, 46, Math.PI], [128, 58, 0]] },
+      markets: [[110, 46, Math.PI], [122, 46, Math.PI], [128, 58, 0]],
+      lots: [[96, -78, 138, -46], [97, -44, 137, -17]] },
     lineup: [[-112, 188, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]],
     ai: {
       staging: { A: [[-62, -38], [-95, -52], [-23, -40], [-108, -40]], B: [[85, -62], [143, -40], [60, -40], [150, -32]] },
