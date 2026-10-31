@@ -2284,16 +2284,16 @@
     ]
    },
    "church_small": {
-    "tris": 3742,
+    "tris": 23888,
     "bbox_min": [
-     -6.12,
-     -0.25,
-     -7.0
+     -5.42,
+     -0.22,
+     -10.48
     ],
     "bbox_max": [
-     7.4,
-     20.35,
-     7.8
+     7.51,
+     23.08,
+     10.56
     ]
    },
    "pavilion_closed": {
@@ -2635,7 +2635,7 @@
     ]
    }
   },
-  "refs": "Photo record of Mariupol (Livoberezhnyi / Primorskyi private sector, Azovstal-side districts), Bakhmut, Avdiivka (Khimik), Sievierodonetsk: above-ground foil-clad heating mains on concrete sleepers with \u041f-shaped expansion loops over paths, white silicate brick transformer kiosks with louvred steel doors, \u041f\u041e-2 diamond-relief concrete fences, one-storey plastered / brick houses with tin or asbestos-slate gable roofs and blue carved window trims, profiled-sheet and picket fences with painted gates, small white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts.",
-  "notes": "One material (city_atlas 2048^2, tools/blender/env/city_atlas.py). Every node is a top-level mesh, origin on the ground at the footprint centre, front = +Z, nodes laid out on a grid in the file (city.js instancing ignores the layout transform). Linear pieces run along local X: pipe_straight_* 6.0 m (mains at z = +-0.36, axis y = 1.0, supports at x = +-1.5 so segments tile every 6 m), pipe_loop 6.0 m (raised to 5 m over a footpath), fence_po2_* 4.0 m panel (+0.1 m gap at the 4.1 m pitch), fence_house_* 18 m with a gate at the centre. house_* plinth 0.45 + walls to 3.2 m, gable roofs; house_c is burnt and roofless, house_b has a roof hole, house_d a shell hole in its right wall (fit inside a 19 x 18 m plot, fences at z+9 / x+-9.5). lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z."
+  "refs": "Photo record of Mariupol (Livoberezhnyi / Primorskyi private sector, Azovstal-side districts), Bakhmut, Avdiivka (Khimik), Sievierodonetsk: above-ground foil-clad heating mains on concrete sleepers with \u041f-shaped expansion loops over paths, white silicate brick transformer kiosks with louvred steel doors, \u041f\u041e-2 diamond-relief concrete fences, one-storey plastered / brick houses with tin or asbestos-slate gable roofs and blue carved window trims, profiled-sheet and picket fences with painted gates, small white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts. church_small: late-19th-c. Russian-Revival parish church of the Donbas type, as rebuilt / restored in the 2000s (refs: St. Demetrius, Verkhnotoretske 1850-61 -- bell tower razed 1938, rebuilt 2020-21, shelled 26 Mar 2022: facades, roof, windows; Sviatohirsk Lavra 2022 -- windows/doors blown in, sketes burnt; Mariupol St. Michael (1997) and St. Nicholas; Kostiantynivka St. Ihor -- several domes destroyed; Dobropillia St. Ambrose -- large facade holes, roof stripped; Pokrovsk St. Vladimir -- wall damage, roof lost; reported crosses shot down by shelling). Features used: tower-refectory-nave-apse \"ship\" plan, bell tower over the west entrance (chetverik with a perspective portal, open arched belfry with bells, octagon + onion), refectory (trapeznaya), square nave crowned by keel kokoshniks over a dentil cornice, five domes (big drum with arched windows, four corner cupolas on drums), eight-pointed crosses with the slanted footrest, semicircular east apse, white lime render with pale-blue recessed panels and pilasters, keel-arched window surrounds, green standing-seam sheet roofs with gutters, blue onion with gold stars and gilded cupolas.",
+  "notes": "One material (city_atlas 2048^2, tools/blender/env/city_atlas.py). Every node is a top-level mesh, origin on the ground at the footprint centre, front = +Z, nodes laid out on a grid in the file (city.js instancing ignores the layout transform). Linear pieces run along local X: pipe_straight_* 6.0 m (mains at z = +-0.36, axis y = 1.0, supports at x = +-1.5 so segments tile every 6 m), pipe_loop 6.0 m (raised to 5 m over a footpath), fence_po2_* 4.0 m panel (+0.1 m gap at the 4.1 m pitch), fence_house_* 18 m with a gate at the centre. house_* plinth 0.45 + walls to 3.2 m, gable roofs; house_c is burnt and roofless, house_b has a roof hole, house_d a shell hole in its right wall (fit inside a 19 x 18 m plot, fences at z+9 / x+-9.5). lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z. church_small (church.py) is the only node with two materials: city_atlas (plinth, steps, loose bricks, glass shards) + church_atlas (1024^2, church_atlas.py; plaster / pocked / soot / brick / blue panels / standing-seam tin / gold / stripped gold / starred blue / windows / door / icon + bell bronze / rusty steel / interior / boards + char). +Z = west front with the porch and steps, -Z = east apse; main cross top at 23 m, bell-tower cross ~19.5 m. Damage: shell hole through the nave +X wall (exposed brick reveals, broken pilaster, plaster spalled, scorch, rubble and a fallen beam inside / outside), shrapnel-pocked +X facades, main dome skin torn on the +X side exposing ribs and hoops with sheets hanging, front-right cupola stripped and its cross shot off (lying on the ground at +X), bell-tower onion dented / stripped, one cupola cross bent, burnt-out refectory window on -X with a soot plume, broken windows, torn roof sheets, torn downpipe."
  }
 }

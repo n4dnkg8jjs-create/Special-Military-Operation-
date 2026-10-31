@@ -7,6 +7,7 @@ Environment asset pipeline (run from this folder, Blender 5.2 bpy module, `nice 
   python3 build_props.py           -> assets/env/props.glb
   python3 build_city.py            -> assets/env/city.glb (city_atlas.py -> _cache/city_atlas_*; REBUILD_ATLAS=1 to repaint;
                                       geometry helpers in city_geo.py; `python3 build_city.py house_ pipe_` -> previews/_test/city_test.glb)
+                                     church_small is built in church.py on a 2nd material church_atlas (church_atlas.py -> _cache/church_atlas_*)
   python3 research.py              -> manifest research/module sections
 QA: python3 test_section.py section|section2|gallery_<type>|accessories|misc|brick_white|brick_red|shops|collapse|street  (re-imports panel_kit.glb, normalises like
 assets.js buildKit(), assembles like buildings.js) -> previews/_test/*.glb ; subset.py extracts nodes for previews.

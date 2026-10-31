@@ -15,6 +15,8 @@ import numpy as np
 from meshlib import (MB, Region, Fit, reset_scene, make_material, export_glb, update_manifest, mat_trs, rot_axis, xform,
                      newell, rng, noise1d, blob, REPO)
 import city_atlas as CA
+import church_atlas as CHA
+import church as CH
 from city_geo import (R, RS, reg_of, fit, uvq, quad, tquad, tbox, fbox, wall, tube, lathe, prism, chunk, loose_bricks,
                       ribbon, sheet)
 
@@ -477,151 +479,7 @@ def fence_picket(name, seed=61):
     return mb
 
 
-# ====================================================================== church
-def onion(mb, base_y, r0, h, reg, x=0.0, z=0.0, segs=16, cross=True, jitter=None, tilt=None):
-    prof = [(r0, 0), (r0 * 1.18, h * 0.12), (r0 * 1.32, h * 0.27), (r0 * 1.26, h * 0.42), (r0 * 0.98, h * 0.58),
-            (r0 * 0.6, h * 0.73), (r0 * 0.28, h * 0.86), (r0 * 0.1, h * 0.96), (0.0, h)]
-    M = T(x, base_y, z)
-    if tilt is not None:
-        M = M @ tilt
-    lathe(mb, prof, segs, reg, M=M, jitter=jitter)
-    # neck + orthodox cross
-    if cross:
-        Mc = M @ T(0, h, 0)
-        ch = max(0.9, r0 * 1.3)
-        tube(mb, [(0, -0.05, 0), (0, 0.18, 0)], r0 * 0.12, 8, 'dome_gold', cap=True, M=Mc)
-        fbox(mb, (-0.03, 0.18, -0.03), (0.03, 0.18 + ch, 0.03), 'dome_gold', M=Mc)
-        for (yy, ww, rz) in ((0.7, 0.45, 0), (0.88, 0.22, 0), (0.3, 0.3, 0.35)):
-            fbox(mb, (-ww / 2, -0.025, -0.025), (ww / 2, 0.025, 0.025), 'dome_gold', M=Mc @ mat_trs((0, 0.18 + ch * yy, 0), (0, 0, rz)))
-
-
-def church_small(name='church_small', seed=80):
-    mb = MB(name); r = rng(seed)
-    PL = 0.6                                     # plinth height
-    tile = (2.0, 2.0)
-    pl = 'church_plaster'
-    # plinth
-    tbox(mb, (-4.8, 0, -7.0), (4.8, PL, 7.2), 'concrete', (1, 1), faces='+x-x+z-z+y')
-    # --- nave (chetverik): x -4.5..4.5, z -3.5..4.5, walls to 8.5
-    Wn, z0, z1, Hn, th = 9.0, -3.5, 4.5, 8.5, 0.6
-    Ln = z1 - z0
-    arch = lambda cx, y0, w_, h_: [(cx - w_ / 2, y0), (cx + w_ / 2, y0)] + [(cx + w_ / 2 * math.cos(t), y0 + h_ - w_ / 2 + w_ / 2 * math.sin(t)) for t in np.linspace(0, PI, 7)] + [(cx - w_ / 2, y0)]
-    def arch_poly(cx, y0, w_, h_):
-        P = arch(cx, y0, w_, h_)[:-1]
-        return P
-    side_wins = [arch_poly(c, 3.2, 1.0, 2.6) for c in (-2.2, 0.0, 2.2)]
-    hole = blob(-2.2, 3.6, 1.0, 1.3, 16, seed, rough=0.3, spikes=0.35)   # shell hole through a window on the right side
-    from shapely.geometry import Polygon
-    from shapely.ops import unary_union
-    u = unary_union([Polygon(side_wins[0]), Polygon(hole)])
-    right_holes = [np.array(u.exterior.coords)[:-1]] + side_wins[1:]
-    for s, holes in ((1, right_holes), (-1, side_wins)):
-        wall(mb, (-Ln / 2, PL, Ln / 2, Hn), th, pl, tile, holes=holes, M=RY(s * PI / 2, (s * Wn / 2, 0, (z0 + z1) / 2)), back='plaster_burnt', cap='none', side=pl if s < 0 else 'soot', side_tile=(1, 1))
-    # front / back walls of the nave (front mostly hidden by the bell tower, back has the apse arch)
-    wall(mb, (-Wn / 2, PL, Wn / 2, Hn), th, pl, tile, M=T(0, 0, z1), back='plaster_burnt', cap='none', holes=[(-1.2, PL, 1.2, 3.4)])
-    wall(mb, (-Wn / 2, PL, Wn / 2, Hn), th, pl, tile, M=RY(PI, (0, 0, z0)), back='plaster_burnt', cap='none', holes=[arch_poly(0, PL, 3.4, 4.6)])
-    for s in (1, -1):   # window inserts
-        Ms = RY(s * PI / 2, (s * (Wn / 2 - 0.25), 0, (z0 + z1) / 2))
-        for i, c in enumerate((-2.2, 0.0, 2.2)):
-            if s > 0 and i == 0:
-                continue
-            quad(mb, [(c - 0.5, 3.2, 0), (c + 0.5, 3.2, 0), (c + 0.5, 5.8, 0), (c - 0.5, 5.8, 0)], RS('church_window', 0.25, 0.05, 0.75, 0.93), M=Ms)
-    # interior floor (seen through the shell hole and the door)
-    tquad(mb, (-Wn / 2 + th, PL + 0.01, z1), (1, 0, 0), (0, 0, -1), Wn - 2 * th, z1 - z0, 'wood_raw', (1.5, 1.5))
-    # cornice
-    tbox(mb, (-Wn / 2 - 0.2, Hn - 0.1, z0 - 0.2), (Wn / 2 + 0.2, Hn + 0.15, z1 + 0.2), 'paint_white', (1, 1), faces='+x-x+z-z-y')
-    # nave roof: low hip (4 triangles) up to the drum base
-    yb, ytop = Hn + 0.15, Hn + 1.5
-    c = [(-Wn / 2 - 0.25, yb, z1 + 0.25), (Wn / 2 + 0.25, yb, z1 + 0.25), (Wn / 2 + 0.25, yb, z0 - 0.25), (-Wn / 2 - 0.25, yb, z0 - 0.25)]
-    zc = (z0 + z1) / 2
-    t = [(-2.1, ytop, zc + 2.1), (2.1, ytop, zc + 2.1), (2.1, ytop, zc - 2.1), (-2.1, ytop, zc - 2.1)]
-    for i in range(4):
-        P = [c[i], c[(i + 1) % 4], t[(i + 1) % 4], t[i]]
-        P = np.array(P)
-        if newell(P)[1] < 0:
-            P = P[::-1]
-        mb.poly(P, fit('tin_green', (4, 4), i))
-    P = np.array(t)
-    mb.poly(P if newell(P)[1] > 0 else P[::-1], fit('tin_green', (4, 4), 9))
-    # --- drum (octagon) + main onion dome (blue with gold stars)
-    oct_ = [(2.0 * math.cos(PI / 8 + k * PI / 4), 2.0 * math.sin(PI / 8 + k * PI / 4)) for k in range(8)]
-    dy0, dy1 = ytop - 0.1, ytop + 3.2
-    prism(mb, [(p[0], p[1] + zc) for p in oct_][::-1], dy0, dy1, pl, (2, 2))
-    for k in range(8):   # narrow windows on alternate faces
-        if k % 2:
-            continue
-        a = PI / 8 + k * PI / 4 + PI / 8
-        cx, cz = 1.86 * math.cos(a), 1.86 * math.sin(a) + zc
-        Mw = frame((cx, 0, cz), (math.sin(a), 0, -math.cos(a)), (0, 1, 0))
-        quad(mb, [(-0.3, dy0 + 0.8, 0.02), (0.3, dy0 + 0.8, 0.02), (0.3, dy0 + 2.6, 0.02), (-0.3, dy0 + 2.6, 0.02)], RS('church_window', 0.25, 0.05, 0.75, 0.93), M=Mw)
-    lathe(mb, [(2.25, dy1), (2.25, dy1 + 0.25), (2.05, dy1 + 0.3)], 8, 'paint_white', M=T(0, 0, zc))
-    onion(mb, dy1 + 0.3, 1.75, 4.4, 'dome_blue', 0, zc, segs=18)
-    # --- bell tower / narthex at the front: x -2.6..2.6, z 4.5..8 ; belfry with arched openings
-    Wt, zt0, zt1, Ht = 5.2, 4.5, 7.6, 10.5
-    door = arch_poly(0, PL, 1.6, 2.9)
-    belfry = [arch_poly(0, 7.4, 1.6, 2.4)]
-    wall(mb, (-Wt / 2, PL, Wt / 2, Ht), 0.5, pl, tile, holes=[door] + belfry, M=T(0, 0, zt1), back='plaster_burnt', cap='none', side=pl)
-    for s in (1, -1):
-        bel = [arch_poly(0, 7.4, 1.4, 2.4)]
-        lower = [arch_poly(0, 2.6, 0.8, 1.8)]
-        wall(mb, (-(zt1 - zt0) / 2, PL, (zt1 - zt0) / 2 + 0.0, Ht), 0.5, pl, tile, holes=bel + lower,
-             M=RY(s * PI / 2, (s * Wt / 2, 0, (zt0 + zt1) / 2)), back='plaster_burnt', cap='none', side=pl)
-        Ms = RY(s * PI / 2, (s * (Wt / 2 - 0.3), 0, (zt0 + zt1) / 2))
-        quad(mb, [(-0.4, 2.6, 0), (0.4, 2.6, 0), (0.4, 4.4, 0), (-0.4, 4.4, 0)], RS('church_window', 0.25, 0.05, 0.75, 0.93), M=Ms)
-    # tower back face above the nave roof
-    wall(mb, (-Wt / 2, Hn, Wt / 2, Ht), 0.5, pl, tile, M=RY(PI, (0, 0, zt0 - 0.0)), back='plaster_burnt', cap='none')
-    # door leaves, icon above the door, belfry floor + bell
-    quad(mb, [(-0.8, PL, zt1 - 0.25), (0.8, PL, zt1 - 0.25), (0.8, PL + 2.9 - 0.8, zt1 - 0.25), (-0.8, PL + 2.9 - 0.8, zt1 - 0.25)], 'church_door', ((0, 0), (1, 0), (1, 0.78), (0, 0.78)))
-    quad(mb, [(-0.55, PL + 3.3, zt1 + 0.02), (0.55, PL + 3.3, zt1 + 0.02), (0.55, PL + 4.6, zt1 + 0.02), (-0.55, PL + 4.6, zt1 + 0.02)], 'icon')
-    tquad(mb, (-Wt / 2 + 0.5, 7.35, zt1 - 0.5), (1, 0, 0), (0, 0, -1), Wt - 1.0, zt1 - zt0 - 0.5, 'wood_raw', (1, 1))
-    lathe(mb, [(0.5, 8.0), (0.46, 8.12), (0.32, 8.45), (0.25, 8.85), (0.12, 8.98), (0.0, 9.02)], 10, 'dome_gold', M=T(0, 0, (zt0 + zt1) / 2))
-    tbox(mb, (-Wt / 2 - 0.15, Ht - 0.1, zt0 - 0.15), (Wt / 2 + 0.15, Ht + 0.15, zt1 + 0.15), 'paint_white', (1, 1), faces='+x-x+z-z-y')
-    # tower roof (4-sided low pyramid) + small drum + gold onion (dented, shrapnel-holed)
-    c = [(-Wt / 2 - 0.2, Ht + 0.15, zt1 + 0.2), (Wt / 2 + 0.2, Ht + 0.15, zt1 + 0.2), (Wt / 2 + 0.2, Ht + 0.15, zt0 - 0.2), (-Wt / 2 - 0.2, Ht + 0.15, zt0 - 0.2)]
-    tc = (zt0 + zt1) / 2
-    t = [(-0.9, Ht + 1.2, tc + 0.9), (0.9, Ht + 1.2, tc + 0.9), (0.9, Ht + 1.2, tc - 0.9), (-0.9, Ht + 1.2, tc - 0.9)]
-    for i in range(4):
-        P = np.array([c[i], c[(i + 1) % 4], t[(i + 1) % 4], t[i]])
-        if newell(P)[1] < 0:
-            P = P[::-1]
-        mb.poly(P, fit('tin_green', (3, 3), 10 + i))
-    prism(mb, [(0.85 * math.cos(k * PI / 4 + PI / 8), 0.85 * math.sin(k * PI / 4 + PI / 8) + tc) for k in range(8)][::-1], Ht + 1.1, Ht + 2.4, pl, (1.5, 1.5))
-    jit = lambda i, k: 1.0 - (0.18 if (k in (3, 4) and 2 <= i <= 4) else 0.0)
-    onion(mb, Ht + 2.4, 0.8, 2.2, 'dome_gold', 0, tc, segs=14, jitter=jit, tilt=rot_axis((0, 0, 1), 0.07))
-    # apse: half cylinder + half cone roof
-    Ra = 2.6
-    lathe_half = []
-    segs = 8
-    za = z0 - 0.1
-    for k in range(segs):
-        a0, a1 = PI + k * PI / segs, PI + (k + 1) * PI / segs
-        p0 = (Ra * math.cos(a0), za + Ra * math.sin(a0)); p1 = (Ra * math.cos(a1), za + Ra * math.sin(a1))
-        L = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
-        tquad(mb, (p1[0], PL, p1[1]), (p0[0] - p1[0], 0, p0[1] - p1[1]), (0, 1, 0), L, 6.2 - PL, pl, (2, 2))
-        if k in (2, 5):
-            am = (a0 + a1) / 2
-            Mw = frame((Ra * 1.01 * math.cos(am), 0, za + Ra * 1.01 * math.sin(am)), (math.sin(am), 0, -math.cos(am)), (0, 1, 0))
-            quad(mb, [(-0.35, 2.6, 0), (0.35, 2.6, 0), (0.35, 4.6, 0), (-0.35, 4.6, 0)], RS('church_window', 0.25, 0.05, 0.75, 0.93), M=Mw)
-        # half-cone roof
-        q0 = (Ra + 0.25) * math.cos(a0), za + (Ra + 0.25) * math.sin(a0); q1 = (Ra + 0.25) * math.cos(a1), za + (Ra + 0.25) * math.sin(a1)
-        P = np.array([(q0[0], 6.2, q0[1]), (q1[0], 6.2, q1[1]), (0, 7.6, za)])
-        if newell(P)[1] < 0:
-            P = P[::-1]
-        mb.poly(P, fit('tin_green', (3, 3), 30 + k))
-    # damage: soot plume above the hole, fallen roof sheet, rubble, a broken-off cross on the ground
-    for k in range(3):
-        Mx = mat_trs((Wn / 2 + r.uniform(0.8, 2.5), 0.05, zc + r.uniform(-3, 1)), (-PI / 2 + r.uniform(-0.2, 0.2), r.uniform(0, PI), 0))
-        sheet(mb, 1.6, 0.9, 3, 2, 'tin_green', Mx @ T(-0.8, -0.45, 0), bend=lambda u, v, k=k: (0, 0, 0.2 * math.sin(u * 4 + k) * v), double=True)
-    loose_bricks(mb, Wn / 2 + 1.0, zc - 2.2 + 0.0, 1.2, 50, 'red', seed)
-    for k in range(10):
-        chunk(mb, (Wn / 2 + r.uniform(0.3, 2.0), 0.1, zc - 2.2 + r.uniform(-1.2, 1.2)), (0.5, 0.3, 0.4), seed + 40 + k, pl)
-    Mx = mat_trs((-Wn / 2 - 1.6, 0.05, zc + 1.5), (PI / 2, 0.7, 0))
-    fbox(mb, (-0.03, 0, -0.03), (0.03, 1.3, 0.03), 'dome_gold', M=Mx)
-    fbox(mb, (-0.25, 0.85, -0.025), (0.25, 0.9, 0.025), 'dome_gold', M=Mx)
-    # tin roof torn on the nave: a patch with exposed battens
-    Mp = frame((Wn / 2 - 1.0, yb + 0.25, zc - 2.6), (0, 0, 1), (-0.73, 0.68, 0))
-    tquad(mb, (0, 0, 0.03), (1, 0, 0), (0, 1, 0), 1.8, 1.0, 'wood_raw', (1, 1), M=Mp)
-    return mb
+# ====================================================================== church -> church.py (church_atlas.py)
 
 
 # ====================================================================== market pavilions
@@ -1038,7 +896,7 @@ def items():
             house('house_e', 7.6, 7.0, 'plaster_yellow', 'slate', 64, ridge='z', gable_reg='plaster_yellow', broken_windows={('front', 1)})]
     out += [fence_prof('fence_house_prof', 'prof_brown', False, 70), fence_picket('fence_house_picket', 71), fence_prof('fence_house_broken', 'prof_green', True, 72, gate=False),
             fence_prof('fence_house_plain', 'prof_green', False, 73, gate=False), fence_prof('fence_house_plain_brown', 'prof_brown', False, 74, gate=False)]
-    out += [church_small()]
+    out += [CH.church_small()]
     out += [pavilion('pavilion_closed', 'closed', 0, 80), pavilion('pavilion_open', 'open', 1, 81), pavilion('pavilion_burnt', 'burnt', 3, 82), pavilion('pavilion_stall', 'stall', 2, 83)]
     out += [billboard('billboard_a', RS('billboard_a', 0, 0, 1, 1), RS('billboard_b', 0, 0, 1, 1), False, 90),
             billboard('billboard_b', RS('billboard_b', 0, 0, 1, 1), RS('billboard_a', 0, 0, 1, 1), False, 91),
@@ -1055,15 +913,19 @@ def items():
     return out
 
 
-BUDGET = {'house_': 6000, 'church': 20000, 'car_parked': 2000}
+BUDGET = {'house_': 6000, 'church': 30000, 'car_parked': 2000}
 
 
 def main(only=None):
     paths = [os.path.join(CA.CACHE, f'city_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
     if not all(os.path.exists(p) for p in paths) or os.environ.get('REBUILD_ATLAS'):
         paths = CA.build()
+    cpaths = [os.path.join(CHA.CACHE, f'church_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
+    if not all(os.path.exists(p) for p in cpaths) or os.environ.get('REBUILD_ATLAS'):
+        cpaths = CHA.build()
     reset_scene()
     mat = make_material('city_atlas', *paths)
+    cmat = make_material('church_atlas', *cpaths)
     info = {}
     its = items()
     if only:
@@ -1076,7 +938,7 @@ def main(only=None):
             x = 0.0; zrow -= rowdepth + 4; rowdepth = 0.0
         loc = (x - mn[0], 0, zrow - mx[2])
         x += sz[0] + 3; rowdepth = max(rowdepth, sz[2])
-        mb.to_object(mb.name, [mat], smooth_angle=35, location=loc)
+        mb.to_object(mb.name, [mat, cmat] if any(f[3] == 1 for f in mb.F) else [mat], smooth_angle=35, location=loc)
         info[mb.name] = {'tris': mb.tris(), 'bbox_min': [round(float(v), 2) for v in mn], 'bbox_max': [round(float(v), 2) for v in mx]}
         lim = next((v for k, v in BUDGET.items() if mb.name.startswith(k)), 8000)
         flag = '  OVER BUDGET' if mb.tris() > lim else ''
@@ -1092,7 +954,17 @@ def main(only=None):
             'Sievierodonetsk: above-ground foil-clad heating mains on concrete sleepers with П-shaped expansion loops over paths, white silicate '
             'brick transformer kiosks with louvred steel doors, ПО-2 diamond-relief concrete fences, one-storey plastered / brick houses with '
             'tin or asbestos-slate gable roofs and blue carved window trims, profiled-sheet and picket fences with painted gates, small '
-            'white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts.',
+            'white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts. '
+            'church_small: late-19th-c. Russian-Revival parish church of the Donbas type, as rebuilt / restored in the 2000s (refs: '
+            'St. Demetrius, Verkhnotoretske 1850-61 -- bell tower razed 1938, rebuilt 2020-21, shelled 26 Mar 2022: facades, roof, windows; '
+            'Sviatohirsk Lavra 2022 -- windows/doors blown in, sketes burnt; Mariupol St. Michael (1997) and St. Nicholas; Kostiantynivka '
+            'St. Ihor -- several domes destroyed; Dobropillia St. Ambrose -- large facade holes, roof stripped; Pokrovsk St. Vladimir -- '
+            'wall damage, roof lost; reported crosses shot down by shelling). Features used: tower-refectory-nave-apse "ship" plan, bell '
+            'tower over the west entrance (chetverik with a perspective portal, open arched belfry with bells, octagon + onion), refectory '
+            '(trapeznaya), square nave crowned by keel kokoshniks over a dentil cornice, five domes (big drum with arched windows, four '
+            'corner cupolas on drums), eight-pointed crosses with the slanted footrest, semicircular east apse, white lime render with '
+            'pale-blue recessed panels and pilasters, keel-arched window surrounds, green standing-seam sheet roofs with gutters, blue '
+            'onion with gold stars and gilded cupolas.',
             'notes':
             'One material (city_atlas 2048^2, tools/blender/env/city_atlas.py). Every node is a top-level mesh, origin on the ground at the '
             'footprint centre, front = +Z, nodes laid out on a grid in the file (city.js instancing ignores the layout transform). '
@@ -1100,7 +972,15 @@ def main(only=None):
             'tile every 6 m), pipe_loop 6.0 m (raised to 5 m over a footpath), fence_po2_* 4.0 m panel (+0.1 m gap at the 4.1 m pitch), '
             'fence_house_* 18 m with a gate at the centre. house_* plinth 0.45 + walls to 3.2 m, gable roofs; house_c is burnt and roofless, '
             'house_b has a roof hole, house_d a shell hole in its right wall (fit inside a 19 x 18 m plot, fences at z+9 / x+-9.5). '
-            'lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z.'})
+            'lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z. '
+            'church_small (church.py) is the only node with two materials: city_atlas (plinth, steps, loose bricks, glass shards) + '
+            'church_atlas (1024^2, church_atlas.py; plaster / pocked / soot / brick / blue panels / standing-seam tin / gold / stripped '
+            'gold / starred blue / windows / door / icon + bell bronze / rusty steel / interior / boards + char). +Z = west front with '
+            'the porch and steps, -Z = east apse; main cross top at 23 m, bell-tower cross ~19.5 m. Damage: shell hole through the '
+            'nave +X wall (exposed brick reveals, broken pilaster, plaster spalled, scorch, rubble and a fallen beam inside / outside), '
+            'shrapnel-pocked +X facades, main dome skin torn on the +X side exposing ribs and hoops with sheets hanging, front-right '
+            'cupola stripped and its cross shot off (lying on the ground at +X), bell-tower onion dented / stripped, one cupola cross '
+            'bent, burnt-out refectory window on -X with a soot plume, broken windows, torn roof sheets, torn downpipe.'})
 
 
 if __name__ == '__main__':
