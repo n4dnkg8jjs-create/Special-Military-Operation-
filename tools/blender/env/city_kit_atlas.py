@@ -137,7 +137,7 @@ def stepped_crack(shape, start, seed, n=24, up=1):
     return np.clip(m, 0, 1)
 
 
-def paint_brick(colour, t, state, seed):
+def paint_brick(colour, t, state, seed, voids=None):
     r = rng(seed); C = BRICK[colour]
     h, w = CH, CW
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -196,6 +196,8 @@ def paint_brick(colour, t, state, seed):
             else:
                 a = r.uniform(0, 2 * np.pi); d = abs(r.normal(0, 0.9)) + 0.5
                 x, y = W * 0.55 + np.cos(a) * d, H * 0.5 + np.sin(a) * d * 0.8
+                if voids is not None:
+                    _a = np.concatenate(voids); x, y = _a[:, 0].mean() + np.cos(a) * d, np.clip(_a[:, 1].mean(), 0.6, H - 0.6) + np.sin(a) * d * 0.8
             rr = r.uniform(0.8, 3.2)
             texlib.stamp_disc(pit, mcol(x), mrow(y), rr, 1, 1.0)
             texlib.stamp_disc(ring, mcol(x), mrow(y), rr * r.uniform(1.8, 3.2), 1, 1.5)
@@ -232,11 +234,16 @@ def paint_brick(colour, t, state, seed):
         if state == 'damaged' and t == 'blank_end':
             soot = np.maximum(soot, smoothstep(1.2, 0.0, np.abs(xm - 1.9 + mid * 0.2)) * smoothstep(0.4, 2.8, ym) * 0.35)
     if state in ('holed', 'destroyed'):
-        hp = brick_hole(t)
-        hm = poly_mask((h, w), hp)
+        polys = voids if voids is not None else [brick_hole(t)]
+        hm = np.zeros((h, w), np.float32)
+        for _p in polys:
+            hm = np.maximum(hm, poly_mask((h, w), _p))
+        hp = np.concatenate(polys)
         d = dist_outside(hm) / PX
         cy = hp[:, 1].mean(); cx = hp[:, 0].mean(); top = hp[:, 1].max()
         sc = np.exp(-d / 0.3) + smoothstep(1.3, 0.2, np.abs(xm - cx + mid * 0.1)) * (ym > top - 0.3) * np.exp(-np.clip(ym - top, 0, None) * 0.45) * 0.85
+        if voids is not None and state == 'destroyed':
+            sc = np.exp(-d / 0.12) * 0.8 * (0.6 + 0.4 * norm01(mid)) + np.exp(-d / 0.5) * 0.25
         soot = np.maximum(soot, np.clip(sc * (0.8 + 0.2 * norm01(mid)), 0, 1))
         cr = np.zeros((h, w), np.float32)
         for k in range(10):
@@ -257,7 +264,7 @@ def paint_brick(colour, t, state, seed):
 
 
 # ------------------------------------------------------------------ shopfront cladding
-def paint_shop(t, state, seed):
+def paint_shop(t, state, seed, voids=None):
     r = rng(seed)
     h, w = CH, CW
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -318,9 +325,12 @@ def paint_shop(t, state, seed):
             plume = smoothstep(half * (0.8 + dy), half * 0.3, np.abs(xm - cx + mid * 0.08)) * (ym > y1 - 0.08) * np.exp(-dy * 0.5)
             soot = np.maximum(soot, plume * (0.6 + 0.4 * norm01(mid)))
     if state in ('holed', 'destroyed'):
-        hp = shop_hole(t); hm = poly_mask((h, w), hp)
+        polys = voids if voids is not None else [shop_hole(t)]
+        hm = np.zeros((h, w), np.float32)
+        for _p in polys:
+            hm = np.maximum(hm, poly_mask((h, w), _p))
         d = dist_outside(hm) / PX
-        soot = np.maximum(soot, np.clip(np.exp(-d / 0.35), 0, 1))
+        soot = np.maximum(soot, np.clip(np.exp(-d / 0.12) * 0.8 + np.exp(-d / 0.5) * 0.25 if (voids is not None and state == 'destroyed') else np.exp(-d / 0.35), 0, 1))
         burnt = colorize(norm01(fine * 0.5 + mid * 0.5), [(0, '#221f1c'), (1, '#45403a')])
         alb = lerp(alb, burnt, hm)
     soot = np.clip(soot, 0, 1)

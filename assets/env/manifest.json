@@ -6,7 +6,32 @@
  },
  "panel_kit": {
   "file": "panel_kit.glb",
-  "material": "kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py)",
+  "material": "kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py) + kit_damage (third 2048^2 atlas: facade cells of the *_holed_v2/_v3, *_destroyed_v2/_v3 variants; tools/blender/env/kit_damage_atlas.py)",
+  "damage_variants": {
+   "pattern": "<type>_<holed|destroyed>_<v2|v3>; the plain <type>_holed / <type>_destroyed pieces are variant v1",
+   "types": [
+    "wall_window",
+    "wall_balcony",
+    "wall_blank_end",
+    "wall_entrance",
+    "brick_window",
+    "brick_balcony",
+    "brick_blank_end",
+    "brick_entrance",
+    "brick_red_window",
+    "brick_red_balcony",
+    "brick_red_blank_end",
+    "brick_red_entrance",
+    "wall_shopfront",
+    "wall_shopfront_shutter"
+   ],
+   "normalisation": "same frame as <type>_intact: the game must use the *_intact offset for the variants too (buildKit regex /_(intact|damaged|holed|destroyed)(_v\\d+)?$/ when computing the base name)",
+   "holed_v2": "off-centre shell hole + corner bite + spalled face (panel: outer concrete leaf gone, mineral wool exposed with the outer mesh across it; brick: outer half-brick wythe gone); rebar bent inwards (hit from outside)",
+   "holed_v3": "hole through the spandrel / half-panel blow-out / big off-centre hole; panels also get a through-crack (split piece displaced ~2 cm outwards where it separates); rebar bent outwards (interior blast)",
+   "destroyed_v2": "blown-out panel: wide ragged remnant column on one side, thin ragged lintel band snapped through in places, low kerb; panel fragment hanging on its bars below the band; balcony root stub on balcony types",
+   "destroyed_v3": "blown-out panel: wide lintel band, spandrel remnant rising towards a column on the other side; panel fragment swung out on its bars from the column edge",
+   "structure": "every *_destroyed piece (v1 too) is framed by the ceiling-slab edge (y H-0.228..H+0.004, ragged front ~5-11 cm behind the facade, torn bars hanging) and a floor screed edge at y 0..0.02 (z -0.05..-1.2); large-panel pieces also show the transverse wall ends (x 0..0.08 and W-0.08..W, z -0.3..-1.25, wallpapered room faces). The slab band covers the interior slab box of buildings.js buildInterior() at the facade."
+  },
   "coords": "glTF Y-up. Wall pieces: x 0..W, y 0..H, z 0 (outside face, +Z normal) .. -T (room side). Accessories (balcony*, entrance_canopy) start at the wall face z=0 and extend to +Z.",
   "pieces": {
    "wall_window_intact": {
@@ -56,10 +81,10 @@
     ],
     "bbox_max": [
      3.2,
-     1.924,
+     2.804,
      0.182
     ],
-    "tris": 866
+    "tris": 1116
    },
    "wall_balcony_intact": {
     "bbox_min": [
@@ -108,10 +133,10 @@
     ],
     "bbox_max": [
      3.405,
-     1.745,
+     2.804,
      0.164
     ],
-    "tris": 866
+    "tris": 1116
    },
    "wall_blank_end_intact": {
     "bbox_min": [
@@ -156,14 +181,14 @@
     "bbox_min": [
      0.0,
      -0.136,
-     -1.124
+     -1.25
     ],
     "bbox_max": [
      3.372,
-     1.789,
+     2.804,
      0.259
     ],
-    "tris": 854
+    "tris": 1104
    },
    "wall_entrance_intact": {
     "bbox_min": [
@@ -208,14 +233,14 @@
     "bbox_min": [
      0.0,
      -0.128,
-     -1.062
+     -1.25
     ],
     "bbox_max": [
      3.2,
-     2.18,
+     2.804,
      2.45
     ],
-    "tris": 880
+    "tris": 1130
    },
    "slab_floor": {
     "bbox_min": [
@@ -472,10 +497,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.032,
-     0.063
+     2.804,
+     0.078
     ],
-    "tris": 896
+    "tris": 1090
    },
    "brick_balcony_intact": {
     "bbox_min": [
@@ -524,10 +549,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.097,
-     0.0
+     2.804,
+     0.118
     ],
-    "tris": 896
+    "tris": 1090
    },
    "brick_blank_end_intact": {
     "bbox_min": [
@@ -576,10 +601,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.026,
-     0.069
+     2.804,
+     0.143
     ],
-    "tris": 884
+    "tris": 1078
    },
    "brick_entrance_intact": {
     "bbox_min": [
@@ -628,10 +653,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.334,
+     2.804,
      2.45
     ],
-    "tris": 830
+    "tris": 1024
    },
    "brick_parapet": {
     "bbox_min": [
@@ -693,10 +718,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.115,
+     2.804,
      0.08
     ],
-    "tris": 896
+    "tris": 1090
    },
    "brick_red_balcony_intact": {
     "bbox_min": [
@@ -745,10 +770,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.116,
+     2.804,
      0.035
     ],
-    "tris": 896
+    "tris": 1090
    },
    "brick_red_blank_end_intact": {
     "bbox_min": [
@@ -797,10 +822,10 @@
     ],
     "bbox_max": [
      3.38,
-     2.104,
-     0.049
+     2.804,
+     0.079
     ],
-    "tris": 884
+    "tris": 1078
    },
    "brick_red_entrance_intact": {
     "bbox_min": [
@@ -849,10 +874,10 @@
     ],
     "bbox_max": [
      3.424,
-     2.258,
+     2.804,
      2.45
     ],
-    "tris": 830
+    "tris": 1024
    },
    "brick_red_parapet": {
     "bbox_min": [
@@ -914,10 +939,10 @@
     ],
     "bbox_max": [
      3.2,
-     2.08,
+     2.804,
      0.5
     ],
-    "tris": 352
+    "tris": 546
    },
    "wall_shopfront_shutter_intact": {
     "bbox_min": [
@@ -966,10 +991,10 @@
     ],
     "bbox_max": [
      3.2,
-     1.7,
+     2.804,
      1.6
     ],
-    "tris": 372
+    "tris": 566
    },
    "sign_apteka_intact": {
     "bbox_min": [
@@ -1308,6 +1333,734 @@
      -1.065
     ],
     "tris": 482
+   },
+   "wall_window_holed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.084,
+     -0.755
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.033
+    ],
+    "tris": 1504
+   },
+   "wall_window_holed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.297,
+     -0.795
+    ],
+    "bbox_max": [
+     3.2,
+     2.961,
+     0.191
+    ],
+    "tris": 1290
+   },
+   "wall_window_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.335,
+     -1.405
+    ],
+    "bbox_max": [
+     3.26,
+     2.942,
+     0.251
+    ],
+    "tris": 1680
+   },
+   "wall_window_destroyed_v3": {
+    "bbox_min": [
+     -0.073,
+     -0.16,
+     -1.25
+    ],
+    "bbox_max": [
+     3.258,
+     2.804,
+     0.401
+    ],
+    "tris": 1682
+   },
+   "wall_balcony_holed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.871,
+     -0.691
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.574
+    ],
+    "tris": 1640
+   },
+   "wall_balcony_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.896,
+     -0.73
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.574
+    ],
+    "tris": 1376
+   },
+   "wall_balcony_destroyed_v2": {
+    "bbox_min": [
+     -0.014,
+     -0.786,
+     -1.25
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.558
+    ],
+    "tris": 1678
+   },
+   "wall_balcony_destroyed_v3": {
+    "bbox_min": [
+     -0.058,
+     -0.09,
+     -1.442
+    ],
+    "bbox_max": [
+     3.248,
+     2.804,
+     0.47
+    ],
+    "tris": 1584
+   },
+   "wall_blank_end_holed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.0,
+     -0.358
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.033
+    ],
+    "tris": 1748
+   },
+   "wall_blank_end_holed_v3": {
+    "bbox_min": [
+     -0.01,
+     0.0,
+     -0.369
+    ],
+    "bbox_max": [
+     3.206,
+     2.805,
+     0.165
+    ],
+    "tris": 1182
+   },
+   "wall_blank_end_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.097,
+     -1.438
+    ],
+    "bbox_max": [
+     3.222,
+     2.915,
+     0.235
+    ],
+    "tris": 1724
+   },
+   "wall_blank_end_destroyed_v3": {
+    "bbox_min": [
+     -0.043,
+     -0.139,
+     -1.411
+    ],
+    "bbox_max": [
+     3.254,
+     2.804,
+     0.37
+    ],
+    "tris": 1588
+   },
+   "wall_entrance_holed_v2": {
+    "bbox_min": [
+     -0.03,
+     0.0,
+     -0.3
+    ],
+    "bbox_max": [
+     3.542,
+     2.813,
+     0.503
+    ],
+    "tris": 1396
+   },
+   "wall_entrance_holed_v3": {
+    "bbox_min": [
+     -0.088,
+     -0.115,
+     -0.47
+    ],
+    "bbox_max": [
+     3.322,
+     2.915,
+     0.603
+    ],
+    "tris": 1258
+   },
+   "wall_entrance_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.149,
+     -1.276
+    ],
+    "bbox_max": [
+     3.288,
+     2.804,
+     0.733
+    ],
+    "tris": 1658
+   },
+   "wall_entrance_destroyed_v3": {
+    "bbox_min": [
+     -0.106,
+     -0.165,
+     -1.397
+    ],
+    "bbox_max": [
+     3.253,
+     2.804,
+     1.7
+    ],
+    "tris": 1598
+   },
+   "brick_window_holed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.109,
+     -1.428
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.038
+    ],
+    "tris": 1104
+   },
+   "brick_window_holed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.124,
+     -1.471
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.026
+    ],
+    "tris": 760
+   },
+   "brick_window_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.053,
+     -1.56
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.094
+    ],
+    "tris": 979
+   },
+   "brick_window_destroyed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.249,
+     -1.574
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.129
+    ],
+    "tris": 1074
+   },
+   "brick_balcony_holed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.851,
+     -1.555
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.558
+    ],
+    "tris": 1314
+   },
+   "brick_balcony_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.836,
+     -1.548
+    ],
+    "bbox_max": [
+     3.229,
+     2.8,
+     0.558
+    ],
+    "tris": 1016
+   },
+   "brick_balcony_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.75,
+     -1.409
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.557
+    ],
+    "tris": 1310
+   },
+   "brick_balcony_destroyed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.053,
+     -1.418
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.305
+    ],
+    "tris": 1390
+   },
+   "brick_blank_end_holed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.06,
+     -1.3
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.074
+    ],
+    "tris": 1300
+   },
+   "brick_blank_end_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.073,
+     -1.327
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.083
+    ],
+    "tris": 772
+   },
+   "brick_blank_end_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.085,
+     -1.56
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.121
+    ],
+    "tris": 986
+   },
+   "brick_blank_end_destroyed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.101,
+     -1.366
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.13
+    ],
+    "tris": 1058
+   },
+   "brick_entrance_holed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.115,
+     -1.514
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.603
+    ],
+    "tris": 914
+   },
+   "brick_entrance_holed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.115,
+     -1.088
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.603
+    ],
+    "tris": 658
+   },
+   "brick_entrance_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.051,
+     -1.548
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.733
+    ],
+    "tris": 1142
+   },
+   "brick_entrance_destroyed_v3": {
+    "bbox_min": [
+     -0.106,
+     -0.057,
+     -1.35
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     1.7
+    ],
+    "tris": 1230
+   },
+   "brick_red_window_holed_v2": {
+    "bbox_min": [
+     -0.031,
+     -0.055,
+     -1.389
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 888
+   },
+   "brick_red_window_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.055,
+     -1.21
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.044
+    ],
+    "tris": 768
+   },
+   "brick_red_window_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.085,
+     -1.402
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.103
+    ],
+    "tris": 1014
+   },
+   "brick_red_window_destroyed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.102,
+     -1.565
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.083
+    ],
+    "tris": 1162
+   },
+   "brick_red_balcony_holed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.848,
+     -1.6
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.558
+    ],
+    "tris": 1262
+   },
+   "brick_red_balcony_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.89,
+     -1.585
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.558
+    ],
+    "tris": 1012
+   },
+   "brick_red_balcony_destroyed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.805,
+     -1.519
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.557
+    ],
+    "tris": 1196
+   },
+   "brick_red_balcony_destroyed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.053,
+     -1.415
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.305
+    ],
+    "tris": 1188
+   },
+   "brick_red_blank_end_holed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.03,
+     -1.375
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.018
+    ],
+    "tris": 1176
+   },
+   "brick_red_blank_end_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.133,
+     -1.577
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.0
+    ],
+    "tris": 692
+   },
+   "brick_red_blank_end_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.036,
+     -1.45
+    ],
+    "bbox_max": [
+     3.21,
+     2.804,
+     0.109
+    ],
+    "tris": 890
+   },
+   "brick_red_blank_end_destroyed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.096,
+     -1.414
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.146
+    ],
+    "tris": 890
+   },
+   "brick_red_entrance_holed_v2": {
+    "bbox_min": [
+     -0.036,
+     -0.115,
+     -1.313
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.603
+    ],
+    "tris": 942
+   },
+   "brick_red_entrance_holed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.211,
+     -1.522
+    ],
+    "bbox_max": [
+     3.286,
+     2.8,
+     0.603
+    ],
+    "tris": 594
+   },
+   "brick_red_entrance_destroyed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.054,
+     -1.316
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.733
+    ],
+    "tris": 989
+   },
+   "brick_red_entrance_destroyed_v3": {
+    "bbox_min": [
+     -0.106,
+     -0.05,
+     -1.404
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     1.7
+    ],
+    "tris": 1258
+   },
+   "wall_shopfront_holed_v2": {
+    "bbox_min": [
+     -0.27,
+     -0.073,
+     -1.621
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.5
+    ],
+    "tris": 847
+   },
+   "wall_shopfront_holed_v3": {
+    "bbox_min": [
+     -0.0,
+     -0.03,
+     -1.27
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.029
+    ],
+    "tris": 656
+   },
+   "wall_shopfront_destroyed_v2": {
+    "bbox_min": [
+     0.0,
+     -0.132,
+     -1.735
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.142
+    ],
+    "tris": 1298
+   },
+   "wall_shopfront_destroyed_v3": {
+    "bbox_min": [
+     0.0,
+     -0.05,
+     -2.241
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.303
+    ],
+    "tris": 1234
+   },
+   "wall_shopfront_shutter_holed_v2": {
+    "bbox_min": [
+     -0.0,
+     -0.034,
+     -1.333
+    ],
+    "bbox_max": [
+     3.2,
+     2.8,
+     0.074
+    ],
+    "tris": 640
+   },
+   "wall_shopfront_shutter_holed_v3": {
+    "bbox_min": [
+     -0.032,
+     -0.065,
+     -1.442
+    ],
+    "bbox_max": [
+     3.246,
+     2.8,
+     0.619
+    ],
+    "tris": 612
+   },
+   "wall_shopfront_shutter_destroyed_v2": {
+    "bbox_min": [
+     -0.492,
+     -0.056,
+     -1.54
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.041
+    ],
+    "tris": 1136
+   },
+   "wall_shopfront_shutter_destroyed_v3": {
+    "bbox_min": [
+     -0.364,
+     -0.05,
+     -1.537
+    ],
+    "bbox_max": [
+     3.2,
+     2.804,
+     0.363
+    ],
+    "tris": 1148
    }
   },
   "notes": {

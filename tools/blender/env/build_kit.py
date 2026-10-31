@@ -1,7 +1,7 @@
 """Builds assets/env/panel_kit.glb (Soviet large-panel kit, 4 damage states) + manifest section.
 Run: cd tools/blender/env && nice -n 10 python3 build_kit.py [--no-atlas]
 """
-import os, sys, math, json
+import os, sys, math, json, re
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from meshlib import *
@@ -464,35 +464,57 @@ def main():
     paths2 = [os.path.join(KA.CACHE, f'kit_atlas_city_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
     if not no_atlas or not os.path.exists(paths2[0]):
         paths2 = CKA.build_atlas()
+    import kit_damage_atlas as KDA, kit_damage as KDM
+    paths3 = [os.path.join(KA.CACHE, f'kit_atlas_damage_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
+    if not no_atlas or not os.path.exists(paths3[0]):
+        paths3 = KDA.build_atlas()
     reset_scene()
     mat = make_material('kit_panel', *paths)
     mat2 = make_material('kit_city', *paths2)
+    mat3 = make_material('kit_damage', *paths3)
     pieces = []
     for t in TYPES:
         for s in STATES:
-            pieces.append(build_wall(t, s))
+            mb = build_wall(t, s)
+            if s == 'destroyed':     # structural frame (ceiling-slab edge, transverse wall ends, floor screed)
+                KDM.structure_v1(mb, 'panel', SEEDS[t] + 3 * 13, None)
+            pieces.append(mb)
     pieces += [build_slab_floor(False), build_slab_floor(True), build_parapet(), build_plinth(), build_stair(),
                build_balcony('mixed', 'balcony_slab'), build_balcony('open', 'balcony_slab_open'),
                build_balcony('glazed', 'balcony_slab_glazed'), build_balcony_hanging(), build_canopy(),
                build_partition('intact'), build_partition('holed'),
                build_wardrobe(), build_bed(), build_table(), build_radiator_debris()]
-    pieces += KCP.build_all() + KCO.build_all()
+    for mb in KCP.build_all():
+        if mb.name.endswith('_destroyed'):
+            KDM.structure_v1(mb, 'brick' if mb.name.startswith('brick') else 'shop', sum(map(ord, mb.name)),
+                             'red' if mb.name.startswith('brick_red') else 'white')
+        pieces.append(mb)
+    pieces += KCO.build_all()
+    pieces += KDM.build_all()     # <type>_holed_v2/_v3, <type>_destroyed_v2/_v3 (material kit_damage)
     for mb in pieces:   # loose debris sits on the floor
         if mb.name.startswith('debris_'):
             mn, mx = mb.bounds(); mb.transform(mat_trs((0, -mn[1], 0)))
     info = {}
-    budgets = {'intact': 600, 'damaged': 600, 'holed': 1800, 'destroyed': 1500}
+    budgets = {'intact': 600, 'damaged': 600, 'holed': 1800, 'destroyed': 1700}
+    col_index = None
     x_cursor = 0.0
     rowz = {}
     for i, mb in enumerate(pieces):
         name = mb.name
         mn, mx = mb.bounds()
         # lay pieces out in rows (states along z) so the file is browsable; the game undoes node translation
-        base = name.rsplit('_', 1)[0] if name.split('_')[-1] in STATES else name
-        st = name.split('_')[-1] if name.split('_')[-1] in STATES else None
-        col = list(dict.fromkeys([p.name.rsplit('_', 1)[0] if p.name.split('_')[-1] in STATES else p.name for p in pieces])).index(base)
-        loc = (col * 4.5, 0, -(STATES.index(st) if st else 0) * 5.0)
-        mb.to_object(name, [mat, mat2], location=loc)
+        def split(n):
+            m = re.match(r'^(.*)_(intact|damaged|holed|destroyed)(?:_(v\d))?$', n)
+            if not m:
+                return n, None, 0
+            row = STATES.index(m.group(2)) if not m.group(3) else 4 + 2 * ['holed', 'destroyed'].index(m.group(2)) + ['v2', 'v3'].index(m.group(3))
+            return m.group(1), m.group(2), row
+        base, st, row = split(name)
+        if col_index is None:
+            col_index = list(dict.fromkeys([split(p.name)[0] for p in pieces]))
+        col = col_index.index(base)
+        loc = (col * 4.5, 0, -row * 5.0)
+        mb.to_object(name, [mat, mat2, mat3], location=loc)
         tris = mb.tris()
         b = (st and tris > budgets[st]) or tris > {'collapse_pile_large': 12000, 'collapse_pile_small': 6000, 'slab_hanging': 2000}.get(name, 1e9)
         info[name] = {'bbox_min': [round(float(v), 3) for v in mn], 'bbox_max': [round(float(v), 3) for v in mx], 'tris': tris}
@@ -502,7 +524,26 @@ def main():
     update_manifest('kit', {'width': W, 'height': H, 'thickness': T})
     update_manifest('panel_kit', {
         'file': 'panel_kit.glb', 'material': 'kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the '
-                    'brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py)',
+                    'brick_*, wall_shopfront*, sign_*, roof_*, collapse_* pieces; see tools/blender/env/city_kit_atlas.py) + kit_damage '
+                    '(third 2048^2 atlas: facade cells of the *_holed_v2/_v3, *_destroyed_v2/_v3 variants; tools/blender/env/kit_damage_atlas.py)',
+        'damage_variants': {
+            'pattern': '<type>_<holed|destroyed>_<v2|v3>; the plain <type>_holed / <type>_destroyed pieces are variant v1',
+            'types': [p for p, *_ in __import__('kit_damage_design').all_types()],
+            'normalisation': 'same frame as <type>_intact: the game must use the *_intact offset for the variants too (buildKit regex '
+                             '/_(intact|damaged|holed|destroyed)(_v\\d+)?$/ when computing the base name)',
+            'holed_v2': 'off-centre shell hole + corner bite + spalled face (panel: outer concrete leaf gone, mineral wool exposed with the '
+                        'outer mesh across it; brick: outer half-brick wythe gone); rebar bent inwards (hit from outside)',
+            'holed_v3': 'hole through the spandrel / half-panel blow-out / big off-centre hole; panels also get a through-crack (split '
+                        'piece displaced ~2 cm outwards where it separates); rebar bent outwards (interior blast)',
+            'destroyed_v2': 'blown-out panel: wide ragged remnant column on one side, thin ragged lintel band snapped through in places, '
+                            'low kerb; panel fragment hanging on its bars below the band; balcony root stub on balcony types',
+            'destroyed_v3': 'blown-out panel: wide lintel band, spandrel remnant rising towards a column on the other side; panel fragment '
+                            'swung out on its bars from the column edge',
+            'structure': 'every *_destroyed piece (v1 too) is framed by the ceiling-slab edge (y H-0.228..H+0.004, ragged front ~5-11 cm '
+                         'behind the facade, torn bars hanging) and a floor screed edge at y 0..0.02 (z -0.05..-1.2); large-panel '
+                         'pieces also show the transverse wall ends (x 0..0.08 and W-0.08..W, z -0.3..-1.25, wallpapered room faces). '
+                         'The slab band covers the interior slab box of buildings.js buildInterior() at the facade.',
+        },
         'coords': 'glTF Y-up. Wall pieces: x 0..W, y 0..H, z 0 (outside face, +Z normal) .. -T (room side). '
                   'Accessories (balcony*, entrance_canopy) start at the wall face z=0 and extend to +Z.',
         'pieces': info,

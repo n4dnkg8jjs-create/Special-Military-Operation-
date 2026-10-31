@@ -107,7 +107,9 @@ def dist_outside(mask):
 
 
 # ------------------------------------------------------------------ facades
-def paint_facade(t, state, seed):
+def paint_facade(t, state, seed, voids=None):
+    """voids: optional list of Nx2 outlines (metres) replacing hole_poly(t) for the holed/destroyed scorch, tile loss and
+    cracks (used by kit_damage_atlas for the *_holed_v2.. / *_destroyed_v2.. variant cells)."""
     r = rng(seed)
     h, w = CH, CW
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -189,6 +191,8 @@ def paint_facade(t, state, seed):
         n = {'damaged': 70, 'holed': 150, 'destroyed': 150}[state]
         pit = np.zeros((h, w), np.float32); ring = np.zeros((h, w), np.float32)
         centre = (W * 0.5, H * 0.55)
+        if voids is not None and state != 'damaged':
+            _a = np.concatenate(voids); centre = (float(_a[:, 0].mean()), float(np.clip(_a[:, 1].mean(), 0.6, H - 0.6)))
         for k in range(n):
             if state == 'damaged':
                 x, y = r.uniform(0.1, W - 0.1), r.uniform(0.1, H - 0.1)
@@ -238,16 +242,21 @@ def paint_facade(t, state, seed):
         if state == 'damaged' and t == 'wall_blank_end':
             soot = np.maximum(soot, smoothstep(1.2, 0.0, np.abs(xm - 2.1 + mid * 0.2)) * smoothstep(0.5, 2.8, ym) * 0.35)
     if state in ('holed', 'destroyed'):
-        hp = hole_poly(t)
-        hm = poly_mask((h, w), hp)
+        polys = voids if voids is not None else [hole_poly(t)]
+        hm = np.zeros((h, w), np.float32)
+        for _p in polys:
+            hm = np.maximum(hm, poly_mask((h, w), _p))
+        hp = np.concatenate(polys)
         d = dist_outside(hm) / PPM   # metres from hole edge
         # blast scorch: radial + plume upward
         cy = hp[:, 1].mean(); cx = hp[:, 0].mean(); top = hp[:, 1].max()
         sc = np.exp(-d / 0.35) + smoothstep(1.4, 0.2, np.abs(xm - cx + mid * 0.1)) * (ym > top - 0.3) * np.exp(-np.clip(ym - top, 0, None) * 0.4) * 0.9
+        if voids is not None and state == 'destroyed':   # blown-out variant: remnants keep patchy soot, not a black ring
+            sc = np.exp(-d / 0.13) * 0.8 * (0.6 + 0.4 * norm01(mid)) + np.exp(-d / 0.5) * 0.25
         sc *= 0.8 + 0.2 * norm01(mid)
         soot = np.maximum(soot, np.clip(sc, 0, 1))
         # tiles blown off in a ring around the hole
-        ringlost = (d < 0.25 + 0.2 * norm01(ln)).astype(np.float32)
+        ringlost = (d < (0.12 if (voids is not None and state == 'destroyed') else 0.25) + 0.2 * norm01(ln)).astype(np.float32)
         alb = lerp(alb, conc * 0.9, ringlost); hgt = lerp(hgt, comb * 0.15 - 0.6, ringlost); rough = np.maximum(rough, ringlost * 0.92)
         # radiating cracks from the hole edge
         cr = np.zeros((h, w), np.float32)

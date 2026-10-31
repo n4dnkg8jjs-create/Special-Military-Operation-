@@ -189,53 +189,99 @@ def tex_fallow():
 
 # ---------------------------------------------------------------- dirt farm track
 def tex_track():
+    """Dirt farm track strip, authored on an isotropic 227.6 px/m grid (6.2 m x 4.5 m = 1411 x 1024 px) and
+    resampled to 1024^2 (U = strip width, V = along the track, seamless along V). Same soil as dirt_* (soil_tex.py)
+    plus: two compacted tyre ruts (u = 0.36 / 0.64, ~0.42 m wide, 6-9 cm deep) with tractor-lug chevrons and
+    car-tyre tread imprints (periods divide 4.5 m), damp darkened puddle patches and dried mud crust in the rut
+    floors, loose berms pushed up beside the ruts, grassy / weedy centre hump and verges, pebbles and straw."""
+    import soil_tex as ST
     t0 = time.time(); r = rng(701)
-    yy, xx = np.mgrid[0:S, 0:S].astype(np.float32)
-    u = xx / S
-    # periodic-in-V wobble of the ruts (only depends on v)
-    wv = spectral(S, 3.0, 702, fmin=1, fmax=4)[:, :1] * 0.012
-    low = spectral(S, 2.4, 703, fmin=1, fmax=16)
-    mid = spectral(S, 1.5, 704, fmin=8, fmax=250)
-    fine = spectral(S, 0.7, 705, fmin=150)
-    def band(c, hw, soft):
-        return smoothstep(hw + soft, hw, np.abs(u - c - wv))
-    rutL, rutR = band(0.36, 0.034, 0.02), band(0.64, 0.034, 0.02)
-    rut = np.maximum(rutL, rutR)
-    lip = np.maximum(band(0.36, 0.06, 0.02), band(0.64, 0.06, 0.02)) - rut
-    centre = smoothstep(0.06, 0.03, np.abs(u - 0.5 - wv * 0.5))                  # grassy hump between the ruts
-    verge = smoothstep(0.24, 0.12, np.minimum(u, 1 - u) + wv)                     # grass encroaching from the edges
-    dirt = colorize(norm01(mid * 0.6 + fine * 0.4), [(0, '#6b5c49'), (0.5, '#816f58'), (1, '#97846a')])
-    packed = colorize(norm01(mid * 0.5 + fine * 0.5), [(0, '#5c4f3f'), (1, '#74644f')])
-    alb = lerp(dirt, packed, rut * 0.9)
-    hgt = mid * 0.6 + fine * 0.2 + low * 0.8 - rut * 3.0 + lip * 1.0 + centre * 1.2
-    # tyre tread chevrons in the ruts (period along V divides the tile)
-    tread = np.zeros((S, S), np.float32)
-    for c in (0.36, 0.64):
-        for j in range(0, S, 16):
-            for s in (-1, 1):
-                x0 = (c + float(wv[j % S, 0])) * S
-                p0 = (int((x0) * 4), int(j * 4)); p1 = (int((x0 + s * 30) * 4), int((j + 10) * 4))
-                cv2.line(tread, p0, p1, 1.0, 3, cv2.LINE_AA, shift=2)
-    tread = blur(tread, 0.8) * rut * smoothstep(-0.5, 0.8, low + 0.3)
-    alb = lerp(alb, alb * 0.72, tread)
-    hgt -= tread * 0.8
-    # dried puddle cracks in the rut bottoms
-    cr = crack_lines(S, 1800, 706, width=0.8, warp=3.0) * rut * smoothstep(0.4, 1.2, low)
-    alb = lerp(alb, srgb('#3d3226'), cr * 0.5); hgt -= cr
-    # grass + weeds: centre hump and verges, sparse elsewhere; none in the ruts
-    gmask = np.clip(centre * 0.9 + verge + 0.05, 0, 1) * (1 - rut) * (1 - lip * 0.6)
-    g1, t1 = strokes(30000, 707, (5, 16), -np.pi / 2, 1.1, mask=lambda x, y: gmask[int(y) % S, int(x) % S])
-    gcol = colorize(t1, [(0, '#55583a'), (0.4, '#6d6c45'), (0.75, '#8a8052'), (1, '#a39566')])
-    under = colorize(norm01(low), [(0, '#4f5034'), (1, '#6a6444')])
-    alb = lerp(alb, under, gmask * 0.6)
+    Lm, Wm = 4.5, 6.2
+    ppm = S / Lm; h = S; w = int(round(Wm * ppm))
+    L = ST.soil((h, w), ppm, 7100, crust=0.25, damp=0.03, pebbles=1.3, straw=0.8)
+    mm = L['mm']
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    xm = xx / ppm; ym = yy / ppm
+    # periodic (along V) wander of the wheel paths; both ruts move together, gauge breathes a little
+    def per1d(seed, lam_m, amp):
+        n = ST.spec((h, 8), seed, lam_m * ppm * 0.5, lam_m * ppm, 2.2)[:, 0]
+        return (n / (np.abs(n).max() + 1e-6) * amp).astype(np.float32)[:, None]
+    wv = per1d(702, 4.5, 0.05) + per1d(703, 1.5, 0.012)
+    gauge = per1d(704, 2.2, 0.025)
+    mid = ST.spec((h, w), 705, 0.05 * ppm, 0.6 * ppm, 1.8)
+    fine = ST.spec((h, w), 706, 2, 0.04 * ppm, 1.2)
+    c = [Wm * 0.36 + wv - gauge, Wm * 0.64 + wv + gauge]
+    hw = 0.21 + 0.03 * ST.spec((h, 8), 707, 0.3 * ppm, 1.5 * ppm)[:, :1] * 0.5
+    rut = np.zeros((h, w), np.float32); berm = np.zeros((h, w), np.float32); dist = np.full((h, w), 9.0, np.float32)
+    for cc in c:
+        d = np.abs(xm - cc); dist = np.minimum(dist, d)
+        rut = np.maximum(rut, smoothstep(hw + 0.06, hw - 0.04, d))
+        berm = np.maximum(berm, np.exp(-((d - hw - 0.12) / 0.09) ** 2))
+    berm *= (1 - rut)
+    centre = smoothstep(0.52, 0.28, np.abs(xm - (c[0] + c[1]) / 2))           # hump between the ruts
+    verge = smoothstep(1.55, 0.75, np.minimum(xm, Wm - xm))
+    # rut floor: compacted, smooth, slightly darker; rounded cross profile
+    prof = np.maximum(np.cos(np.clip(dist / (hw + 0.05), 0, 1) * np.pi / 2), 0) ** 1.5
+    floor = blur(L['hgt'], 2.0) * 0.35 + mid * 1.2
+    hgt = lerp(L['hgt'], floor, rut * 0.85) - prof * rut * 55.0 + berm * (22 + 10 * mid) + centre * 30.0 + verge * 12.0
+    alb = L['alb'].copy()
+    # compacted rut floor: smooth, pale and dusty (pulverised surface), loose darker crumbs on the berms
+    packed = lerp(blur(alb, 2.0), srgb(ST.SOIL['dust']) * 0.92, 0.45) * (0.94 + 0.06 * mid[..., None]) * (0.97 + 0.04 * fine[..., None])
+    alb = lerp(alb, packed, rut * 0.9)
+    alb = alb * (1 - berm * 0.12)[..., None]
+    # tyre imprints: tractor lugs (chevrons, 22 per 4.5 m) in places, car tread (fine blocks) elsewhere
+    lugs = np.zeros((h, w), np.float32); car = np.zeros((h, w), np.float32)
+    nl = 22; pitch = h / nl
+    for side, cc in enumerate(c):
+        for j in range(nl):
+            y0 = j * pitch + side * pitch * 0.37
+            x0 = float(cc[int(y0) % h, 0]) * ppm
+            for s_ in (-1, 1):
+                p0 = (x0 + s_ * 0.02 * ppm, y0); p1 = (x0 + s_ * 0.19 * ppm, y0 + 0.07 * ppm)
+                ST.wrap_lines(lugs, [np.array([p0, p1])], 1.0, int(0.035 * ppm * 4) // 4 or 1)
+        nc_ = 150; cp = h / nc_
+        for j in range(nc_):
+            y0 = j * cp
+            x0 = float(cc[int(y0) % h, 0]) * ppm + 0.03 * ppm * (1 if side else -1)
+            for k in range(-3, 4):
+                xa = x0 + k * 0.026 * ppm + (0.008 * ppm if j % 2 else 0)
+                ST.wrap_fill(car, np.array([(xa - 0.008 * ppm, y0), (xa + 0.008 * ppm, y0), (xa + 0.008 * ppm, y0 + cp * 0.55), (xa - 0.008 * ppm, y0 + cp * 0.55)]), 1.0)
+    vis = ST.spec((h, 8), 708, 0.4 * ppm, 2.0 * ppm)[:, :1]
+    lug_on = smoothstep(-0.2, 0.4, vis) * rut; car_on = smoothstep(0.3, -0.3, vis) * rut * 0.8
+    lugs = blur(np.clip(lugs, 0, 1), 1.0) * lug_on * smoothstep(-0.6, 0.2, fine * 0.5 + mid * 0.5)
+    car = blur(np.clip(car, 0, 1), 0.7) * car_on * smoothstep(-0.8, 0.0, mid)
+    hgt -= lugs * 14.0 + car * 4.0
+    alb = alb * (1 - lugs * 0.32 - car * 0.2)[..., None]
+    edge = np.clip(blur(lugs, 2.0) - lugs, 0, 1)            # soil squeezed up between the lugs catches the light
+    alb = lerp(alb, srgb(ST.SOIL['dust']), edge * 0.5)
+    # damp / puddle-darkened patches and dried mud crust in the rut floors
+    pz = ST.spec((h, w), 709, 0.15 * ppm, 1.2 * ppm, 2.2)
+    pud = smoothstep(0.6, 1.6, pz) * smoothstep(0.4, 0.9, rut)
+    dried = smoothstep(0.1, 0.6, pz) * (1 - pud) * rut
+    cr = np.exp(-((lambda F: F[1] - F[0])(ST.cells((h, w), 0.06 * ppm, 710, warp=0.004 * ppm, lam=0.03 * ppm)) / (0.002 * ppm)) ** 2)
+    alb = lerp(alb, blur(L['alb'], 1.5) * np.array([0.74, 0.72, 0.7], np.float32), pud * 0.85)
+    alb = lerp(alb, srgb('#2a2119'), cr * dried * 0.7)
+    hgt = lerp(hgt, blur(hgt, 3.0), pud) - cr * dried * 5.0
+    # grass + weeds on the hump and verges (late-summer olive / straw), sparse tufts on the shoulders
+    gmask = np.clip(centre * 0.95 + verge + 0.04 * smoothstep(0.3, 1.0, mid), 0, 1) * (1 - rut) * (1 - berm * 0.5)
+    g1, t1 = strokes(int(26000 * w / S), 711, (5, 16), -np.pi / 2, 1.3, shape=(h, w), mask=lambda x, y: gmask[int(y) % h, int(x) % w])
+    g2, t2 = strokes(int(9000 * w / S), 712, (3, 9), 0.0, 3.0, shape=(h, w), mask=lambda x, y: gmask[int(y) % h, int(x) % w])
+    gcol = colorize(t1, [(0, '#4e5233'), (0.35, '#666640'), (0.7, '#857c4f'), (1, '#a39467')])
+    under = colorize(norm01(mid), [(0, '#3f3f2a'), (1, '#5a5638')])
+    alb = lerp(alb, under, gmask * 0.55)
     alb = lerp(alb, gcol, g1 * 0.9)
-    # pebbles pushed out of the ruts
-    peb, pt, _ = clods(708, 5000, 1.5, 4.5, warp=1.0)
-    pm = smoothstep(0.2, 0.6, peb) * (pt > 0.8) * (1 - gmask)
-    alb = lerp(alb, colorize(pt, [(0, '#6e675c'), (1, '#9a9284')]), pm * 0.85)
-    hgt += g1 * 1.3 + pm * 1.5
-    rough = np.clip(0.95 - rut * 0.05, 0, 1)
-    save('track', alb, hgt, rough, 1.0, 0.15)
+    alb = lerp(alb, colorize(t2, [(0, '#57502f'), (1, '#8a7a50')]), g2 * 0.7)
+    hgt += (g1 * 6.0 + g2 * 3.0) * gmask
+    alb, hp, ao = ST.finish(alb, hgt, mm, shade=0.25)
+    rough = np.clip(L['rough'] - rut * 0.04 - pud * 0.35, 0.25, 1)
+    nrm = normal_from_height(hp, 0.9).astype(np.float32) / 127.5 - 1
+    nrm = blur(nrm, 0.5)
+    rs = lambda a: cv2.resize(a, (S, S), interpolation=cv2.INTER_AREA)
+    nrm = rs(nrm); nrm /= np.linalg.norm(nrm, axis=-1, keepdims=True) + 1e-6
+    Image.fromarray(to8(rs(alb))).save(os.path.join(OUT, 'track_albedo.jpg'), quality=90, optimize=True)
+    Image.fromarray(to8(nrm * 0.5 + 0.5)).save(os.path.join(OUT, 'track_normal.jpg'), quality=90, optimize=True)
+    orm = to8(np.stack([rs(ao), rs(rough), np.zeros((h, S), np.float32)], -1))
+    Image.fromarray(orm).resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, 'track_orm.jpg'), quality=90, optimize=True)
     print('track', round(time.time() - t0, 1))
 
 

@@ -11,6 +11,7 @@ from meshlib import reset_scene, export_glb, make_material, REPO
 
 KIT = os.path.join(REPO, 'assets', 'env', 'panel_kit.glb')
 STATES = ['intact', 'damaged', 'holed', 'destroyed']
+H_ = 2.8
 C = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))   # glTF -> Blender
 Ci = C.inverted()
 
@@ -30,7 +31,7 @@ def load_kit():
         o.hide_set(True); o.hide_render = True
     offs = {}
     for name, p in pieces.items():
-        base = re.sub(r'_(intact|damaged|holed|destroyed)$', '', name)
+        base = re.sub(r'_(intact|damaged|holed|destroyed)(_v\d+)?$', '', name)
         ref = pieces.get(base + '_intact', p)
         if base not in offs:
             mn, mx = ref['V'].min(0), ref['V'].max(0); sz = mx - mn
@@ -64,12 +65,14 @@ def section(pieces, coll, states_fn, modules=4, floors=5, depth=3, ends=True, ba
     L, D = modules * W, depth * W
     for f in range(floors):
         for c in range(modules):
-            st = states_fn(c, f)
+            sv = states_fn(c, f)          # int state or 'holed_v2'-style suffix (damage variants)
+            suf = sv if isinstance(sv, str) else STATES[sv]
+            st = STATES.index(suf.split('_')[0])
             bal = f > 0 and c in balcony_cols
             t = 'wall_balcony' if bal else 'wall_window'
             if f == 0 and c == entrance_col:
                 t = 'wall_entrance'
-            place(pieces, f'{t}_{STATES[st]}', (-L / 2 + c * W, f * H, D / 2), 0, coll)
+            place(pieces, f'{t}_{suf}', (-L / 2 + c * W, f * H, D / 2), 0, coll)
             if bal and st < 2:
                 place(pieces, 'balcony_slab', (-L / 2 + c * W, f * H, D / 2), 0, coll)
             if t == 'wall_entrance':
@@ -78,10 +81,12 @@ def section(pieces, coll, states_fn, modules=4, floors=5, depth=3, ends=True, ba
             place(pieces, f'wall_window_{STATES[min(st, 1)]}', (-L / 2 + (c + 1) * W, f * H, -D / 2), math.pi, coll)
         if ends:
             for j in range(depth):
-                place(pieces, f'wall_blank_end_{STATES[states_fn(modules, f) if j == 0 else 0]}', (L / 2, f * H, D / 2 - j * W), math.pi / 2, coll)
+                sv = states_fn(modules, f) if j == 0 else 0
+                place(pieces, f'wall_blank_end_{sv if isinstance(sv, str) else STATES[sv]}', (L / 2, f * H, D / 2 - j * W), math.pi / 2, coll)
                 place(pieces, 'wall_blank_end_intact', (-L / 2, f * H, -D / 2 + j * W), -math.pi / 2, coll)
+    sn = lambda v: STATES.index(v.split('_')[0]) if isinstance(v, str) else v
     for c in range(modules):
-        if states_fn(c, floors - 1) < 3:
+        if sn(states_fn(c, floors - 1)) < 3:
             place(pieces, 'roof_parapet', (-L / 2 + c * W, floors * H, D / 2), 0, coll)
         place(pieces, 'roof_parapet', (-L / 2 + (c + 1) * W, floors * H, -D / 2), math.pi, coll)
     # interior like buildings.js buildInterior(): floor slabs + dark volume, roof box
@@ -97,7 +102,7 @@ def section(pieces, coll, states_fn, modules=4, floors=5, depth=3, ends=True, ba
         coll.objects.link(o)
     for c in range(modules):
         for f in range(floors):
-            if states_fn(c, f) == 3 and states_fn(c, min(floors - 1, f + 1)) == 3 and f >= floors - 2:
+            if sn(states_fn(c, f)) == 3 and sn(states_fn(c, min(floors - 1, f + 1))) == 3 and f >= floors - 2:
                 continue
             cx = -L / 2 + (c + 0.5) * W
             box(cx, f * H + H - 0.11, 0, W, 0.22, D - 0.2, slabm)
@@ -112,12 +117,14 @@ def section_brick(pieces, coll, states_fn, pre='brick_', modules=4, floors=5, de
     signs = signs or {}
     for f in range(floors):
         for c in range(modules):
-            st = states_fn(c, f)
+            sv = states_fn(c, f)
+            suf = sv if isinstance(sv, str) else STATES[sv]
+            st = STATES.index(suf.split('_')[0])
             bal = f > 0 and c in (1, 2)
             t = pre + ('balcony' if bal else 'window')
             if f == 0 and c in ground:
                 t = ground[c]
-            place(pieces, f'{t}_{STATES[st]}', (-L / 2 + c * W, f * H, D / 2), 0, coll)
+            place(pieces, f'{t}_{suf}', (-L / 2 + c * W, f * H, D / 2), 0, coll)
             if bal and st < 2:
                 place(pieces, 'balcony_slab' if c == 1 else 'balcony_slab_open', (-L / 2 + c * W, f * H, D / 2), 0, coll)
             if t.endswith('entrance'):
@@ -126,11 +133,13 @@ def section_brick(pieces, coll, states_fn, pre='brick_', modules=4, floors=5, de
                 place(pieces, f'{signs[c]}_{"damaged" if st >= 1 else "intact"}', (-L / 2 + c * W, 2.14, D / 2), 0, coll)
             place(pieces, f'{pre}window_{STATES[min(st, 1)]}', (-L / 2 + (c + 1) * W, f * H, -D / 2), math.pi, coll)
         for j in range(depth):
-            place(pieces, f'{pre}blank_end_{STATES[states_fn(modules, f) if j == 0 else 0]}', (L / 2, f * H, D / 2 - j * W), math.pi / 2, coll)
+            sv = states_fn(modules, f) if j == 0 else 0
+            place(pieces, f'{pre}blank_end_{sv if isinstance(sv, str) else STATES[sv]}', (L / 2, f * H, D / 2 - j * W), math.pi / 2, coll)
             place(pieces, f'{pre}blank_end_intact', (-L / 2, f * H, -D / 2 + j * W), -math.pi / 2, coll)
     par = pre + 'parapet'
+    sn = lambda v: STATES.index(v.split('_')[0]) if isinstance(v, str) else v
     for c in range(modules):
-        if states_fn(c, floors - 1) < 3:
+        if sn(states_fn(c, floors - 1)) < 3:
             place(pieces, par, (-L / 2 + c * W, floors * H, D / 2), 0, coll)
         place(pieces, par, (-L / 2 + (c + 1) * W, floors * H, -D / 2), math.pi, coll)
     for j in range(depth):
@@ -164,6 +173,36 @@ def main():
     elif which == 'section2':
         S = {(1, 1): 1, (1, 2): 2, (2, 2): 1, (0, 0): 1}
         section(pieces, coll, lambda c, f: S.get((c, f), 0), entrance_col=2)
+    elif which.startswith('variants_'):
+        # holed v1..v3 (front row) and destroyed v1..v3 (back row) with the game's interior slab + dark box behind
+        t = which[len('variants_'):]
+        slabm = make_material('slab_tmp', color=(0.25, 0.24, 0.22, 1), rough=0.95)
+        dark = make_material('dark_tmp', color=(0.008, 0.007, 0.006, 1), rough=1)
+        for row, st in enumerate(('holed', 'destroyed')):
+            for i, v in enumerate(('', '_v2', '_v3')):
+                x, z = (row * 3 + i) * 3.8, 0.0
+                place(pieces, f'{t}_{st}{v}', (x, 0, z), 0, coll)
+                for (cy, sy, m, cz, sz) in ((H_ - 0.11, 0.22, slabm, z - 1.6, 3.0), (H_ / 2, H_ - 0.24, dark, z - 2.1, 1.8)):
+                    bpy.ops.mesh.primitive_cube_add(size=1); o = bpy.context.active_object
+                    o.scale = (3.2, sz, sy); o.location = (x + 1.6, -cz, cy)
+                    o.data.materials.append(m)
+                    for c_ in o.users_collection: c_.objects.unlink(o)
+                    coll.objects.link(o)
+    elif which == 'vsection':
+        S = {(0, 0): 'holed_v2', (1, 0): 0, (2, 0): 'destroyed_v3', (3, 0): 1,
+             (0, 1): 1, (1, 1): 'holed_v3', (2, 1): 'destroyed_v2', (3, 1): 'holed',
+             (0, 2): 'destroyed_v2', (1, 2): 2, (2, 2): 'destroyed', (3, 2): 'holed_v2',
+             (0, 3): 'holed_v3', (1, 3): 'destroyed_v3', (2, 3): 'destroyed_v2', (3, 3): 'destroyed_v3',
+             (0, 4): 1, (1, 4): 'holed_v2', (2, 4): 'destroyed_v3', (3, 4): 'destroyed_v2', (4, 4): 'destroyed_v2', (4, 3): 'holed_v3', (4, 2): 'holed_v2', (4, 1): 'destroyed_v3'}
+        section(pieces, coll, lambda c, f: S.get((c, f), 0), entrance_col=None)
+    elif which.startswith('vbrick_'):
+        pre = which[len('vbrick_'):] + '_'
+        S = {(0, 0): 'holed_v2', (2, 0): 1, (3, 1): 'destroyed_v2', (0, 2): 'holed_v3', (1, 3): 'destroyed_v3', (2, 2): 'destroyed_v2',
+             (2, 3): 'destroyed', (2, 4): 'destroyed_v3', (3, 4): 1, (4, 3): 'holed_v2', (0, 4): 'holed_v3', (1, 1): 'holed', (3, 2): 'destroyed_v3'}
+        sv = lambda c, f: S.get((c, f), 0)
+        section_brick(pieces, coll, sv, pre=pre,
+                      ground={0: 'wall_shopfront', 1: pre + 'entrance', 2: 'wall_shopfront_shutter'},
+                      signs={})
     elif which.startswith('gallery_'):
         t = which[len('gallery_'):]
         for i, s in enumerate(STATES):
