@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, '../../../assets/soldiers')
 CACHE = os.path.join(HERE, '.cache')
-WEAPONS = ('ak74m', 'pkm', 'rpg7', 'rpg22', 'ak12', 'ak74m_optic', 'grenade_f1', 'grenade_rgd5')
+WEAPONS = ('ak74m', 'pkm', 'rpg7', 'rpg22', 'ak12', 'ak74m_optic', 'grenade_f1', 'grenade_rgd5', 'pm')
 
 
 def main():

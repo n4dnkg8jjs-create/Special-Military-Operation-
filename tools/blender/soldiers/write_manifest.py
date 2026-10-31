@@ -68,6 +68,9 @@ def main():
                            'barrel carry handle, slotted flash hider, skeleton stock, 100-rd box with belt feeding the tray, sling',
                     'rpg7': 'RPG-7V: birch heat guards with clamp bands, trigger group + pistol grip, plain rear hand grip, folding iron sights, PGO-7 optic on the left bracket, flared '
                             'venturi, sling, PG-7V (85 mm) round loaded',
+                    'pm': 'Makarov PM (9x18): rounded blued slide with rear serrations and ejection port, fixed barrel, exposed checkered hammer, slide-mounted '
+                          'safety/decocker (left), slide stop, hinged trigger guard, wrap-around red-brown bakelite grip with star emblem and checkering, heel '
+                          'magazine catch, lanyard loop; grip raked 18.7 deg like the AK pistol grip so weapon_socket holds it with the rifle hand pose',
                     'texturing': 'one PBR atlas per weapon (base colour / ORM / tangent normal, JPEG), procedural with edge wear, cavity grime, '
                                  'stamped/moulded detail and stencils in the normal + colour maps; ~1100-1400 px/m on rifles'},
     }
@@ -106,6 +109,16 @@ def main():
         clean = lambda d: {k: v for k, v in d.items()}
         out[f'soldier_{fac}']['combos'] = [clean(d) for d in cb['combos']]
         out[f'soldier_{fac}']['assault_combos'] = [clean(d) for d in cb['assault_combos']]
+        out[f'soldier_{fac}']['crew_combos'] = [clean(d) for d in cb.get('crew_combos', [])]
+        out[f'soldier_{fac}']['crew_notes'] = (
+            'Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, '
+            f'ONE material each (soldier_atlas_crew_{fac}: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per '
+            'crewman. Look: one-piece crew coverall (' + ('RU: olive-khaki or EMR' if fac == 'ru' else 'UA: MM-14 or olive') + ') with full-length front zip, '
+            'slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded '
+            'tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with '
+            'the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or '
+            'bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle '
+            '(pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).')
         out[f'soldier_{fac}']['combo_notes'] = (
             'Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material '
             f'soldier_atlas_{fac} (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part '
@@ -136,7 +149,11 @@ def main():
         'drag_wounded': {'weapon': 'weapon_socket_back'}, 'wounded_ground': {'weapon': 'drop or weapon_socket_back'},
         'wounded_crawl': {'weapon': 'drop or weapon_socket_back'}, 'being_dragged': {'weapon': 'drop or weapon_socket_back'},
         'wounded_sit': {'weapon': 'drop or weapon_socket_back'},
+        'prone_crawl': {'weapon': 'weapon_socket (right hand; the rifle lies on the right forearm, the left hand is free)'},
     }
+    for k in ('pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim'):
+        events[k] = {'weapon': 'pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)'}
+    events.setdefault('pistol_fire', {})['shot'] = 0.0
     for k, v in events.items():
         if k in cl:
             cl[k]['events'] = v
@@ -145,6 +162,8 @@ def main():
             cl[name]['events'] = dict(cl[name].get('events', {}), **c['events'])
         if c.get('seat'):
             cl[name]['seat_type'] = c['seat']
+        if c.get('hatch'):
+            cl[name]['hatch'] = c['hatch']
     out['soldier_anims'] = dict(file='soldier_anims.glb', size_bytes=os.path.getsize(f'{ASSETS}/soldier_anims.glb'),
                                 contents='skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear',
                                 in_place='loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest',
@@ -197,12 +216,39 @@ def main():
                                          '(Spine1) at (0, 0.50, 0.42) in the casualty frame = (0, 0.50, 0.58) in the dragger frame (both hands).',
                                     treat_wounded='medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root',
                                     wounded_sit='back against a wall plane 0.30 m behind the root (-Z)'),
+                                crawls=dict(
+                                    prone_crawl='military low crawl ("po-plastunski"), rebuilt: body flat on the ground (bare torso ~0.6 cm above it in every frame), '
+                                                'rifle lying on the right forearm (right hand on the pistol grip = weapon_socket, left hand free), contralateral cycle '
+                                                '(right elbow + left leg drive, then left elbow + right leg), frog-kick legs: the planted boot is still in the world '
+                                                '(slides back at exactly ground_speed_mps in the in-place clip), the recovering leg slides forward with the knee out, '
+                                                'boots never lifted; the chest rises / rolls over the pulling elbow so the elbow stays planted (< 5 cm creep).',
+                                    wounded_crawl='belly drag, rebuilt: palms reach, plant (still in the world) and pull alternately, left leg short frog push, '
+                                                  'right leg dead (dragged, boot rolled out), head up; ground_speed_mps 0.24.'),
+                                pistol=dict(
+                                    clips='pistol_idle (two-handed low ready) / pistol_aim (isosceles, right eye on the sight line) / pistol_fire (one shot, '
+                                          '0.267 s, first/last frame == pistol_aim frame 0, loops for follow-up shots, event shot at 0.0) / pistol_walk '
+                                          '(aiming walk 1.47 m/s, gun stabilised) / pistol_run (compressed ready 4.17 m/s) / pistol_crouch_aim (kneeling aim)',
+                                    socket='pm.glb parented to weapon_socket with identity (same as the rifles); the support palm sits on pm grip_L',
+                                    note='the crew presets have no rifle: parent pm.glb to weapon_socket for these clips (holster stays on the belt)'),
+                                hatch_exit=dict(
+                                    clip='hatch_exit, 2.7 s, plays once, root motion in the Hips track (vertical + horizontal), no weapon in the hands',
+                                    frame='clip space = the soldier root at the END of the clip: on the ground beside the vehicle, facing away from it (+Z). '
+                                          'Authored for a T-72-sized vehicle and its commander hatch: rim centre at (0, 2.25, -1.80) relative to that root, hatch '
+                                          'radius 0.33 m, turret roof y 2.20 up to z -1.15, fender / hull deck y 1.45 up to z -0.42, crewman starts standing on '
+                                          'the inside floor at y 0.42 (hips 0.92 m below the rim).',
+                                    game='place the soldier root at R = hatch_centre_world + exit_dir * 1.80 at ground height (y = ground), heading = exit_dir '
+                                         '(perpendicular to the vehicle side, pointing away from it), then play hatch_exit once with no further root movement; '
+                                         'when it ends the soldier stands at R. For a hatch at height H != 2.25 add (H - 2.25) to the root y for t < events.on_fender '
+                                         'and blend it to 0 by events.landed (or accept the mismatch; the clip is tuned for T-72 / BTR-82A turret heights).',
+                                    events='hands_on_rim [0, 0.66], hips_clear_rim 0.50, knee_on_deck 0.70, on_deck 1.01, step_off 1.08, on_fender 1.37, '
+                                           'jump 1.60, landed 2.19 (s)'),
                                 sources='CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. '
+                                        'Pistol walk / run reuse 07_01 / 16_45 legs. Hand-keyed + IK: crawls, hatch_exit, pistol aim / idle / fire. '
                                         'Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. '
                                         'Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.',
                                 clips=cl)
     wi = json.load(open(f'{CACHE}/weapons_info.json'))
-    for w in ('ak74m', 'pkm', 'rpg7', 'rpg22', 'ak12', 'ak74m_optic', 'grenade_f1', 'grenade_rgd5'):
+    for w in ('ak74m', 'pkm', 'rpg7', 'rpg22', 'ak12', 'ak74m_optic', 'grenade_f1', 'grenade_rgd5', 'pm'):
         if not os.path.exists(f'{ASSETS}/{w}.glb') or w not in wi:
             continue
         g, tris, mats = read_glb(f'{ASSETS}/{w}.glb')
@@ -232,6 +278,11 @@ def main():
         if w in out:
             out[w]['conventions'] = ('origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), '
                                      'pull ring on +Z; empties centre, fuze, pin_ring')
+    if 'pm' in out:
+        out['pm']['description'] = ('Makarov PM (9x18), used by both sides (crew sidearm): blued slide / frame, bakelite grip; one mesh + LOD1, one atlas; '
+                                    'origin = palm centre on the grip, +Z muzzle; grip_L = support (left) palm on the left grip panel for the two-handed clips; '
+                                    'extra empties: ejection (port, right), holster_ref')
+        out['pm']['hold'] = 'parent to weapon_socket (RightHand) with identity for pistol_* clips'
     out['deviations'] = [
         'Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.',
         'Extra nodes beyond the contract: gloves, boots, kneepads, legband_L, pouches_front/side/back split, helmet_B per faction, *_LOD1 for every mesh node.',
@@ -241,6 +292,8 @@ def main():
         'Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris.',
         'Assault presets carry ~28-30k tris (armour + 4 extra pouch groups + headset/balaclava); use their _LOD1 (~8k) beyond close range.',
         'GLBs use KHR_mesh_quantization (required) for int8 normals; weights are normalized u8, atlas UVs normalized u16 (all native in three.js GLTFLoader).',
+        'Vehicle crew: crew_combo_N presets live in soldier_ru.glb / soldier_ua.glb with their own atlas material soldier_atlas_crew_<fac>; no per-part crew nodes.',
+        'prone_crawl holds the rifle in the right hand only (left hand free) - it no longer uses the prone support grip.',
     ]
     json.dump(out, open(f'{ASSETS}/manifest.json', 'w'), indent=1)
     print('manifest written', {k: out[f'soldier_{k}']['default_config_tris'] for k in ('ru', 'ua')})

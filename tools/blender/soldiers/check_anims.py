@@ -55,17 +55,41 @@ DEATHS = ['death_crumple', 'death_front', 'death_back']
 LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone', 'wounded_crawl', 'wounded_ground']   # trunk rests on the ground
 # deliberate fast moves where > 25 deg/frame is allowed (clip -> (t0, t1, limit deg))
 SNAP = {'hit_react': (0.0, 0.15, 40.0), 'throw_grenade_window': [(0.40, 0.70, 30.0), (0.70, 0.95, 45.0)], 'death_front': (0.75, 0.95, 40.0), 'death_back': (0.0, 9, 40.0), 'throw_grenade': (0.0, 9, 40.0),
-        'death_crumple': (0.25, 1.4, 35.0), 'dismount_jump': [(0.25, 0.55, 30.0), (0.80, 0.95, 35.0)]}   # push-off (palm planted while the trunk
+        'death_crumple': (0.25, 1.4, 35.0), 'dismount_jump': [(0.25, 0.55, 30.0), (0.80, 0.95, 35.0)],
+        'hatch_exit': [(0.25, 0.45, 60.0), (0.48, 0.62, 50.0), (0.62, 0.80, 60.0), (0.80, 1.03, 32.0), (0.95, 1.12, 50.0), (1.35, 1.45, 50.0), (1.56, 1.70, 35.0), (2.15, 2.3, 35.0)]}   # hatch_exit: shoulders pass over the hands on the rim (pull -> press), hands leave the roof, landing   # push-off (palm planted while the trunk
 #                                                                            passes over it) and landing impact
 NO_GROUND = {'ride_sit_edge', 'ride_sit_deck', 'ride_aim'}   # seat frame, no ground under the root
+# ---- vehicle crew (clips_crew.py): PM pistol set + hatch_exit; rebuilt crawls (clips_crawl.py)
+PISTOL = ['pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim']
+PM = dict(grip_L=np.array([0.0235, -0.0140, 0.0040]), sight=np.array([0, 0.0695, -0.0345]), front=np.array([0, 0.0702, 0.1015]))   # weapons_info overrides
+PISTOL_SIGHT = {'pistol_aim': None, 'pistol_crouch_aim': None, 'pistol_fire': [0, -1]}      # right eye on the PM sight line (frames; None = all)
+STAND += ['pistol_idle', 'pistol_aim', 'pistol_fire']
+KNEEL += ['pistol_crouch_aim']
+LOCO += ['pistol_walk', 'pistol_run']
+# planted contacts of the crawls (clip -> list of (point, t0, t1, tol m)); point = joint name or 'palmL'/'palmR'/'soleL'/'soleR';
+# 'world' slide = horizontal travel after adding ground_speed * t (the game moves the root at that speed)
+CRAWL = {'prone_crawl': [('soleL', 0.0, 0.70, 0.015), ('soleR', 0.70, 1.40, 0.015), ('RightForeArm', 0.05, 0.65, 0.05), ('LeftForeArm', 0.75, 1.35, 0.05)],
+         'wounded_crawl': [('palmR', 0.0, 1.0, 0.015), ('palmL', 1.0, 2.0, 0.015), ('soleL', 0.0, 1.0, 0.015)]}
+CRAWL_FLAT = 0.03          # crawls: the bare torso stays within 3 cm of the ground in every frame
+CRAWL_FEET_UP = 0.06       # crawls: boots never lifted more than 6 cm (sliding on the ground)
+# hatch_exit: (foot, t0, t1, floor y) planted windows, hands on the rim, vehicle blocks the body may not enter (clip frame)
+HATCH = dict(feet=[('Left', 0.0, 0.12, 0.42), ('Right', 0.0, 0.11, 0.42), ('Left', 0.88, 1.08, 2.20), ('Right', 1.02, 1.08, 2.20),
+                   ('Left', 1.37, 1.60, 1.45), ('Right', 1.37, 1.60, 1.45), ('Left', 2.19, 9, 0.0), ('Right', 2.19, 9, 0.0)],
+             rim=(0.0, 0.54, 2.272), hole=(0.0, -1.80, 0.36),
+             blocks=[(-3.45, -1.15, 1.45, 2.20), (-3.9, -0.42, 0.0, 1.45)])        # (z0, z1, y0, y1): turret (minus the hatch hole), hull + fender
+
 CHEST_TORSO_SHRINK = 0.9
 
 
 def setup_consts():
     global GRIP_L, BUTT
-    wi = json.load(open(f'{CACHE}/weapons_info.json'))['ak74m']['empties']
+    W = json.load(open(f'{CACHE}/weapons_info.json'))
+    wi = W['ak74m']['empties']
     GRIP_L = np.array(wi['grip_L'][0]) + [0, -0.018, 0]
     BUTT = np.array(wi['stock_butt'][0]) + [0, 0.015, 0]
+    if 'pm' in W:
+        e = W['pm']['empties']
+        PM.update(grip_L=np.array(e['grip_L'][0]), sight=np.array(e['sight_rear'][0]), front=np.array(e['sight_front'][0]))
 
 
 def left_spec(name, F):
@@ -74,7 +98,9 @@ def left_spec(name, F):
     tg = np.full((F, 3), np.nan); rot = np.zeros(F, bool)
     if name in RIFLE_STD:
         tg[:] = GRIP_L; rot[:] = True
-    elif name in ('aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl'):
+    elif name in PISTOL:
+        tg[:] = PM['grip_L']              # support palm on the left grip panel (orientation: own hand pose, not the rifle grip)
+    elif name in ('aim_prone', 'fire_prone', 'prone_idle'):
         tg[:] = GRIP_L + [0, 0, -0.09]; rot[:] = True
     elif name in LAUNCH:
         tg[:] = L22['grip_L'] + [0, -0.016, 0]; rot[:] = True
@@ -299,7 +325,7 @@ def check_clip(name, model, pose, B, torso):
         r['handL_at'] = int(np.argmax(np.where(has, e, -1)))
         if r['handL'] > TOL['handL']:
             r['flags'].append(f'handL {r["handL"]:.3f} m f{r["handL_at"]}')
-        if chk_rot.any():
+        if chk_rot.any() and name not in PISTOL:
             sockL = qmul(gq[:, model.idx['LeftHand']], np.broadcast_to(model.R[model.idx['weapon_socket_L']], (F, 4)))
             ea = qang(sockL, gun_q)
             r['handLrot'] = round(float(ea[chk_rot].max()), 1)
@@ -323,8 +349,21 @@ def check_clip(name, model, pose, B, torso):
         r['butt'] = round(float(e[sel].max()), 4)
         if r['butt'] > TOL['butt']:
             r['flags'].append(f'butt {r["butt"]:.3f} m')
+    if name in PISTOL_SIGHT:
+        fr_ = range(F) if PISTOL_SIGHT[name] is None else [f % F for f in PISTOL_SIGHT[name]]
+        fr_ = np.array(list(fr_))
+        eye = world_pt(pose, model, 'Head', model.T[model.idx['aim_eye_R']])[fr_]
+        a = (gun_p + qrot(gun_q, np.broadcast_to(PM['sight'], (F, 3))))[fr_]; b = (gun_p + qrot(gun_q, np.broadcast_to(PM['front'], (F, 3))))[fr_]
+        d = (b - a) / np.linalg.norm(b - a, axis=1, keepdims=True)
+        off = np.linalg.norm(np.cross(eye - a, d), axis=1)
+        ang = np.degrees(np.arccos(np.clip(d[:, 2], -1, 1)))
+        r['sight'] = (round(float(off.max()), 4), round(float(ang.max()), 2))
+        if off.max() > 0.015 or ang.max() > 3.0:
+            r['flags'].append(f'pistol sight line off the right eye {off.max():.3f} m / {ang.max():.1f} deg from +Z')
     # ---- feet
     soles = {sd: sole_points(pose, model, B, sd) for sd in ('Left', 'Right')}
+    if name in CRAWL or name == 'hatch_exit':
+        crawl_hatch_checks(name, r, pose, model, B, soles, gun_q, gun_p)
     low = {sd: soles[sd][..., 1].min(1) for sd in soles}
     planted = {}
     if name in STAND:
@@ -368,11 +407,11 @@ def check_clip(name, model, pose, B, torso):
         fr['loco_min'] = (round(float(both.min()), 4), round(float(both.max()), 4))
         if both.min() < -TOL['pen']:
             r['flags'].append(f'loco foot penetrates {both.min():.3f}')
-        if name != 'run_rifle' and both.max() > TOL['float']:
+        if name not in ('run_rifle', 'pistol_run') and both.max() > TOL['float']:
             r['flags'].append(f'loco both feet up {both.max():.3f}')
     r['feet'] = fr
     # ---- whole-body ground penetration (bare torso surface from the uniform mesh + limb joints with radii + boot soles)
-    if name not in NO_GROUND:
+    if name not in NO_GROUND and name != 'hatch_exit':
         c = np.full(model.n, -9.0)
         for b, v in (('Neck', 0.06), ('Neck1', 0.06), ('Head', 0.10), ('LeftArm', 0.05), ('RightArm', 0.05), ('LeftForeArm', 0.04), ('RightForeArm', 0.04),
                      ('LeftHand', 0.025), ('RightHand', 0.025), ('LeftLeg', 0.045), ('RightLeg', 0.045), ('LeftUpLeg', 0.07), ('RightUpLeg', 0.07)):
@@ -429,7 +468,7 @@ def check_clip(name, model, pose, B, torso):
     if dep.max() > TOL['clip']:
         f, k = np.unravel_index(np.argmax(dep), dep.shape)
         r['flags'].append(f'limb in torso {dep.max():.3f} m ({labels[k]} f{f})')
-    if has.any() or name in ('throw_grenade_window',):
+    if (has.any() or name in ('throw_grenade_window',)) and name not in PISTOL:
         # weapon stock (between the grip and the butt) inside the torso
         gpts = np.stack([gun_p + qrot(gun_q, np.broadcast_to(BUTT * w, (F, 3))) for w in (0.35, 0.65)], 1)
         gd = torso.depth(pose, gpts, shrink=0.85)
@@ -439,6 +478,91 @@ def check_clip(name, model, pose, B, torso):
         if gd.max() > TOL['clip']:
             r['flags'].append(f'stock in torso {gd.max():.3f} m f{int(np.argmax(gd.max(1)))}')
     return r
+
+
+def crawl_hatch_checks(name, r, pose, model, B, soles, gun_q, gun_p):
+    F = pose['F']; t = np.arange(F) / FPS
+    gp = pose['gp']
+    sp = float(pose['extras'].get('speed') or 0.0)
+    if name in CRAWL:
+        res = {}
+        for pt, t0, t1, tol in CRAWL[name]:
+            m = (t >= t0 - 1e-6) & (t <= t1 + 1e-6)
+            if pt.startswith('sole'):
+                P = soles['Left' if pt[-1] == 'L' else 'Right'][m].mean(1)   # sole centroid (the boot is rigid)
+            elif pt.startswith('palm'):
+                sd = 'Left' if pt[-1] == 'L' else 'Right'
+                P = world_pt(pose, model, sd + 'Hand', B['palmL'] if sd == 'Left' else B['palmR'])[m]
+            else:
+                P = gp[m, model.idx[pt]]
+            P = P.copy(); P[:, 2] += sp * t[m]
+            slide = float(np.linalg.norm(P[:, [0, 2]] - P[:1, [0, 2]], axis=1).max())
+            res[pt] = round(slide, 4)
+            if slide > tol:
+                r['flags'].append(f'crawl contact {pt} slides {slide:.3f} m in the world ({t0}-{t1} s, tol {tol})')
+        r['crawl_slide'] = res
+        tv = Torso(B, model).verts(pose)[..., 1].min(1)
+        r['crawl_flat'] = (round(float(tv.min()), 4), round(float(tv.max()), 4))
+        if tv.max() > CRAWL_FLAT:
+            r['flags'].append(f'crawl body lifts {tv.max():.3f} m off the ground')
+        up = max(float(soles[sd][..., 1].min(1).max()) for sd in soles)
+        r['crawl_feet_up'] = round(up, 4)
+        if up > CRAWL_FEET_UP:
+            r['flags'].append(f'crawl boot lifted {up:.3f} m')
+        if name == 'prone_crawl':     # rifle (right hand) clear of the ground: magazine, muzzle, butt toe, handguard bottom
+            pts = np.array([[0, -0.22, 0.17], [0, 0.084, 0.621], [0, -0.09, -0.337], [0, -0.05, 0.40]])
+            low = min(float((gun_p + qrot(gun_q, np.broadcast_to(p_, (F, 3))))[:, 1].min()) for p_ in pts)
+            r['rifle_low'] = round(low, 4)
+            if low < -0.01:
+                r['flags'].append(f'rifle through the ground {low:.3f} m')
+    if name == 'hatch_exit':
+        H = HATCH
+        fr = []
+        for sd, t0, t1, fy in H['feet']:
+            m = (t >= t0 - 1e-6) & (t <= t1 + 1e-6)
+            S = soles[sd][m]
+            y = S[..., 1].min(1) - fy
+            P = S.mean(1)
+            slide = float(np.linalg.norm(P[:, [0, 2]] - P[:1, [0, 2]], axis=1).max())
+            fr.append((sd[0], t0, round(float(y.min()), 3), round(float(y.max()), 3), round(slide, 3)))
+            if y.min() < -TOL['pen'] or y.max() > 0.03 or slide > 0.03:
+                r['flags'].append(f'hatch {sd} foot on y={fy} ({t0}-{t1} s): {y.min():.3f}..{y.max():.3f} m, slide {slide:.3f} m')
+        r['hatch_feet'] = fr
+        t0, t1, ry = H['rim']
+        m = (t >= t0) & (t <= t1)
+        for sd in ('Left', 'Right'):
+            P = world_pt(pose, model, sd + 'Hand', B['palmL'] if sd == 'Left' else B['palmR'])[m]
+            dy = P[:, 1] - ry; slide = float(np.linalg.norm(P[:, [0, 2]] - P[:1, [0, 2]], axis=1).max())
+            r.setdefault('hatch_rim', {})[sd[0]] = (round(float(np.abs(dy).max()), 3), round(slide, 3))
+            if np.abs(dy).max() > 0.025 or slide > 0.02:
+                r['flags'].append(f'hatch {sd} palm off the rim: dy {np.abs(dy).max():.3f} m, slide {slide:.3f} m')
+        # body (joints with radii) inside the vehicle blocks (turret minus the hatch hole, hull / fender) or below the ground
+        rad = {b: 0.05 for b in BONES}
+        for b, v in (('Hips', 0.10), ('LowerBack', 0.10), ('Spine', 0.10), ('Spine1', 0.10), ('Head', 0.09), ('LeftHand', 0.03), ('RightHand', 0.03),
+                     ('LeftFoot', 0.04), ('RightFoot', 0.04), ('LeftToeBase', 0.025), ('RightToeBase', 0.025)):
+            rad[b] = v
+        worst = (0.0, '')
+        hx, hz, hr = H['hole']
+        for b in BONES:
+            if b.endswith(('Thumb', 'FingerBase', 'Finger1')) or b in ('LHipJoint', 'RHipJoint'):
+                continue
+            P = gp[:, model.idx[b]]; rr = rad[b]
+            inhole = np.hypot(P[:, 0] - hx, P[:, 2] - hz) < hr - rr * 0.5      # the hatch column (crew compartment below it) is open
+            for k, (z0, z1, y0, y1) in enumerate(H['blocks']):
+                inside = (P[:, 2] > z0) & (P[:, 2] < z1 + rr) & (P[:, 1] < y1 + rr) & (P[:, 1] > y0 - rr) & ~inhole
+                d = np.where(inside, np.minimum(y1 + rr - P[:, 1], z1 + rr - P[:, 2]), 0)
+                if d.max() > worst[0]:
+                    worst = (float(d.max()), f'{b} f{int(np.argmax(d))} block {k}')
+            g = np.maximum(rr * 0.6 - P[:, 1], 0)
+            if g.max() > worst[0]:
+                worst = (float(g.max()), f'{b} f{int(np.argmax(g))} ground')
+        r['hatch_pen'] = (round(worst[0], 3), worst[1])
+        if worst[0] > 0.035:
+            r['flags'].append(f'hatch_exit body inside the vehicle / ground {worst[0]:.3f} m ({worst[1]})')
+        end = gp[-1, model.idx['Hips']]
+        r['hatch_end_hips'] = [round(float(v), 3) for v in end]
+        if np.hypot(end[0], end[2]) > 0.03:
+            r['flags'].append(f'hatch_exit does not end over the root ({end[0]:.3f}, {end[2]:.3f})')
 
 
 def main():
@@ -460,7 +584,8 @@ def main():
         r = check_clip(n, model, model.pose(n), B, torso)
         res.append(r)
         status = 'OK  ' if not r['flags'] else 'FAIL'
-        extra = ' '.join(f'{k}={r[k]}' for k in ('rot', 'handL', 'handLrot', 'butt', 'clip', 'gun_clip', 'ground_pen', 'rest_gap', 'seam') if k in r)
+        extra = ' '.join(f'{k}={r[k]}' for k in ('rot', 'handL', 'handLrot', 'butt', 'sight', 'clip', 'gun_clip', 'ground_pen', 'rest_gap', 'seam', 'crawl_slide', 'crawl_flat',
+                                                     'crawl_feet_up', 'rifle_low', 'hatch_feet', 'hatch_rim', 'hatch_pen', 'hatch_end_hips') if k in r)
         print(f'{status} {n:24s} {r["dur"]:6.3f}s {"loop" if r["loop"] else "once"} {extra} feet={r["feet"]}')
         for f in r['flags']:
             print('       !', f)
@@ -469,7 +594,8 @@ def main():
              ('fire_peek_left', 0, 'peek_left', 0), ('fire_peek_right', 0, 'peek_right', 0), ('fire_peek_crouch_left', 0, 'peek_crouch_left', 0),
              ('fire_peek_crouch_right', 0, 'peek_crouch_right', 0), ('launcher_raise', -1, 'aim_launcher', 0),
              ('launcher_raise_kneel', -1, 'aim_launcher_kneel', 0), ('fire_launcher', 0, 'aim_launcher', 0), ('fire_launcher_kneel', 0, 'aim_launcher_kneel', 0),
-             ('reload_stand', 0, 'aim_stand', 0), ('reload_stand', -1, 'aim_stand', 0), ('reload_crouch', 0, 'aim_crouch', 0), ('reload_crouch', -1, 'aim_crouch', 0)]
+             ('reload_stand', 0, 'aim_stand', 0), ('reload_stand', -1, 'aim_stand', 0), ('reload_crouch', 0, 'aim_crouch', 0), ('reload_crouch', -1, 'aim_crouch', 0),
+             ('pistol_fire', 0, 'pistol_aim', 0), ('pistol_fire', -1, 'pistol_aim', 0)]
     print('\ntransitions (max local joint angle deg / root m):')
     J = [model.idx[b] for b in BONES if not b.endswith(('Thumb', 'FingerBase', 'Finger1'))]
     for a, fa, b, fb in PAIRS:

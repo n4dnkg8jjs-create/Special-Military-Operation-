@@ -1352,13 +1352,148 @@ def grenade_rgd5():
     return tris, _emp(emp), st
 
 
+# ================================================================================================= PM (Makarov) pistol
+# gun space: origin = palm centre on the grip (42 % down the back-raked grip axis, like the AK), +Z muzzle, +Y up, +X = left.
+# The grip rakes 18.7 deg like the AK pistol grip, so weapon_socket (RightHand) holds it with the rifle hand pose.
+PM_BORE = 0.0505
+PM_RAKE = np.radians(18.7)
+PM_Z0, PM_Z1 = -0.0405, 0.1125          # slide rear / muzzle face (161.5 mm overall incl. hammer)
+PM_SLIDE_Y0, PM_SLIDE_TOP = 0.0365, 0.0660
+PM_SLIDE_W = 0.0245
+
+
+def _grip_axis(y):
+    """z of the grip centre line at height y (centre at the origin, raked back going down)"""
+    return y * np.tan(PM_RAKE)
+
+
+def pat_star(r_out=1.0, r_in=0.42):
+    """five-pointed star (unit radius) mask"""
+    def f(x, y):
+        a = np.arctan2(x, y); r = np.hypot(x, y)
+        k = (a / (2 * np.pi / 5)) % 1.0
+        t = np.abs(k - 0.5) * 2                     # 1 at a point, 0 between points
+        rr = r_in + (r_out - r_in) * np.clip((t - 0.0), 0, 1) ** 1.6
+        return np.clip((rr - r) / 0.08, 0, 1)
+    return f
+
+
+def pm():
+    """Makarov PM (9x18): rounded blued slide with rear serrations, fixed barrel, exposed hammer, slide-mounted safety lever (left),
+    hinged trigger guard, wrap-around bakelite grip with star emblem + checkering, heel magazine catch, lanyard loop."""
+    B = Builder()
+    yb = PM_BORE
+    # ---- slide: loft along z, flat sides, rounded top, nose rounded down at the front
+    zs = [PM_Z0, PM_Z0 + 0.003, PM_Z0 + 0.010, 0.020, 0.080, 0.096, 0.104, 0.109, PM_Z1 - 0.0012, PM_Z1]
+    rings = []
+    for z in zs:
+        f = np.clip((z - 0.090) / (PM_Z1 - 0.090), 0, 1)
+        top = PM_SLIDE_TOP - 0.0075 * f ** 1.7
+        bot = PM_SLIDE_Y0 + 0.0015 * f
+        w = PM_SLIDE_W - (0.0016 if z in (PM_Z0, PM_Z1) else 0.0) - 0.0018 * f
+        rr = 0.0095 - 0.002 * f
+        rings.append(ring_z(rrect(w, top - bot, rr, nc=3, cy=(top + bot) / 2, rb=0.0012)[:, :2], z))
+    B.loft(rings, 'blued', angle=38, bevel=0.0, wn=False)
+    XLs, XRs = PM_SLIDE_W / 2, -PM_SLIDE_W / 2
+    for sx in (1, -1):   # rear serrations (vertical grooves) on both sides
+        B.fx.append(fx_pattern((sx * (PM_SLIDE_W / 2), 0.0505, -0.0245), sx * XL, UP, 0.024, 0.0195, pat_ribs(0.0021, 0.42, 0), depth=0.0005,
+                               kinds=['blued'], facing=0.6))
+        B.fx.append(fx_line((sx * (PM_SLIDE_W / 2), PM_SLIDE_Y0 + 0.0012, -0.038), (sx * (PM_SLIDE_W / 2), PM_SLIDE_Y0 + 0.0012, 0.108), sx * XL, 0.0010,
+                            depth=0.00035, kinds=['blued'], facing=0.5))
+    # ejection port (right) with the barrel hood showing, bore at the muzzle, front/rear sight + notch
+    B.fx.append(fx_rect((XRs, 0.0565, 0.0145), XR, UP, 0.027, 0.0105, depth=0.003, kinds=['blued'], col='#0a0a0a', colA=0.9, radius=0.25, edge=0.1, facing=0.5))
+    B.fx.append(fx_rect((XRs, 0.0545, 0.0145), XR, UP, 0.022, 0.004, depth=0.0, mode='flat', kinds=['blued'], col='#6d7073', colA=0.9, metal=1.0, rough=0.3,
+                        edge=0.3, facing=0.5))
+    B.fx.append(fx_rect((0, yb, PM_Z1), FW, UP, 0.0092, 0.0092, depth=0.003, kinds=['blued'], col='#030303', colA=0.98, radius=1.0, facing=0.6))
+    B.fx.append(fx_rect((0, yb, PM_Z1), FW, UP, 0.0135, 0.0135, depth=0.0004, mode='frame', kinds=['blued'], radius=1.0, facing=0.6))
+    B.box((0, PM_SLIDE_TOP - 0.0015 + 0.0028, 0.1015), (0.0028, 0.0056, 0.0062), 'blued', bevel=0.0007, seg=1)            # front blade
+    B.box((0, PM_SLIDE_TOP + 0.0012, -0.0325), (0.0128, 0.0048, 0.0055), 'blued', bevel=0.0007, seg=1)                     # rear sight
+    B.fx.append(fx_rect((0, PM_SLIDE_TOP + 0.0030, -0.0353), BK, UP, 0.0026, 0.003, depth=0.0008, kinds=['blued'], col='#040404', colA=0.9, radius=0.0, facing=0.5))
+    # markings: left side serial + arsenal mark, right side 'star in triangle' proof mark
+    B.fx.append(fx_text('ТМ 1985', (XLs, 0.0525, 0.050), XL, UP, 0.0032, col='#9c9ea0', colA=0.3, depth=-0.0001, kinds=['blued'], facing=0.5))
+    B.fx.append(fx_text('★', (XRs, 0.0500, 0.050), XR, UP, 0.0034, col='#9c9ea0', colA=0.25, depth=-0.0001, kinds=['blued'], facing=0.5))
+    # ---- frame: rails under the slide, dust cover around the fixed barrel, tang under the hammer
+    fr = [(-0.034, 0.0365), (0.094, 0.0365), (0.096, 0.032), (0.091, 0.0255), (0.040, 0.0255), (-0.006, 0.0255), (-0.022, 0.030), (-0.034, 0.033)]
+    B.profile(fr, 0.0222, 'blued', bevel=0.0012, seg=1)
+    B.revolve([(0.084, 0.0), (0.084, 0.0058), (PM_Z1 - 0.0025, 0.0058), (PM_Z1 - 0.0025, 0.0)], 'blued', c=(0, yb, 0), axis=FW, n=10)   # barrel crown (inside the bore)
+    for sx in (1, -1):   # pins
+        B.fx += fx_dots([(sx * 0.0111, 0.031, z) for z in (-0.026, 0.030, 0.064)], 0.0014, sx * XL, depth=0.0003, kinds=['blued'], wear=0.6)
+    # slide stop lever (left, above the trigger guard)
+    B.profile([(0.030, 0.0355), (0.066, 0.0345), (0.072, 0.0300), (0.066, 0.0285), (0.032, 0.0300)], 0.0018, 'blued', x0=0.0121, bevel=0.0004, seg=1)
+    # ---- hinged trigger guard (pivots at the front of the frame) + trigger
+    tg = [(0.0290, 0.0262), (0.0275, 0.0150), (0.0330, 0.0045), (0.0450, 0.0000), (0.0740, 0.0000), (0.0855, 0.0055), (0.0905, 0.0170), (0.0905, 0.0262),
+          (0.0860, 0.0262), (0.0850, 0.0180), (0.0805, 0.0090), (0.0720, 0.0055), (0.0470, 0.0055), (0.0375, 0.0090), (0.0335, 0.0160), (0.0340, 0.0262)]
+    B.profile(tg, 0.0100, 'blued', bevel=0.0010, seg=1, angle=50)
+    trig = [(0.0560, 0.0262), (0.0615, 0.0262), (0.0605, 0.0195), (0.0575, 0.0128), (0.0530, 0.0098), (0.0515, 0.0118), (0.0550, 0.0190)]
+    B.profile(trig, 0.0058, 'blued', bevel=0.0008, seg=1)
+    # ---- hammer (round spur, checkered) in the slot at the rear of the slide
+    hm = [(-0.0405, 0.0420), (-0.0350, 0.0420), (-0.0355, 0.0560), (-0.0405, 0.0640), (-0.0465, 0.0640), (-0.0490, 0.0600), (-0.0480, 0.0540)]
+    B.profile(hm, 0.0082, 'blued', bevel=0.0010, seg=1)
+    B.fx.append(fx_pattern((0, 0.0605, -0.0485), np.array([0, 0.35, -1.0]), UP, 0.0075, 0.007, pat_checker(0.0012), depth=0.0003, kinds=['blued'], facing=0.4))
+    # safety / decocking lever on the left rear of the slide (thumb tab points forward-down)
+    B.revolve([(0, 0), (0, 0.0042), (0.0016, 0.0042), (0.0022, 0.0)], 'blued', c=(XLs, 0.0548, -0.0300), axis=XL, n=10)
+    B.profile([(-0.0310, 0.0575), (-0.0275, 0.0575), (-0.0130, 0.0505), (-0.0120, 0.0470), (-0.0160, 0.0465), (-0.0310, 0.0520)], 0.0016, 'blued',
+              x0=XLs + 0.0016, bevel=0.0004, seg=1)
+    B.fx.append(fx_pattern((XLs + 0.0025, 0.0490, -0.0150), XL, UP, 0.004, 0.004, pat_ribs(0.0009, 0.5, 0), depth=0.0002, kinds=['blued'], facing=0.6))
+    # ---- wrap-around bakelite grip: superellipse sections along the raked axis
+    lv = [(0.030, 0.050, 0.0262), (0.024, 0.0505, 0.0300), (0.012, 0.0505, 0.0305), (-0.010, 0.0500, 0.0305), (-0.032, 0.0495, 0.0303),
+          (-0.046, 0.0490, 0.0298), (-0.051, 0.0480, 0.0285), (-0.053, 0.0440, 0.024)]
+    rings = []
+    for y, d, w in lv:
+        e = superell(w, d, n=16, p=2.9)
+        zc = -_grip_axis(-y) * -1 if False else _grip_axis(y)
+        rings.append(np.stack([e[:, 0], np.full(len(e), y), e[:, 1] + zc], 1))
+    B.loft(rings, 'bakelite', angle=48, bevel=0.0, wn=False)
+    gup = np.array([0, np.cos(PM_RAKE), np.sin(PM_RAKE)])
+    for sx in (1, -1):
+        c = np.array([sx * 0.0152, -0.012, _grip_axis(-0.012) - 0.002])
+        B.fx.append(fx_pattern(c, sx * XL, gup, 0.030, 0.050, pat_checker(0.0016), depth=0.00035, kinds=['bakelite'], facing=0.5))
+        B.fx.append(fx_rect(c, sx * XL, gup, 0.033, 0.054, depth=0.00035, mode='frame', kinds=['bakelite'], facing=0.5, radius=0.6))
+        cs = np.array([sx * 0.0153, 0.0175, _grip_axis(0.0175) - 0.001])
+        R = frame(sx * XL, gup)
+        def star(lu, lv, ln, f=pat_star()):
+            r = np.hypot(lu, lv)
+            ring_ = np.clip(1 - np.abs(r - 0.86) / 0.12, 0, 1)
+            s_ = f(lu * 1.25, lv * 1.25) * (r < 0.8)
+            disc = np.clip((0.98 - r) / 0.05, 0, 1)
+            return dict(h=0.0004 * ring_ + 0.00045 * s_ - 0.0002 * disc * (1 - s_), mul=1 - 0.12 * disc * (1 - s_))
+        B.fx.append(WT.Fx(cs, R, (0.0075, 0.0075, 0.006), star, facing=0.5, kinds=['bakelite']))
+    B.fx.append(fx_pattern(np.array([0, -0.010, _grip_axis(-0.010) - 0.0245]), np.array([0, np.sin(PM_RAKE), -np.cos(PM_RAKE)]), gup, 0.014, 0.05,
+                           pat_ribs(0.0022, 0.5, 1), depth=0.0003, kinds=['bakelite'], facing=0.5))
+    # grip screw (one, through the wrap-around panel, both sides)
+    for sx in (1, -1):
+        B.fx += fx_dots([np.array([sx * 0.0153, -0.040, _grip_axis(-0.040) + 0.004])], 0.0028, sx * XL, depth=0.0004, shape='ring', kinds=['bakelite'])
+    # ---- magazine floorplate, heel magazine catch, lanyard loop
+    zb = _grip_axis(-0.0545)
+    B.box((0, -0.0560, zb + 0.0005), (0.0205, 0.0035, 0.040), 'blued', bevel=0.0008, seg=1, rot=Rx(-PM_RAKE * 0.0))
+    B.box((0, -0.0548, zb - 0.0215), (0.010, 0.0060, 0.0060), 'blued', bevel=0.0010, seg=1)
+    lp = np.array([0.0085, -0.0515, zb - 0.0215])
+    B.revolve([(0, 0), (0, 0.0024), (0.0035, 0.0024), (0.0035, 0)], 'blued', c=lp, axis=XL, n=8)
+    ring = [lp + np.array([0.0058, -0.0055 * np.cos(a) - 0.002, 0.0055 * np.sin(a)]) for a in np.linspace(0, 2 * np.pi, 9)[:-1]]
+    B.pipe(np.array(ring), 0.0011, 'blued', n=4, closed=True)
+    emp = {'muzzle': (np.array([0, yb, PM_Z1]), [0, 0, 0, 1]), 'grip_R': (np.zeros(3), [0, 0, 0, 1]),
+           'grip_L': (np.array(PM_GRIP_L), [0, 0, 0, 1]),
+           'sight_rear': (np.array([0, PM_SLIDE_TOP + 0.0035, -0.0345]), [0, 0, 0, 1]),
+           'sight_front': (np.array([0, PM_SLIDE_TOP + 0.0042, 0.1015]), [0, 0, 0, 1]),
+           'ejection': (np.array([XRs, 0.0565, 0.0145]), [0, 0, 0, 1]),
+           'holster_ref': (np.array([0, 0.012, 0.035]), [0, 0, 0, 1])}
+    tris, st = B.export('pm', emp, res=512, lod_ratio=0.32, ao_d=0.012, edge_r=0.0007,
+                        extras={'calibre': '9x18 mm Makarov', 'length_m': 0.1615, 'height_m': 0.1268, 'weight_kg': 0.73, 'magazine': 8,
+                                'hold': 'weapon_socket (RightHand) identity; support hand: grip_L = left palm on the left grip panel (pistol_* clips)'})
+    return tris, _emp(emp), st
+
+
+# left (support) palm in a two-handed pistol grip: on the left grip panel, slightly low and forward, palm facing the gun's right (-X)
+PM_GRIP_L = (0.0235, -0.0140, 0.0040)
+
+
 if __name__ == '__main__':
     info = {}
     only = sys.argv[1:]
     infop = os.path.join(CACHE, 'weapons_info.json')
     if os.path.exists(infop):
         info = json.load(open(infop))
-    for fn in (ak74m, pkm, rpg7, rpg22, ak12, ak74m_optic, grenade_f1, grenade_rgd5):
+    for fn in (ak74m, pkm, rpg7, rpg22, ak12, ak74m_optic, grenade_f1, grenade_rgd5, pm):
         if only and fn.__name__ not in only:
             continue
         r = fn()

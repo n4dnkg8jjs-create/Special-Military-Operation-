@@ -62,6 +62,7 @@
    "grenades": "F-1 (segmented 55 mm cast body) and RGD-5 (smooth 58 mm egg with seam), both with UZRGM fuze, spoon and pull ring",
    "pkm": "PKM 1190 mm: stamped receiver, ribbed feed cover + tray, fluted barrel, gas cylinder under the barrel, folded bipod, barrel carry handle, slotted flash hider, skeleton stock, 100-rd box with belt feeding the tray, sling",
    "rpg7": "RPG-7V: birch heat guards with clamp bands, trigger group + pistol grip, plain rear hand grip, folding iron sights, PGO-7 optic on the left bracket, flared venturi, sling, PG-7V (85 mm) round loaded",
+   "pm": "Makarov PM (9x18): rounded blued slide with rear serrations and ejection port, fixed barrel, exposed checkered hammer, slide-mounted safety/decocker (left), slide stop, hinged trigger guard, wrap-around red-brown bakelite grip with star emblem and checkering, heel magazine catch, lanyard loop; grip raked 18.7 deg like the AK pistol grip so weapon_socket holds it with the rifle hand pose",
    "texturing": "one PBR atlas per weapon (base colour / ORM / tangent normal, JPEG), procedural with edge wear, cavity grime, stamped/moulded detail and stencils in the normal + colour maps; ~1100-1400 px/m on rifles"
   }
  },
@@ -92,7 +93,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 13867676,
+  "size_bytes": 16814416,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -143,7 +144,13 @@
    "assault_combo_2": 29458,
    "assault_combo_2_tape": 1120,
    "assault_combo_3": 27844,
-   "assault_combo_3_tape": 1120
+   "assault_combo_3_tape": 1120,
+   "crew_combo_0": 19743,
+   "crew_combo_0_tape": 840,
+   "crew_combo_1": 22863,
+   "crew_combo_1_tape": 840,
+   "crew_combo_2": 22863,
+   "crew_combo_2_tape": 840
   },
   "lod1_tris": {
    "body_A_LOD1": 2939,
@@ -195,7 +202,13 @@
    "assault_combo_2_LOD1": 8248,
    "assault_combo_2_tape_LOD1": 448,
    "assault_combo_3_LOD1": 7796,
-   "assault_combo_3_tape_LOD1": 448
+   "assault_combo_3_tape_LOD1": 448,
+   "crew_combo_0_LOD1": 5527,
+   "crew_combo_0_tape_LOD1": 336,
+   "crew_combo_1_LOD1": 6401,
+   "crew_combo_1_tape_LOD1": 336,
+   "crew_combo_2_LOD1": 6400,
+   "crew_combo_2_tape_LOD1": 336
   },
   "default_visible": [
    "body_A",
@@ -384,6 +397,24 @@
    "assault_combo_3_tape": [
     "tape"
    ],
+   "crew_combo_0": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_0_tape": [
+    "tape"
+   ],
+   "crew_combo_1": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_1_tape": [
+    "tape"
+   ],
+   "crew_combo_2": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_2_tape": [
+    "tape"
+   ],
    "body_A_LOD1": [
     "emr_camo",
     "eye",
@@ -555,6 +586,24 @@
     "soldier_atlas_ru"
    ],
    "assault_combo_3_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_0_LOD1": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_1_LOD1": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_2_LOD1": [
+    "soldier_atlas_crew_ru"
+   ],
+   "crew_combo_2_tape_LOD1": [
     "tape"
    ]
   },
@@ -993,6 +1042,98 @@
     ]
    },
    "assault_combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_0",
+     "body": "body_A",
+     "coverall": "crew_olive_ru",
+     "scheme": "olive",
+     "helmet": "shlemofon (black)",
+     "hands": "gloves",
+     "vest": "none",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_A_olive",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "crew_combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_1",
+     "body": "body_B",
+     "coverall": "crew_emr_camo",
+     "scheme": "emr",
+     "helmet": "shlemofon (black)",
+     "hands": "hands",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_B_emr",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ]
+   },
+   "crew_combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_2",
+     "body": "body_C",
+     "coverall": "crew_olive_ru",
+     "scheme": "olive",
+     "helmet": "shlemofon (olive)",
+     "hands": "gloves",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_C_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ]
+   },
+   "crew_combo_2_tape": {
     "combo": true,
     "default_visible": false,
     "tape": true
@@ -1488,6 +1629,104 @@
     "default_visible": false,
     "tape": true,
     "lod": 1
+   },
+   "crew_combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_0",
+     "body": "body_A",
+     "coverall": "crew_olive_ru",
+     "scheme": "olive",
+     "helmet": "shlemofon (black)",
+     "hands": "gloves",
+     "vest": "none",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_A_olive",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "crew_combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "crew_combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_1",
+     "body": "body_B",
+     "coverall": "crew_emr_camo",
+     "scheme": "emr",
+     "helmet": "shlemofon (black)",
+     "hands": "hands",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_B_emr",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "lod": 1
+   },
+   "crew_combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "crew_combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_2",
+     "body": "body_C",
+     "coverall": "crew_olive_ru",
+     "scheme": "olive",
+     "helmet": "shlemofon (olive)",
+     "hands": "gloves",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_C_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "lod": 1
+   },
+   "crew_combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
    }
   },
   "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
@@ -1512,6 +1751,7 @@
    "skin_A",
    "skin_B",
    "skin_C",
+   "soldier_atlas_crew_ru",
    "soldier_atlas_ru",
    "tape"
   ],
@@ -1598,6 +1838,12 @@
    "assault_combo_2_tape",
    "assault_combo_3",
    "assault_combo_3_tape",
+   "crew_combo_0",
+   "crew_combo_0_tape",
+   "crew_combo_1",
+   "crew_combo_1_tape",
+   "crew_combo_2",
+   "crew_combo_2_tape",
    "weapon_socket",
    "weapon_socket_L",
    "mag_socket_L",
@@ -1654,7 +1900,13 @@
    "assault_combo_2_LOD1",
    "assault_combo_2_tape_LOD1",
    "assault_combo_3_LOD1",
-   "assault_combo_3_tape_LOD1"
+   "assault_combo_3_tape_LOD1",
+   "crew_combo_0_LOD1",
+   "crew_combo_0_tape_LOD1",
+   "crew_combo_1_LOD1",
+   "crew_combo_1_tape_LOD1",
+   "crew_combo_2_LOD1",
+   "crew_combo_2_tape_LOD1"
   ],
   "combos": [
    {
@@ -2020,12 +2272,127 @@
     ]
    }
   ],
+  "crew_combos": [
+   {
+    "name": "crew_combo_0",
+    "body": "body_A",
+    "coverall": "crew_olive_ru",
+    "scheme": "olive",
+    "helmet": "shlemofon (black)",
+    "hands": "gloves",
+    "vest": "none",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_A_olive",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 19743,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_0",
+     "crew_combo_0_tape"
+    ],
+    "lod1": [
+     "crew_combo_0_LOD1",
+     "crew_combo_0_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_black": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312
+    }
+   },
+   {
+    "name": "crew_combo_1",
+    "body": "body_B",
+    "coverall": "crew_emr_camo",
+    "scheme": "emr",
+    "helmet": "shlemofon (black)",
+    "hands": "hands",
+    "vest": "crew_vest_olive",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_B_emr",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "tris": 22863,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_1",
+     "crew_combo_1_tape"
+    ],
+    "lod1": [
+     "crew_combo_1_LOD1",
+     "crew_combo_1_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_black": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312,
+     "crew_vest_olive": 3120
+    }
+   },
+   {
+    "name": "crew_combo_2",
+    "body": "body_C",
+    "coverall": "crew_olive_ru",
+    "scheme": "olive",
+    "helmet": "shlemofon (olive)",
+    "hands": "gloves",
+    "vest": "crew_vest_olive",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_C_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "tris": 22863,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_2",
+     "crew_combo_2_tape"
+    ],
+    "lod1": [
+     "crew_combo_2_LOD1",
+     "crew_combo_2_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_olive": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312,
+     "crew_vest_olive": 3120
+    }
+   }
+  ],
+  "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ru: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (RU: olive-khaki or EMR) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
   "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable"
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 14239636,
+  "size_bytes": 17134932,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -2076,7 +2443,13 @@
    "assault_combo_2": 28449,
    "assault_combo_2_tape": 1120,
    "assault_combo_3": 28556,
-   "assault_combo_3_tape": 1120
+   "assault_combo_3_tape": 1120,
+   "crew_combo_0": 19743,
+   "crew_combo_0_tape": 840,
+   "crew_combo_1": 22863,
+   "crew_combo_1_tape": 840,
+   "crew_combo_2": 22863,
+   "crew_combo_2_tape": 840
   },
   "lod1_tris": {
    "body_A_LOD1": 2939,
@@ -2128,7 +2501,13 @@
    "assault_combo_2_LOD1": 7964,
    "assault_combo_2_tape_LOD1": 448,
    "assault_combo_3_LOD1": 7995,
-   "assault_combo_3_tape_LOD1": 448
+   "assault_combo_3_tape_LOD1": 448,
+   "crew_combo_0_LOD1": 5527,
+   "crew_combo_0_tape_LOD1": 336,
+   "crew_combo_1_LOD1": 6400,
+   "crew_combo_1_tape_LOD1": 336,
+   "crew_combo_2_LOD1": 6400,
+   "crew_combo_2_tape_LOD1": 336
   },
   "default_visible": [
    "body_A",
@@ -2331,6 +2710,24 @@
    "assault_combo_3_tape": [
     "tape"
    ],
+   "crew_combo_0": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_0_tape": [
+    "tape"
+   ],
+   "crew_combo_1": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_1_tape": [
+    "tape"
+   ],
+   "crew_combo_2": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_2_tape": [
+    "tape"
+   ],
    "body_A_LOD1": [
     "eye",
     "mm14_camo",
@@ -2516,6 +2913,24 @@
     "soldier_atlas_ua"
    ],
    "assault_combo_3_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_0_LOD1": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_1_LOD1": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "crew_combo_2_LOD1": [
+    "soldier_atlas_crew_ua"
+   ],
+   "crew_combo_2_tape_LOD1": [
     "tape"
    ]
   },
@@ -2955,6 +3370,98 @@
     ]
    },
    "assault_combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_0",
+     "body": "body_A",
+     "coverall": "crew_mm14_camo",
+     "scheme": "mm14",
+     "helmet": "shlemofon (black)",
+     "hands": "gloves",
+     "vest": "none",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_A_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "crew_combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_1",
+     "body": "body_B",
+     "coverall": "crew_olive_ua",
+     "scheme": "olive",
+     "helmet": "shlemofon (olive)",
+     "hands": "gloves",
+     "vest": "crew_vest_tan",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_B_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_tan"
+    ]
+   },
+   "crew_combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "crew_combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_2",
+     "body": "body_C",
+     "coverall": "crew_mm14_camo",
+     "scheme": "mm14",
+     "helmet": "shlemofon (black)",
+     "hands": "hands",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_C_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ]
+   },
+   "crew_combo_2_tape": {
     "combo": true,
     "default_visible": false,
     "tape": true
@@ -3451,6 +3958,104 @@
     "default_visible": false,
     "tape": true,
     "lod": 1
+   },
+   "crew_combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_0",
+     "body": "body_A",
+     "coverall": "crew_mm14_camo",
+     "scheme": "mm14",
+     "helmet": "shlemofon (black)",
+     "hands": "gloves",
+     "vest": "none",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_A_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "crew_combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "crew_combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_1",
+     "body": "body_B",
+     "coverall": "crew_olive_ua",
+     "scheme": "olive",
+     "helmet": "shlemofon (olive)",
+     "hands": "gloves",
+     "vest": "crew_vest_tan",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_B_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_tan"
+    ],
+    "lod": 1
+   },
+   "crew_combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "crew_combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "crew_combo_2",
+     "body": "body_C",
+     "coverall": "crew_mm14_camo",
+     "scheme": "mm14",
+     "helmet": "shlemofon (black)",
+     "hands": "hands",
+     "vest": "crew_vest_olive",
+     "holster": "PM flap holster, right hip"
+    },
+    "parts": [
+     "crew_body_C_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "lod": 1
+   },
+   "crew_combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
    }
   },
   "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
@@ -3479,6 +4084,7 @@
    "skin_A",
    "skin_B",
    "skin_C",
+   "soldier_atlas_crew_ua",
    "soldier_atlas_ua",
    "tape"
   ],
@@ -3565,6 +4171,12 @@
    "assault_combo_2_tape",
    "assault_combo_3",
    "assault_combo_3_tape",
+   "crew_combo_0",
+   "crew_combo_0_tape",
+   "crew_combo_1",
+   "crew_combo_1_tape",
+   "crew_combo_2",
+   "crew_combo_2_tape",
    "weapon_socket",
    "weapon_socket_L",
    "mag_socket_L",
@@ -3621,7 +4233,13 @@
    "assault_combo_2_LOD1",
    "assault_combo_2_tape_LOD1",
    "assault_combo_3_LOD1",
-   "assault_combo_3_tape_LOD1"
+   "assault_combo_3_tape_LOD1",
+   "crew_combo_0_LOD1",
+   "crew_combo_0_tape_LOD1",
+   "crew_combo_1_LOD1",
+   "crew_combo_1_tape_LOD1",
+   "crew_combo_2_LOD1",
+   "crew_combo_2_tape_LOD1"
   ],
   "combos": [
    {
@@ -3988,12 +4606,127 @@
     ]
    }
   ],
+  "crew_combos": [
+   {
+    "name": "crew_combo_0",
+    "body": "body_A",
+    "coverall": "crew_mm14_camo",
+    "scheme": "mm14",
+    "helmet": "shlemofon (black)",
+    "hands": "gloves",
+    "vest": "none",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_A_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 19743,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_0",
+     "crew_combo_0_tape"
+    ],
+    "lod1": [
+     "crew_combo_0_LOD1",
+     "crew_combo_0_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_black": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312
+    }
+   },
+   {
+    "name": "crew_combo_1",
+    "body": "body_B",
+    "coverall": "crew_olive_ua",
+    "scheme": "olive",
+    "helmet": "shlemofon (olive)",
+    "hands": "gloves",
+    "vest": "crew_vest_tan",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_B_olive",
+     "helmet_crew_olive",
+     "crew_larynx",
+     "gloves",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_tan"
+    ],
+    "tris": 22863,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_1",
+     "crew_combo_1_tape"
+    ],
+    "lod1": [
+     "crew_combo_1_LOD1",
+     "crew_combo_1_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_olive": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312,
+     "crew_vest_tan": 3120
+    }
+   },
+   {
+    "name": "crew_combo_2",
+    "body": "body_C",
+    "coverall": "crew_mm14_camo",
+    "scheme": "mm14",
+    "helmet": "shlemofon (black)",
+    "hands": "hands",
+    "vest": "crew_vest_olive",
+    "holster": "PM flap holster, right hip",
+    "parts": [
+     "crew_body_C_mm14",
+     "helmet_crew_black",
+     "crew_larynx",
+     "hands",
+     "boots",
+     "crew_belt",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "crew_vest_olive"
+    ],
+    "tris": 22863,
+    "tape_tris": 840,
+    "nodes": [
+     "crew_combo_2",
+     "crew_combo_2_tape"
+    ],
+    "lod1": [
+     "crew_combo_2_LOD1",
+     "crew_combo_2_tape_LOD1"
+    ],
+    "part_tris": {
+     "helmet_crew_black": 3226,
+     "crew_larynx": 658,
+     "crew_belt": 1312,
+     "crew_vest_olive": 3120
+    }
+   }
+  ],
+  "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ua: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (UA: MM-14 or olive) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
   "tape_alt_material": "tape (yellow #e8c31c)"
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 2226368,
+  "size_bytes": 2560008,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
@@ -4040,7 +4773,22 @@
    "treat_wounded": "medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root",
    "wounded_sit": "back against a wall plane 0.30 m behind the root (-Z)"
   },
-  "sources": "CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
+  "crawls": {
+   "prone_crawl": "military low crawl (\"po-plastunski\"), rebuilt: body flat on the ground (bare torso ~0.6 cm above it in every frame), rifle lying on the right forearm (right hand on the pistol grip = weapon_socket, left hand free), contralateral cycle (right elbow + left leg drive, then left elbow + right leg), frog-kick legs: the planted boot is still in the world (slides back at exactly ground_speed_mps in the in-place clip), the recovering leg slides forward with the knee out, boots never lifted; the chest rises / rolls over the pulling elbow so the elbow stays planted (< 5 cm creep).",
+   "wounded_crawl": "belly drag, rebuilt: palms reach, plant (still in the world) and pull alternately, left leg short frog push, right leg dead (dragged, boot rolled out), head up; ground_speed_mps 0.24."
+  },
+  "pistol": {
+   "clips": "pistol_idle (two-handed low ready) / pistol_aim (isosceles, right eye on the sight line) / pistol_fire (one shot, 0.267 s, first/last frame == pistol_aim frame 0, loops for follow-up shots, event shot at 0.0) / pistol_walk (aiming walk 1.47 m/s, gun stabilised) / pistol_run (compressed ready 4.17 m/s) / pistol_crouch_aim (kneeling aim)",
+   "socket": "pm.glb parented to weapon_socket with identity (same as the rifles); the support palm sits on pm grip_L",
+   "note": "the crew presets have no rifle: parent pm.glb to weapon_socket for these clips (holster stays on the belt)"
+  },
+  "hatch_exit": {
+   "clip": "hatch_exit, 2.7 s, plays once, root motion in the Hips track (vertical + horizontal), no weapon in the hands",
+   "frame": "clip space = the soldier root at the END of the clip: on the ground beside the vehicle, facing away from it (+Z). Authored for a T-72-sized vehicle and its commander hatch: rim centre at (0, 2.25, -1.80) relative to that root, hatch radius 0.33 m, turret roof y 2.20 up to z -1.15, fender / hull deck y 1.45 up to z -0.42, crewman starts standing on the inside floor at y 0.42 (hips 0.92 m below the rim).",
+   "game": "place the soldier root at R = hatch_centre_world + exit_dir * 1.80 at ground height (y = ground), heading = exit_dir (perpendicular to the vehicle side, pointing away from it), then play hatch_exit once with no further root movement; when it ends the soldier stands at R. For a hatch at height H != 2.25 add (H - 2.25) to the root y for t < events.on_fender and blend it to 0 by events.landed (or accept the mismatch; the clip is tuned for T-72 / BTR-82A turret heights).",
+   "events": "hands_on_rim [0, 0.66], hips_clear_rim 0.50, knee_on_deck 0.70, on_deck 1.01, step_off 1.08, on_fender 1.37, jump 1.60, landed 2.19 (s)"
+  },
+  "sources": "CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Pistol walk / run reuse 07_01 / 16_45 legs. Hand-keyed + IK: crawls, hatch_exit, pistol aim / idle / fire. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
   "clips": {
    "idle_rifle": {
     "duration_s": 4.0,
@@ -4153,14 +4901,25 @@
     "notes": "prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {'R': 9.650801630464006e-16, 'L': 1.2037731057624424e-15}"
    },
    "prone_crawl": {
-    "duration_s": 1.6,
-    "frames": 49,
+    "duration_s": 1.4,
+    "frames": 43,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 0.35,
+    "ground_speed_mps": 0.45,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "authored elbow (low) crawl, rifle held low in front; ik err {'R': 8.238311188599651e-16, 'L': 1.0579936123048482e-15}"
+    "notes": "military low crawl (\"po-plastunski\"): body flat on the ground (bare torso ~0.6 cm above it), rifle lying on the right forearm (right hand on the pistol grip = weapon_socket, left hand free), contralateral 1.40 s cycle: right elbow + left leg drive (0-0.70 s) while the left elbow reaches and the right leg is drawn up, then the mirror; frog-kick legs (thigh drawn up along the ground, inner edge of the boot planted and pushed back until the leg is long, the recovering leg slides forward with the knee out - feet never lifted), elbows plant and pull, left palm planted, chest and pelvis roll over the planted side, head up; planted boots / elbows slide back at exactly 0.45 m/s in the in-place clip (still in the world at that ground speed)",
+    "events": {
+     "weapon": "weapon_socket (right hand), the left hand is free",
+     "left_push": [
+      0.0,
+      0.7
+     ],
+     "right_push": [
+      0.7,
+      1.4
+     ]
+    }
    },
    "wounded_crawl": {
     "duration_s": 2.0,
@@ -4170,9 +4929,17 @@
     "ground_speed_mps": 0.24,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "belly crawl on the forearms/elbows (arms alternate reach & pull), left leg pushes, right leg dead (foot rolled out) and dragged; no weapon",
+    "notes": "wounded belly drag, 2.0 s loop: arms alternately reach forward, plant the palm (fixed in the world) and pull the body (right 0-1.0 s, left 1.0-2.0 s), chest rolls toward the pulling arm, effortful head bob; left leg pushes in a short frog kick, right leg dead (dragged, boot rolled out); no weapon (sling it: weapon_socket_back, or drop); planted palms / boot slide back at exactly 0.24 m/s in the in-place clip",
     "events": {
-     "weapon": "drop or weapon_socket_back"
+     "weapon": "drop or weapon_socket_back",
+     "right_pull": [
+      0.0,
+      1.0
+     ],
+     "left_pull": [
+      1.0,
+      2.0
+     ]
     }
    },
    "wounded_ground": {
@@ -4708,6 +5475,156 @@
      "shot": 0.05,
      "backblast": 0.05
     }
+   },
+   "pistol_aim": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "isosceles two-handed PM aim: right eye on the sight line 0.33 m behind the rear sight, arms extended, support palm on the left grip panel (fingers over the right hand); breathing; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
+    }
+   },
+   "pistol_fire": {
+    "duration_s": 0.267,
+    "frames": 9,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "one PM shot, 0.267 s (9 frames): report / muzzle flash at t=0 on the aim line, peak muzzle flip 11 deg + 2.5 cm push back at 0.033 s (wrists break, elbows give, chest absorbs), recovered by the last frame; first/last frame == pistol_aim frame 0 so it loops for follow-up shots (~3.75 shots/s at timeScale 1) and blends back into pistol_aim; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)",
+     "shot": 0.0
+    }
+   },
+   "pistol_idle": {
+    "duration_s": 4.0,
+    "frames": 121,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "relaxed stance, PM in both hands at low ready (in front of the belly, muzzle ~42 deg down), breathing, weight shift, looking around; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
+    }
+   },
+   "pistol_crouch_aim": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "kneeling on the right knee (same legs as aim_crouch), isosceles two-handed PM aim, right eye on the sight line; ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
+    }
+   },
+   "pistol_walk": {
+    "duration_s": 1.1,
+    "frames": 34,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 1.466,
+    "direction": "forward (+Z)",
+    "root_motion": false,
+    "notes": "aiming walk: CMU 07_01 legs (pelvis lowered 4 cm, planted foot pinned), PM up in both hands on the eye line, gun stabilised (75 % of the chest sway and 60 % of the bob removed); 1.47 m/s; cycle (9, 33); ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
+    }
+   },
+   "pistol_run": {
+    "duration_s": 0.7,
+    "frames": 22,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 4.166,
+    "direction": "forward (+Z)",
+    "root_motion": false,
+    "notes": "combat run: CMU 16_45 legs (bent knees, 12 deg lean, planted foot pinned), PM held close to the chest in both hands (compressed ready, muzzle ~28 deg down); 4.17 m/s; cycle (6, 21); ik err {'R': 0.0, 'L': 0.0}",
+    "events": {
+     "weapon": "pm.glb in weapon_socket (identity); support hand on the grip (pm grip_L)"
+    }
+   },
+   "hatch_exit": {
+    "duration_s": 2.7,
+    "frames": 82,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "crewman bails out of a turret hatch: standing inside on the floor (0.42 m), hips 0.92 m below the rim (2.25 m), dips, jumps and pulls and presses up on the rim, right knee then left foot onto the turret roof (on_deck), steps off the turret edge onto the fender/deck (1.45 m), jumps down beside the vehicle and lands in a crouch (landed), rises. Root motion (vertical + horizontal) is in the Hips track; clip space = the soldier root at the END (on the ground, facing away from the vehicle): hatch rim centre at [0.0, 2.25, -1.8] relative to it. No weapon in the hands (pistol holstered).",
+    "events": {
+     "hands_on_rim": [
+      0.0,
+      0.66
+     ],
+     "hips_clear_rim": 0.5,
+     "knee_on_deck": 0.7,
+     "on_deck": 1.01,
+     "step_off": 1.08,
+     "on_fender": 1.37,
+     "jump": 1.6,
+     "landed": 2.19
+    },
+    "hatch": {
+     "geometry": {
+      "hatch_rim_centre": [
+       0.0,
+       2.25,
+       -1.8
+      ],
+      "hatch_radius": 0.33,
+      "turret_roof_y": 2.2,
+      "turret_edge_z": -1.15,
+      "deck_y": 1.45,
+      "deck_edge_z": -0.42,
+      "inside_floor_y": 0.42
+     },
+     "hips_at": {
+      "start": [
+       0.0,
+       1.33,
+       -1.88
+      ],
+      "on_deck": [
+       0.0,
+       2.74,
+       -1.28
+      ],
+      "on_fender": [
+       0.0,
+       2.377,
+       -0.741
+      ],
+      "jump": [
+       0.0,
+       2.1,
+       -0.44
+      ],
+      "landed": [
+       0.0,
+       0.926,
+       -0.027
+      ],
+      "end": [
+       0.0,
+       0.9,
+       0.0
+      ]
+     },
+     "fit_drop": 0.052
+    }
    }
   }
  },
@@ -5084,6 +6001,58 @@
   "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring",
   "texel_px_per_m": 2818
  },
+ "pm": {
+  "file": "pm.glb",
+  "size_bytes": 118684,
+  "tris": {
+   "pm_mesh": 1392,
+   "pm_LOD1": 444
+  },
+  "materials": [
+   "wpn_pm"
+  ],
+  "empties": {
+   "muzzle": [
+    0.0,
+    0.0505,
+    0.1125
+   ],
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "grip_L": [
+    0.0235,
+    -0.014,
+    0.004
+   ],
+   "sight_rear": [
+    0.0,
+    0.0695,
+    -0.0345
+   ],
+   "sight_front": [
+    0.0,
+    0.0702,
+    0.1015
+   ],
+   "ejection": [
+    -0.01225,
+    0.0565,
+    0.0145
+   ],
+   "holster_ref": [
+    0.0,
+    0.012,
+    0.035
+   ]
+  },
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1875,
+  "description": "Makarov PM (9x18), used by both sides (crew sidearm): blued slide / frame, bakelite grip; one mesh + LOD1, one atlas; origin = palm centre on the grip, +Z muzzle; grip_L = support (left) palm on the left grip panel for the two-handed clips; extra empties: ejection (port, right), holster_ref",
+  "hold": "parent to weapon_socket (RightHand) with identity for pistol_* clips"
+ },
  "deviations": [
   "Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.",
   "Extra nodes beyond the contract: gloves, boots, kneepads, legband_L, pouches_front/side/back split, helmet_B per faction, *_LOD1 for every mesh node.",
@@ -5092,6 +6061,8 @@
   "throw_grenade needs the rifle moved to weapon_socket_L; wounded/drag/death clips expect the game to drop or sling the rifle.",
   "Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris.",
   "Assault presets carry ~28-30k tris (armour + 4 extra pouch groups + headset/balaclava); use their _LOD1 (~8k) beyond close range.",
-  "GLBs use KHR_mesh_quantization (required) for int8 normals; weights are normalized u8, atlas UVs normalized u16 (all native in three.js GLTFLoader)."
+  "GLBs use KHR_mesh_quantization (required) for int8 normals; weights are normalized u8, atlas UVs normalized u16 (all native in three.js GLTFLoader).",
+  "Vehicle crew: crew_combo_N presets live in soldier_ru.glb / soldier_ua.glb with their own atlas material soldier_atlas_crew_<fac>; no per-part crew nodes.",
+  "prone_crawl holds the rifle in the right hand only (left hand free) - it no longer uses the prone support grip."
  ]
 }

@@ -359,6 +359,7 @@ export class Squad {
   }
   updateSoldier(s, dt) {
     const g = this.game;
+    if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchT = 2.7; g.sfx('hatch', s.pos); } else { s.sync(); return; } }
     s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
     // heavily suppressed: duck behind the wall / window sill, pop up for a burst, duck again
     if (s.suppression > 55 || this.pinned) {

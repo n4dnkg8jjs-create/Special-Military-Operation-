@@ -82,6 +82,9 @@ K = {
     'alu':       dict(col='#1c1d1e', rough=0.40, metal=0.6, wcol='#9c9fa2', wrough=0.25, wmetal=1.0, wear=1.0, mott=0.05, rn=0.06, micro=0.00001, micro_f=1200, dirt=0.4),
     'bore':      dict(col='#080808', rough=0.85, metal=0.2, wcol='#080808', wrough=0.85, wmetal=0.2, wear=0.0, mott=0.0, rn=0.0, micro=0.0, micro_f=1, dirt=0.0),
     'red':       dict(col='#8a1f17', rough=0.5, metal=0.0, wcol='#5c5f5f', wrough=0.35, wmetal=0.9, wear=0.6, mott=0.06, rn=0.06, micro=0.0, micro_f=1, dirt=0.4),
+    # PM (Makarov): blued slide / frame, dark red-brown bakelite wrap-around grip
+    'blued':     dict(col='#1c1e22', rough=0.36, metal=0.75, wcol='#8a8e93', wrough=0.24, wmetal=1.0, wear=1.0, mott=0.07, rn=0.08, micro=0.00001, micro_f=1400, dirt=0.45),
+    'bakelite':  dict(col='#2b1914', rough=0.38, metal=0.0, wcol='#4d2c22', wrough=0.30, wmetal=0.0, wear=0.6, mott=0.10, rn=0.08, micro=0.00002, micro_f=1600, dirt=0.55),
 }
 KIND_ID = {k: i for i, k in enumerate(K)}
 

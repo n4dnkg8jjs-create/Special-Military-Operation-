@@ -120,6 +120,32 @@ def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=
     return gq, root, speed, err, (a, p)
 
 
+def loco_body(rig, bvh, t0, t1, pmin, pmax, lean=6, sink=0.0, search=None, ground_pct=8):
+    """loco() without the rifle carry: mocap cycle, in place, lean, pelvis sink + planted-foot lock, soles out of the ground.
+    returns gq, root, speed, (start, period)"""
+    import clips_combat as CC
+    gq, root = C.mocap(rig, bvh, t0, t1)
+    gq, root = C.face_forward(rig, gq, root)
+    root = C.ground_fix(rig, gq, root, ground_pct)
+    a, p = C.find_cycle(rig, gq, root, pmin, pmax, search)
+    gq, root, stride = C.make_loop(gq, root, a, p)
+    speed = float(np.hypot(stride[0], stride[2]) / (p / FPS))
+    lq = rig.local(gq)
+    I = rig.I
+    for b, f in (('Spine', 0.5), ('Spine1', 0.5)):
+        lq[:, I[b]] = qmul(lq[:, I[b]], qeuler(lean * f, 0, 0, order='YXZ')[None])
+    lq[:, I['Neck']] = qmul(lq[:, I['Neck']], qeuler(-lean * 0.7, 0, 0, order='YXZ')[None])
+    gq = rig.global_from_local(lq)
+    root = C.strip_root(root)
+    if sink:
+        gq, root = CC.sink(rig, gq, root, sink)
+    gq, lock = CC.foot_lock(rig, gq, root, speed)
+    gq = A.smooth_locals(rig, gq, ('LeftToeBase', 'RightToeBase'), 1.0, loop=True)
+    gq, lift = A.lift_feet(rig, gq, root, loop=True)
+    gq[-1] = gq[0]
+    return gq, root, speed, (a, p)
+
+
 def build_all(rig, R, only=None):
     out = {}
     lm = R['variants']['A']['lm']
@@ -263,11 +289,12 @@ def build_all(rig, R, only=None):
             gq2, err = CC.prone_overlay(rig, gq, root, gun_q2, gun_p2, gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
             out['prone_idle'] = to_clip('prone_idle', rig, gq2, root, True, notes=f'prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {err}')
         if want('prone_crawl'):
-            out['prone_crawl'] = prone_crawl(rig, pq, pr, relq=relq, relp=relp)
+            import clips_crawl as CR    # rebuilt (frog-kick low crawl, planted contacts); the old prone_crawl() below is kept for reference
+            out['prone_crawl'] = CR.prone_crawl(rig, lm, relq, relp)
     import clips_extra as CX
     if want('wounded_crawl'):
-        pq, pr = prone(rig)
-        out['wounded_crawl'] = CX.wounded_crawl(rig, pq, pr)
+        import clips_crawl as CR
+        out['wounded_crawl'] = CR.wounded_crawl(rig)
     if want('wounded_ground'):
         out['wounded_ground'] = CX.wounded_ground(rig)
     if want('wounded_sit'):
@@ -317,7 +344,17 @@ def build_all(rig, R, only=None):
     # ---------------- combat v2 (clips_combat.py): recoil cycles, corner peeks, cover duck, pinned prone, launcher raise/fire, reloads
     import clips_combat as CC
     out.update(CC.combat_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, prone))
+    # ---------------- vehicle crew: PM pistol set + hatch_exit (clips_crew.py)
+    import clips_crew as CW
+    if any(want(n) for n in CW_PISTOL):
+        out.update(CW.pistol_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs,
+                                   lambda *a, **k: loco_body(rig, *a, **k)))
+    if want('hatch_exit'):
+        out['hatch_exit'] = CW.hatch_exit(rig, lm, stance, plant_feet)
     return out
+
+
+CW_PISTOL = ('pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim')
 
 
 # ------------------------------------------------------------------ pose builders

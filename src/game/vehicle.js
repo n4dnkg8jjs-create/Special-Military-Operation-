@@ -280,10 +280,15 @@ export class Vehicle {
     const roles = out.map(c => CREW_ROLES.find(r => r.role.toLowerCase().includes(c.role === 'driver' ? 'driver' : c.role)) || CREW_ROLES[2]);
     const sq = new Squad(g, this.side, this.faction, `${this.name} crew`, 'crew', roles); sq.name = `${this.name} crew`;
     const right = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading)), fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    // hatch_exit is authored with the hatch rim 1.8 m behind the end root: put each man's root 1.8 m out from his
+    // hatch, facing away from the vehicle, and stagger them (they go one after another through the hatches)
+    const hatches = this.kind === 'tank' ? { commander: [0.45, -0.3], gunner: [-0.45, -0.3], driver: [0, 2.6] } : { commander: [0.45, 2.6], driver: [-0.45, 2.6], gunner: [0, 1.2] };
     sq.soldiers.forEach((s, i) => {
-      const side = i % 2 ? -1 : 1, p = this.pos.clone().addScaledVector(right, side * (this.def.width / 2 + 0.9)).addScaledVector(fwd, (this.kind === 'tank' ? 0.2 : 1.6) - i * 0.9);
-      const [x, z] = g.nav.nearestFree(p.x, p.z, 0.4, 6); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
-      s.hatchT = 1.6 + i * 0.5; s.stance = 'crouch';
+      const role = out[i].role, h = hatches[role] || [0, 0], side = h[0] < 0 || (h[0] === 0 && i % 2) ? -1 : 1;
+      const hx = this.pos.x + right.x * h[0] + fwd.x * h[1], hz = this.pos.z + right.z * h[0] + fwd.z * h[1];
+      const exitD = this.def.width / 2 - Math.abs(h[0]) + 1.8 - 0.42;
+      const [x, z] = g.nav.nearestFree(hx + right.x * side * exitD, hz + right.z * side * exitD, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
+      s.hatchWait = i * 0.9; s.inside = 'btr'; s.stance = 'stand';
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }
       s.sync();
     });

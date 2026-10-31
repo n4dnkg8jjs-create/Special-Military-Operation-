@@ -77,7 +77,7 @@ export class Soldier {
       for (const o of meshes) {
         o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
         // skinned sub-primitives are children named like the node; walk up to the named node
-        let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband|combo_|assault_combo_)/.test(n.name)) n = n.parent;
+        let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband|combo_|assault_combo_|crew_combo_)/.test(n.name)) n = n.parent;
         const base = n.name.replace(/\.\d+$/, ''), core = base.replace(/_LOD\d$/, '');
         o.userData.variantOn = decided[core] ??= vis(core);
         o.userData.lod = /_LOD1$/.test(base) ? 1 : (names.has(core + '_LOD1') || m.getObjectByName(core + '_LOD1')) ? 0 : -1;
@@ -177,7 +177,7 @@ export class Soldier {
       else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
       else clip = 'wounded_ground';
     } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
-    else if (this.hatchT > 0) { clip = 'hatch_exit'; alt = ['dismount_jump', 'crouch_idle']; }
+    else if (this.hatchT > 0) { clip = 'hatch_exit'; alt = ['dismount_jump', 'crouch_idle']; if (this.weaponObj) this.weaponObj.visible = this.hatchT < 0.5; }
     else if (this.jumpT > 0) { clip = 'dismount_jump'; alt = ['crouch_idle']; }
     else if (this.launcherT > 0) {
       const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;

@@ -189,7 +189,7 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
     return W.skinned('body_' + vn, prims, lod=0.28, extras={'default_visible': vn == 'A', 'variant': vn})
 
 
-def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True, combos_on=True):
+def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True, combos_on=True, crew_on=True):
     R = load()
     sk = R['skel']
     rig = A.Rig(sk, R['hands']['pos'], R['hands']['W'])
@@ -282,6 +282,10 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
         std, ast = presets(fac)
         m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks)
         combos = dict(combos=[d for d in m1 if not d['name'].startswith('assault_')], assault_combos=[d for d in m1 if d['name'].startswith('assault_')])
+        if crew_on:
+            # armoured-vehicle crew presets (crew_combo_N): own atlas, record-only parts (no per-part crew nodes)
+            import crew as CR
+            combos['crew_combos'] = CR.make_crew(W, rec, R, fac, env, gear_weights, vertex_ao)
     if sockets:
         add_sockets(W, rig, R)
     if with_lod:
