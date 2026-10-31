@@ -20,7 +20,7 @@ export class Assets {
       ['ak74m', 'assets/soldiers/ak74m.glb'], ['pkm', 'assets/soldiers/pkm.glb'], ['rpg7', 'assets/soldiers/rpg7.glb'],
       ['btr82a', 'assets/vehicles/btr82a.glb'], ['btr80_ua', 'assets/vehicles/btr80_ua.glb'],
       ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'],
-      ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
+      ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['pm', 'assets/soldiers/pm.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
     ];
     if (opts.rural) jobs.push(['farmland', 'assets/env/farmland.glb']); else jobs.push(['modern', 'assets/env/modern.glb']);
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};

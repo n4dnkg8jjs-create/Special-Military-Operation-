@@ -1,16 +1,17 @@
 import * as THREE from 'three';
 import { Soldier } from './soldier.js';
-import { SQUAD_ROLES, ASSAULT_ROLES, TUNING, WEAPONS } from '../config.js';
+import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, TUNING, WEAPONS } from '../config.js';
 
 let NEXT_ID = 1;
 const V = new THREE.Vector3();
 
 // An infantry squad (8 men). Owns orders, formation, morale and casualty handling.
 export class Squad {
-  constructor(game, side, faction, name, kind = 'mech') {
+  constructor(game, side, faction, name, kind = 'mech', roles = null) {
     this.game = game; this.id = NEXT_ID++; this.side = side; this.faction = faction; this.name = name;
     this.type = 'squad'; this.kind = kind; this.assault = kind === 'assault';
-    this.soldiers = (this.assault ? ASSAULT_ROLES : SQUAD_ROLES).map((r, i) => new Soldier(this, i, r, faction, game.scene));
+    this.crew = kind === 'crew';
+    this.soldiers = (roles || (this.assault ? ASSAULT_ROLES : this.crew ? CREW_ROLES : SQUAD_ROLES)).map((r, i) => new Soldier(this, i, r, faction, game.scene));
     this.morale = 82; this.order = null; this.holdFire = false; this.run = false;
     this.carrier = null; this.mounted = false; this.building = null; this.routing = false;
     this.underFireT = 99; this.flankDirs = []; this.selected = false; this.spotted = side === 'player';
@@ -55,10 +56,14 @@ export class Squad {
       let px = x + right[0] * off - fwd[0] * depth, pz = z + right[1] * off - fwd[1] * depth;
       // snap to a nearby cell offering cover toward the facing direction
       let best = null, bestS = -1;
-      for (let r = 0; r <= 3.5; r += 0.9) for (let a = 0; a < 8; a++) {
+      // next to a wall: line up against it (CQB) rather than standing a metre or two off it
+      const ci0 = nav.idx(px, pz), nearWall = ci0 >= 0 && nav.clear[ci0] < 6;
+      const R0 = nearWall ? 5 : 3.5;
+      for (let r = 0; r <= R0; r += 0.9) for (let a = 0; a < 8; a++) {
         const cx = px + Math.cos(a * 0.785) * r, cz = pz + Math.sin(a * 0.785) * r, idx = nav.idx(cx, cz);
         if (!nav.passable(idx, 0.4)) continue;
-        const sc = nav.coverFrom(cx, cz, cx + fwd[0] * 50, cz + fwd[1] * 50) * 2 - r * 0.25;
+        if (out.some(o => Math.hypot(o[0] - cx, o[1] - cz) < 1.1)) continue;
+        const sc = nav.coverFrom(cx, cz, cx + fwd[0] * 50, cz + fwd[1] * 50) * 2 - r * 0.25 + (nearWall && nav.clear[idx] < 1.4 ? 1.1 : 0);
         if (sc > bestS) { bestS = sc; best = [cx, cz]; }
       }
       if (!best) best = nav.nearestFree(px, pz, 0.4, 8);
@@ -399,12 +404,13 @@ export class Squad {
   }
   moveStep(s, dt) {
     const g = this.game;
-    if (s.jumpT > 0) { s.vel.set(0, 0, 0); return; }
+    if (s.jumpT > 0 || s.hatchT > 0) { s.vel.set(0, 0, 0); return; }
     let moving = s.path && s.pathI < s.path.length;
     let speed = 0;
     // pinned down: nobody gets up and moves (except to drag a wounded mate)
     const pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
-    if (moving && (pinned || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; s.pos.y = 0; return; }
+    if (s.aimStopT > 0) s.aimStopT -= dt;
+    if (moving && (pinned || s.aimStopT > 0 || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; s.pos.y = 0; return; }
     if (moving) {
       const wp = s.path[s.pathI];
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);

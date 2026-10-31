@@ -2,6 +2,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import { WEAPONS, TUNING } from '../config.js';
 import { angDiff } from './squad.js';
+import { initArmor, resolveHit } from './armor.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
 const rf = (a, b) => a + Math.random() * (b - a);
@@ -20,6 +21,20 @@ export class Combat {
     if (t.type === 'vehicle') return out.set(t.pos.x, 1.5, t.pos.z);
     const k = t.peek ? (t.peekAmt || 0) : 0, pv = t.peekVec;
     return out.set(t.pos.x + (k ? pv[0] * k * 0.78 : 0), t.pos.y + t.headHeight() * 0.75, t.pos.z + (k ? pv[1] * k * 0.78 : 0));
+  }
+  // hugging a wall with the enemy further along it: lean out from the wall to shoot (peek clip), then back
+  wallLean(s) {
+    if (s.inBuilding || s.aboard || s.stance === 'prone' || s.vel.lengthSq() > 0.2) return;
+    const nav = this.g.nav, i = nav.idx(s.pos.x, s.pos.z); if (i < 0 || nav.clear[i] > 1.4 || !nav.cover[i]) return;
+    const m = nav.cover[i]; let wx = 0, wz = 0;
+    for (let q = 0; q < 8; q++) if (m & (1 << q)) { wx += Math.cos(q * Math.PI / 4); wz += Math.sin(q * Math.PI / 4); }
+    const wl = Math.hypot(wx, wz); if (wl < 0.5) return; wx /= wl; wz /= wl;
+    const tp = s.target.pos, h = Math.atan2(tp.x - s.pos.x, tp.z - s.pos.z), tx = Math.sin(h), tz = Math.cos(h);
+    if (Math.abs(tx * wx + tz * wz) > 0.55) return;            // target isn't along the wall line
+    const rx = -Math.cos(h), rz = Math.sin(h), side = (rx * wx + rz * wz) > 0 ? -1 : 1; // lean away from the wall
+    const k = nav.idx(s.pos.x + rx * side * 0.6, s.pos.z + rz * side * 0.6); if (k < 0 || nav.cost[k] === 255) return;
+    if (!s.peek) s.peekT = 0;
+    s.peek = side; s.peekVec = [rx * side * 0.45, rz * side * 0.45];
   }
   // standing at a wall corner with the target hidden: can he lean out left/right and see it?
   tryPeek(s, cands, ignA) {
@@ -66,7 +81,8 @@ export class Combat {
       const d = Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z);
       if (d < (s.assault ? 34 : 28) && d > 7 && Math.random() < (s.assault ? 0.8 : 0.55) && !s.inside) { s.throwWindow = !!t.inBuilding; this.throwGrenade(s, t); return; }
     }
-    if (s.vel.lengthSq() > 2.5 && s.weaponKey !== 'ak74m') return; // only rifles fire on the move (badly)
+    // nobody fires from the hip on the move: a walking man pauses, shoulders the weapon and shoots; runners don't
+    if (s.vel.lengthSq() > 0.5) { if (!sq.run && !sq.routing && !s.dragging && !s.waitTeam && (s.aimStopT || 0) <= 0 && Math.random() < 0.35) s.aimStopT = 1.2 + Math.random() * 1.3; return; }
     // facing check
     const want = Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z);
     if (Math.abs(angDiff(want, s.heading)) > 0.3) return;
@@ -110,6 +126,7 @@ export class Combat {
       if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t)) { s.target = t; break; }
     }
     if (!s.target && this.tryPeek(s, cands, ignA)) { if (!peeked) s.peekT = 0; }
+    else if (s.target && s.target.type !== 'vehicle') this.wallLean(s);
     if (!s.target && s.sideKey && s.weaponKey !== 'rpg7' && s.origWeapon) this.swapBack(s);
   }
   swapToSide(s) { if (s.origWeapon) return; s.origWeapon = { key: s.weaponKey, mags: s.mags, inMag: s.inMag }; s.weaponKey = s.sideKey; s.weapon = WEAPONS[s.sideKey]; s.mags = s.sideMags; s.inMag = 0; s.reloadT = 1.5; }
@@ -132,7 +149,7 @@ export class Combat {
     const sc = W.type === 'mg' ? 125 : W.type === 'dmr' ? 160 : 95;
     p *= Math.exp(-Math.pow(d / sc, 1.35));
     if (W.optic) p *= 1.15;
-    p *= 1 - Math.min(0.85, s.suppression / 110);
+    p *= 0.85 * (1 - Math.min(0.85, s.suppression / 110));
     if (s.squad.pinned) p *= 0.6;
     if (s.state === 'light') p *= 0.7;
     if (s.vel.lengthSq() > 0.5) p *= 0.3;
@@ -230,11 +247,11 @@ export class Combat {
     if (blast || W.type === 'blast') { dmg = rf(...(W.dmg || [40, 90])); if (t.stance === 'prone') dmg *= 0.6; if (t.armor?.plateCoverage > 0.5) dmg *= 0.8; }
     else {
       const r = Math.random();
-      if (r < 0.08) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else dmg = 160; }
+      if (r < 0.06) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else dmg = 160; }
       else if (r < 0.55) { // torso
         const A = t.armor || { plateCoverage: TUNING.plateCoverage, plateStop: TUNING.plateStopsRifle }; const stopP = W.type === 'rifle' ? A.plateStop * A.plateCoverage / 0.47 : W.type === 'mg' ? A.plateStop * A.plateCoverage / 0.47 * 0.65 : 0;
         if (Math.random() < Math.min(0.9, stopP)) { dmg = rf(4, 14); t.suppression = Math.min(100, t.suppression + 40); t.hitT = 0.5; }
-        else dmg = rf(W.dmg[0], W.dmg[1]) * 1.3;
+        else dmg = rf(W.dmg[0], W.dmg[1]) * 1.1;
       } else { dmg = rf(W.dmg[0] * 0.6, W.dmg[1] * 0.8) * (t.armor?.plateCoverage > 0.5 && r < 0.7 ? 0.5 : 1); if (r > 0.78) t.legWound = true; }
       if (W.type === 'hmg' || W.type === 'autocannon') dmg *= 2.5;
     }
@@ -242,7 +259,8 @@ export class Combat {
     const sq = t.squad;
     if (g.camDist(t.pos) < 120) g.fx.blood(this.targetPoint(t, C));
     if (t.hp <= 0) {
-      if (head || t.hp < -70 || (blast && Math.random() < 0.35)) { t.die(); g.onDeath(t, shooter, false); }
+      // survivability: most non-head hits leave a man badly wounded (savable by a medic/evac) rather than dead
+      if (head || t.hp < -95 || (blast && Math.random() < 0.25)) { t.die(); g.onDeath(t, shooter, false); }
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut); t.target = null; t.path = null;
         if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
@@ -302,7 +320,7 @@ export class Combat {
     // first round at a new target is a ranging shot; men are small targets, vehicles are not
     const ranged = v.lastTarget === t ? Math.min(3, (v.rangedShots || 0) + 1) : 0; v.lastTarget = t; v.rangedShots = ranged;
     const base = t.type === 'vehicle' ? (round === 'ap' ? 0.9 : 0.82) * Math.exp(-d / 1400) : (t.inBuilding ? 0.75 : 0.38) * Math.exp(-Math.pow(d / 380, 1.3));
-    const acc = base * (0.6 + 0.4 * ranged / 3) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.75 : 1);
+    const acc = base * (0.6 + 0.4 * ranged / 3) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.75 : 1) * (v.opticsDamaged ? 0.55 : 1) * (v.gunnerDown ? 0.6 : 1);
     const hit = Math.random() < acc;
     if (!hit) { const m = 2 + d * 0.018; tp.x += (Math.random() - .5) * m * 2; tp.z += (Math.random() - .5) * m * 2; tp.y = Math.max(0.2, tp.y + (Math.random() - .5) * 2); }
     // first obstruction along the line (buildings) stops the round
@@ -321,7 +339,7 @@ export class Combat {
     const near = g.camDist(v.pos) < 300;
     if (near) g.fx.muzzle(from, tp.clone().sub(from).normalize(), W.type === 'autocannon' ? 1.6 : W.type === 'hmg' ? 1.3 : 0.9);
     g.sfx(W.sound === 'cannon30' ? 'cannon30' : W.sound === 'hmg' ? 'hmg' : 'mg_near', v.pos);
-    let p = (W.type === 'autocannon' ? 0.3 : W.type === 'hmg' ? 0.2 : 0.14) * Math.exp(-Math.pow(d / 260, 1.35)) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.7 : 1);
+    let p = (W.type === 'autocannon' ? 0.3 : W.type === 'hmg' ? 0.2 : 0.14) * Math.exp(-Math.pow(d / 260, 1.35)) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.7 : 1) * (v.opticsDamaged ? 0.55 : 1);
     if (t.type !== 'vehicle') { if (t.inBuilding) p *= 0.45; else if (t.inside === 'ride') p *= 0.8; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
     else p = Math.min(0.9, p * 3);
     const hit = Math.random() < p;
@@ -383,7 +401,7 @@ export class Combat {
       if (p.occ === undefined) p.occ = g.nav.occluded(p.owner.pos.x, 2, p.owner.pos.z, at.x, at.y, at.z, p.owner.squad?.building || null, p.t && p.t.type !== 'vehicle' && p.t.inBuilding ? p.t.bld : null);
       if (p.occ && p.occ.ref?.panels) at = this.facadePoint(p.occ, p.owner.pos, at);
       if (p.t && p.t.type === 'vehicle' && p.hit !== false && at.distanceTo(p.t.pos) < p.t.def.length * 0.6 && p.kind === 'rpg') {
-        this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ce', p.owner);
+        this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ce', p.owner, false, at);
         g.fx.explosion(at, 0.7); g.sfx('explosion_small', at); return;
       }
       if (p.t && p.t.type === 'vehicle' && p.kind === 'he30' && p.hit) { this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ke', p.owner); g.fx.impact(at, 'metal', 1); g.fx.light(at, 0xffaa55, 8, 6, 0.05); return; }
@@ -463,39 +481,56 @@ export class Combat {
     for (const sq of g.squads) if (sq.building === b) { sq.addMorale(-4 * Math.min(3, changed.length)); sq.underFireT = 0; }
   }
   // ---------------------------------------------------------------- armour
-  hitVehicle(v, W, fromPos, kind, owner, top = false) {
+  // Hit-location armour model (armor.js): which plate was struck, at what obliquity, ERA, penetration vs
+  // effective thickness, then what lies behind the armour along the round's path.
+  hitVehicle(v, W, fromPos, kind, owner, top = false, at = null) {
     if (v.destroyed) return;
     const g = this.g;
-    const ang = Math.abs(angDiff(Math.atan2(fromPos.x - v.pos.x, fromPos.z - v.pos.z), v.heading));
-    const facing = top ? 'top' : ang < Math.PI / 4 ? 'front' : ang > Math.PI * 0.75 ? 'rear' : 'side';
-    const armor = v.def.armor[facing][kind];
-    const pen = (W.pen || 0) * rf(0.85, 1.15);
-    if (pen <= armor) {
-      if ((W.pen || 0) > 20) { v.hp -= 8; if (v.side === 'player' && Math.random() < 0.3) g.hud?.alert(`${v.name}: hit, no penetration (${facing})`); }
-      if (kind === 'ce' && v.kind === 'tank' && Math.random() < 0.15) { v.immobile = facing === 'side' ? Math.random() < 0.5 : v.immobile; }
-      return;
+    if (!v.zones) initArmor(v);
+    const k = W.type === 'tankgun' && kind === 'ke' ? 'ke' : kind;
+    const from = top ? new THREE.Vector3(v.pos.x + (Math.random() - .5) * 2, 30, v.pos.z + (Math.random() - .5) * 2) : fromPos;
+    const r = resolveHit(v, W, from, k, at, from.distanceTo ? from.distanceTo(v.pos) : 0);
+    if (r.miss) return;
+    const note = (msg, bad = true) => { if (v.side === 'player') g.hud?.alert(`${v.name}: ${msg}`, bad ? 'bad' : ''); };
+    const where = `${r.zone.replace('_', ' ')}${r.face && r.face !== 'side' && !/tracks|wheels/.test(r.zone) ? ' ' + r.face : r.face === 'side' ? ' side' : ''}`;
+    if (r.ricochet) { if ((W.pen || 0) > 100) { v.hp -= 4; if (Math.random() < 0.5) note(`round glanced off the ${where}`, false); } return; }
+    const fx = new Set(r.effects);
+    // running gear
+    if (fx.has('track')) { v.immob.track = true; note('track broken — immobilised'); }
+    if (fx.has('wheel')) { v.wheelsLost++; if (v.wheelsLost >= 4) { v.immob.wheels = true; note('wheels shot out — immobilised'); } else if (Math.random() < 0.4) note(`wheel hit (${v.wheelsLost}/8)`); }
+    if (r.stopped) {
+      if ((W.pen || 0) > 20) v.hp -= (W.pen > 200 ? 10 : 3);
+      if (fx.has('optics')) { v.opticsDamaged = true; note('sights damaged'); }
+      if (fx.has('stun')) v.stunT = 3;
+      if ((W.pen || 0) > 100 && Math.random() < 0.5) note(`hit ${where} — no penetration (${r.armor} mm${r.era ? ', ERA' : ''} vs ${r.pen} mm)`, false);
+      this.updateImmobile(v); return;
     }
-    v.hp -= rf(...(W.dmg || [100, 200])) * (kind === 'ce' ? 1.2 : 1);
-    const r = Math.random();
-    let msg = 'penetrated';
-    if (v.kind === 'tank') {
-      if (r < (facing === 'front' ? 0.15 : 0.32) && (kind === 'ke' || W.pen > 200)) { v.knockOut(true); msg = 'ammunition detonated'; }
-      else if (r < 0.45) { v.burning = 0.01; msg = 'on fire'; }
-      else if (r < 0.65) { v.crew--; msg = 'crew casualty'; if (v.crew <= 0) v.knockOut(false); }
-      else if (r < 0.8) { v.immobile = true; msg = 'immobilised'; }
-      else if (r < 0.9) { v.gunDisabled = true; msg = 'gun damaged'; }
-    } else {
-      if (v.passengers) { g.passengerCasualties(v, kind === 'ce' ? 0.35 : 0.2, owner); }
-      if (r < 0.25) { v.burning = 0.01; msg = 'on fire'; }
-      else if (r < 0.45) { v.immobile = true; msg = 'immobilised'; }
-      else if (r < 0.6) { v.crew--; if (v.crew <= 0) v.knockOut(false); msg = 'crew casualty'; }
-      else if (r < 0.7) { v.gunDisabled = true; msg = 'turret damaged'; }
+    if (!r.penetrated) { this.updateImmobile(v); return; }
+    v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1));
+    const msgs = [];
+    const crewHit = role => { const c = v.crewList.find(m => m.role === role && m.hp > 0); if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
+    for (const e of fx) {
+      const part = v.parts.find(p => p.name === e); if (!part) continue;
+      if (part.crew) crewHit(part.crew);
+      if (part.ammo && Math.random() < part.ammo * (k === 'ke' ? 1 : 0.8)) { msgs.push('ammunition detonated'); v.crewList.forEach(c => c.hp = 0); v.crew = 0; v.knockOut(true); break; }
+      if (part.fuel && Math.random() < part.fuel && !v.burning) { v.burning = 0.01; msgs.push('on fire'); }
+      if (part.engine) { v.immob.engine = true; msgs.push('engine knocked out'); }
+      if (part.gun) { v.gunDisabled = true; msgs.push('gun destroyed'); }
+      if (part.optics) { v.opticsDamaged = true; msgs.push('sights damaged'); }
+      if (part.ring) { v.turretJam = true; msgs.push('turret jammed'); }
+      if (part.troops && v.passengers) { g.passengerCasualties(v, k === 'ce' ? 0.35 : 0.22, owner); msgs.push('troop compartment hit'); }
     }
-    if (!v.destroyed && v.hp <= 0) v.knockOut(v.kind === 'tank' && Math.random() < 0.4);
+    if (!v.destroyed) {
+      v.crew = v.crewList.filter(c => c.hp > 0).length;
+      if (v.crew <= 0) { msgs.push('crew killed'); v.knockOut(false); }
+      else if (v.hp <= 0) v.knockOut(v.kind === 'tank' && Math.random() < 0.35);
+    }
+    this.updateImmobile(v);
     if (v.destroyed && owner?.squad) owner.squad.stats.kills += 1; else if (v.destroyed && owner?.stats) owner.stats.kills += 1;
-    if (v.side === 'player' && !v.destroyed) g.hud?.alert(`${v.name}: ${msg}!`, 'bad');
-    if (v.side !== 'player' && v.destroyed) g.hud?.alert(`Enemy ${v.name} destroyed`, 'good');
+    if (v.side === 'player' && !v.destroyed) note(`penetrated ${where}${msgs.length ? ' — ' + msgs.join(', ') : ''}!`);
+    if (v.side !== 'player' && v.destroyed) g.hud?.alert(`Enemy ${v.name} destroyed (${where})`, 'good');
   }
+  updateImmobile(v) { v.immob ||= {}; v.immobile = Object.values(v.immob).some(Boolean); }
   // ---------------------------------------------------------------- vehicle targeting
   vehicleTargets(v) {
     const g = this.g, eye = A.set(v.pos.x, 2.4, v.pos.z).clone();

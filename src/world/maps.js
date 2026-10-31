@@ -94,6 +94,10 @@ export const MAPS = {
       { x0: -127, x1: -122, z0: 67, z1: 303, type: 'track' },
       { x0: 222, x1: 227, z0: -292, z1: 60, type: 'track' },
       { x0: 107, x1: 357, z0: -146, z1: -141, type: 'track' },
+      // village lanes
+      { x0: -330, x1: -40, z0: 150, z1: 155, type: 'track' },        // Novomykolaivka: vul. Sadova (south)
+      { x0: -205, x1: -200, z0: -45, z1: 190, type: 'track' },       // Novomykolaivka: vul. Shkilna (cross street)
+      { x0: -10, x1: 100, z0: -200, z1: -195, type: 'track' },       // Kurylivka: west lane
     ],
     objectives: [
       { id: 'A', name: 'Village School', x: -168, z: 86 },
@@ -113,7 +117,9 @@ export const MAPS = {
       [-250, 48.5, Math.PI, 8, 2, 4, 2, 'brick', 0.9], [-30, 103, 0, 8, 3, 4, 2, 'khrushchyovka', 1.1],
       // Kurylivka (north-east village, along the N–S road)
       [117, -172, -Math.PI / 2, 6, 2, 3, 1, 'shop', 1.1, { shops: true }], [89, -105, Math.PI / 2, 8, 2, 4, 2, 'brick', 1.2],
-      [89, -205, Math.PI / 2, 10, 2, 4, 2, 'khrushchyovka', 1.0],
+      [89, -225, Math.PI / 2, 10, 2, 4, 2, 'khrushchyovka', 1.0],
+      // village club and the second shop on the new streets
+      [-222, 118, Math.PI / 2, 8, 2, 4, 2, 'brick', 0.9], [-150, 168, 0, 6, 2, 3, 1, 'shop', 0.8, { shops: true }],
     ],
     pancakes: [],
     // windbreak tree lines (centre line); gaps are left where roads and tracks cross
@@ -123,8 +129,12 @@ export const MAPS = {
       [-395, -E_F, -395, E_F], [-20, -175, -20, -22], [10, 190, 10, 335], [390, -E_F, 390, E_F], [180, -335, 180, -175],
     ],
     villages: [
-      { street: 'x', z0: 60, z1: 67, from: -330, to: -10, depth: 42, name: 'Novomykolaivka' },
-      { street: 'z', x0: 100, x1: 107, from: -250, to: -60, depth: 40, name: 'Kurylivka' },
+      { street: 'x', z0: 60, z1: 67, from: -340, to: -10, depth: 42, name: 'Novomykolaivka' },
+      { street: 'x', z0: 150, z1: 155, from: -330, to: -45, depth: 30, name: 'Novomykolaivka' },
+      { street: 'z', x0: -205, x1: -200, from: -42, to: 186, depth: 34, name: 'Novomykolaivka' },
+      { street: 'z', x0: 100, x1: 107, from: -260, to: -55, depth: 40, name: 'Kurylivka' },
+      { street: 'x', z0: -146, z1: -141, from: 112, to: 235, depth: 32, name: 'Kurylivka' },
+      { street: 'x', z0: -200, z1: -195, from: -8, to: 96, depth: 30, name: 'Kurylivka' },
     ],
     farm: { x: 262, z: 112 },
     lineup: [[-150, 402, 'btr', '1st Squad'], [60, 402, 'btr', '2nd Squad'], [-40, 402, 'btr', '3rd Squad'], [-95, 412, 'tank', 'Assault Squad'], [200, 406, 'tank', null]],

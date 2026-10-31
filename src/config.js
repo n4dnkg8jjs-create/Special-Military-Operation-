@@ -27,6 +27,7 @@ export const WEAPONS = {
   a72:    { name: '2A72 30 mm', type: 'autocannon', range: 900, rof: 330, burst: [3, 6], burstGap: [0.9, 1.8], mag: 300, reload: 0, dmg: [90, 140], pen: 30, blast: 2.2, spread: 1.6, sound: 'cannon30', tracerEvery: 1 },
   kpvt:   { name: 'KPVT 14.5 mm', type: 'hmg', range: 800, rof: 600, burst: [4, 8], burstGap: [0.8, 1.6], mag: 500, reload: 0, dmg: [70, 120], pen: 30, spread: 2.0, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
   pkt:    { name: 'PKT 7.62 mm', type: 'mg', range: 600, rof: 700, burst: [6, 14], burstGap: [0.6, 1.4], mag: 2000, reload: 0, dmg: [35, 80], pen: 8, spread: 2.8, sound: 'mg', tracerEvery: 3, suppress: 2.0 },
+  pm:     { name: 'PM 9 mm (pistol)', type: 'pistol', range: 60, rof: 140, burst: [1, 2], burstGap: [0.35, 0.9], mag: 8, reload: 2.2, dmg: [22, 50], pen: 2, spread: 5, sound: 'rifle', tracerEvery: 99 },
   a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 39, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
 };
 
@@ -54,8 +55,16 @@ export const ASSAULT_ROLES = [
 ];
 export const ARMOR = {
   standard: { plateCoverage: 0.42, plateStop: 0.85, helmetStop: 0.35 },
-  heavy: { plateCoverage: 0.62, plateStop: 0.92, helmetStop: 0.5 },   // + shoulder/groin/side protection
+  heavy: { plateCoverage: 0.62, plateStop: 0.92, helmetStop: 0.5 },
+  light: { plateCoverage: 0.2, plateStop: 0.6, helmetStop: 0.15 },     // vehicle crew: soft armour, padded tanker helmet   // + shoulder/groin/side protection
 };
+
+// Crew bailing out of a knocked-out or burning vehicle: tanker kit, Makarov pistols only.
+export const CREW_ROLES = [
+  { role: 'Vehicle commander', weapon: 'pm', mags: 2, leader: true, armor: 'light', grenades: 0, crew: true },
+  { role: 'Gunner', weapon: 'pm', mags: 2, armor: 'light', grenades: 0, crew: true },
+  { role: 'Driver-mechanic', weapon: 'pm', mags: 2, armor: 'light', grenades: 0, crew: true },
+];
 
 export const VEHICLES = {
   // armor in mm RHA-equivalent vs chemical energy (CE) and kinetic (KE) rounds by facing.
@@ -77,7 +86,7 @@ export const TUNING = {
   plateCoverage: 0.42,      // fraction of hits landing on front/back plate area
   plateStopsRifle: 0.85,
   helmetStopChance: 0.35,
-  bleedOut: [70, 160],      // seconds a critically wounded soldier survives if not evacuated
+  bleedOut: [110, 220],      // seconds a critically wounded soldier survives if not evacuated
   dragSpeed: 1.1,
   moraleRegen: 1.8,          // per second when not under fire
   routThreshold: 15,

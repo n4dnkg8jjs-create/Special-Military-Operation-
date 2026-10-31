@@ -3,7 +3,9 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as Fallback from '../engine/fallback.js';
 import { WEAPONS, TUNING, ARMOR } from '../config.js';
 
-export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22' };
+export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22', pm: 'pm' };
+// a crewman with a pistol uses the pistol clips when they exist, otherwise the rifle ones
+const PISTOL_CLIP = { aim_stand: 'pistol_aim', fire_stand: 'pistol_fire', idle_rifle: 'pistol_idle', walk_rifle: 'pistol_walk', run_rifle: 'pistol_run', aim_crouch: 'pistol_crouch_aim', fire_crouch: 'pistol_fire', crouch_idle: 'pistol_crouch_aim', reload_stand: 'pistol_aim', reload_crouch: 'pistol_crouch_aim' };
 
 // One infantryman: visual (skinned MakeHuman mesh + gear + weapon), animation state machine and combat state.
 const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
@@ -53,14 +55,14 @@ export class Soldier {
       const pickOf = (pre) => { const set = new Set(); m.traverse(o => { const mm = o.name.match(new RegExp(`^${pre}_([A-Z])(_LOD1)?$`)); if (mm) set.add(mm[1]); }); return [...set][Math.floor(r() * set.size)]; };
       const body = pickOf('body'), helmet = pickOf('helmet');
       // pre-merged single-material presets (combo_N / assault_combo_N) are far cheaper to draw
-      const combos = []; m.traverse(o => { const mm = o.name.match(/^((?:assault_)?combo_\d+)$/); if (mm) combos.push(mm[1]); });
-      const wantAssault = this.assault && combos.some(c => c.startsWith('assault_'));
-      const pool = combos.filter(c => c.startsWith('assault_') === wantAssault);
+      const combos = []; m.traverse(o => { const mm = o.name.match(/^((?:assault_|crew_)?combo_\d+)$/); if (mm) combos.push(mm[1]); });
+      const pre = this.squad.crew && combos.some(c => c.startsWith('crew_')) ? 'crew_' : this.assault && combos.some(c => c.startsWith('assault_')) ? 'assault_' : '';
+      const pool = combos.filter(c => (c.match(/^(assault_|crew_)/)?.[1] || '') === pre);
       const combo = pool.length ? pool[Math.floor(r() * pool.length)] : null;
       const gloves = this.assault || r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : this.assault ? 0.7 : 0.3), knee = this.assault || r() < 0.45;
       const legL = this.faction.id === 'UA' ? r() < 0.35 : r() < 0.15;
       const vis = core => {
-        if (/^(assault_)?combo_\d+(_tape)?$/.test(core)) return !!combo && (core === combo || core === combo + '_tape');
+        if (/^(assault_|crew_)?combo_\d+(_tape)?$/.test(core)) return !!combo && (core === combo || core === combo + '_tape');
         if (combo) return false; // a combo replaces every per-part node
         let mm = core.match(/^body_([A-Z])$/); if (mm) return mm[1] === body;
         mm = core.match(/^helmet_([A-Z])$/); if (mm) return mm[1] === helmet;
@@ -111,11 +113,12 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
   play(name, fade = 0.25, timeScale = 1, alt = []) {
+    if (this.weaponKey === 'pm' && PISTOL_CLIP[name] && this.action(PISTOL_CLIP[name])) name = PISTOL_CLIP[name];
     let a = this.action(name);
     for (let i = 0; !a && i < alt.length; i++) { name = alt[i]; a = this.action(name); }
     if (!a) return;
@@ -174,6 +177,7 @@ export class Soldier {
       else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
       else clip = 'wounded_ground';
     } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
+    else if (this.hatchT > 0) { clip = 'hatch_exit'; alt = ['dismount_jump', 'crouch_idle']; }
     else if (this.jumpT > 0) { clip = 'dismount_jump'; alt = ['crouch_idle']; }
     else if (this.launcherT > 0) {
       const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;
@@ -221,7 +225,7 @@ export class Soldier {
     if (this.peek && this.target && this.state !== 'dead') { this.peekT = (this.peekT ?? 0) - dt; if (this.peekT <= 0) { this.peekOut = !this.peekOut; this.peekT = this.peekOut ? 1.5 + Math.random() * 1.5 : 0.9 + Math.random() * 1.3; } }
     else { this.peekOut = false; if (!this.target || this.vel.lengthSq() > 0.2) this.peek = 0; }
     this.peekAmt = (this.peekAmt || 0) + (((this.peek && this.peekOut) ? 1 : 0) - (this.peekAmt || 0)) * Math.min(1, dt * 6);
-    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt);
+    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.hatchT = Math.max(0, (this.hatchT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt);
   }
   sync() {
     this.root.position.copy(this.pos);

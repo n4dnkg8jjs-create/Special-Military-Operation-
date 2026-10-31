@@ -318,8 +318,8 @@ export class Farmland extends City {
         this.houseSpots.push([hx, hz, destroyed]);
         // street fence with a gate, side fences around the front yard
         const fn = fences[Math.floor(R() * 2)], fr = along ? 0 : Math.PI / 2;
-        for (let u = -10.5; u <= 10.5; u += 3) { if (R() < 0.22) continue; const [x, z] = W(t + u, 1.6); if (Math.abs(u) < 2) { this.put('gate_village', x, z, fr, { crush: 'any', check: false }); continue; } this.put(fn, x, z, fr + (R() - .5) * 0.06, { crush: 'any', check: false }); }
-        for (const su of [-12, 12]) for (let w = 3.2; w < 20; w += 3) { if (R() < 0.3) continue; const [x, z] = W(t + su, w); this.put(fn, x, z, fr + Math.PI / 2, { crush: 'any', check: false }); }
+        for (let u = -10.5; u <= 10.5; u += 3) { if (R() < 0.22) continue; const [x, z] = W(t + u, 1.6); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0)) continue; if (Math.abs(u) < 2) { this.put('gate_village', x, z, fr, { crush: 'any', check: false }); continue; } this.put(fn, x, z, fr + (R() - .5) * 0.06, { crush: 'any', check: false }); }
+        for (const su of [-12, 12]) for (let w = 3.2; w < 20; w += 3) { if (R() < 0.3) continue; const [x, z] = W(t + su, w); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0)) continue; this.put(fn, x, z, fr + Math.PI / 2, { crush: 'any', check: false }); }
         // back yard: outbuildings, well, woodpile, then the vegetable garden and a fruit/walnut tree
         const yb = [['shed_wood', 22, 6], ['outhouse', 27, -7], ['woodpile', 20, -5], ['well_village', 18, 7], ['greenhouse_frame', 31, 4]];
         for (const [n, w, u] of yb) if (R() < (n === 'shed_wood' ? 0.85 : 0.5)) { const [x, z] = W(t + u + (R() - .5) * 2, w + (R() - .5) * 2); this.put(n, x, z, face + (R() < 0.5 ? 0 : Math.PI / 2), { cost: n === 'woodpile' ? 7 : BLOCK, low: n === 'woodpile' }); }

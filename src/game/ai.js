@@ -192,6 +192,10 @@ export class Commander {
     if (v.pos.distanceTo(c) > 70 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(c.x - ox, 0, c.z - oz).normalize(); const p = c.clone().addScaledVector(back, 35); v.orderMove(p.x, p.z); }
     if (v.hp < v.def.hp * 0.4 && !b.retreated) { b.retreated = true; const [x, z] = this.stagingFor(b.obj); v.orderMove(x, z - 60); }
   }
+  // bailed-out enemy crews fall back towards their own lines and defend themselves
+  adoptCrew(sq) {
+    const sp = SPAWNS.attacker[0]; setTimeout(() => { if (!sq.destroyed) sq.orderMove(sp[0], sp[1] + 30, 0, 8, true); }, 3000);
+  }
   // nearest spotted player unit within r of this squad (position + unit)
   contactNear(sq, c, r) {
     let best = null, bd = r;

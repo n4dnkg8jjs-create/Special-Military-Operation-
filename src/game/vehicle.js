@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import * as Fallback from '../engine/fallback.js';
 import { VEHICLES, WEAPONS } from '../config.js';
-import { angDiff } from './squad.js';
+import { angDiff, Squad } from './squad.js';
+import { initArmor } from './armor.js';
+import { CREW_ROLES } from '../config.js';
 
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
@@ -57,6 +59,7 @@ export class Vehicle {
     if (kind === 'btr') this.weapons[0].ammo = WEAPONS[this.weapons[0].key].mag;
     this.supply = this.def.supply ? { ...this.def.supply } : null;
     this.build();
+    this.immob = {}; initArmor(this);
     this.thinkT = Math.random();
   }
   get alive() { return !this.destroyed; }
@@ -128,6 +131,11 @@ export class Vehicle {
     this.aimAndFire(dt);
     // fire progression
     if (this.ember) this.ember.value = this.fire && !this.fire.dead ? Math.max(0.15, 1 - this.burning / 200) * (0.8 + 0.2 * Math.sin(this.burning * 5.3)) : Math.max(0, this.ember.value - dt * 0.02);
+    // crew: a replacement takes the driver's seat after a while; the commander takes over a dead gunner's sight
+    if (this.driverSwapT > 0 && (this.driverSwapT -= dt) <= 0 && this.crewList?.some(c => c.hp > 0)) { this.immob.driver = false; this.immobile = Object.values(this.immob).some(Boolean); if (this.side === 'player') this.game.hud?.alert(`${this.name}: crew swapped seats, mobile again`); }
+    if (this.crewList) { const gun = this.crewList.find(c => c.role === 'gunner'), cmd = this.crewList.find(c => c.role === 'commander'); this.gunnerDown = gun.hp <= 0; if (gun.hp <= 0 && cmd.hp <= 0) this.gunDisabled = true; }
+    // a burning vehicle: whoever survived the hit tries to get out of the hatches
+    if (this.burning > 0 && !this.abandoned) { this.bailAt ??= this.burning + 2 + Math.random() * 5; if (this.burning >= this.bailAt) this.bailCrew(0.82); }
     if (this.burning > 0) {
       this.burning += dt;
       this.hp -= dt * (this.kind === 'tank' ? 10 : 25);
@@ -182,6 +190,8 @@ export class Vehicle {
     this.roll = THREE.MathUtils.lerp(this.roll || 0, THREE.MathUtils.clamp(-this.angVel * this.speed * 0.01, -0.04, 0.04), Math.min(1, dt * 4));
   }
   aimAndFire(dt) {
+    if (this.abandoned) { this.target = null; return; }
+    if (this.stunT > 0) { this.stunT -= dt; return; }
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.6; this.game.combat.vehicleTargets(this); }
     const main = this.weapons[0], t = this.target;
@@ -193,7 +203,7 @@ export class Vehicle {
       // riders on the deck: keep the barrel out of them (BTR front arc, T-72 locked forward)
       const riders = this.passengers?.mounted && this.passengers.soldiers.some(s => s.inside === 'ride');
       if (riders) { const arc = this.kind === 'tank' ? 0.12 : 0.7; want = THREE.MathUtils.clamp(want, -arc, arc); }
-      const rate = this.def.turretSpeed * (this.gunDisabled ? 0.3 : 1);
+      const rate = this.def.turretSpeed * (this.gunDisabled ? 0.3 : 1) * (this.turretJam ? 0.15 : 1);
       const d = angDiff(want, this.turretYaw); this.turretYaw += THREE.MathUtils.clamp(d, -rate * dt, rate * dt);
       this.turretSlewing = Math.abs(d) > 0.02;
       if (t) { const dist = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z); const dh = (t.aimY ?? 1) - 2.2; this.gunPitch = THREE.MathUtils.lerp(this.gunPitch, THREE.MathUtils.clamp(Math.atan2(dh, dist), -0.1, 0.35), Math.min(1, dt * 3)); }
@@ -259,8 +269,34 @@ export class Vehicle {
     r.visible = this.side === 'player' || this.spotted || this.destroyed;
   }
   // ------------------------------------------------------------ damage
+  // surviving crew climb out of the hatches (hatch_exit) and fight on with pistols
+  bailCrew(survival = 0.82) {
+    if (this.abandoned) return; this.abandoned = true;
+    const g = this.game, alive = (this.crewList || []).filter(c => c.hp > 0);
+    const out = alive.filter(() => Math.random() < survival);
+    for (const c of alive) if (!out.includes(c)) c.hp = 0;
+    this.crew = 0; this.target = null; this.path = null;
+    if (!out.length) return;
+    const roles = out.map(c => CREW_ROLES.find(r => r.role.toLowerCase().includes(c.role === 'driver' ? 'driver' : c.role)) || CREW_ROLES[2]);
+    const sq = new Squad(g, this.side, this.faction, `${this.name} crew`, 'crew', roles); sq.name = `${this.name} crew`;
+    const right = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading)), fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    sq.soldiers.forEach((s, i) => {
+      const side = i % 2 ? -1 : 1, p = this.pos.clone().addScaledVector(right, side * (this.def.width / 2 + 0.9)).addScaledVector(fwd, (this.kind === 'tank' ? 0.2 : 1.6) - i * 0.9);
+      const [x, z] = g.nav.nearestFree(p.x, p.z, 0.4, 6); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
+      s.hatchT = 1.6 + i * 0.5; s.stance = 'crouch';
+      if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }
+      s.sync();
+    });
+    g.squads.push(sq);
+    // move away from the burning hulk to cover
+    const away = this.pos.clone().addScaledVector(fwd, -12);
+    setTimeout(() => { if (!sq.destroyed) sq.orderMove(away.x, away.z, this.heading, 8, true); }, 2200);
+    if (this.side === 'player') { g.playerUnits?.push(sq); g.hud?.rebuildCards(); g.hud?.alert(`${this.name}: ${out.length} crew bailed out`, 'bad'); }
+    else g.commander?.adoptCrew?.(sq);
+  }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
+    if (!catastrophic && !this.abandoned) this.bailCrew(0.6); else this.abandoned = true;
     this.destroyed = true; this.target = null; this.path = null; this.speed = 0; this.burning = Math.max(this.burning, 0.01);
     const g = this.game;
     if (this.passengers) g.bailOut(this, catastrophic ? 0.8 : 0.4);
