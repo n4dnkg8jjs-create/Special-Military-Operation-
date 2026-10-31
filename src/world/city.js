@@ -202,7 +202,8 @@ export class City {
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
       const a = new THREE.Mesh(uvPlane(w, d, 7), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a);
-      // lane markings (worn)
+      // lane markings (worn) — not on the single-lane courtyard driveways
+      if (r.type === 'drive') continue;
       const horiz = w > d; const len = horiz ? w : d;
       const dash = new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.9, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -3 });
       const mats = [];
@@ -620,12 +621,9 @@ export class City {
     };
     if (!T.sandbag) { const sb = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x7c7058, roughness: 1 }); for (let r = 0; r < 3; r++) for (let i = 0; i < 5; i++) { const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.4, 3, 8), m); b.rotation.z = Math.PI / 2; b.scale.set(1, 1, 0.75); b.position.set(-1.2 + i * 0.6 + (r % 2) * 0.3, 0.15 + r * 0.26, 0); sb.add(b); } sb.traverse(o => o.isMesh && (o.castShadow = true)); T.sandbag = [sb]; }
     // School: sandbagged positions along the avenue side and the gap between wings
-    for (let x = -78; x <= -44; x += 4.2) if (this.rng() < 0.75) put('sandbag', x, 30, 0);
-    for (const [x, z, r] of [[-86, 45, Math.PI / 2], [-86, 52, Math.PI / 2], [-70, 76, 0.3]]) put('sandbag', x, z, r);
     // Crossroads: barricade of hedgehogs across the intersection mouths + sandbag nests at corners
     for (let x = 80; x <= 90; x += 2.6) put('hedgehog', x, -14, this.rng() * 3);
     for (let z = -6; z <= 6; z += 2.6) put('hedgehog', 70, z, this.rng() * 3);
-    for (const [x, z, r] of [[98, -14.5, 0], [102, -14.5, 0], [74, -14.5, 0], [98, 17, Math.PI], [72, 17, Math.PI]]) put('sandbag', x, z, r);
     for (const v of Object.values(placeList)) instance(this.scene, v.t, v.m);
     // concertina wire belts in front of both objectives
     const C = this.wireT?.concertina?.[0];
