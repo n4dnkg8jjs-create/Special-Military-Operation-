@@ -164,7 +164,7 @@ export class Farmland extends City {
           float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
           grass = mix(vec3(gl), grass, 0.75) * vec3(1.0, 1.0, 0.84) * clamp(dl / max(gl, 0.02), 1.0, 1.45);
           #ifdef HAS_FALLOW
-            vec3 fallow = tile(tFallow, wp / 4.0);
+            vec3 fallow = mix(tile(tFallow, wp / 4.0), grass, 0.38 * smoothstep(0.3, 0.7, vn(wp * 0.09)) + 0.12);
           #else
             vec3 fallow = mix(grass, dirt * vec3(1.05, 1.02, 0.9), smoothstep(0.5, 0.8, vn(wp * 0.4)) * 0.45);
           #endif
@@ -208,6 +208,7 @@ export class Farmland extends City {
     for (const b of this.buildings) { yx.save(); yx.translate(...P(b.x, b.z)); yx.rotate(-b.rot); yx.globalAlpha = 0.7; yx.fillRect((-b.L / 2 - 6) * k, (-b.D / 2 - 6) * k, (b.L + 12) * k, (b.D + 12) * k); yx.restore(); }
     for (const y of this.yardRects || []) { yx.globalAlpha = y[4] ?? 0.65; yx.fillRect(...P(y[0], y[1]), (y[2] - y[0]) * k, (y[3] - y[1]) * k); }
     for (const g of this.gardenRects || []) { gx.globalAlpha = 0.9; gx.fillRect(...P(g[0], g[1]), (g[2] - g[0]) * k, (g[3] - g[1]) * k); }
+    vx.fillStyle = '#fff'; for (const l of this.lawnRects || []) { vx.globalAlpha = 0.9; vx.fillRect(...P(l[0], l[1]), (l[2] - l[0]) * k, (l[3] - l[1]) * k); }  // grassy house yards
     for (const [x0, z0, x1, z1] of MAP.treelines) { vx.lineWidth = 22 * k; vx.globalAlpha = 1; vx.beginPath(); vx.moveTo(...P(x0, z0)); vx.lineTo(...P(x1, z1)); vx.stroke(); }
     // wheel ruts / trampled lanes across fields
     yx.strokeStyle = '#fff'; yx.lineCap = 'round';
@@ -318,7 +319,7 @@ export class Farmland extends City {
         const [gx0, gz0] = W(t - 11, 34), [gx1, gz1] = W(t + 11, v.depth);
         this.gardenRects.push([Math.min(gx0, gx1), Math.min(gz0, gz1), Math.max(gx0, gx1), Math.max(gz0, gz1)]);
         const [yx0, yz0] = W(t - 11, 2), [yx1, yz1] = W(t + 11, 33);
-        this.yardRects.push([Math.min(yx0, yx1), Math.min(yz0, yz1), Math.max(yx0, yx1), Math.max(yz0, yz1), 0.45]);
+        (this.lawnRects ||= []).push([Math.min(yx0, yx1), Math.min(yz0, yz1), Math.max(yx0, yx1), Math.max(yz0, yz1)]);
         for (let q = 0; q < 2; q++) if (R() < 0.75) { const [x, z] = W(t + (R() - .5) * 18, 14 + R() * 24); const n = trees[Math.floor(R() * trees.length)]; this.put(n, x, z, R() * 6, { s: 0.85 + R() * 0.3, circle: 0.5, lod: this.tpl(n + '_lod1') ? n + '_lod1' : null, inst: { lodDist: 200, cullDist: 900 } }); }
         this.concealRect(...W(t - 11, 2), ...W(t + 11, v.depth), 190);
       }
@@ -350,8 +351,8 @@ export class Farmland extends City {
         if (!run) run = [t, t]; run[1] = t + 3;
         for (const off of [-3.4, 0.2, 3.6]) {
           const o2 = off + (R() - .5) * 1.4, px = cx + nx * o2 + ux * (R() - .5) * 2, pz = cz + nz * o2 + uz * (R() - .5) * 2;
-          if (off === 0.2 || R() < 0.12) { if (R() < 0.75) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 170, cullDist: 700, lodShadows: false } }); } continue; }
-          const n = pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 190, cullDist: 1200 } })) continue;
+          if (off === 0.2 || R() < 0.12) { if (R() < 0.75) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 140, cullDist: 700, lodShadows: false } }); } continue; }
+          const n = pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 165, cullDist: 1200 } })) continue;
         }
         // undergrowth litter & fallen limbs
         if (R() < 0.05) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false });

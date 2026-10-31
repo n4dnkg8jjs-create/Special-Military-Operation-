@@ -2637,5 +2637,786 @@
   },
   "refs": "Photo record of Mariupol (Livoberezhnyi / Primorskyi private sector, Azovstal-side districts), Bakhmut, Avdiivka (Khimik), Sievierodonetsk: above-ground foil-clad heating mains on concrete sleepers with \u041f-shaped expansion loops over paths, white silicate brick transformer kiosks with louvred steel doors, \u041f\u041e-2 diamond-relief concrete fences, one-storey plastered / brick houses with tin or asbestos-slate gable roofs and blue carved window trims, profiled-sheet and picket fences with painted gates, small white Orthodox churches with blue starred / gilded onion domes, MAF market pavilions with roller shutters, concrete SV lamp posts. church_small: late-19th-c. Russian-Revival parish church of the Donbas type, as rebuilt / restored in the 2000s (refs: St. Demetrius, Verkhnotoretske 1850-61 -- bell tower razed 1938, rebuilt 2020-21, shelled 26 Mar 2022: facades, roof, windows; Sviatohirsk Lavra 2022 -- windows/doors blown in, sketes burnt; Mariupol St. Michael (1997) and St. Nicholas; Kostiantynivka St. Ihor -- several domes destroyed; Dobropillia St. Ambrose -- large facade holes, roof stripped; Pokrovsk St. Vladimir -- wall damage, roof lost; reported crosses shot down by shelling). Features used: tower-refectory-nave-apse \"ship\" plan, bell tower over the west entrance (chetverik with a perspective portal, open arched belfry with bells, octagon + onion), refectory (trapeznaya), square nave crowned by keel kokoshniks over a dentil cornice, five domes (big drum with arched windows, four corner cupolas on drums), eight-pointed crosses with the slanted footrest, semicircular east apse, white lime render with pale-blue recessed panels and pilasters, keel-arched window surrounds, green standing-seam sheet roofs with gutters, blue onion with gold stars and gilded cupolas.",
   "notes": "One material (city_atlas 2048^2, tools/blender/env/city_atlas.py). Every node is a top-level mesh, origin on the ground at the footprint centre, front = +Z, nodes laid out on a grid in the file (city.js instancing ignores the layout transform). Linear pieces run along local X: pipe_straight_* 6.0 m (mains at z = +-0.36, axis y = 1.0, supports at x = +-1.5 so segments tile every 6 m), pipe_loop 6.0 m (raised to 5 m over a footpath), fence_po2_* 4.0 m panel (+0.1 m gap at the 4.1 m pitch), fence_house_* 18 m with a gate at the centre. house_* plinth 0.45 + walls to 3.2 m, gable roofs; house_c is burnt and roofless, house_b has a roof hole, house_d a shell hole in its right wall (fit inside a 19 x 18 m plot, fences at z+9 / x+-9.5). lamp_* arm reaches +Z 2 m at 9.3 m. car_parked_* length along Z (front +Z). sign_road_* plate faces +Z. church_small (church.py) is the only node with two materials: city_atlas (plinth, steps, loose bricks, glass shards) + church_atlas (1024^2, church_atlas.py; plaster / pocked / soot / brick / blue panels / standing-seam tin / gold / stripped gold / starred blue / windows / door / icon + bell bronze / rusty steel / interior / boards + char). +Z = west front with the porch and steps, -Z = east apse; main cross top at 23 m, bell-tower cross ~19.5 m. Damage: shell hole through the nave +X wall (exposed brick reveals, broken pilaster, plaster spalled, scorch, rubble and a fallen beam inside / outside), shrapnel-pocked +X facades, main dome skin torn on the +X side exposing ribs and hoops with sheets hanging, front-right cupola stripped and its cross shot off (lying on the ground at +X), bell-tower onion dented / stripped, one cupola cross bent, burnt-out refectory window on -X with a soot plume, broken windows, torn roof sheets, torn downpipe."
+ },
+ "farmland": {
+  "file": "farmland.glb",
+  "nodes": {
+   "tree_acacia_leafy": {
+    "tris": 3756,
+    "size": [
+     7.96,
+     11.79,
+     8.1
+    ],
+    "bbox_min": [
+     -6.3,
+     -0.2,
+     -2.89
+    ],
+    "bbox_max": [
+     1.66,
+     11.59,
+     5.2
+    ]
+   },
+   "tree_acacia_leafy_lod1": {
+    "tris": 164,
+    "size": [
+     7.85,
+     11.75,
+     8.53
+    ],
+    "bbox_min": [
+     -6.54,
+     -0.22,
+     -2.71
+    ],
+    "bbox_max": [
+     1.31,
+     11.53,
+     5.81
+    ]
+   },
+   "tree_oak_leafy": {
+    "tris": 4968,
+    "size": [
+     11.99,
+     11.33,
+     12.24
+    ],
+    "bbox_min": [
+     -5.67,
+     -0.2,
+     -5.53
+    ],
+    "bbox_max": [
+     6.33,
+     11.13,
+     6.71
+    ]
+   },
+   "tree_oak_leafy_lod1": {
+    "tris": 224,
+    "size": [
+     11.55,
+     10.78,
+     12.22
+    ],
+    "bbox_min": [
+     -5.51,
+     -0.2,
+     -5.86
+    ],
+    "bbox_max": [
+     6.05,
+     10.58,
+     6.36
+    ]
+   },
+   "tree_walnut_leafy": {
+    "tris": 3930,
+    "size": [
+     12.22,
+     9.18,
+     11.38
+    ],
+    "bbox_min": [
+     -6.1,
+     -0.18,
+     -5.59
+    ],
+    "bbox_max": [
+     6.12,
+     9.01,
+     5.78
+    ]
+   },
+   "tree_walnut_leafy_lod1": {
+    "tris": 188,
+    "size": [
+     12.27,
+     9.5,
+     11.64
+    ],
+    "bbox_min": [
+     -6.2,
+     -0.17,
+     -5.8
+    ],
+    "bbox_max": [
+     6.07,
+     9.33,
+     5.84
+    ]
+   },
+   "tree_acacia_shelled": {
+    "tris": 1462,
+    "size": [
+     7.0,
+     10.8,
+     5.87
+    ],
+    "bbox_min": [
+     -1.93,
+     -0.22,
+     -3.29
+    ],
+    "bbox_max": [
+     5.08,
+     10.58,
+     2.58
+    ]
+   },
+   "tree_acacia_shelled_lod1": {
+    "tris": 104,
+    "size": [
+     7.3,
+     11.11,
+     6.63
+    ],
+    "bbox_min": [
+     -2.23,
+     -0.21,
+     -4.01
+    ],
+    "bbox_max": [
+     5.08,
+     10.91,
+     2.62
+    ]
+   },
+   "tree_poplar_leafy": {
+    "tris": 3666,
+    "size": [
+     4.75,
+     20.25,
+     4.86
+    ],
+    "bbox_min": [
+     -2.52,
+     -0.16,
+     -2.12
+    ],
+    "bbox_max": [
+     2.23,
+     20.1,
+     2.75
+    ]
+   },
+   "tree_poplar_leafy_lod1": {
+    "tris": 210,
+    "size": [
+     5.44,
+     20.28,
+     5.89
+    ],
+    "bbox_min": [
+     -2.82,
+     -0.16,
+     -2.75
+    ],
+    "bbox_max": [
+     2.63,
+     20.12,
+     3.14
+    ]
+   },
+   "bush_a": {
+    "tris": 700,
+    "size": [
+     2.91,
+     3.41,
+     3.35
+    ],
+    "bbox_min": [
+     -1.45,
+     -0.52,
+     -1.69
+    ],
+    "bbox_max": [
+     1.46,
+     2.9,
+     1.66
+    ]
+   },
+   "bush_a_lod1": {
+    "tris": 72,
+    "size": [
+     3.7,
+     3.9,
+     3.85
+    ],
+    "bbox_min": [
+     -1.92,
+     -0.86,
+     -1.8
+    ],
+    "bbox_max": [
+     1.78,
+     3.04,
+     2.05
+    ]
+   },
+   "bush_b": {
+    "tris": 1056,
+    "size": [
+     4.24,
+     2.6,
+     3.51
+    ],
+    "bbox_min": [
+     -2.17,
+     -0.5,
+     -1.82
+    ],
+    "bbox_max": [
+     2.06,
+     2.1,
+     1.69
+    ]
+   },
+   "bush_b_lod1": {
+    "tris": 72,
+    "size": [
+     4.47,
+     3.06,
+     4.02
+    ],
+    "bbox_min": [
+     -2.1,
+     -0.85,
+     -1.93
+    ],
+    "bbox_max": [
+     2.37,
+     2.21,
+     2.1
+    ]
+   },
+   "sunflower_dead_clump": {
+    "tris": 130,
+    "size": [
+     1.64,
+     1.71,
+     1.49
+    ],
+    "bbox_min": [
+     -1.01,
+     -0.02,
+     -0.92
+    ],
+    "bbox_max": [
+     0.63,
+     1.69,
+     0.57
+    ]
+   },
+   "corn_dry_clump": {
+    "tris": 96,
+    "size": [
+     1.91,
+     2.17,
+     1.68
+    ],
+    "bbox_min": [
+     -1.03,
+     -0.02,
+     -0.6
+    ],
+    "bbox_max": [
+     0.88,
+     2.15,
+     1.08
+    ]
+   },
+   "weeds_tall_clump": {
+    "tris": 52,
+    "size": [
+     1.44,
+     1.27,
+     1.39
+    ],
+    "bbox_min": [
+     -0.8,
+     -0.03,
+     -0.61
+    ],
+    "bbox_max": [
+     0.64,
+     1.24,
+     0.78
+    ]
+   },
+   "haybale_round": {
+    "tris": 160,
+    "size": [
+     1.26,
+     1.49,
+     1.52
+    ],
+    "bbox_min": [
+     -0.63,
+     0.02,
+     -0.76
+    ],
+    "bbox_max": [
+     0.63,
+     1.51,
+     0.76
+    ]
+   },
+   "haybale_round_burnt": {
+    "tris": 168,
+    "size": [
+     2.26,
+     1.23,
+     1.91
+    ],
+    "bbox_min": [
+     -1.11,
+     0.01,
+     -0.95
+    ],
+    "bbox_max": [
+     1.15,
+     1.25,
+     0.96
+    ]
+   },
+   "haystack": {
+    "tris": 460,
+    "size": [
+     5.05,
+     5.3,
+     5.1
+    ],
+    "bbox_min": [
+     -2.64,
+     0.0,
+     -2.51
+    ],
+    "bbox_max": [
+     2.41,
+     5.3,
+     2.59
+    ]
+   },
+   "barn_kolkhoz": {
+    "tris": 4136,
+    "size": [
+     60.84,
+     6.5,
+     13.0
+    ],
+    "bbox_min": [
+     -30.42,
+     0.0,
+     -6.5
+    ],
+    "bbox_max": [
+     30.42,
+     6.5,
+     6.5
+    ]
+   },
+   "barn_kolkhoz_damaged": {
+    "tris": 6774,
+    "size": [
+     63.77,
+     7.13,
+     14.22
+    ],
+    "bbox_min": [
+     -30.42,
+     -0.31,
+     -6.5
+    ],
+    "bbox_max": [
+     33.35,
+     6.82,
+     7.72
+    ]
+   },
+   "machine_shed": {
+    "tris": 3592,
+    "size": [
+     31.0,
+     9.19,
+     16.0
+    ],
+    "bbox_min": [
+     -15.5,
+     0.0,
+     -8.0
+    ],
+    "bbox_max": [
+     15.5,
+     9.19,
+     8.0
+    ]
+   },
+   "grain_silo": {
+    "tris": 1950,
+    "size": [
+     14.35,
+     17.55,
+     6.5
+    ],
+    "bbox_min": [
+     -7.17,
+     0.0,
+     -3.25
+    ],
+    "bbox_max": [
+     7.17,
+     17.55,
+     3.25
+    ]
+   },
+   "water_tower": {
+    "tris": 1328,
+    "size": [
+     4.84,
+     18.9,
+     4.8
+    ],
+    "bbox_min": [
+     -2.4,
+     0.0,
+     -2.4
+    ],
+    "bbox_max": [
+     2.44,
+     18.9,
+     2.4
+    ]
+   },
+   "water_tower_damaged": {
+    "tris": 1262,
+    "size": [
+     5.73,
+     18.94,
+     5.15
+    ],
+    "bbox_min": [
+     -2.92,
+     -0.05,
+     -2.4
+    ],
+    "bbox_max": [
+     2.81,
+     18.89,
+     2.75
+    ]
+   },
+   "tractor_mtz80": {
+    "tris": 2128,
+    "size": [
+     2.16,
+     2.9,
+     4.72
+    ],
+    "bbox_min": [
+     -1.08,
+     0.0,
+     -2.27
+    ],
+    "bbox_max": [
+     1.08,
+     2.9,
+     2.45
+    ]
+   },
+   "tractor_mtz80_burnt": {
+    "tris": 1500,
+    "size": [
+     2.16,
+     2.79,
+     4.72
+    ],
+    "bbox_min": [
+     -1.08,
+     0.0,
+     -2.27
+    ],
+    "bbox_max": [
+     1.08,
+     2.79,
+     2.45
+    ]
+   },
+   "combine_niva_burnt": {
+    "tris": 1620,
+    "size": [
+     4.41,
+     4.29,
+     9.65
+    ],
+    "bbox_min": [
+     -2.05,
+     0.03,
+     -4.35
+    ],
+    "bbox_max": [
+     2.36,
+     4.32,
+     5.3
+    ]
+   },
+   "trailer_farm": {
+    "tris": 1768,
+    "size": [
+     2.3,
+     1.67,
+     6.16
+    ],
+    "bbox_min": [
+     -1.15,
+     0.0,
+     -2.27
+    ],
+    "bbox_max": [
+     1.15,
+     1.67,
+     3.89
+    ]
+   },
+   "well_village": {
+    "tris": 226,
+    "size": [
+     1.8,
+     2.15,
+     1.3
+    ],
+    "bbox_min": [
+     -0.8,
+     0.0,
+     -0.65
+    ],
+    "bbox_max": [
+     1.0,
+     2.15,
+     0.65
+    ]
+   },
+   "shed_wood": {
+    "tris": 304,
+    "size": [
+     4.6,
+     2.64,
+     3.6
+    ],
+    "bbox_min": [
+     -2.3,
+     0.0,
+     -1.8
+    ],
+    "bbox_max": [
+     2.3,
+     2.64,
+     1.8
+    ]
+   },
+   "outhouse": {
+    "tris": 130,
+    "size": [
+     1.34,
+     2.24,
+     1.55
+    ],
+    "bbox_min": [
+     -0.67,
+     0.0,
+     -0.78
+    ],
+    "bbox_max": [
+     0.67,
+     2.24,
+     0.78
+    ]
+   },
+   "woodpile": {
+    "tris": 168,
+    "size": [
+     3.28,
+     1.3,
+     1.84
+    ],
+    "bbox_min": [
+     -1.33,
+     0.0,
+     -0.61
+    ],
+    "bbox_max": [
+     1.95,
+     1.3,
+     1.22
+    ]
+   },
+   "greenhouse_frame": {
+    "tris": 932,
+    "size": [
+     3.04,
+     2.04,
+     6.04
+    ],
+    "bbox_min": [
+     -1.52,
+     -0.02,
+     -3.02
+    ],
+    "bbox_max": [
+     1.52,
+     2.02,
+     3.02
+    ]
+   },
+   "fence_wattle": {
+    "tris": 120,
+    "size": [
+     3.1,
+     1.4,
+     0.2
+    ],
+    "bbox_min": [
+     -1.56,
+     -0.05,
+     -0.1
+    ],
+    "bbox_max": [
+     1.54,
+     1.35,
+     0.1
+    ]
+   },
+   "fence_wood_village": {
+    "tris": 136,
+    "size": [
+     3.1,
+     1.44,
+     0.1
+    ],
+    "bbox_min": [
+     -1.55,
+     0.0,
+     -0.1
+    ],
+    "bbox_max": [
+     1.55,
+     1.44,
+     0.0
+    ]
+   },
+   "gate_village": {
+    "tris": 48,
+    "size": [
+     3.18,
+     2.0,
+     0.6
+    ],
+    "bbox_min": [
+     -1.59,
+     0.0,
+     -0.51
+    ],
+    "bbox_max": [
+     1.59,
+     2.0,
+     0.09
+    ]
+   },
+   "bus_stop_village": {
+    "tris": 146,
+    "size": [
+     4.2,
+     2.76,
+     2.15
+    ],
+    "bbox_min": [
+     -2.1,
+     0.0,
+     -1.05
+    ],
+    "bbox_max": [
+     2.1,
+     2.76,
+     1.1
+    ]
+   },
+   "cross_roadside": {
+    "tris": 206,
+    "size": [
+     1.5,
+     2.7,
+     1.35
+    ],
+    "bbox_min": [
+     -0.75,
+     0.0,
+     -0.68
+    ],
+    "bbox_max": [
+     0.75,
+     2.7,
+     0.68
+    ]
+   },
+   "berm_earth": {
+    "tris": 400,
+    "size": [
+     9.2,
+     1.23,
+     2.6
+    ],
+    "bbox_min": [
+     -4.6,
+     0.01,
+     -1.3
+    ],
+    "bbox_max": [
+     4.6,
+     1.24,
+     1.3
+    ]
+   },
+   "trench_segment": {
+    "tris": 582,
+    "size": [
+     6.48,
+     0.91,
+     3.96
+    ],
+    "bbox_min": [
+     -3.15,
+     0.01,
+     -1.78
+    ],
+    "bbox_max": [
+     3.33,
+     0.92,
+     2.18
+    ]
+   },
+   "dugout_entrance": {
+    "tris": 480,
+    "size": [
+     3.4,
+     1.0,
+     4.2
+    ],
+    "bbox_min": [
+     -1.7,
+     0.0,
+     -1.8
+    ],
+    "bbox_max": [
+     1.7,
+     1.0,
+     2.4
+    ]
+   }
+  },
+  "notes": "Two materials: farmland_atlas (2048^2 opaque, tools/blender/env/farmland_atlas.py, shares city_atlas regions/seeds for brick/slate/tin/wood/concrete) and farmland_foliage (2048^2 RGBA, alphaMode MASK 0.5, double sided, farmland_foliage.py: leaf clusters, twig sprays, far-LOD crown clumps, crop parts, wattle weave, greenhouse film). Every node is a top-level mesh, origin on the ground at the footprint centre, +Y up, metres, front = +Z; nodes are laid out on a grid in the file (farmland.js instancing ignores the layout transform). Foliage vertices carry bent normals (custom split normals, outward from the crown ellipsoid) and COLOR_0 (baked crown self-shadow); buildings / wrecks carry COLOR_0 for ground AO, soot and scorch, so materials load with vertexColors. Trees/bushes: each <name>_lod1 has the same origin and silhouette (trunk prism + crown clump cards on the dense far_* cells), 50-230 tris, meant for > ~190 m. Crops (sunflower_dead_clump, corn_dry_clump, weeds_tall_clump) are foliage-only alpha cards for heavy instancing. Linear pieces lie along +X centred on the origin: fence_wattle / fence_wood_village / gate_village 3.0 m, trench_segment 6.0 m (ends open so segments chain), berm_earth ~9 m. barn_kolkhoz(_damaged) 60.9 x 12.9 m, machine_shed 31 x 16 m (long axes X). trench_segment: dark floor at y=0.03 between revetted walls, parapets up to 0.62 m (+Z) / 0.45 m (-Z), sandbag lip on the +Z parapet. Vehicles face +Z.",
+  "refs": "Photo record of Kharkiv / Kherson / Zaporizhzhia oblast farmland 2022-24: black locust (Robinia) + Lombardy poplar + oak shelterbelts (lesopolosa) with elder / dog-rose understory, shell-stripped half-dead acacias; kolkhoz cowsheds of white silicate brick with asbestos-slate roofs and plank end gates (many with caved-in roofs after shelling), open steel machinery sheds, corrugated grain bins with bucket elevators, Rozhnovsky water towers, MTZ-80/82 Belarus tractors, burnt SK-5 Niva combines in fields, 2PTS-4 trailers, round bales and traditional stogs, village yards with wattle (pleten) and picket fences, sheet-steel sunburst gates, concrete-ring wells with windlass roofs, Soviet mosaic bus shelters, roadside crosses with rushnyky, trench lines and dugouts with wattle / plank revetments and sandbag lips."
  }
 }
