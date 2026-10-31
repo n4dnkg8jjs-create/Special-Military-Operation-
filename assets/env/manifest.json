@@ -2375,7 +2375,7 @@
     ]
    },
    "utility_pole_broken": {
-    "tris": 974,
+    "tris": 834,
     "bbox_min": [
      -0.13,
      -0.3,
@@ -3037,7 +3037,7 @@
     ]
    },
    "church_small": {
-    "tris": 24247,
+    "tris": 24215,
     "bbox_min": [
      -5.42,
      -0.22,

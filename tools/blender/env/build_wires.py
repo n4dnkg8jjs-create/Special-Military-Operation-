@@ -67,8 +67,10 @@ def ruv(name, L=1.0):
     return lambda s, l: reg.uv(s, min(l / L, 1.0))
 
 
-def lathe(mb, profile, centre, sides, region, M=None):
-    """Surface of revolution about +Y. profile: [(radius, y), ...] bottom->top."""
+def lathe(mb, profile, centre, sides, region, M=None, cap=False):
+    """Surface of revolution about +Y. profile: [(radius, y), ...] bottom->top.
+    cap: close the bottom ring with a downward-facing disc (watertight shell; the open bell mouth shows its inside when
+    the piece lies on its side, e.g. the insulators of the broken pole)."""
     reg = R[region]
     rings = []
     tmp = MB()
@@ -81,29 +83,38 @@ def lathe(mb, profile, centre, sides, region, M=None):
             q = (rings[i][k], rings[i + 1][k], rings[i + 1][k2], rings[i][k2])
             uv = [reg.uv(k / sides, i / len(profile)), reg.uv(k / sides, (i + 1) / len(profile)), reg.uv((k + 1) / sides, (i + 1) / len(profile)), reg.uv((k + 1) / sides, i / len(profile))]
             tmp.face(q, uv, True)
+    if cap and profile[0][0] > 1e-6:       # ring order is clockwise seen from +Y: as-is faces down
+        tmp.face(rings[0], [reg.uv(0.5, 0.0)] * sides)
+    if cap and profile[-1][0] > 1e-6:
+        tmp.face(rings[-1][::-1], [reg.uv(0.5, 1.0)] * sides)
     mb.merge(tmp, M)
 
 
-def insulator(mb, base, glass=False):
-    """Pin insulator (ShF-20 porcelain / green glass): steel pin + bell."""
+def insulator(mb, base, glass=False, closed=False):
+    """Pin insulator (ShF-20 porcelain / green glass): steel pin + bell. closed: capped pin + bell (watertight)."""
     x, y, z = base
-    mb.tube([(x, y, z), (x, y + 0.275, z)], 0.012, 4, ruv('galv'), smooth=False)     # pin runs up through the bell (bell was not touching it)
+    mb.tube([(x, y, z), (x, y + 0.275, z)], 0.012, 4, ruv('galv'), smooth=False, cap=closed)     # pin runs up through the bell (bell was not touching it)
     prof = [(0.06, 0.0), (0.075, 0.03), (0.06, 0.06), (0.07, 0.09), (0.05, 0.13), (0.035, 0.16), (0.0, 0.17)]
-    lathe(mb, prof, (x, y + 0.1, z), 8, 'glass' if glass else 'porcelain')
+    lathe(mb, prof, (x, y + 0.1, z), 8, 'glass' if glass else 'porcelain', cap=closed)
     return np.array([x, y + 0.26, z])
 
 
-def cobra_lamp(mb, root, d, L=1.6, h=0.5):
-    """RKU 'cobra' street lamp: curved tube arm + luminaire head."""
+def cobra_lamp(mb, root, d, L=1.6, h=0.5, closed=False):
+    """RKU 'cobra' street lamp: curved tube arm + luminaire head.
+    closed: capped arm and the diffuser as a thin closed slab hugging the head (the open sheet 1 cm under the head was a
+    loose, back-face-visible piece once the lamp lies on its side)."""
     d = np.array(d, float); d /= np.linalg.norm(d)
     pts = [root + d * 0.0, root + d * L * 0.35 + [0, h * 0.7, 0], root + d * L * 0.75 + [0, h, 0], root + d * L + [0, h * 0.85, 0]]
-    mb.tube(pts, 0.03, 6, ruv('galv', 2.0))
+    mb.tube(pts, 0.03, 6, ruv('galv', 2.0), cap=closed)
     head = pts[-1]
     side = np.cross(d, [0, 1, 0])
     tmp = MB()
     f = Fit(R['lamp'], (0.6, 0.3), 1)
     tmp.box((-0.05, -0.12, -0.15), (0.55, 0.02, 0.15), f)
-    tmp.poly([(0.0, -0.13, -0.12), (0.5, -0.13, -0.12), (0.5, -0.13, 0.12), (0.0, -0.13, 0.12)][::-1], Fit(R['glass'], (0.5, 0.3), 2))
+    if closed:
+        tmp.box((0.0, -0.13, -0.12), (0.5, -0.1205, 0.12), Fit(R['glass'], (0.5, 0.3), 2))
+    else:
+        tmp.poly([(0.0, -0.13, -0.12), (0.5, -0.13, -0.12), (0.5, -0.13, 0.12), (0.0, -0.13, 0.12)][::-1], Fit(R['glass'], (0.5, 0.3), 2))
     yaw = math.atan2(-d[2], d[0])
     mb.merge(tmp, mat_trs(head, (0, yaw, -0.08)))
 
@@ -116,6 +127,7 @@ def utility_pole(name='utility_pole', broken=False, seed=1):
         return 0.13 - 0.045 * t, 0.083 - 0.0 * t     # half-sizes along x (run) and z
     reg = R['concrete']
     # chamfered rectangular tapered shaft (8 sides), uv: around x along
+    closed = broken          # the broken pole lies at RTS eye level: every part a closed, outward shell
     def shaft(y0, y1, M=None):
         ring_pts = []
         tmp = MB(); rings = []
@@ -132,7 +144,12 @@ def utility_pole(name='utility_pole', broken=False, seed=1):
                 q = q[::-1]; uv = uv[::-1]
             tmp.face(q, uv, False)
         top = rings[1]
-        tmp.face(top, [reg.uv(0.5, 0.99)] * 8)
+        if closed:     # broken pole: both ends capped, wound outward like the sides (ring order runs clockwise seen
+            # from +Y); the snapped butt of the fallen top is in plain view (was an open, inside-visible end)
+            tmp.face(top[::-1], [reg.uv(0.5, 0.99)] * 8)
+            tmp.face(rings[0], [reg.uv(0.5, 0.45)] * 8)     # plain grey concrete (v ~ 0 is the mud-splash band)
+        else:
+            tmp.face(top, [reg.uv(0.5, 0.99)] * 8)
         mb.merge(tmp, M)
     attach = []
     if not broken:
@@ -146,26 +163,29 @@ def utility_pole(name='utility_pole', broken=False, seed=1):
         for k in range(4):   # rebar holding the two halves
             x = (-0.08 + 0.05 * k)
             a = np.array([x, hb - 0.1, 0.06 * (-1) ** k]); b = xform(np.array([[x, hb + 0.2, 0.06 * (-1) ** k]]), M)[0]
-            mb.tube([a, (a + b) / 2 + [0.05, 0.12, 0], b], 0.006, 3, ruv('steel'))
+            mb.tube([a, (a + b) / 2 + [0.05, 0.12, 0], b], 0.006, 3, ruv('steel'), cap=True)
         top = None
     # crossarm (steel angle along Z) + insulators, lamp
     tmpk = MB()
     ya = Hh - 0.35
     tmpk.box((-0.05, ya, -0.85), (0.0, ya + 0.05, 0.85), Fit(R['steel'], (0.3, 1.7), 3), faces='+y-y+x-x+z-z')
-    tmpk.box((-0.05, ya - 0.05, -0.85), (-0.045, ya, 0.85), Fit(R['steel'], (0.3, 1.7), 4), faces='+x-x')
+    if closed:     # vertical leg of the angle as a closed plate just under the horizontal leg (no shared / open edges)
+        tmpk.box((-0.05, ya - 0.05, -0.85), (-0.045, ya - 0.0005, 0.85), Fit(R['steel'], (0.3, 1.7), 4))
+    else:
+        tmpk.box((-0.05, ya - 0.05, -0.85), (-0.045, ya, 0.85), Fit(R['steel'], (0.3, 1.7), 4), faces='+x-x')
     # diagonal braces
     for s_ in (-1, 1):
-        tmpk.tube([(-0.09, ya - 0.6, 0.0), (-0.03, ya - 0.01, s_ * 0.55)], 0.012, 4, ruv('steel'), smooth=False)
+        tmpk.tube([(-0.09, ya - 0.6, 0.0), (-0.03, ya - 0.01, s_ * 0.55)], 0.012, 4, ruv('steel'), smooth=False, cap=closed)
     pts_att = []
     for zi, zz in enumerate((-0.75, -0.35, 0.35, 0.75)):
-        pts_att.append(insulator(tmpk, (-0.025, ya + 0.05, zz), glass=(zi % 2 == 1)))
+        pts_att.append(insulator(tmpk, (-0.025, ya + 0.05, zz), glass=(zi % 2 == 1), closed=closed))
     # top insulator on a bracket (neutral / street-lighting wire)
     tmpk.box((0.08, Hh - 0.12, -0.03), (0.16, Hh - 0.06, 0.03), Fit(R['steel'], (0.2, 0.2), 5))
-    pts_att.append(insulator(tmpk, (0.14, Hh - 0.06, 0.0)))
-    cobra_lamp(tmpk, np.array([0.0, Hh - 1.4, 0.09]), (0, 0, 1), L=1.5)
+    pts_att.append(insulator(tmpk, (0.14, Hh - 0.06, 0.0), closed=closed))
+    cobra_lamp(tmpk, np.array([0.0, Hh - 1.4, 0.09]), (0, 0, 1), L=1.5, closed=closed)
     # a sagging service cable stub and a rusted junction box
     tmpk.box((-0.12, 2.6, 0.085), (0.12, 2.95, 0.2), Fit(R['steel'], (0.3, 0.4), 6))
-    tmpk.tube([(0, 2.95, 0.14), (0, Hh - 1.5, 0.11)], 0.012, 4, ruv('galv', 5.0), smooth=False)
+    tmpk.tube([(0, 2.95, 0.14), (0, Hh - 1.5, 0.11)], 0.012, 4, ruv('galv', 5.0), smooth=False, cap=closed)
     if broken:
         M = rot_axis((0, 0, 1), -1.74, origin=(0.13, 1.3, 0))
         mb.merge(tmpk, M)

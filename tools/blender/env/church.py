@@ -305,15 +305,21 @@ def window(mb, M, cx, y0, w, h, broken=False, depth=0.3, hood=True, th=TH):
 def pilasters(mb, M, L, xs, y0, y1, w=0.5, d=0.1, reg=WALLR, corner=True, cut=None):
     for x in xs:
         a, b = x - w / 2, x + w / 2
+        fc = '+x-x+z'
         if corner and abs(abs(x) - L / 2) < 1e-6:
-            a, b = (x - w, x + d) if x > 0 else (x - d, x + w)
+            # corner pilaster: only the right-hand one (seen from outside) runs on by d over the corner; the next face's
+            # left-hand one stops at the corner, so the two never share the corner block (coplanar overlapping faces
+            # there z-fought on every corner of the nave / refectory / tower / belfry)
+            a, b = (x - w, x + d) if x > 0 else (x, x + w)
+            if x < 0:      # its corner side lies hidden on the neighbour pilaster's back plane (and folded onto the wall edge)
+                fc = '+x+z'
         if cut is not None and sbox(a, y0, b, y1).intersects(cut):
             g = sbox(a, y0, b, y1).difference(cut)
             for pg in (list(g.geoms) if hasattr(g, 'geoms') else [g]):
                 if pg.area > 0.005:
                     wall(mb, np.array(pg.exterior.coords)[:-1], d, reg, (1, 1), M=M @ T(0, 0, d), back=False, cap='auto', side=BRICK)
             continue
-        fbox(mb, (a, y0, 0), (b, y1, d), reg, faces='+x-x+z', M=M)
+        fbox(mb, (a, y0, 0), (b, y1, d), reg, faces=fc, M=M)
 
 
 CORNICE = [(0.0, 0.0), (0.08, 0.0), (0.08, 0.12), (0.0, 0.14), (0.0, 0.34), (0.2, 0.34), (0.2, 0.42), (0.45, 0.48), (0.45, 0.6), (0.0, 0.66)]
@@ -567,7 +573,7 @@ def church_small(name='church_small', seed=80):
             for i, c in enumerate((-0.9, 0.9)):
                 wins.append((c, 2.2, 0.95, 2.2, face == 'W' and i == 0))
         else:
-            for c in (-3.25, 3.25):
+            for c in (-3.2, 3.2):     # jamb kept off x = +-(RX - TH), the plane of the E/W interior faces (reveal z-fought it)
                 wins.append((c, 2.4, 0.7, 1.7, False))
         holes = [arch_pts(c, y, w, h) for c, y, w, h, _ in wins]
         if face == 'S':
@@ -650,8 +656,11 @@ def church_small(name='church_small', seed=80):
         fbox(C, (x - 0.24, PL, pz1 - 0.5), (x + 0.24, PL + 0.6, pz1 - 0.02), WALLR, faces='+x-x+y+z-z')
         tube(C, [(x, PL + 0.6, pz1 - 0.26), (x, 3.55, pz1 - 0.26)], 0.15, 8, WALLR, seg=2.0)
         lathe2(C, [(0.15, 3.55), (0.22, 3.62), (0.25, 3.75)], 8, WALLR, M=T(x, 0, pz1 - 0.26))
-        fbox(C, (x - 0.22, 3.75, TZ1), (x + 0.22, 4.0, pz1), WALLR, faces='+x-x+y-y+z')
-    fbox(C, (-1.6, 3.75, pz1 - 0.44), (1.6, 4.0, pz1), WALLR, faces='+y-y+z')
+        # side beam runs into the front cross beam, its end face 5 mm behind the kokoshnik front
+        fbox(C, (x - 0.22, 3.75, TZ1), (x + 0.22, 4.0, pz1 - 0.005), WALLR, faces='+x-x+y-y+z')
+    # front cross beam encloses the side-beam ends with 5 mm to spare and stands 1 cm proud of the kokoshnik front, whose
+    # foot hangs 2 cm down over it (all three shared top / bottom / front planes before: coplanar overlaps)
+    fbox(C, (-1.6, 3.745, pz1 - 0.44), (1.6, 4.005, pz1 + 0.01), WALLR, faces='+y-y+z')
     kM = mat_trs((0, 0, pz1))
     kokoshnik(C, kM @ T(0, 0, -0.12), 0, 3.98, 3.3, 1.75, tip=0.35, depth=0.25)
     poly_local(C, arch_pts(0, 4.12, 1.0, 1.25, 9), 0.02, kM, box_uv(ICON, -0.5, 4.12, 0.5, 5.37))
