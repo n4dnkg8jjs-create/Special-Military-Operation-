@@ -322,7 +322,7 @@ export class Game {
     this.cullSoldiers();
     this.update(dt);
     this.cam.update(Math.min(dt, 0.05));
-    this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
+    this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); if (this.city.windUniform) this.city.windUniform.value += dt; this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
     const cp = this.renderer.camera.position;
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }

@@ -4,6 +4,7 @@ import { angDiff } from './squad.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
 const rf = (a, b) => a + Math.random() * (b - a);
+const TRACER = { RU: [0.35, 1.0, 0.3], UA: [1.0, 0.16, 0.1] };
 
 export class Combat {
   constructor(game) { this.g = game; this.projectiles = []; }
@@ -134,7 +135,9 @@ export class Combat {
     let end = tp.clone();
     if (!hit) { const miss = 0.6 + d * 0.012; end.x += (Math.random() - .5) * miss * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * miss); end.z += (Math.random() - .5) * miss * 2; end.addScaledVector(end.clone().sub(from).normalize(), Math.random() * 6); }
     s.shots = (s.shots || 0) + 1;
-    if (near && s.shots % (W.tracerEvery || 4) === 0) g.fx.tracer(from, end, 800, s.faction.id === 'RU' ? [1, 0.5, 0.25] : [1, 0.62, 0.3]);
+    // tracers: Russian green, Ukrainian red, about every 3rd–4th round
+    s.nextTracer ??= 3 + Math.floor(Math.random() * 2);
+    if (--s.nextTracer <= 0) { s.nextTracer = 3 + Math.floor(Math.random() * 2); if (near) g.fx.tracer(from, end, 800, TRACER[s.faction.id]); }
     if (t.type === 'vehicle') {
       if (hit) { if (near) g.fx.impact(end, 'metal'); this.hitVehicle(t, W, s.pos, 'ke', s); if (Math.random() < 0.2) g.sfx('ricochet', end); }
       return;
@@ -274,7 +277,8 @@ export class Combat {
     const hit = Math.random() < p;
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.01; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }
     w.shots = (w.shots || 0) + 1;
-    if (near && w.shots % (W.tracerEvery || 3) === 0) g.fx.tracer(from, end, 900, v.faction.id === 'RU' ? [1, 0.5, 0.2] : [1, 0.65, 0.3]);
+    // BTR weapons trace every round; tank coax every 3rd
+    if (near && (v.kind === 'btr' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
     if (W.type === 'autocannon') { // HE-frag 30 mm: every round bursts
       this.projectiles.push({ kind: 'he30', pos: from.clone(), target: end, t, speed: 960, owner: v, side: v.side, weapon: W, hit });
       return;

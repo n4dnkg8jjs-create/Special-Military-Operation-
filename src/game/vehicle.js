@@ -128,6 +128,7 @@ export class Vehicle {
     const i = this.game.nav.idx(nx, nz);
     if (i >= 0 && this.game.nav.cost[i] !== 255) { this.pos.x = nx; this.pos.z = nz; } else this.speed *= 0.5;
     this.dist = (this.dist || 0) + this.speed * dt;
+    if (Math.abs(this.speed) > 0.4) this.game.city.crushCheck(this, this.game);
     // suspension pitch from acceleration
     const accel = (this.speed - (this.lastSpeed ?? 0)) / Math.max(dt, 1e-3); this.lastSpeed = this.speed;
     this.pitch = THREE.MathUtils.lerp(this.pitch || 0, THREE.MathUtils.clamp(-accel * 0.012, -0.05, 0.05), Math.min(1, dt * 4));
