@@ -92,6 +92,7 @@ export class Soldier {
       const wg = A.gltf[WEAPON_ASSET[this.weaponKey]] || A.gltf.ak74m;
       if (this.sockets.R && wg) {
         const w = wg.scene.clone(); this.sockets.R.add(w); this.weaponObj = w; this.muzzleObj = w.getObjectByName('muzzle');
+        this.wLod = [[], []]; w.traverse(o => { if (o.isMesh) (/_LOD1$/i.test(o.name) ? this.wLod[1] : this.wLod[0]).push(o); }); for (const o of this.wLod[1]) o.visible = false; if (!this.wLod[1].length) this.wLod = null;
         w.traverse(o => { if (o.isMesh) o.castShadow = true; });
         this.mag = w.getObjectByName('magazine'); if (this.mag) { this.magHome = { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() }; }
         this.wSock = 'R';
@@ -206,7 +207,7 @@ export class Soldier {
       if (this.animAcc >= every) { this.mixer.update(this.animAcc); this.animAcc = 0; if (camDist < 60) this.magTick(); }
       // recoil kick (procedural additive on spine)
       if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
-      if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); } }
+      if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); if (this.wLod) { for (const o of this.wLod[0]) o.visible = !far; for (const o of this.wLod[1]) o.visible = far; } } }
     } else {
       // fallback pose
       const m = this.model;

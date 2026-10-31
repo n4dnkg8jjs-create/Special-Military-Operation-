@@ -66,7 +66,7 @@ def main():
                     'grenades': 'F-1 (segmented 55 mm cast body) and RGD-5 (smooth 58 mm egg with seam), both with UZRGM fuze, spoon and pull ring',
                     'pkm': 'PKM 1190 mm: stamped receiver, ribbed feed cover + tray, fluted barrel, gas cylinder under the barrel, folded bipod, '
                            'barrel carry handle, slotted flash hider, skeleton stock, 100-rd box with belt feeding the tray, sling',
-                    'rpg7': 'RPG-7V: birch heat guards with clamp bands, trigger group, folding iron sights, PGO-7 optic on the left bracket, flared '
+                    'rpg7': 'RPG-7V: birch heat guards with clamp bands, trigger group + pistol grip, plain rear hand grip, folding iron sights, PGO-7 optic on the left bracket, flared '
                             'venturi, sling, PG-7V (85 mm) round loaded',
                     'texturing': 'one PBR atlas per weapon (base colour / ORM / tangent normal, JPEG), procedural with edge wear, cavity grime, '
                                  'stamped/moulded detail and stencils in the normal + colour maps; ~1100-1400 px/m on rifles'},
@@ -227,7 +227,7 @@ def main():
         out['rpg22']['conventions'] = 'origin = right hand on the tube under the firing housing, +Z muzzle, +Y up; parent to weapon_socket for the launcher clips'
     if 'rpg7' in out:
         out['rpg7']['grip_L_note'] = ('grip_L sits under the front heat guard (z = 0.17), where the launcher clips put the left palm '
-                                      '(clips_extra.LAUNCHER); the RPG-7V has a single pistol grip')
+                                      '(clips_extra.LAUNCHER); the plain rear hand grip (z = -0.12) is left free, the right hand holds the trigger grip at the origin')
     for w in ('grenade_f1', 'grenade_rgd5'):
         if w in out:
             out[w]['conventions'] = ('origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), '

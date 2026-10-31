@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden;font:13px sans-serif}
+.lab{position:absolute;color:#fff;background:rgba(0,0,0,.45);padding:2px 6px;border-radius:3px}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',()=>{window.__done=true});window.addEventListener('unhandledrejection',()=>{window.__done=true});</script>
+<script type="module">
+// Weapon close-up comparison sheet (same lighting as tools/preview.html).
+//  a= glb (left column, e.g. old)   b= glb (right column, e.g. new; optional)
+//  views= ';'-list of  az,el,dist[,tx,ty,tz]  (camera orbit around gun-space target t, distance in metres)
+//  lod=1 -> show only *_LOD1 nodes (default: hide them)   fov=   w= h=   la= lb= column labels
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w')||1400), H = +(q.get('h')||800);
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(W,H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const pm = new THREE.PMREMGenerator(renderer); const env = pm.fromScene(new RoomEnvironment(),0.04).texture;
+const loader = new GLTFLoader();
+const lod1 = q.get('lod')==='1';
+async function mk(url){
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab); scene.environment = env; scene.environmentIntensity = 0.6;
+  const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(3,5,2.5); sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+  Object.assign(sun.shadow.camera,{left:-1.2,right:1.2,top:1.2,bottom:-1.2}); sun.shadow.bias=-0.0002; sun.shadow.normalBias=0.002;
+  scene.add(sun); scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40,40), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
+  ground.rotation.x=-Math.PI/2; ground.position.y=-0.32; ground.receiveShadow=true; scene.add(ground);
+  const g = await loader.loadAsync(url); scene.add(g.scene);
+  let tris=0;
+  g.scene.traverse(o=>{ if(o.isMesh){ o.castShadow=o.receiveShadow=true;
+    let isL=false; for(let p=o;p;p=p.parent) if(/_LOD1$/.test(p.name)) isL=true;
+    o.visible = lod1 ? isL : !isL;
+    // a LOD0 parent (magazine) of a LOD1 child must stay visible as an object, hide only its own material draw
+    if(o.visible){ const gg=o.geometry; tris += (gg.index?gg.index.count:gg.attributes.position.count)/3; } } });
+  if (lod1) g.scene.traverse(o=>{ if(o.isMesh && !/_LOD1$/.test(o.name)){ let isL=false; for(let p=o;p;p=p.parent) if(/_LOD1$/.test(p.name)) isL=true; if(!isL){ o.material = o.material.clone(); o.material.visible=false; o.visible=true; } } });
+  return {scene, tris};
+}
+const A = await mk(q.get('a')); const B = q.get('b') ? await mk(q.get('b')) : null;
+const views = (q.get('views')||'90,8,1.3;270,8,1.3;35,25,0.9;150,20,0.9').split(';').map(s=>s.split(',').map(Number));
+const cols = B?2:1, rows = views.length;
+const cam = new THREE.PerspectiveCamera(+(q.get('fov')||30), (W/cols)/(H/rows), 0.01, 100);
+renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
+for(let i=0;i<rows;i++) for(let j=0;j<cols;j++){
+  const S=[A,B][j], v=views[i]; const [az,el,d,tx=0,ty=0.05,tz=0.12]=v;
+  const a=az*Math.PI/180, e=el*Math.PI/180;
+  cam.position.set(tx+d*Math.cos(e)*Math.sin(a), ty+d*Math.sin(e), tz+d*Math.cos(e)*Math.cos(a)); cam.lookAt(tx,ty,tz);
+  const x=j*W/cols, y=(rows-1-i)*H/rows;
+  renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(S.scene,cam);
+}
+for(let j=0;j<cols;j++){ const d=document.createElement('div'); d.className='lab'; d.style.left=(j*W/cols+8)+'px'; d.style.top='6px';
+  d.textContent=(j? (q.get('lb')||'new'):(q.get('la')||(B?'old':'')))+'  '+Math.round([A,B][j].tris)+' tris'+(lod1?' (LOD1)':''); document.body.appendChild(d); }
+window.__info = {a:A.tris, b:B?B.tris:null};
+window.__done = true;
+</script></body></html>

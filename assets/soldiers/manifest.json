@@ -58,10 +58,11 @@
    "UA": "heavier plate carrier with shoulder & groin protection and side plates; FAST high-cut with NVG shroud, counterweight pouch and headset (or MICH + goggles); grenade pouches, radio, IFAK, tourniquet; elbow/knee pads, gloves, MultiCam or MM-14"
   },
   "weapons": {
-   "ak74m": "AK-74M 943 mm, black polymer furniture, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), two-chamber muzzle brake",
-   "grenades": "F-1 (ribbed 55 mm cast body) and RGD-5 (smooth 58 mm egg), both with UZRGM fuze, spoon and pull ring",
-   "pkm": "PKM 1190 mm, skeleton-style stock, 100-rd box, folded bipod, carry handle",
-   "rpg7": "RPG-7 with wooden heat guards, PGO-7 sight and PG-7V (85 mm) round loaded"
+   "ak74m": "AK-74M (6P20) 943 mm: plum polymer furniture, ribbed dust cover, stamped receiver with trunnion rivets and mag-well dimples, side rail, tangent rear sight, 90-deg gas block with vented gas tube, cleaning rod, AK-74 two-chamber brake, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), 2-point sling",
+   "grenades": "F-1 (segmented 55 mm cast body) and RGD-5 (smooth 58 mm egg with seam), both with UZRGM fuze, spoon and pull ring",
+   "pkm": "PKM 1190 mm: stamped receiver, ribbed feed cover + tray, fluted barrel, gas cylinder under the barrel, folded bipod, barrel carry handle, slotted flash hider, skeleton stock, 100-rd box with belt feeding the tray, sling",
+   "rpg7": "RPG-7V: birch heat guards with clamp bands, trigger group + pistol grip, plain rear hand grip, folding iron sights, PGO-7 optic on the left bracket, flared venturi, sling, PG-7V (85 mm) round loaded",
+   "texturing": "one PBR atlas per weapon (base colour / ORM / tangent normal, JPEG), procedural with edge wear, cavity grime, stamped/moulded detail and stencils in the normal + colour maps; ~1100-1400 px/m on rifles"
   }
  },
  "skeleton": {
@@ -4002,7 +4003,7 @@
   },
   "peeks": {
    "clips": "peek_left / peek_right (standing), peek_crouch_left / peek_crouch_right (kneeling), 2 s loops",
-   "geometry": "leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 24-27 deg about the aim axis to the named side (the soldier's own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted 11-22 deg, right eye on the sight line. The head sits 0.27-0.35 m to the lean side of the root (events.head_out_m): with the corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it."
+   "geometry": "leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 22-28 deg about the aim axis to the named side (the soldier's own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted 11-12 deg (right peeks) / 32-40 deg (left peeks: the cheek stays on the stock), right eye on the sight line, butt in the shoulder pocket (< 1.5 cm). The head sits 0.23-0.36 m to the lean side of the root (events.head_out_m): with the corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it."
   },
   "cover": {
    "cover_duck": "deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below a 0.9-1.0 m parapet (see events.head_top_m), rifle vertical and close, flinches (events.flinch); 3 s loop",
@@ -4049,7 +4050,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "authored stance, low ready; ik err {'R': 6.261943282059023e-16, 'L': 0.007262083062869642}"
+    "notes": "authored stance, low ready; ik err {'R': 7.043575467574348e-16, 'L': 0.00726208306286973}"
    },
    "aim_stand": {
     "duration_s": 3.0,
@@ -4059,7 +4060,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "shouldered, cheek weld butt-to-pocket err 0.053 m; ik err {'R': 1.0374052500944784e-15, 'L': 1.0540725709916734e-15}"
+    "notes": "shouldered, cheek weld butt-to-pocket err 0.007 m; ik err {'R': 8.8164920776615475e-16, 'L': 9.305364597889227e-16}"
    },
    "walk_rifle": {
     "duration_s": 1.1,
@@ -4069,7 +4070,7 @@
     "ground_speed_mps": 1.466,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "tactical walk: CMU 07_01 (normal walk, 1.47 m/s, 109 steps/min) cycle (9, 33), pelvis lowered 4.5 cm (soft, bent knees; planted foot pinned to the ground), +7 deg forward lean, head level, rifle at low ready; planted-foot slip 0.000 m/s; ik err {'R': 5.578801654593729e-16, 'L': 0.005612531796269708, 'foot_lock_corr': {'Left': 0.027, 'Right': 0.025}}"
+    "notes": "tactical walk: CMU 07_01 (normal walk, 1.47 m/s, 109 steps/min) cycle (9, 33), pelvis lowered 4.5 cm (soft, bent knees; planted foot pinned to the ground), +7 deg forward lean, head level, rifle at low ready; planted-foot slip 0.000 m/s; ik err {'R': 4.726604209672303e-16, 'L': 0.005612531796269628, 'sole_lift': {'Left': 0.0255, 'Right': 0.0257}, 'foot_lock_corr': {'Left': 0.027, 'Right': 0.025}}"
    },
    "run_rifle": {
     "duration_s": 0.7,
@@ -4079,7 +4080,7 @@
     "ground_speed_mps": 4.166,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "combat run: CMU 16_45 (run/jog, 4.17 m/s, 171 steps/min) cycle (6, 21), pelvis lowered 3.5 cm (bent-knee, loaded gait; planted foot pinned to the ground), +12 deg forward lean, head level, rifle at port across the chest; planted-foot slip 0.000 m/s; ik err {'R': 6.77599954797753e-16, 'L': 5.865315305387853e-16, 'foot_lock_corr': {'Left': 0.025, 'Right': 0.012}}"
+    "notes": "combat run: CMU 16_45 (run/jog, 4.17 m/s, 171 steps/min) cycle (6, 21), pelvis lowered 3.5 cm (bent-knee, loaded gait; planted foot pinned to the ground), +12 deg forward lean, head level, rifle at port across the chest; planted-foot slip 0.017 m/s; ik err {'R': 5.578801654593729e-16, 'L': 5.061588988174682e-16, 'sole_lift': {'Left': 0.0062, 'Right': 0.0079}, 'foot_lock_corr': {'Left': 0.025, 'Right': 0.012}}"
    },
    "crouch_walk": {
     "duration_s": 1.3,
@@ -4089,7 +4090,7 @@
     "ground_speed_mps": 0.929,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "CMU 136_09 walk crouched cycle (53, 39); ik err {'R': 6.620737537031165e-16, 'L': 0.005612531796270044}"
+    "notes": "CMU 136_09 walk crouched cycle (53, 39); ik err {'R': 7.164218939837045e-16, 'L': 0.005612531796269765, 'sole_lift': {'Left': 0.0012, 'Right': 0.0078}, 'foot_lock_corr': {'Left': 0.057, 'Right': 0.037}}"
    },
    "limp_walk": {
     "duration_s": 1.333,
@@ -4099,7 +4100,7 @@
     "ground_speed_mps": 0.666,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "CMU 77_19 limping (hurt right leg) cycle (0, 40); ik err {'R': 6.871957671317179e-16, 'L': 1.0835344452754878e-15}"
+    "notes": "CMU 77_19 limping (hurt right leg) cycle (0, 40); ik err {'R': 5.667848928154234e-16, 'L': 9.39188966358397e-16, 'sole_lift': {'Left': 0.0071, 'Right': 0.0093}, 'foot_lock_corr': {'Left': 0.046, 'Right': 0.023}}"
    },
    "crouch_idle": {
     "duration_s": 4.0,
@@ -4109,7 +4110,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "kneeling on right knee, low ready; ik err {'R': 6.521083742145178e-16, 'L': 0.007427070898779313}"
+    "notes": "kneeling on right knee, low ready; ik err {'R': 5.985173094038516e-16, 'L': 0.0074270708987793435}"
    },
    "aim_crouch": {
     "duration_s": 3.0,
@@ -4119,7 +4120,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "kneeling aim; butt err 0.034; ik err {'R': 8.326672684688674e-16, 'L': 1.0835344452754878e-15}"
+    "notes": "kneeling aim; butt err 0.003; ik err {'R': 7.348678496207199e-16, 'L': 1.0477500027681815e-15}"
    },
    "suppressed_cower": {
     "duration_s": 3.0,
@@ -4129,7 +4130,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "kneeling, hunched, head down, rifle clutched; ik err {'R': 1.0641874625968417e-15, 'L': 8.968369378123981e-16}"
+    "notes": "kneeling, hunched, head down, rifle clutched; ik err {'R': 1.014503308166385e-15, 'L': 9.0218963790694e-16}"
    },
    "aim_prone": {
     "duration_s": 3.0,
@@ -4139,7 +4140,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "prone aim, elbows down, support hand at the rear of the lower handguard; butt err 0.041; ik err {'R': 8.608703982599288e-16, 'L': 9.634823471110655e-16}"
+    "notes": "prone aim, elbows down, support hand at the rear of the lower handguard; butt err 0.002; ik err {'R': 9.309503074677273e-16, 'L': 9.461354227335467e-16}"
    },
    "prone_idle": {
     "duration_s": 4.0,
@@ -4149,7 +4150,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "prone, rifle held in front; ik err {'R': 7.967349055175334e-16, 'L': 8.716532355591669e-16}"
+    "notes": "prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {'R': 9.650801630464006e-16, 'L': 1.2037731057624424e-15}"
    },
    "prone_crawl": {
     "duration_s": 1.6,
@@ -4159,7 +4160,7 @@
     "ground_speed_mps": 0.35,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "authored elbow (low) crawl, rifle cradled; ik err {'R': 7.683082245783184e-16, 'L': 9.222205069512407e-16}"
+    "notes": "authored elbow (low) crawl, rifle held low in front; ik err {'R': 8.238311188599651e-16, 'L': 1.0579936123048482e-15}"
    },
    "wounded_crawl": {
     "duration_s": 2.0,
@@ -4338,7 +4339,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.012 m; ik {'R': 9.945640348601413e-16, 'L': 1.1485074744688507e-15}",
+    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.012 m; ik {'R': 9.147767819726591e-16, 'L': 9.671732905683864e-16}",
     "events": {
      "launcher_socket": "weapon_socket (identity)"
     }
@@ -4351,7 +4352,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.008 m; ik {'R': 1.1082262970782368e-15, 'L': 1.1831170202396054e-15}",
+    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.008 m; ik {'R': 1.0984512324899104e-15, 'L': 1.1352675097896258e-15}",
     "events": {
      "launcher_socket": "weapon_socket (identity)"
     }
@@ -4364,7 +4365,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "sitting on a deck edge / fender, legs over the side (shins angled ~30 deg out), rifle across the lap, ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 6.261943282059023e-16, 'L': 7.756677862503847e-16}",
+    "notes": "sitting on a deck edge / fender, legs over the side (shins angled ~30 deg out), rifle across the lap, ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 5.965834842859474e-16, 'L': 8.5863029454558255e-16}",
     "seat_type": "edge"
    },
    "ride_sit_deck": {
@@ -4375,7 +4376,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "sitting on the deck, knees up, rifle held upright between the knees (butt on the deck), ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 1.0448278521973344e-15, 'L': 1.1919557542016666e-15}",
+    "notes": "sitting on the deck, knees up, rifle held upright between the knees (butt on the deck), ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 1.1261549042556244e-15, 'L': 1.2497909157721775e-15}",
     "seat_type": "deck"
    },
    "ride_aim": {
@@ -4386,7 +4387,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "seated on the edge, rifle shouldered, aiming outward (+Z, 6 deg down) with ride sway; butt err 0.060; ik {'R': 8.101585801848734e-16, 'L': 1.4325749365178209e-15}",
+    "notes": "seated on the edge, rifle shouldered, aiming outward (+Z, 6 deg down) with ride sway; butt err 0.013; ik {'R': 9.820925191391734e-16, 'L': 1.2022522294687668e-15}",
     "seat_type": "edge"
    },
    "throw_grenade_window": {
@@ -4414,7 +4415,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "crouched stack-up beside a doorway (door ahead, +Z), rifle at low ready (muzzle ~35 deg down), weight shifts, glance back at 2.1-2.9 s; ik {'R': 6.591583993652515e-16, 'L': 1.0824674490095276e-15}",
+    "notes": "crouched stack-up beside a doorway (door ahead, +Z), rifle at low ready (muzzle ~35 deg down), weight shifts, glance back at 2.1-2.9 s; ik {'R': 7.43207042519283e-16, 'L': 9.992007221626409e-16}",
     "events": {
      "glance_back": [
       2.1,
@@ -4430,7 +4431,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": true,
-    "notes": "push off from the edge seat and drop 1.8 m, land in a crouch; root motion kept (vertical AND horizontal): the clip starts with the seat point at [0.0, 1.8, -1.6] relative to the root, i.e. the game places the root on the ground 1.6 m out from the seat (facing out) and the clip ends at the root; touchdown at 0.84 s; ik {'R': 5.721958498152797e-16, 'L': 0.24678048969105948}",
+    "notes": "push off from the edge seat and drop 1.8 m, land in a crouch; root motion kept (vertical AND horizontal): the clip starts with the seat point at [0.0, 1.8, -1.6] relative to the root, i.e. the game places the root on the ground 1.6 m out from the seat (facing out) and the clip ends at the root; touchdown at 0.84 s; ik {'R': 6.661338147750939e-16, 'L': 0.018106586165507834}",
     "events": {
      "leave_seat": 0.4,
      "touchdown": 0.84,
@@ -4449,7 +4450,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.3 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_stand pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_stand pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4462,7 +4463,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.4 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_crouch pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.0 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == aim_crouch pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4488,10 +4489,10 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "standing at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg, left foot 7 cm out), rifle shouldered and canted 22 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.078 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.31 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "notes": "standing at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg, left foot 7 cm out), rifle shouldered and canted 40 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.015 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.27 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
     "events": {
      "lean_side": "left",
-     "head_out_m": 0.31
+     "head_out_m": 0.27
     }
    },
    "fire_peek_left": {
@@ -4502,7 +4503,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.4 deg, butt/shoulder 1.8 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.6 deg, butt/shoulder 2.4 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4515,10 +4516,10 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "standing at a wall corner, trunk (hips->neck) leaning 27 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg, right foot 7 cm out), rifle shouldered and canted 12 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.026 m; ik err {'R': 0.0, 'L': 0.0007}. The head is 0.35 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "notes": "standing at a wall corner, trunk (hips->neck) leaning 28 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg, right foot 7 cm out), rifle shouldered and canted 12 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.003 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.36 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
     "events": {
      "lean_side": "right",
-     "head_out_m": 0.35
+     "head_out_m": 0.36
     }
    },
    "fire_peek_right": {
@@ -4529,7 +4530,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0071}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.4 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4542,10 +4543,10 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 24 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg), rifle shouldered and canted 20 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.069 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.27 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 22 deg to the soldier's left around the corner (rolled about the aim axis, weight on the left leg), rifle shouldered and canted 32 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.008 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.23 m to the left of the root: with the corner edge ~0.15 m to the left of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
     "events": {
      "lean_side": "left",
-     "head_out_m": 0.27
+     "head_out_m": 0.23
     }
    },
    "fire_peek_crouch_left": {
@@ -4556,7 +4557,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.3 deg, butt/shoulder 2.0 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +3.4 deg, butt/shoulder 2.3 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_left (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4569,10 +4570,10 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg), rifle shouldered and canted 11 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.015 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.32 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
+    "notes": "kneeling (right knee down) at a wall corner, trunk (hips->neck) leaning 25 deg to the soldier's right around the corner (rolled about the aim axis, weight on the right leg), rifle shouldered and canted 11 deg, right eye on the sight line, aiming straight ahead (+Z); feet/knee planted; subtle sway; butt err 0.002 m; ik err {'R': 0.0, 'L': 0.0}. The head is 0.31 m to the right of the root: with the corner edge ~0.15 m to the right of the root the head and rifle are out past the edge while the far shoulder and hip stay behind it.",
     "events": {
      "lean_side": "right",
-     "head_out_m": 0.32
+     "head_out_m": 0.31
     }
    },
    "fire_peek_crouch_right": {
@@ -4583,7 +4584,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.5 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "one-shot recoil cycle 0.133 s (5 frames): report/muzzle flash at t=0 with the rifle on the aim line, peak kick at 0.033 s (muzzle +2.9 deg, butt/shoulder 2.4 cm back, chest & cheek absorb), recovered at 0.133 s; first/last frame == peek_crouch_right (frame 0) pose, so it loops seamlessly for bursts (one shot per loop, ~7.5 shots/s at timeScale 1; raise timeScale for a faster cyclic rate) and blends back into the aim clip; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "shot": 0.0
     }
@@ -4712,18 +4713,15 @@
  },
  "ak74m": {
   "file": "ak74m.glb",
-  "size_bytes": 142788,
+  "size_bytes": 398852,
   "tris": {
-   "ak74m_mesh": 4588,
-   "ak74m_LOD1": 1373,
-   "magazine": 480,
-   "magazine_LOD1": 144
+   "ak74m_mesh": 3772,
+   "ak74m_LOD1": 1128,
+   "magazine": 512,
+   "magazine_LOD1": 152
   },
   "materials": [
-   "ak_mag_polymer",
-   "gun_polymer",
-   "gun_steel",
-   "gun_steel_worn"
+   "wpn_ak74m"
   ],
   "empties": {
    "muzzle": [
@@ -4757,23 +4755,19 @@
     -0.33704
    ]
   },
-  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1",
-  "magazine_node": "magazine (separate mesh; hide/reparent to mag_socket_L during reloads)"
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1222,
+  "magazine_node": "magazine (separate mesh; hide/reparent to mag_socket_L during reloads; its LOD1 `magazine_LOD1` is a child and moves with it)"
  },
  "pkm": {
   "file": "pkm.glb",
-  "size_bytes": 92272,
+  "size_bytes": 432584,
   "tris": {
-   "pkm_mesh": 2376,
-   "pkm_LOD1": 710
+   "pkm_mesh": 4696,
+   "pkm_LOD1": 1406
   },
   "materials": [
-   "brass",
-   "gun_olive_paint",
-   "gun_polymer",
-   "gun_steel",
-   "gun_steel_worn",
-   "gun_wood"
+   "wpn_pkm"
   ],
   "empties": {
    "muzzle": [
@@ -4797,22 +4791,18 @@
     -0.3354
    ]
   },
-  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1"
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1113
  },
  "rpg7": {
   "file": "rpg7.glb",
-  "size_bytes": 90344,
+  "size_bytes": 340300,
   "tris": {
-   "rpg7_mesh": 1820,
-   "rpg7_LOD1": 542
+   "rpg7_mesh": 3862,
+   "rpg7_LOD1": 1156
   },
   "materials": [
-   "gun_olive_paint",
-   "gun_polymer",
-   "gun_steel",
-   "gun_wood",
-   "optic_glass",
-   "warhead_olive"
+   "wpn_rpg7"
   ],
   "empties": {
    "muzzle": [
@@ -4827,8 +4817,8 @@
    ],
    "grip_L": [
     0.0,
-    0.0033000000000000043,
-    -0.1495
+    0.032,
+    0.17
    ],
    "backblast": [
     0.0,
@@ -4846,22 +4836,19 @@
     -0.1895
    ]
   },
-  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1"
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1088,
+  "grip_L_note": "grip_L sits under the front heat guard (z = 0.17), where the launcher clips put the left palm (clips_extra.LAUNCHER); the plain rear hand grip (z = -0.12) is left free, the right hand holds the trigger grip at the origin"
  },
  "rpg22": {
   "file": "rpg22.glb",
-  "size_bytes": 95680,
+  "size_bytes": 227484,
   "tris": {
-   "rpg22_mesh": 2392,
-   "rpg22_LOD1": 714
+   "rpg22_mesh": 1816,
+   "rpg22_LOD1": 528
   },
   "materials": [
-   "bore_black",
-   "rpg22_fibreglass",
-   "rpg22_fibreglass_dark",
-   "rubber_black",
-   "sling_webbing",
-   "stencil_yellow"
+   "wpn_rpg22"
   ],
   "empties": {
    "muzzle": [
@@ -4906,6 +4893,7 @@
    ]
   },
   "conventions": "origin = right hand on the tube under the firing housing, +Z muzzle, +Y up; parent to weapon_socket for the launcher clips",
+  "texel_px_per_m": 1372,
   "carried": {
    "file": "rpg22_carried.glb",
    "note": "collapsed transport configuration, origin at the tube centre"
@@ -4913,22 +4901,15 @@
  },
  "ak12": {
   "file": "ak12.glb",
-  "size_bytes": 181332,
+  "size_bytes": 399924,
   "tris": {
-   "ak12_mesh": 4712,
-   "ak12_LOD1": 1410,
-   "magazine": 480,
-   "magazine_LOD1": 144
+   "ak12_mesh": 3852,
+   "ak12_LOD1": 1150,
+   "magazine": 512,
+   "magazine_LOD1": 152
   },
   "materials": [
-   "ak_mag_polymer",
-   "bore_black",
-   "gun_olive_paint",
-   "gun_polymer",
-   "gun_steel",
-   "gun_steel_worn",
-   "optic_glass",
-   "rubber_black"
+   "wpn_ak12"
   ],
   "empties": {
    "muzzle": [
@@ -4948,12 +4929,12 @@
    ],
    "sight_rear": [
     0.0,
-    0.16854,
+    0.16734,
     -0.03404
    ],
    "sight_front": [
     0.0,
-    0.16854,
+    0.16734,
     0.06595999999999999
    ],
    "stock_butt": [
@@ -4963,32 +4944,27 @@
    ],
    "optic_eye": [
     0.0,
-    0.16854,
+    0.16734,
     -0.12404000000000001
    ]
   },
-  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1",
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1139,
   "magazine_node": "magazine (separate mesh, same as ak74m)",
   "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
-  "description": "AK-12 (6P70, 2020 pattern): railed hinged dust cover + railed handguard, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser, ribbed 30-rd mag, 1P87-style collimator (olive) on the rail"
+  "description": "AK-12 (6P70, 2020 pattern): railed dust cover with folded rear diopter, railed polymer handguard with M-LOK slots, gas-block front sight, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser and rubber pad, ribbed black 30-rd mag, 1P87 (PK-120) collimator (olive) on the rail, sling"
  },
  "ak74m_optic": {
   "file": "ak74m_optic.glb",
-  "size_bytes": 206004,
+  "size_bytes": 449256,
   "tris": {
-   "ak74m_optic_mesh": 5576,
-   "ak74m_optic_LOD1": 1668,
-   "magazine": 480,
-   "magazine_LOD1": 144
+   "ak74m_optic_mesh": 4708,
+   "ak74m_optic_LOD1": 1408,
+   "magazine": 512,
+   "magazine_LOD1": 152
   },
   "materials": [
-   "ak_mag_polymer",
-   "bore_black",
-   "gun_polymer",
-   "gun_steel",
-   "gun_steel_worn",
-   "optic_glass",
-   "rubber_black"
+   "wpn_ak74m_optic"
   ],
   "empties": {
    "muzzle": [
@@ -5008,13 +4984,13 @@
    ],
    "sight_rear": [
     0.0,
-    0.17354000000000003,
-    -0.029040000000000003
+    0.17304,
+    -0.02404
    ],
    "sight_front": [
     0.0,
-    0.17354000000000003,
-    0.06595999999999999
+    0.17304,
+    0.05796
    ],
    "stock_butt": [
     0.0,
@@ -5023,7 +4999,7 @@
    ],
    "optic_eye": [
     0.0,
-    0.17354000000000003,
+    0.17304,
     -0.11404
    ],
    "foregrip": [
@@ -5032,22 +5008,21 @@
     0.27396000000000004
    ]
   },
-  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1",
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
+  "texel_px_per_m": 1108,
   "magazine_node": "magazine (separate mesh, same as ak74m)",
   "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
-  "description": "UA AK-74M upgrade: Picatinny dust-cover rail with an EOTech-style holographic sight, aluminium railed gas-tube cover and lower handguard, vertical foregrip, original side-folding stock"
+  "description": "UA AK-74M: black 6P20 furniture and magazine, quick-detach dovetail side mount with a Kobra-style collimator (tilted amber window), bottom rail on the lower handguard with a vertical foregrip, side-folding stock, sling"
  },
  "grenade_f1": {
   "file": "grenade_f1.glb",
-  "size_bytes": 79488,
+  "size_bytes": 125680,
   "tris": {
-   "grenade_f1_mesh": 2156,
-   "grenade_f1_LOD1": 752
+   "grenade_f1_mesh": 576,
+   "grenade_f1_LOD1": 258
   },
   "materials": [
-   "gun_olive_paint",
-   "gun_steel_worn",
-   "rpg22_fibreglass_dark"
+   "wpn_grenade_f1"
   ],
   "empties": {
    "grip_R": [
@@ -5071,18 +5046,18 @@
     0.03
    ]
   },
-  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring"
+  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring",
+  "texel_px_per_m": 3066
  },
  "grenade_rgd5": {
   "file": "grenade_rgd5.glb",
-  "size_bytes": 45960,
+  "size_bytes": 76504,
   "tris": {
-   "grenade_rgd5_mesh": 1424,
-   "grenade_rgd5_LOD1": 496
+   "grenade_rgd5_mesh": 514,
+   "grenade_rgd5_LOD1": 230
   },
   "materials": [
-   "gun_olive_paint",
-   "gun_steel_worn"
+   "wpn_grenade_rgd5"
   ],
   "empties": {
    "grip_R": [
@@ -5106,7 +5081,8 @@
     0.031
    ]
   },
-  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring"
+  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring",
+  "texel_px_per_m": 2818
  },
  "deviations": [
   "Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.",
