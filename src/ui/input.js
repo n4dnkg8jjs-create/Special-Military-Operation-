@@ -167,6 +167,7 @@ export class Input {
     const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke' };
     if (map[e.code]) { this.command(map[e.code]); return; }
     if (e.code === 'Enter' && g.phase === 'deploy') { g.startBattle(); return; }
+    if (e.code === 'Tab') { e.preventDefault(); this.hud.rosterMini = !this.hud.rosterMini; this.hud.rebuildCards(); return; }
     if (e.code === 'Space') { e.preventDefault(); g.paused = !g.paused; document.getElementById('pausebadge').classList.toggle('hidden', !g.paused); }
     if (e.code === 'Escape') { this.mode = null; document.body.style.cursor = ''; this.hud.select([]); this.hud.inspect = null; }
     const m = e.code.match(/^Digit(\d)$/);

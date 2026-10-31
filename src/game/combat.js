@@ -69,6 +69,7 @@ export class Combat {
       return;
     }
     const t = s.target; if (!t) return;
+    if (s.noRifle || s.supportClip) return;                          // busy on the launcher / drone controls
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
     if (s.peek && s.peekAmt < 0.85) return;                          // still leaning out from the corner
@@ -508,6 +509,13 @@ export class Combat {
     if (!r.penetrated) { this.updateImmobile(v); return; }
     v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1));
     const msgs = [];
+    // big shaped charges (ATGM, FPV warhead) through thin armour: the jet and blast wreck the compartment
+    if (W.type === 'atgm' && r.residual > 250) {
+      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : 1);
+      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : 0.25)) { v.burning = 0.01; msgs.push('on fire'); }
+    }
+    // an FPV warhead on the engine deck: engine wrecked, fuel and oil very often catch
+    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.5) { v.burning = 0.01; msgs.push('engine on fire'); }
     const crewHit = role => { const c = v.crewList.find(m => m.role === role && m.hp > 0); if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
     for (const e of fx) {
       const part = v.parts.find(p => p.name === e); if (!part) continue;

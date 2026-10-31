@@ -29,6 +29,7 @@ export class Commander {
     for (const [x, z, kind, obj] of lay) {
       if (kind === 'tank') { const v = g.makeVehicle('enemy', 'tank', x, z, N); this.army.push({ kind: 'tank', v, obj, state: 'move', t: 2, home: OVERWATCH[obj][0] }); continue; }
       if (kind === 'mech') { const v = g.makeVehicle('enemy', 'btr', x, z, N); const s = g.makeSquad('enemy', x, z + 6, N, 'Enemy squad'); s.board(v, true); this.army.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() }); continue; }
+      if (kind === 'atgm' || kind === 'fpv') { const s = g.makeSquad('enemy', x, z, N, kind === 'atgm' ? `Enemy ${g.enemyFaction.id === 'RU' ? 'Kornet' : 'Stugna'} team` : 'Enemy FPV team', kind); this.army.push({ kind, sq: s, obj, state: 'move', t: 2 }); continue; }
       const s = g.makeSquad('enemy', x, z, N, kind === 'assault' ? 'Enemy assault squad' : 'Enemy squad', kind === 'assault' ? 'assault' : 'mech');
       this.army.push({ kind, sq: s, obj, state: 'advance', t: 2, bound: 0, flank: this.flank() });
     }
@@ -94,6 +95,22 @@ export class Commander {
     }
     g.hud?.alert(w.assault ? 'Enemy assault groups moving in' : 'Enemy movement reported to the north', 'bad');
   }
+  // ATGM teams take a firing position with long sightlines behind the overwatch line; FPV teams sit back near
+  // the staging area. Both relocate after being shot at (a launch signature gives them away).
+  thinkSupport(b) {
+    const sq = b.sq, g = this.g;
+    if (sq.routing) return;
+    const moving = sq.effective.some(s => (s.path && s.pathI < s.path.length) || s.pathReq);
+    if (moving) return;
+    const hot = sq.underFireT < 3 && sq.morale < 55;
+    if (!b.spot || hot && (b.moved = (b.moved || 0) + 1) < 4) {
+      let p;
+      if (b.kind === 'atgm') { const o = OVERWATCH[b.obj][Math.floor(Math.random() * 2)]; p = [o[0] + (Math.random() - .5) * 30, o[1] - 25 - Math.random() * 25]; }
+      else { const st = this.stagingFor(b.obj); p = [st[0] + (Math.random() - .5) * 30, st[1] - 60 - Math.random() * 40]; }
+      const f = g.nav.nearestFree(p[0], p[1], 0.5, 20); b.spot = f;
+      sq.orderMove(f[0], f[1], 0, 10, b.kind === 'atgm' && !hot ? false : true);
+    }
+  }
   flank() { const r = Math.random(); return r < 0.3 ? -1 : r < 0.6 ? 1 : 0; }
   stagingFor(obj) { const l = STAGING[obj]; return l[Math.floor(Math.random() * l.length)]; }
   objPos(obj) { const o = OBJECTIVES.find(o => o.id === obj); return [o.x, o.z]; }
@@ -106,6 +123,7 @@ export class Commander {
     const sq = b.sq;
     if (sq.destroyed) { b.dead = true; if (b.v && !b.v.destroyed) b.v.orderMove(...this.stagingFor(b.obj)); return; }
     if (b.kind === 'defend') return this.thinkDefender(b);
+    if (b.kind === 'atgm' || b.kind === 'fpv') return this.thinkSupport(b);
     // keep attacking whichever objective the player holds
     const tgt = g.objectives.find(o => o.id === b.obj);
     if (tgt.owner === 'enemy' && b.state !== 'hold') { const other = g.objectives.find(o => o.owner === 'player'); if (other) b.obj = other.id; }

@@ -504,12 +504,14 @@ def belt_holster(env, fac):
 def soft_vest(env, mat, group):
     """light soft armour vest (crew): front / back panels, side panels, padded shoulder straps, front closure strap"""
     out = []
-    fp = G.env_panel(env, 0.0, 1.235, 0.145, 0.17, 0.013, chamfer=0.06, mat=mat, nu=13, nv=15, edge=0.018, rad=0.04)
-    bp = G.env_panel(env, np.pi, 1.245, 0.145, 0.175, 0.012, mat=mat, back=True, chamfer=0.05, nu=13, nv=15, edge=0.018, rad=0.04)
+    # front / back sections reach down over the belt line (like the RU 6B45 soft sections); trunk-only envelope at the top
+    yb = 1.022
+    fp = G.env_panel(env, 0.0, (1.405 + yb) / 2, 0.145, (1.405 - yb) / 2, 0.013, chamfer=0.06, mat=mat, nu=13, nv=17, edge=0.018, rad=0.04)
+    bp = G.env_panel(env, np.pi, (1.42 + yb) / 2, 0.145, (1.42 - yb) / 2, 0.012, mat=mat, back=True, chamfer=0.05, nu=13, nv=17, edge=0.018, rad=0.04)
     out += [G.orient_closed(fp), G.orient_closed(bp)]
     for sgn in (1, -1):
         ths = (0.62, np.pi - 0.58) if sgn > 0 else (-(np.pi - 0.58), -0.62)
-        out.append(G.orient_closed(G.band(env, 1.075, 1.20, ths[0], ths[1], 0.003, 0.010, nu=16, nv=4, mat=mat, wrinkle=0.0012, seed=7 if sgn > 0 else 8)))
+        out.append(G.orient_closed(G.band(env, yb + 0.006, 1.20, ths[0], ths[1], 0.003, 0.010, nu=16, nv=4, mat=mat, wrinkle=0.0012, seed=7 if sgn > 0 else 8)))
         out.append(K.shoulder_strap(env, 'L' if sgn > 0 else 'R', mat, x0=0.095, width=0.055, thick=0.010, y_front=1.39, y_back=1.40))
     # velcro closure flaps on the sides (front panel over the side panels)
     for sgn in (1, -1):
@@ -517,8 +519,8 @@ def soft_vest(env, mat, group):
         out.append(PO.local_part(PO.rbox(0.07, 0.11, 0.004, 0.002, 1), M, mat))
     # a pistol-magazine double pouch + small radio pouch on the front
     ffr = fp['frame']
-    out += PO.mag_pouch(dict(fabric=mat, hardware='gear_hardware', webbing=mat), K.panel_M(ffr, -0.075, -0.14), w=0.055, h=0.085, d=0.03)
-    out += PO.radio_pouch(dict(fabric=mat, hardware='gear_hardware', webbing=mat, radio='radio_black'), K.panel_M(ffr, 0.07, -0.13), w=0.06, h=0.10, d=0.035, antenna=0.12)
+    out += PO.mag_pouch(dict(fabric=mat, hardware='gear_hardware', webbing=mat), K.panel_M(ffr, -0.075, 1.095 - ffr['yc']), w=0.055, h=0.085, d=0.03)
+    out += PO.radio_pouch(dict(fabric=mat, hardware='gear_hardware', webbing=mat, radio='radio_black'), K.panel_M(ffr, 0.07, 1.105 - ffr['yc']), w=0.06, h=0.10, d=0.035, antenna=0.12)
     for q in out:
         q['group'] = group
     return out

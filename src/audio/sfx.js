@@ -56,6 +56,9 @@ export class Audio {
     def('cannon30', { gain: 0.8, refDistance: 14 }, [shot(0.04, 0.8, 50, 0.5)]);
     def('tankgun', { gain: 1, refDistance: 25 }, [() => buf(2.5, (t, st) => { const n = noise(); return lp(st, n, 0.08) * Math.exp(-t / 0.15) * 3 + Math.sin(2 * Math.PI * 38 * t) * Math.exp(-t / 0.25) * 1.2 + lp({ a: st.b }, n, 0.01) * Math.exp(-t / 0.8) * 2; })]);
     const boom = (dec, low) => () => buf(dec * 4, (t, st) => { const n = noise(); st.b += (n - st.b) * 0.02; return (lp(st, n, 0.12) * Math.exp(-t / (dec * 0.25)) * 2.2 + st.b * Math.exp(-t / dec) * 6 + Math.sin(2 * Math.PI * low * t) * Math.exp(-t / (dec * 0.4)) * 1.4) * 0.7; });
+    // FPV drone: 7-inch quad motor whine (looped), and a missile motor roar for ATGMs
+    def('drone_buzz', { gain: 0.5, refDistance: 10, loop: true }, [() => buf(1.0, (t, st) => { const f = 205 + Math.sin(2 * Math.PI * 3 * t) * 6; let v = 0; for (let h = 1; h <= 6; h++) v += Math.sin(2 * Math.PI * f * h * t + h) / h; return v * 0.35 + lp(st, noise(), 0.3) * 0.25; })]);
+    def('atgm_motor', { gain: 0.6, refDistance: 14, loop: true }, [() => buf(1.0, (t, st) => lp(st, noise(), 0.25) * 0.9 + Math.sin(2 * Math.PI * 95 * t) * 0.15)]);
     def('explosion_small', { gain: 0.9, refDistance: 14 }, [boom(0.4, 55), boom(0.5, 48)]);
     def('explosion_medium', { gain: 1, refDistance: 22 }, [boom(0.8, 40), boom(0.9, 35)]);
     def('explosion_large', { gain: 1, refDistance: 35 }, [boom(1.6, 28)]);

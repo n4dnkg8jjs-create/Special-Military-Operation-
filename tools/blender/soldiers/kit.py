@@ -96,13 +96,20 @@ def side_M(env, th, y, off):
     return PO.mat4(p, side, up, n)
 
 
+RU_VEST = dict(bottom=1.015, front_top=1.452, back_top=1.448, side_top=1.262)   # 6B45/6B46 cover down to the belt line (trouser waist ~1.0)
+
+
 def plate_carrier(env, fac):
     m = RU_MATS if fac == 'ru' else UA_MATS
     out = []
     if fac == 'ru':
-        fp = G.env_panel(env, 0.0, 1.282, 0.15, 0.168, 0.026, chamfer=0.035, mat=m['fabric'], nu=13, nv=15)
-        bp = G.env_panel(env, np.pi, 1.30, 0.155, 0.172, 0.022, mat=m['fabric'], back=True, chamfer=0.02, nu=13, nv=15)
-        cy0, cy1, cth = 1.055, 1.235, 0.5
+        # 6B45 / 6B46 (Ratnik): front and back sections run from the collar bones / shoulder blades down to the belt, the side
+        # sections (soft armour bags) wrap the waist; narrow shooter's cut at the top front, wide armhole cut at the top back
+        V = RU_VEST
+        yb, ft, bt = V['bottom'], V['front_top'], V['back_top']
+        fp = G.env_panel(env, 0.0, (ft + yb) / 2, 0.158, (ft - yb) / 2, 0.024, chamfer=0.05, mat=m['fabric'], nu=13, nv=18, rad=0.035, edge=0.014)
+        bp = G.env_panel(env, np.pi, (bt + yb) / 2, 0.150, (bt - yb) / 2, 0.021, mat=m['fabric'], back=True, chamfer=0.048, nu=13, nv=18, rad=0.035, edge=0.014)
+        cy0, cy1, cth = yb + 0.004, V['side_top'], 0.5
     else:
         fp = G.env_panel(env, 0.0, 1.282, 0.14, 0.158, 0.022, chamfer=0.032, mat=m['fabric'], nu=13, nv=15)
         bp = G.env_panel(env, np.pi, 1.30, 0.145, 0.165, 0.02, mat=m['fabric'], back=True, chamfer=0.02, nu=13, nv=15)
@@ -110,38 +117,47 @@ def plate_carrier(env, fac):
     out += tag([G.orient_closed(fp), G.orient_closed(bp)], 'vest')
     for sgn in (1, -1):
         ths = (cth, np.pi - 0.48) if sgn > 0 else (-(np.pi - 0.48), -cth)
-        out += tag([G.orient_closed(G.band(env, cy0, cy1, ths[0], ths[1], 0.003, 0.011, nu=22, nv=4, mat=m['fabric'], wrinkle=0.0015, seed=3 if sgn > 0 else 4))], 'vest')
+        out += tag([G.orient_closed(G.band(env, cy0, cy1, ths[0], ths[1], 0.003, 0.011 if fac == 'ua' else 0.013, nu=22, nv=5 if fac == 'ru' else 4,
+                                           mat=m['fabric'], wrinkle=0.0015, seed=3 if sgn > 0 else 4))], 'vest')
         out += tag([shoulder_strap(env, 'L' if sgn > 0 else 'R', m['fabric'])], 'vest')
     ffr, bfr = fp['frame'], bp['frame']
-    # MOLLE webbing rows
-    out += tag([G.orient_open(p, p['pos'] - np.stack([0 * p['pos'][:, 0], p['pos'][:, 1], env.zcen(p['pos'][:, 1])], 1)) for p in G.molle_rows_panel(ffr, -0.13, 0.13, 0.135, 6, m['webbing'])], 'vest')
-    out += tag([G.orient_open(p, p['pos'] - np.stack([0 * p['pos'][:, 0], p['pos'][:, 1], env.zcen(p['pos'][:, 1])], 1)) for p in G.molle_rows_panel(bfr, -0.13, 0.13, 0.14, 7, m['webbing'])], 'vest')
-    # cummerbund MOLLE (3 rows each side)
+    fy = lambda y: y - ffr['yc']          # absolute height -> panel coordinate
+    by = lambda y: y - bfr['yc']
+    # MOLLE webbing rows (from the upper chest down to just above the bottom edge)
+    nf, nb = (8, 8) if fac == 'ru' else (6, 7)
+    # (RU: the rows fully hidden behind the three mag pouches, 1.075 .. 1.225 m, are skipped)
+    rows_f = [p for p in G.molle_rows_panel(ffr, -0.13, 0.13, fy(1.417), nf, m['webbing'])
+              if fac != 'ru' or not (p['pos'][:, 1].min() > 1.075 and p['pos'][:, 1].max() < 1.225)]
+    out += tag([G.orient_open(p, p['pos'] - np.stack([0 * p['pos'][:, 0], p['pos'][:, 1], env.zcen(p['pos'][:, 1])], 1)) for p in rows_f], 'vest')
+    out += tag([G.orient_open(p, p['pos'] - np.stack([0 * p['pos'][:, 0], p['pos'][:, 1], env.zcen(p['pos'][:, 1])], 1)) for p in G.molle_rows_panel(bfr, -0.13, 0.13, by(1.44 if fac == 'ua' else 1.415), nb, m['webbing'])], 'vest')
+    # cummerbund MOLLE (3 rows each side; RU side sections: 4)
+    off = 0.003 + (0.011 if fac == 'ua' else 0.013) + 0.0018
     for sgn in (1, -1):
-        for r in range(3):
+        for r in range(3 if fac == 'ua' else 4):
             yc = cy1 - 0.02 - r * 0.05
             th = np.linspace(sgn * (cth + 0.25), sgn * (np.pi - 0.75), 12)
-            top = env.point(yc + 0.0125, th, 0.003 + 0.011 + 0.0018)
-            bot = env.point(yc - 0.0125, th, 0.003 + 0.011 + 0.0018)
-            bt = env.point(yc + 0.0125, th, 0.003 + 0.011 - 0.001)
-            bb = env.point(yc - 0.0125, th, 0.003 + 0.011 - 0.001)
-            pos = np.concatenate([bt, top, bot, bb])
+            top = env.point(yc + 0.0125, th, off)
+            bot = env.point(yc - 0.0125, th, off)
+            bt_ = env.point(yc + 0.0125, th, off - 0.0028)
+            bb = env.point(yc - 0.0125, th, off - 0.0028)
+            pos = np.concatenate([bt_, top, bot, bb])
             p = G.part(pos, G.grid_tris(12, 4), m['webbing'], np.concatenate([np.stack([th * 0.15 * 2, np.full(12, k * 0.02)], 1) for k in range(4)]))
             out += tag([G.orient_open(p, pos - np.array([0, yc, env.zcen(yc)]))], 'vest')
     # drag handle on back top
-    out += tag(PO.drag_handle(m, panel_M(bfr, 0, 0.13)), 'vest')
+    out += tag(PO.drag_handle(m, panel_M(bfr, 0, by(1.43))), 'vest')
     # ------------------------------------------------------------- pouches
     if fac == 'ru':
+        # 6Sh117-style: three double AK mag pouches low on the front (belly), radio + grenade pouch above them
         for k, x in enumerate((-0.092, 0.0, 0.092)):
-            out += tag(PO.mag_pouch(m, panel_M(ffr, x, -0.155)), 'pouches_front')
-        out += tag(PO.radio_pouch(m, panel_M(ffr, 0.075, 0.015), antenna=0.2), 'pouches_front')
-        out += tag(PO.grenade_pouch(m, panel_M(ffr, -0.075, 0.01)), 'pouches_front')
+            out += tag(PO.mag_pouch(m, panel_M(ffr, x, fy(1.072))), 'pouches_front')
+        out += tag(PO.radio_pouch(m, panel_M(ffr, 0.075, fy(1.247)), antenna=0.2), 'pouches_front')
+        out += tag(PO.grenade_pouch(m, panel_M(ffr, -0.075, fy(1.242))), 'pouches_front')
         # sides: grenade pouches (left), IFAK (right)
-        out += tag(PO.grenade_pouch(m, side_M(env, 1.25, 1.075, 0.016)), 'pouches_side')
-        out += tag(PO.grenade_pouch(m, side_M(env, 1.65, 1.075, 0.016)), 'pouches_side')
-        out += tag(PO.ifak(m, side_M(env, -1.5, 1.07, 0.016), w=0.14), 'pouches_side')
-        out += tag(PO.hydration(m, panel_M(bfr, 0, -0.16)), 'pouches_back')
-        out += tag(PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.07, 0.015)), 'pouches_back')
+        out += tag(PO.grenade_pouch(m, side_M(env, 1.25, 1.075, 0.018)), 'pouches_side')
+        out += tag(PO.grenade_pouch(m, side_M(env, 1.65, 1.075, 0.018)), 'pouches_side')
+        out += tag(PO.ifak(m, side_M(env, -1.5, 1.07, 0.018), w=0.14), 'pouches_side')
+        out += tag(PO.hydration(m, panel_M(bfr, 0, by(1.14))), 'pouches_back')
+        out += tag(PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.07, 0.017)), 'pouches_back')
     else:
         # JPC-style: triple open-top mag shingle with visible mags, admin + flag, tourniquet, radio
         for k, x in enumerate((-0.088, 0.0, 0.088)):

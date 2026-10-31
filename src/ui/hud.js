@@ -6,6 +6,8 @@ const ICONS = {
   squad: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/></g></svg>`,
   btr: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><ellipse cx="31" cy="20" rx="20" ry="9"/><circle cx="16" cy="38" r="1.6"/><circle cx="26" cy="38" r="1.6"/><circle cx="36" cy="38" r="1.6"/><circle cx="46" cy="38" r="1.6"/></g></svg>`,
   tank: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
+  atgm: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M18 30 L31 11 L44 30"/></g></svg>`,
+  fpv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M15 16 Q23 26 31 18 Q39 26 47 16"/></g></svg>`,
 };
 
 export class HUD {
@@ -55,36 +57,64 @@ export class HUD {
   }
   showPreview(points) { const m = new THREE.Matrix4(); this.preview.count = Math.min(80, points.length); points.slice(0, 80).forEach((p, i) => { m.makeTranslation(p[0], 0.15, p[1]); this.preview.setMatrixAt(i, m); }); this.preview.instanceMatrix.needsUpdate = true; }
   // ------------------------------------------------------------ cards
+  // Order-of-battle roster: a compact, grouped, scrollable list (left edge) instead of a row of big cards.
+  // Squads are nested under the BTR that carries them; groups collapse; Tab folds the whole panel to icons.
   rebuildCards() {
-    this.cards.innerHTML = '';
+    this.cards.innerHTML = ''; this.cards.className = 'roster' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
-    for (const u of this.g.playerUnits) {
-      const el = document.createElement('div'); el.className = 'card';
-      const kind = u.type === 'squad' ? 'squad' : u.kind;
-      el.innerHTML = `<span class="grp"></span><span class="men"></span><div class="ico" style="color:${u.faction.color}">${ICONS[kind]}</div><div class="nm">${u.name}</div><div class="st"></div><div class="bars"><div class="b hp"><i></i></div><div class="b am"><i></i></div><div class="b mo"><i></i></div></div>`;
+    const units = this.g.playerUnits.filter(u => !(u.type === 'squad' && u.crew && u.destroyed));
+    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
+    const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'CREWS'];
+    const head = document.createElement('div'); head.className = 'rhead';
+    head.innerHTML = `<span>ORDER OF BATTLE</span><span class="rbtn" title="Fold (Tab)">${this.rosterMini ? '▸' : '◂'}</span>`;
+    head.querySelector('.rbtn').addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
+    this.cards.appendChild(head);
+    const body = document.createElement('div'); body.className = 'rbody'; this.cards.appendChild(body);
+    this.rosterFold ||= {};
+    const row = (u, nested) => {
+      const el = document.createElement('div'); el.className = 'r' + (nested ? ' nest' : '');
+      const kind = u.type === 'squad' ? (u.kind === 'atgm' ? 'atgm' : u.kind === 'fpv' ? 'fpv' : 'squad') : u.kind;
+      const col = u.type === 'squad' && u.assault ? '#e38b3a' : u.crew ? '#9aa3a8' : u.faction.color;
+      el.innerHTML = `<span class="g"></span><span class="ic" style="color:${col}">${ICONS[kind] || ICONS.squad}</span><span class="tx"><span class="nm">${u.name}</span><span class="st"></span></span><span class="mn"></span><span class="bars"><i class="hp"><b></b></i><i class="am"><b></b></i><i class="mo"><b></b></i></span>`;
+      el.title = u.name;
       el.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; this.select([u], e.shiftKey); this.g.sfx('ui_select'); });
       el.addEventListener('dblclick', () => { const c = u.center(); this.g.cam.lookAt(c.x, c.z); });
-      this.cards.appendChild(el); this.cardEls.set(u, el);
+      this.cardEls.set(u, el); return el;
+    };
+    for (const grp of order) {
+      const members = units.filter(u => groupOf(u) === grp); if (!members.length) continue;
+      const h = document.createElement('div'); h.className = 'rg'; const folded = this.rosterFold[grp];
+      h.innerHTML = `<span>${folded ? '▸' : '▾'} ${grp}</span><span class="rgn"></span>`; h.dataset.grp = grp;
+      h.addEventListener('mousedown', e => { e.stopPropagation(); if (e.shiftKey || e.ctrlKey) { this.select(members.flatMap(m => [m, ...units.filter(q => q.carrier === m)]), e.shiftKey); return; } this.rosterFold[grp] = !folded; this.rebuildCards(); });
+      body.appendChild(h);
+      if (folded) { for (const u of members) this.cardEls.set(u, null); continue; }
+      for (const u of members) {
+        body.appendChild(row(u, false));
+        if (u.type === 'vehicle') for (const q of units.filter(q => q.type === 'squad' && q.carrier === u && groupOf(q) === null)) body.appendChild(row(q, true));
+      }
     }
+    // squads whose carrier is gone and that weren't placed yet
+    for (const u of units) if (!this.cardEls.has(u)) body.appendChild(row(u, false));
   }
   updateCards() {
     for (const [u, el] of this.cardEls) {
-      const dead = u.type === 'squad' ? u.destroyed : u.destroyed;
+      if (!el) continue;
+      const dead = u.destroyed;
       el.classList.toggle('dead', dead); el.classList.toggle('sel', this.selected.has(u));
       const q = s => el.querySelector(s);
+      let men, hp, am, mo, st, rout = false;
       if (u.type === 'squad') {
-        if (u.assault) el.querySelector('.ico').style.color = '#e38b3a';
         const eff = u.effective.length, wnd = u.soldiers.filter(s => s.state === 'critical' || s.state === 'stable').length;
-        q('.men').textContent = `${eff}${wnd ? '+' + wnd : ''}`;
-        q('.hp i').style.width = `${eff / 8 * 100}%`; q('.am i').style.width = `${u.ammoFrac() * 100}%`; q('.mo i').style.width = `${u.morale}%`;
-        q('.mo i').style.background = u.routing ? '#c8483a' : u.morale < 45 ? '#d8b25a' : '#8fb069';
-        const st = q('.st'); st.textContent = dead ? 'DESTROYED' : u.mounted ? 'MOUNTED' : u.building ? 'GARRISONED' : u.moraleState(); st.classList.toggle('rout', u.routing);
+        men = `${eff}${wnd ? '+' + wnd : ''}`; hp = eff / u.soldiers.length; am = u.ammoFrac(); mo = u.morale / 100; rout = u.routing;
+        st = dead ? 'LOST' : u.pinned ? 'PINNED' : u.mounted ? 'MOUNTED' : u.building ? 'GARRISONED' : u.status?.() || u.moraleState();
       } else {
-        q('.men').textContent = u.destroyed ? '✕' : `${u.crew}`;
-        q('.hp i').style.width = `${Math.max(0, u.hp / u.def.hp) * 100}%`; q('.am i').style.width = `${u.ammoFrac() * 100}%`; q('.mo i').style.width = u.destroyed ? '0' : '100%';
-        q('.st').textContent = u.moraleState() + (u.passengers ? ' · CARRYING' : '');
+        men = u.destroyed ? '✕' : `${u.crew}`; hp = Math.max(0, u.hp / u.def.hp); am = u.ammoFrac(); mo = u.destroyed ? 0 : 1;
+        st = u.moraleState() + (u.passengers ? ' · LOADED' : '');
       }
-      const gnum = Object.entries(this.groups).find(([k, v]) => v.includes(u)); q('.grp').textContent = gnum ? gnum[0] : '';
+      q('.mn').textContent = men; q('.st').textContent = st; q('.st').classList.toggle('rout', rout || st === 'PINNED');
+      q('.hp b').style.height = `${hp * 100}%`; q('.am b').style.height = `${am * 100}%`; q('.mo b').style.height = `${mo * 100}%`;
+      q('.mo b').style.background = rout ? '#c8483a' : mo < 0.45 ? '#d8b25a' : '#8fb069';
+      const gnum = Object.entries(this.groups).find(([k, v]) => v.includes(u)); q('.g').textContent = gnum ? gnum[0] : '';
     }
   }
   select(units, add = false) {
@@ -114,6 +144,9 @@ export class HUD {
       if (u.side === 'player') html += row('Mags per man', ammo);
       html += row('Status', u.mounted ? `Mounted in ${u.carrier?.name}` : u.building ? 'Garrisoned' : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
       if (u.holdFire) html += row('Fire', 'HOLD FIRE');
+      const sp = u.support;
+      if (sp && sp.drones != null) { html += row('System', 'FPV strike drones (PG-7VL warhead)'); html += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / 3`); html += row('Team', sp.status()); }
+      else if (sp) { html += row('System', `${sp.W.name} · ${sp.W.range} m · tandem HEAT`); html += row('Missiles', `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? ' + 1 in flight' : ''}`); html += row('Team', sp.status()); }
       if (u.carrier && u.side === 'player') html += row('Carrier', `${u.carrier.name}${u.carrier.destroyed ? ' (lost)' : ''}`);
     } else {
       html += row('Condition', u.moraleState());

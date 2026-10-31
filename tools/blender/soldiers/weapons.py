@@ -15,7 +15,7 @@ import bl, gltfw, tex as TX
 import weapon_tex as WT
 from weapon_tex import fx_dots, fx_rect, fx_line, fx_pattern, fx_text, fx_cyl_bands, Fx, frame
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../assets/soldiers')
+OUT = os.environ.get('WOUT') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../assets/soldiers')   # WOUT=<dir>: test builds
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache')
 GROUP_IDS = {None: 0, 'magazine': 1}
 
@@ -344,6 +344,12 @@ AK_GT = np.array([0.010, 0.034]); AK_GB = np.array([-0.028, -0.078])
 AK_O = AK_GT + 0.42 * (AK_GB - AK_GT)     # (z, y) of the origin (pistol-grip palm centre) in profile space
 AK_BORE = 0.074
 XL, XR = np.array([1.0, 0, 0]), np.array([-1.0, 0, 0])
+# receiver proportions (2026-10 rework from side photos of the AK-74 / AK-74M, scaled on the 943 mm overall length): 35.6 mm wide
+# stamped receiver (was 30 mm), stock hinge right behind the pistol grip, front trunnion meeting the lower handguard; parts mounted
+# on the receiver sides move out by DX.  Empties (grip_R origin, grip_L, muzzle, sights, stock_butt) are unchanged.
+RW = 0.0178
+DX = RW - 0.015
+REC_Z = (-0.086, 0.198)
 UP, DN, FW, BK = np.array([0, 1.0, 0]), np.array([0, -1.0, 0]), np.array([0, 0, 1.0]), np.array([0, 0, -1.0])
 
 
@@ -415,83 +421,87 @@ def pat_stipple(seed, density=0.5):
 # ---------------------------------------------------------------------------------------------- AK parts
 def _ak_receiver(B, kind='enamel', side_rail=True, rear_sight=True, ribbed_cover=True, cover_rail=False):
     P, C, O, BORE = _akP, _akC, AK_O, AK_BORE
+    zr, zf = REC_Z
+    XS = RW + 0.0001
     # stamped receiver (U section, 1 mm sheet): flat sides, slightly rounded bottom corners
-    rec = [(-0.104, 0.040), (-0.096, 0.036), (0.142, 0.036), (0.142, 0.090), (-0.104, 0.090)]
-    B.profile(P(rec), 0.030, kind, bevel=0.0025, seg=2)
-    # dust cover: inverted-U loft, rounded top, tail drops at the rear (recoil-spring button)
-    zs = [-0.100, -0.093, -0.082, 0.0, 0.12, 0.134]
+    rec = [(zr, 0.040), (zr + 0.008, 0.036), (zf, 0.036), (zf, 0.090), (zr, 0.090)]
+    B.profile(P(rec), 2 * RW, kind, bevel=0.0025, seg=2)
+    # dust cover: inverted-U loft, rounded top, tail drops at the rear (recoil-spring button); front end under the rear sight block
+    cz0, cz1 = zr + 0.004, 0.178
+    zs = [cz0, cz0 + 0.007, cz0 + 0.018, 0.02, 0.16, cz1]
     rings = []
     for z in zs:
-        t = np.clip((z + 0.100) / 0.018, 0, 1)
+        t = np.clip((z - cz0) / 0.018, 0, 1)
         top = 0.096 + 0.0085 * np.sqrt(t)
-        w = 0.0306 if z < 0.13 else 0.0300
+        w = 2 * RW + 0.0006 if z < cz1 - 0.004 else 2 * RW
         poly = rrect(w, top - 0.082, 0.0105 * (0.6 + 0.4 * t), nc=3, cy=(top + 0.082) / 2, rb=0.0)
         rings.append(Gr(poly, z))
     B.loft(rings, kind, angle=40, bevel=0.0012, seg=1)
-    B.cyl(G(0, 0.091, -0.103), G(0, 0.091, -0.110), 0.0045, 'steel', n=10)          # recoil-spring guide button
+    B.cyl(G(0, 0.091, cz0 - 0.003), G(0, 0.091, cz0 - 0.010), 0.0045, 'steel', n=10)          # recoil-spring guide button
     if ribbed_cover:   # transverse stiffening ribs stamped into the cover
-        for k in range(7):
-            z = -0.075 + k * 0.026
+        for k in range(8):
+            z = cz0 + 0.020 + k * 0.031
             for sx in (1, -1):
-                B.fx.append(fx_line(G(sx * 0.0153, 0.0865, z), G(sx * 0.0153, 0.0955, z), sx * XL, 0.006, depth=0.0006,
+                B.fx.append(fx_line(G(sx * (RW + 0.0003), 0.0865, z), G(sx * (RW + 0.0003), 0.0955, z), sx * XL, 0.006, depth=0.0006,
                                     kinds=[kind], profile='rib', facing=0.5))
             B.fx.append(fx_line(G(-0.009, 0.104, z), G(0.009, 0.104, z), UP, 0.006, depth=0.0006, kinds=[kind], profile='rib', facing=0.3, thick=0.006))
     # front trunnion + rear trunnion rivets, mag-well dimple, trigger-group pins (both sides)
     for sx in (1, -1):
         n = sx * XL
-        xs = sx * 0.0151
-        riv = [(0.118, 0.044), (0.118, 0.056), (0.131, 0.044), (0.131, 0.056), (0.136, 0.072), (-0.085, 0.047), (-0.085, 0.062),
-               (-0.072, 0.047), (-0.096, 0.075)]
+        xs = sx * XS
+        riv = [(0.164, 0.044), (0.164, 0.056), (0.177, 0.044), (0.177, 0.056), (0.183, 0.072), (-0.069, 0.047), (-0.069, 0.062),
+               (-0.056, 0.047), (-0.079, 0.075)]
         B.fx += fx_dots([G(xs, y, z) for z, y in riv], 0.0024, n, depth=0.0006, kinds=[kind], wear=0.5)
-        B.fx.append(fx_rect(G(xs, 0.055, 0.080), n, UP, 0.034, 0.012, depth=0.0009, kinds=[kind], radius=0.5))
+        B.fx.append(fx_rect(G(xs, 0.055, 0.096), n, UP, 0.046, 0.012, depth=0.0009, kinds=[kind], radius=0.5))
         B.fx += fx_dots([G(xs, 0.060, 0.016), G(xs, 0.060, 0.044), G(xs, 0.074, 0.060)], 0.0028, n, depth=0.0005, shape='ring', kinds=[kind])
         B.fx += fx_dots([G(xs, 0.060, 0.016), G(xs, 0.060, 0.044), G(xs, 0.074, 0.060)], 0.0016, n, depth=0.0003, kinds=[kind],
                         col='#55585a', colA=0.7)
-        # receiver rails (top edge seam under the cover) + the bolt-carrier guide line
-        B.fx.append(fx_line(G(xs, 0.0885, -0.10), G(xs, 0.0885, 0.14), n, 0.0012, depth=0.0004, kinds=[kind]))
+        # receiver rails (top edge seam under the cover) + the front trunnion seam
+        B.fx.append(fx_line(G(xs, 0.0885, zr + 0.004), G(xs, 0.0885, zf - 0.002), n, 0.0012, depth=0.0004, kinds=[kind]))
+        B.fx.append(fx_line(G(xs, 0.038, 0.150), G(xs, 0.088, 0.150), n, 0.0010, depth=0.0003, kinds=[kind]))
     # ejection port (right): dark recess with the bolt carrier showing
-    B.fx.append(fx_rect(G(-0.0151, 0.078, 0.064), XR, UP, 0.082, 0.020, depth=0.0035, kinds=[kind], col='#0a0a0a', colA=0.9, radius=0.15, edge=0.08))
-    B.fx.append(fx_rect(G(-0.0151, 0.0795, 0.052), XR, UP, 0.056, 0.011, depth=0.0, mode='flat', kinds=[kind], col='#77797b', colA=0.95, metal=1.0, rough=0.3, edge=0.25))
-    B.fx.append(fx_line(G(-0.0151, 0.0795, 0.026), G(-0.0151, 0.0795, 0.078), XR, 0.0016, depth=0.0004, kinds=[kind], col='#2a2a2a', colA=0.8, facing=0.5))
+    B.fx.append(fx_rect(G(-XS, 0.078, 0.108), XR, UP, 0.086, 0.020, depth=0.0035, kinds=[kind], col='#0a0a0a', colA=0.9, radius=0.15, edge=0.08))
+    B.fx.append(fx_rect(G(-XS, 0.0795, 0.096), XR, UP, 0.058, 0.011, depth=0.0, mode='flat', kinds=[kind], col='#77797b', colA=0.95, metal=1.0, rough=0.3, edge=0.25))
+    B.fx.append(fx_line(G(-XS, 0.0795, 0.068), G(-XS, 0.0795, 0.122), XR, 0.0016, depth=0.0004, kinds=[kind], col='#2a2a2a', colA=0.8, facing=0.5))
     # serial + year stamped on the left above the trigger group, arsenal triangle
-    B.fx.append(fx_text('1998  № 7845321', G(0.0151, 0.047, 0.03), XL, UP, 0.0034, col='#9a9c9c', colA=0.35, depth=-0.00012, kinds=[kind]))
-    B.fx.append(fx_text('∆', G(0.0151, 0.071, -0.03), XL, UP, 0.004, col='#9a9c9c', colA=0.3, depth=-0.0001, kinds=[kind]))
-    # selector markings (right side, under the lever)
-    B.fx.append(fx_text('АВ', G(-0.0151, 0.064, 0.050), XR, UP, 0.0045, col='#c8c6be', colA=0.7, depth=-0.00012, kinds=[kind]))
-    B.fx.append(fx_text('ОД', G(-0.0151, 0.056, 0.074), XR, UP, 0.0045, col='#c8c6be', colA=0.7, depth=-0.00012, kinds=[kind]))
+    B.fx.append(fx_text('1998  № 7845321', G(XS, 0.047, 0.04), XL, UP, 0.0034, col='#9a9c9c', colA=0.35, depth=-0.00012, kinds=[kind]))
+    B.fx.append(fx_text('∆', G(XS, 0.071, -0.02), XL, UP, 0.004, col='#9a9c9c', colA=0.3, depth=-0.0001, kinds=[kind]))
+    # selector markings (right side, under the lever's finger tab)
+    B.fx.append(fx_text('АВ', G(-XS, 0.064, 0.072), XR, UP, 0.0045, col='#c8c6be', colA=0.7, depth=-0.00012, kinds=[kind]))
+    B.fx.append(fx_text('ОД', G(-XS, 0.056, 0.094), XR, UP, 0.0045, col='#c8c6be', colA=0.7, depth=-0.00012, kinds=[kind]))
     # charging handle (on the bolt carrier, right, front of the port) + knob
-    B.box(C(-0.0185, 0.0815, 0.106), (0.010, 0.006, 0.010), 'bare', bevel=0.0012, seg=1)
-    B.revolve([(0, 0), (0, 0.0042), (0.006, 0.0050), (0.010, 0.0045), (0.012, 0.0), ], 'bare', c=G(-0.022, 0.0815, 0.106), axis=XR, n=10)
-    # selector lever (right): long stamped plate pivoting at the rear, finger tab at the front
-    sel = [(-0.074, 0.084), (-0.06, 0.086), (0.06, 0.077), (0.074, 0.074), (0.078, 0.064), (0.071, 0.062), (0.06, 0.068), (-0.06, 0.076), (-0.074, 0.076)]
-    B.profile(P(sel), 0.0022, 'steel', x0=-0.0163, bevel=0.0006, seg=1)
-    B.revolve([(0, 0), (0, 0.0055), (0.0018, 0.0052), (0.0026, 0.0)], 'steel', c=G(-0.0172, 0.080, -0.07), axis=XR, n=12)
-    B.fx.append(fx_pattern(G(-0.0175, 0.068, 0.073), XR, UP, 0.006, 0.008, pat_ribs(0.0016, 0.5, 1), depth=0.0003, kinds=['steel'], facing=0.6))
+    B.box(C(-(RW + 0.0035), 0.0815, 0.150), (0.010, 0.006, 0.010), 'bare', bevel=0.0012, seg=1)
+    B.revolve([(0, 0), (0, 0.0042), (0.006, 0.0050), (0.010, 0.0045), (0.012, 0.0), ], 'bare', c=G(-(RW + 0.007), 0.0815, 0.150), axis=XR, n=10)
+    # selector lever (right): stamped plate pivoting above the grip, finger tab in front of the trigger guard
+    sel = [(-0.018, 0.084), (-0.006, 0.086), (0.080, 0.078), (0.092, 0.075), (0.097, 0.065), (0.090, 0.063), (0.080, 0.069), (-0.006, 0.076), (-0.018, 0.076)]
+    B.profile(P(sel), 0.0022, 'steel', x0=-(RW + 0.0013), bevel=0.0006, seg=1)
+    B.revolve([(0, 0), (0, 0.0055), (0.0018, 0.0052), (0.0026, 0.0)], 'steel', c=G(-(RW + 0.0022), 0.080, -0.012), axis=XR, n=12)
+    B.fx.append(fx_pattern(G(-(RW + 0.0025), 0.068, 0.092), XR, UP, 0.006, 0.008, pat_ribs(0.0016, 0.5, 1), depth=0.0003, kinds=['steel'], facing=0.6))
     # magazine catch (paddle) between mag and trigger guard
     B.profile(P([(0.050, 0.036), (0.058, 0.036), (0.058, 0.026), (0.052, 0.012), (0.046, 0.012), (0.048, 0.026)]), 0.016, 'steel', bevel=0.001, seg=1)
     if side_rail:   # 'Warsaw' side dovetail rail (left), riveted
         r = [(-0.064, 0.058), (0.052, 0.058), (0.056, 0.061), (0.056, 0.083), (0.052, 0.086), (-0.064, 0.086), (-0.068, 0.083), (-0.068, 0.061)]
-        B.profile(P(r), 0.0025, kind, x0=0.0162, bevel=0.0006, seg=1)
-        B.profile(P([(-0.064, 0.062), (0.052, 0.062), (0.052, 0.082), (-0.064, 0.082)]), 0.0025, kind, x0=0.0185, bevel=0.0008, seg=1)
-        B.fx += fx_dots([G(0.0175, 0.072, z) for z in (-0.06, -0.005, 0.048)], 0.0022, XL, depth=0.0005, kinds=[kind])
-        B.fx.append(fx_line(G(0.0198, 0.072, -0.063), G(0.0198, 0.072, 0.051), XL, 0.0018, depth=0.0005, kinds=[kind]))
-    # rear sight block on the front trunnion, tangent leaf, slider, notch
+        B.profile(P(r), 0.0025, kind, x0=RW + 0.0012, bevel=0.0006, seg=1)
+        B.profile(P([(-0.064, 0.062), (0.052, 0.062), (0.052, 0.082), (-0.064, 0.082)]), 0.0025, kind, x0=RW + 0.0035, bevel=0.0008, seg=1)
+        B.fx += fx_dots([G(RW + 0.0025, 0.072, z) for z in (-0.06, -0.005, 0.048)], 0.0022, XL, depth=0.0005, kinds=[kind])
+        B.fx.append(fx_line(G(RW + 0.0048, 0.072, -0.063), G(RW + 0.0048, 0.072, 0.051), XL, 0.0018, depth=0.0005, kinds=[kind]))
+    # rear sight block on the barrel ahead of the trunnion (over the rear of the lower handguard): tangent leaf, slider, notch
     if rear_sight:
-        B.profile(P([(0.140, 0.064), (0.205, 0.064), (0.205, 0.098), (0.196, 0.104), (0.160, 0.106), (0.140, 0.102)]), 0.028, 'steel', bevel=0.002)
+        B.profile(P([(0.172, 0.064), (0.250, 0.064), (0.250, 0.097), (0.240, 0.104), (0.192, 0.106), (0.172, 0.103)]), 0.029, 'steel', bevel=0.002)
         for sx in (1, -1):   # leaf spring housing walls
-            B.profile(P([(0.150, 0.100), (0.198, 0.100), (0.198, 0.108), (0.150, 0.110)]), 0.003, 'steel', x0=sx * 0.0105, bevel=0.0007, seg=1)
-        B.profile(P([(0.150, 0.1075), (0.198, 0.1045), (0.198, 0.1075), (0.150, 0.1105)]), 0.015, 'steel', bevel=0.0006, seg=1)  # leaf
-        B.profile(P([(0.147, 0.106), (0.153, 0.106), (0.153, 0.1185), (0.147, 0.1185)]), 0.015, 'steel', bevel=0.0006, seg=1)  # notch plate
-        B.fx.append(fx_rect(G(0, 0.1170, 0.1535), FW, UP, 0.003, 0.0035, depth=0.0008, kinds=['steel'], col='#050505', colA=0.9, radius=0.0, facing=0.5))
-        B.fx.append(fx_rect(G(0, 0.1170, 0.1465), BK, UP, 0.003, 0.0035, depth=0.0008, kinds=['steel'], col='#050505', colA=0.9, radius=0.0, facing=0.5))
-        B.box(C(0, 0.1095, 0.176), (0.019, 0.0055, 0.008), 'steel', bevel=0.001, seg=1)                                    # range slider
+            B.profile(P([(0.182, 0.100), (0.238, 0.100), (0.238, 0.108), (0.182, 0.110)]), 0.003, 'steel', x0=sx * 0.0108, bevel=0.0007, seg=1)
+        B.profile(P([(0.180, 0.1075), (0.240, 0.1045), (0.240, 0.1075), (0.180, 0.1105)]), 0.015, 'steel', bevel=0.0006, seg=1)  # leaf
+        B.profile(P([(0.177, 0.106), (0.183, 0.106), (0.183, 0.1185), (0.177, 0.1185)]), 0.015, 'steel', bevel=0.0006, seg=1)  # notch plate
+        B.fx.append(fx_rect(G(0, 0.1170, 0.1835), FW, UP, 0.003, 0.0035, depth=0.0008, kinds=['steel'], col='#050505', colA=0.9, radius=0.0, facing=0.5))
+        B.fx.append(fx_rect(G(0, 0.1170, 0.1765), BK, UP, 0.003, 0.0035, depth=0.0008, kinds=['steel'], col='#050505', colA=0.9, radius=0.0, facing=0.5))
+        B.box(C(0, 0.1095, 0.211), (0.019, 0.0055, 0.008), 'steel', bevel=0.001, seg=1)                                    # range slider
         for sx in (1, -1):
             B.fx += [fx_text(t, G(sx * 0.0075, 0.1092, z), sx * XL, UP, 0.0017, col='#d8d6cc', colA=0.8, kinds=['steel'], facing=0.5)
-                     for t, z in (('3', 0.168), ('5', 0.184), ('8', 0.192))]
+                     for t, z in (('3', 0.202), ('5', 0.220), ('8', 0.230))]
         # gas-tube lock lever (right)
-        B.profile(P([(0.186, 0.100), (0.204, 0.098), (0.205, 0.104), (0.188, 0.106)]), 0.003, 'steel', x0=-0.0152, bevel=0.0006, seg=1)
+        B.profile(P([(0.226, 0.099), (0.246, 0.097), (0.247, 0.103), (0.228, 0.105)]), 0.003, 'steel', x0=-0.0158, bevel=0.0006, seg=1)
     else:
-        B.profile(P([(0.140, 0.064), (0.205, 0.064), (0.205, 0.098), (0.198, 0.102), (0.140, 0.102)]), 0.028, 'steel', bevel=0.002)
+        B.profile(P([(0.172, 0.064), (0.250, 0.064), (0.250, 0.098), (0.243, 0.102), (0.172, 0.102)]), 0.029, 'steel', bevel=0.002)
     # bottom: trigger-guard rivets on the receiver floor
     B.fx += fx_dots([G(0, 0.036, z) for z in (-0.06, -0.015)], 0.0025, DN, depth=0.0005, kinds=[kind])
 
@@ -502,23 +512,23 @@ def _ak_barrel(B, brake='ak74', front_sight=True, gas_vents=True, cleaning_rod=T
     B.revolve([(0.140, 0), (0.140, 0.0112), (0.215, 0.0108), (0.36, 0.0102), (0.50, 0.0098), (0.535, 0.0098), (0.535, 0)], 'steel',
               c=(0, yb, -zo), axis=(0, 0, 1), n=10)
     # gas block (90 deg): barrel collar + riser + piston housing, rounded front cap
-    B.tube(0.336 - zo, 0.372 - zo, 0.0142, 'steel', c=(0, yb), n=12)
-    B.profile(P([(0.338, 0.076), (0.370, 0.076), (0.370, 0.101), (0.338, 0.101)]), 0.016, 'steel', bevel=0.0015)
-    B.revolve([(0.330, 0), (0.330, 0.0108), (0.366, 0.0108), (0.372, 0.0092), (0.376, 0.0050), (0.377, 0)], 'steel',
+    B.tube(0.398 - zo, 0.434 - zo, 0.0142, 'steel', c=(0, yb), n=12)
+    B.profile(P([(0.400, 0.076), (0.432, 0.076), (0.432, 0.101), (0.400, 0.101)]), 0.016, 'steel', bevel=0.0015)
+    B.revolve([(0.392, 0), (0.392, 0.0108), (0.428, 0.0108), (0.434, 0.0092), (0.438, 0.0050), (0.439, 0)], 'steel',
               c=(0, 0.101 - O[1], -zo), axis=(0, 0, 1), n=10)
-    B.fx += fx_dots([G(0, 0.101 + 0.0105, 0.35)], 0.0018, UP, depth=0.0003, shape='ring', kinds=['steel'])
+    B.fx += fx_dots([G(0, 0.101 + 0.0105, 0.412)], 0.0018, UP, depth=0.0003, shape='ring', kinds=['steel'])
     # gas tube (exposed front part shows vent holes; rear under the upper handguard)
-    B.tube(0.196 - zo, 0.336 - zo, 0.0092, 'steel', c=(0, 0.101 - O[1]), n=10)
+    B.tube(0.246 - zo, 0.398 - zo, 0.0092, 'steel', c=(0, 0.101 - O[1]), n=10)
     if gas_vents:
         for sx in (1, -1):
-            B.fx += fx_dots([G(sx * 0.0064, 0.101 + 0.0064, z) for z in (0.3265, 0.3315)], 0.0016, np.array([sx, 1, 0]) / 1.414, depth=0.0012,
+            B.fx += fx_dots([G(sx * 0.0064, 0.101 + 0.0064, z) for z in (0.3885, 0.3935)], 0.0016, np.array([sx, 1, 0]) / 1.414, depth=0.0012,
                             shape='hole', kinds=['steel'], col='#050505', colA=0.95, facing=0.6)
     if front_swivel:   # front sling swivel on the left of the gas block
-        B.box(C(0.0145, 0.080, 0.354), (0.005, 0.008, 0.014), 'steel', bevel=0.0012, seg=1)
-        sw = [G(0.0175, 0.078 - 0.0105 * np.cos(a), 0.354 + 0.0105 * np.sin(a)) for a in np.linspace(-1.9, 1.9, 9)]
+        B.box(C(0.0145, 0.080, 0.416), (0.005, 0.008, 0.014), 'steel', bevel=0.0012, seg=1)
+        sw = [G(0.0175, 0.078 - 0.0105 * np.cos(a), 0.416 + 0.0105 * np.sin(a)) for a in np.linspace(-1.9, 1.9, 9)]
         B.pipe(sw, 0.0016, 'steel', n=6)
     # handguard retainer band (front of the lower handguard)
-    B.revolve([(0.3335, 0), (0.3335, 0.0215), (0.3365, 0.0230), (0.3415, 0.0230), (0.3435, 0.0205), (0.3435, 0)], 'steel',
+    B.revolve([(0.368, 0), (0.368, 0.0215), (0.371, 0.0230), (0.376, 0.0230), (0.378, 0.0205), (0.378, 0)], 'steel',
               c=(0, 0.066 - O[1], -zo), axis=(0, 0, 1), n=14, a0=np.pi / 14)
     if front_sight:
         B.tube(0.494 - zo, 0.531 - zo, 0.0132, 'steel', c=(0, yb), n=12)
@@ -530,7 +540,7 @@ def _ak_barrel(B, brake='ak74', front_sight=True, gas_vents=True, cleaning_rod=T
         B.cyl(G(0, 0.099, 0.517), G(0, 0.104, 0.517), 0.0035, 'steel', n=10)                          # post drum
         B.profile(P([(0.502, 0.060), (0.526, 0.060), (0.524, 0.050), (0.506, 0.050)]), 0.012, 'steel', bevel=0.0012, seg=1)  # bayonet lug
     if cleaning_rod:
-        B.cyl(G(0, 0.0545, 0.345), G(0, 0.0545, 0.534), 0.0030, 'steel', n=8)
+        B.cyl(G(0, 0.0545, 0.372), G(0, 0.0545, 0.534), 0.0030, 'steel', n=8)
         B.revolve([(0, 0), (0, 0.0040), (0.010, 0.0040), (0.012, 0)], 'steel', c=G(0, 0.0545, 0.528), axis=FW, n=8)
     mz = 0.615
     if brake == 'ak74':
@@ -563,11 +573,11 @@ def _ak_grip(B, kind='plum', style='ak74m'):
     """pistol grip (horizontal superellipse sections along a back-raked axis) + trigger guard + trigger"""
     P, C = _akP, _akC
     if style == 'ak74m':
-        lv = [(0.036, 0.012, 0.046, 0.0275), (0.026, 0.009, 0.045, 0.0285), (0.006, 0.003, 0.042, 0.0295), (-0.025, -0.004, 0.040, 0.0298),
-              (-0.055, -0.011, 0.040, 0.0295), (-0.075, -0.016, 0.041, 0.029), (-0.083, -0.018, 0.040, 0.0275), (-0.087, -0.019, 0.034, 0.022)]
+        lv = [(0.036, 0.012, 0.048, 0.0280), (0.026, 0.009, 0.047, 0.0290), (0.006, 0.004, 0.045, 0.0300), (-0.022, -0.003, 0.044, 0.0302),
+              (-0.046, -0.009, 0.044, 0.0300), (-0.062, -0.013, 0.045, 0.0296), (-0.070, -0.015, 0.044, 0.0282), (-0.075, -0.016, 0.037, 0.0225)]
     else:   # AK-12 2020: slimmer straight grip
-        lv = [(0.036, 0.012, 0.042, 0.026), (0.026, 0.009, 0.041, 0.0265), (0.0, 0.002, 0.038, 0.027), (-0.04, -0.008, 0.037, 0.027),
-              (-0.075, -0.016, 0.038, 0.027), (-0.084, -0.018, 0.037, 0.025), (-0.088, -0.019, 0.032, 0.020)]
+        lv = [(0.036, 0.012, 0.043, 0.0265), (0.026, 0.009, 0.042, 0.027), (0.0, 0.002, 0.040, 0.0275), (-0.035, -0.007, 0.039, 0.0275),
+              (-0.064, -0.013, 0.040, 0.0275), (-0.073, -0.015, 0.039, 0.0255), (-0.078, -0.016, 0.034, 0.020)]
     rings = []
     for y, zc, d, w in lv:
         e = superell(w, d, n=14, p=2.6)          # (x, z) section
@@ -576,10 +586,10 @@ def _ak_grip(B, kind='plum', style='ak74m'):
     B.loft(rings, kind, angle=50, bevel=0.0, wn=False)
     # moulded texture: vertical ribs at the back strap, stipple panels on the sides
     for sx in (1, -1):
-        B.fx.append(fx_pattern(G(sx * 0.0148, -0.030, -0.004), sx * XL, np.array([0, 1, -0.24]), 0.024, 0.074, pat_stipple(7 + sx, 0.45),
+        B.fx.append(fx_pattern(G(sx * 0.0150, -0.024, -0.003), sx * XL, np.array([0, 1, -0.24]), 0.024, 0.064, pat_stipple(7 + sx, 0.45),
                                depth=0.0003, kinds=[kind], facing=0.5))
-        B.fx.append(fx_rect(G(sx * 0.0149, -0.030, -0.004), sx * XL, np.array([0, 1, -0.24]), 0.026, 0.076, depth=0.0003, mode='frame', kinds=[kind], facing=0.5, radius=0.6))
-    B.fx.append(fx_pattern(G(0, -0.035, -0.026), np.array([0, 0.24, -1]), UP, 0.016, 0.08, pat_ribs(0.0028, 0.45, 0), depth=0.00045, kinds=[kind], facing=0.4))
+        B.fx.append(fx_rect(G(sx * 0.0151, -0.024, -0.003), sx * XL, np.array([0, 1, -0.24]), 0.026, 0.066, depth=0.0003, mode='frame', kinds=[kind], facing=0.5, radius=0.6))
+    B.fx.append(fx_pattern(G(0, -0.030, -0.027), np.array([0, 0.24, -1]), UP, 0.016, 0.07, pat_ribs(0.0028, 0.45, 0), depth=0.00045, kinds=[kind], facing=0.4))
     # stamped trigger guard (front ends in the mag-catch housing) + trigger blade
     tg = [(0.010, 0.036), (0.060, 0.036), (0.060, 0.030), (0.050, 0.008), (0.040, 0.002), (0.018, 0.000), (0.012, 0.006), (0.018, 0.0055),
           (0.039, 0.0075), (0.048, 0.012), (0.054, 0.030), (0.010, 0.030)]
@@ -587,54 +597,81 @@ def _ak_grip(B, kind='plum', style='ak74m'):
     B.profile(P([(0.032, 0.034), (0.038, 0.034), (0.036, 0.020), (0.031, 0.011), (0.027, 0.011), (0.030, 0.020)]), 0.005, 'steel', bevel=0.0008, seg=1)
 
 
-def _ak_mag(B, kind='mag_plum', ribs=True):
-    """30-round 5.45 polymer magazine on the 'magazine' node: curved loft with front/rear spines, top stop-rib, floorplate"""
+MAG = dict(zf=0.128, yf=0.034, tilt=np.radians(15), R=0.525, depth=0.066, w=0.030, arc=0.168)
+
+
+def _ak_mag(B, kind='mag_plum', ribs=True, waffle=False):
+    """30-round 5.45 polymer magazine (6L23 / AK-12 6L31-style) on the 'magazine' node: 66 mm deep (front to back, ~73 mm along the
+    bore at the top), 30 mm thick, 15 deg forward rake at the mouth curving to ~33 deg at the floorplate (R 0.53 m), horizontal
+    mouth in the well, front / rear spines, stop rib, floorplate, side ribs (waffle panels on the AK-12 mag)"""
     B.group = 'magazine'
-    zf, yf = 0.098, 0.034
-    cc = np.array([0.40, 0.03]); R1 = np.linalg.norm(np.array([zf, yf]) - cc); R2 = R1 + 0.040
-    a0 = np.arctan2(yf - cc[1], zf - cc[0]); a1 = a0 + 0.62
-    aa = np.linspace(a0 - 0.012, a1, 10)
+    M = MAG
+    zf, yf, w = M['zf'], M['yf'], M['w']
+    radb = -np.array([np.cos(M['tilt']), np.sin(M['tilt'])])          # front -> back (depth direction) at the mouth
+    cc = np.array([zf, yf]) - radb * M['R']                            # bend centre: ahead of / above the mag
+    R1 = M['R']; R2 = R1 + M['depth']
+    a0 = np.arctan2(yf - cc[1], zf - cc[0])
+    da = M['arc'] / R1
+    nr = 13
+    aa = np.linspace(a0 - 0.010, a0 + da, nr)
     rings = []
     for i, a in enumerate(aa):
-        t = i / (len(aa) - 1)
-        rad = np.array([np.cos(a), np.sin(a)]); tang = np.array([-np.sin(a), np.cos(a)])
-        r_in = R1 - 0.0005 * t; r_out = R2 - 0.002 * t
-        w = 0.0262 + (0.0015 if 0.12 < t < 0.2 else 0.0)        # horizontal stop rib near the top
-        # section in (x, radial) with spine bumps front/back
-        sec = [(-w / 2, 0.003), (-w / 2 + 0.003, 0.0), (-0.004, 0.0), (-0.0025, -0.0018), (0.0025, -0.0018), (0.004, 0.0), (w / 2 - 0.003, 0.0),
-               (w / 2, 0.003), (w / 2, r_out - r_in - 0.003), (w / 2 - 0.004, r_out - r_in), (0.003, r_out - r_in), (0.002, r_out - r_in + 0.0015),
-               (-0.002, r_out - r_in + 0.0015), (-0.003, r_out - r_in), (-w / 2 + 0.004, r_out - r_in), (-w / 2, r_out - r_in - 0.003)]
-        pr = cc + rad * r_in   # front face point (profile); +rad points to the back of the magazine
+        t = i / (nr - 1)
+        rad = np.array([np.cos(a), np.sin(a)]); tang = np.array([-np.sin(a), np.cos(a)])   # +rad = toward the back of the mag
+        dep = M['depth'] * (1 + 0.03 * t)
+        ww = w - (0.003 if i == 0 else 0.0) + (0.0016 if 0.10 < t < 0.17 else 0.0)        # mouth slightly narrower, stop rib
+        h = 0.0035
+        sec = [(-ww / 2, h), (-ww / 2 + h, 0.0), (-0.0045, 0.0), (-0.003, -0.0022), (0.003, -0.0022), (0.0045, 0.0), (ww / 2 - h, 0.0),
+               (ww / 2, h), (ww / 2, dep - 0.004), (ww / 2 - 0.005, dep), (0.0035, dep), (0.0025, dep + 0.0018),
+               (-0.0025, dep + 0.0018), (-0.0035, dep), (-ww / 2 + 0.005, dep), (-ww / 2, dep - 0.004)]
+        pr = cc + rad * R1
         ring = []
         for x, d in sec:
             zy = pr + rad * d
+            if i == 0:   # mouth: horizontal top (the body is raked, its top is cut parallel to the receiver floor)
+                up = -tang if (-tang)[1] > 0 else tang
+                zy = zy + up * (yf + 0.004 - zy[1]) / up[1]
             ring.append(G(x, zy[1], zy[0]))
         rings.append(np.array(ring)[::-1])
     B.loft(rings, kind, angle=38, bevel=0.0, wn=False)
-    # floorplate (slightly larger, flat) + catch tab
-    a = a1; rad = np.array([np.cos(a), np.sin(a)]); tang = np.array([-np.sin(a), np.cos(a)])
+    # floorplate (slightly larger, flat, perpendicular to the body at the bottom) + catch tab
+    a = aa[-1]; rad = np.array([np.cos(a), np.sin(a)]); tang = np.array([-np.sin(a), np.cos(a)])
+    dn = tang if tang[1] < 0 else -tang
     fp = []
-    for dt in (0.0, -0.006):
-        pc = cc + rad * ((R1 + R2) / 2) + tang * (-dt)
-        sec = rrect(0.0286, 0.0445, 0.004, nc=2)
+    for dt in (-0.001, 0.0055):
+        pc = cc + rad * (R1 + M['depth'] * 1.03 / 2) + dn * dt
+        sec = rrect(w + 0.0028, M['depth'] * 1.03 + 0.005, 0.0045, nc=2)
         fp.append(np.array([G(x, (pc + rad * r)[1], (pc + rad * r)[0]) for x, r in sec]))
     B.loft(fp, kind, angle=40, bevel=0.0008, seg=1)
-    # feed lips / follower (steel) peeking at the top + locking lugs
-    B.box(_akC(0, 0.039, 0.078), (0.016, 0.006, 0.034), 'steel', bevel=0.0008, seg=1)
-    B.box(_akC(0, 0.037, 0.0975), (0.012, 0.006, 0.004), kind, bevel=0.0008, seg=1)
-    if ribs:   # moulded side ribs following the curvature
+    pt = cc + rad * (R1 + M['depth'] * 0.55) + dn * 0.0065
+    B.box(_akC(0, pt[1], pt[0]), (0.010, 0.003, 0.012), kind, bevel=0.0008, seg=1)
+    # feed lips / follower (steel) peeking at the top + front locking lug
+    zc_ = zf - M['depth'] * 0.52
+    B.box(_akC(0, yf + 0.006, zc_), (0.018, 0.006, M['depth'] * 0.62), 'steel', bevel=0.0008, seg=1)
+    B.box(_akC(0, yf + 0.003, zf - 0.002), (0.012, 0.006, 0.004), kind, bevel=0.0008, seg=1)
+    if ribs and not waffle:   # moulded side ribs following the curvature (front and rear reinforcements)
         for sx in (1, -1):
-            for f in (0.22, 0.78):
+            for f in (0.16, 0.84):
                 pts = []
-                for a in np.linspace(a0 + 0.12, a1 - 0.03, 7):
+                for a in np.linspace(a0 + 0.06, aa[-1] - 0.02, 7):
                     rad = np.array([np.cos(a), np.sin(a)]); q = cc + rad * (R1 + (R2 - R1) * f)
-                    pts.append(G(sx * 0.0131, q[1], q[0]))
+                    pts.append(G(sx * (w / 2 + 0.0001), q[1], q[0]))
                 for p0, p1 in zip(pts[:-1], pts[1:]):
                     B.fx.append(fx_line(p0, p1, sx * XL, 0.0035, depth=0.0006, kinds=[kind], profile='rib', facing=0.6))
+    if waffle:        # AK-12 magazine: grid of recessed rectangular panels on both sides
+        for sx in (1, -1):
+            for k in range(6):
+                a = a0 + 0.05 + (da - 0.09) * (k + 0.5) / 6
+                rad = np.array([np.cos(a), np.sin(a)]); tang = np.array([-np.sin(a), np.cos(a)])
+                for f in (0.3, 0.7):
+                    q = cc + rad * (R1 + (R2 - R1) * f)
+                    upv = np.array([0, tang[1], tang[0]]) * (1 if tang[1] > 0 else -1)
+                    B.fx.append(fx_rect(G(sx * (w / 2 + 0.0001), q[1], q[0]), sx * XL, upv, M['depth'] * 0.34, 0.019, depth=0.0012,
+                                        kinds=[kind], radius=0.35, edge=0.15, facing=0.6))
     # mould marks on the side
     for sx in (1, -1):
-        a = a0 + 0.36; rad = np.array([np.cos(a), np.sin(a)]); q = cc + rad * (R1 + 0.02)
-        B.fx.append(fx_text('6Л23', G(sx * 0.0131, q[1], q[0]), sx * XL, UP, 0.0035,
+        a = a0 + 0.62 * da; rad = np.array([np.cos(a), np.sin(a)]); q = cc + rad * (R1 + 0.024)
+        B.fx.append(fx_text('6Л23' if not waffle else '6Л31', G(sx * (w / 2 + 0.0001), q[1], q[0]), sx * XL, UP, 0.0035,
                             col='#000000', colA=0.0, depth=0.00025, kinds=[kind], facing=0.6))
     B.group = None
 
@@ -655,20 +692,20 @@ def _ak74_furniture(B, kind='plum', handguards=True, stock=True, lower=True):
                 right = [(-x, y) for x, y in pts[1:-1]][::-1]
                 return np.array(pts[:-1] + [pts[-1]] + right)
             rings = []
-            for z, w, yb in ((0.204, 0.040, 0.047), (0.212, 0.0445, 0.0445), (0.29, 0.0455, 0.0440), (0.326, 0.044, 0.0445), (0.334, 0.041, 0.047)):
+            for z, w, yb in ((0.198, 0.040, 0.047), (0.206, 0.0445, 0.0445), (0.30, 0.0455, 0.0440), (0.360, 0.044, 0.0445), (0.368, 0.041, 0.047)):
                 s = sec(w, yb, 0.090)
                 rings.append(Gr(s[::-1], z))
             B.loft(rings, kind, angle=55, bevel=0.0, wn=False)
-            B.fx.append(fx_rect(G(0, 0.0442, 0.265), DN, FW, 0.016, 0.10, depth=0.0005, kinds=[kind], radius=0.8, facing=0.6))
+            B.fx.append(fx_rect(G(0, 0.0442, 0.283), DN, FW, 0.016, 0.13, depth=0.0005, kinds=[kind], radius=0.8, facing=0.6))
         # upper handguard over the gas tube: round top, 3 lengthwise finger grooves per side
         rings = []
-        for z, w, h in ((0.204, 0.030, 0.026), (0.212, 0.034, 0.028), (0.31, 0.034, 0.028), (0.322, 0.031, 0.025)):
+        for z, w, h in ((0.250, 0.030, 0.026), (0.258, 0.034, 0.028), (0.352, 0.034, 0.028), (0.364, 0.031, 0.025)):
             poly = rrect(w, h, 0.0145, nc=3, cy=0.090 + h / 2, rb=0.0)
             rings.append(Gr(poly, z))
         B.loft(rings, kind, angle=50, bevel=0.0, wn=False)
         for sx in (1, -1):
             for y in (0.098, 0.106):
-                B.fx.append(fx_line(G(sx * 0.0165, y, 0.222), G(sx * 0.0165, y, 0.302), np.array([sx, 0.3 * (y - 0.098) / 0.008, 0]), 0.003, depth=0.0006,
+                B.fx.append(fx_line(G(sx * 0.0165, y, 0.268), G(sx * 0.0165, y, 0.346), np.array([sx, 0.3 * (y - 0.098) / 0.008, 0]), 0.003, depth=0.0006,
                                     kinds=[kind], facing=0.4))
     if stock:
         _ak74m_stock(B, kind)
@@ -676,29 +713,30 @@ def _ak74_furniture(B, kind='plum', handguards=True, stock=True, lower=True):
 
 def _ak74m_stock(B, kind):
     P, C, O = _akP, _akC, AK_O
+    zr = REC_Z[0]; zh = zr - 0.017
     # stock hinge block (steel) at the receiver rear, hinge pin on the left, folding latch button
-    B.profile(P([(-0.104, 0.042), (-0.104, 0.088), (-0.121, 0.088), (-0.121, 0.042)]), 0.0315, 'steel', bevel=0.0015)
-    B.cyl(G(0.0165, 0.046, -0.114), G(0.0165, 0.086, -0.114), 0.0040, 'steel', n=10)
-    B.revolve([(0, 0), (0, 0.0042), (0.0035, 0.0040), (0.004, 0)], 'steel', c=G(0.0152, 0.076, -0.094), axis=XL, n=10)
+    B.profile(P([(zr, 0.042), (zr, 0.088), (zh, 0.088), (zh, 0.042)]), 2 * RW + 0.0015, 'steel', bevel=0.0015)
+    B.cyl(G(RW + 0.0015, 0.046, zh + 0.007), G(RW + 0.0015, 0.086, zh + 0.007), 0.0040, 'steel', n=10)
+    B.revolve([(0, 0), (0, 0.0042), (0.0035, 0.0040), (0.004, 0)], 'steel', c=G(RW + 0.0002, 0.076, zr + 0.010), axis=XL, n=10)
     # rear sling swivel (left, on the hinge block)
-    sw = [G(0.0205, 0.050 - 0.009 * np.cos(a), -0.110 + 0.009 * np.sin(a)) for a in np.linspace(-2.0, 2.0, 9)]
+    sw = [G(RW + 0.0055, 0.050 - 0.009 * np.cos(a), zh + 0.011 + 0.009 * np.sin(a)) for a in np.linspace(-2.0, 2.0, 9)]
     B.pipe(sw, 0.0015, 'steel', n=6)
-    # solid polymer side-folding stock: loft along z
-    st = [(-0.121, 0.0300, 0.0870, 0.0425, 0.005), (-0.13, 0.0310, 0.0875, 0.040, 0.006), (-0.17, 0.0335, 0.0880, 0.024, 0.008),
-          (-0.23, 0.0350, 0.0870, 0.0, 0.010), (-0.29, 0.0365, 0.0860, -0.026, 0.011), (-0.325, 0.0375, 0.0855, -0.040, 0.011),
-          (-0.334, 0.0375, 0.0855, -0.0425, 0.010)]
+    # solid polymer side-folding stock (AK-74 profile): comb drops ~15 mm toward the butt, belly line falls to the toe
+    st = [(zh, 0.0300, 0.0870, 0.0425, 0.005), (zh - 0.009, 0.0310, 0.0866, 0.040, 0.006), (-0.16, 0.0335, 0.0842, 0.021, 0.008),
+          (-0.22, 0.0350, 0.0805, -0.003, 0.010), (-0.28, 0.0365, 0.0765, -0.023, 0.011), (-0.325, 0.0375, 0.0735, -0.035, 0.011),
+          (-0.334, 0.0375, 0.0730, -0.037, 0.010)]
     rings = []
     for z, w, yt, yb, rr in st:
         rings.append(Gr(rrect(w, yt - yb, rr, nc=2, cy=(yt + yb) / 2), z))
     B.loft(rings, kind, angle=40)
     for sx in (1, -1):
-        B.fx.append(fx_rect(G(sx * 0.018, 0.040, -0.245), sx * XL, np.array([0, 1, 0.33]), 0.100, 0.030, depth=0.0018, kinds=[kind], radius=0.9, edge=0.3))
+        B.fx.append(fx_rect(G(sx * 0.018, 0.036, -0.245), sx * XL, np.array([0, 1, 0.22]), 0.100, 0.026, depth=0.0018, kinds=[kind], radius=0.9, edge=0.3))
     # butt plate with trap door, horizontal ribs
-    B.profile(P([(-0.333, -0.045), (-0.333, 0.088), (-0.343, 0.088), (-0.344, 0.08), (-0.345, -0.038), (-0.343, -0.045)]), 0.0395, kind, bevel=0.0025, seg=2)
-    B.fx.append(fx_pattern(G(0, 0.022, -0.3445), BK, UP, 0.034, 0.12, pat_ribs(0.004, 0.45, 1), depth=0.0005, kinds=[kind], facing=0.6))
-    B.fx.append(fx_rect(G(0, 0.052, -0.3448), BK, UP, 0.026, 0.026, depth=0.0005, mode='frame', kinds=[kind], facing=0.6, radius=0.3))
+    B.profile(P([(-0.333, -0.040), (-0.333, 0.074), (-0.343, 0.074), (-0.344, 0.066), (-0.345, -0.033), (-0.343, -0.040)]), 0.0395, kind, bevel=0.0025, seg=2)
+    B.fx.append(fx_pattern(G(0, 0.017, -0.3445), BK, UP, 0.034, 0.105, pat_ribs(0.004, 0.45, 1), depth=0.0005, kinds=[kind], facing=0.6))
+    B.fx.append(fx_rect(G(0, 0.045, -0.3448), BK, UP, 0.026, 0.026, depth=0.0005, mode='frame', kinds=[kind], facing=0.6, radius=0.3))
     # stock folding hook (left front)
-    B.profile(P([(-0.135, 0.070), (-0.124, 0.070), (-0.124, 0.080), (-0.135, 0.080)]), 0.005, 'steel', x0=0.0175, bevel=0.0008, seg=1)
+    B.profile(P([(zh - 0.014, 0.070), (zh - 0.003, 0.070), (zh - 0.003, 0.080), (zh - 0.014, 0.080)]), 0.005, 'steel', x0=RW + 0.0025, bevel=0.0008, seg=1)
 
 
 
@@ -763,8 +801,8 @@ def ak74m():
     _ak_grip(B, 'plum')
     _ak74_furniture(B, 'plum')
     _ak_mag(B, 'mag_plum')
-    _sling(B, [G(0.0192, 0.0705, 0.354), G(0.0262, 0.052, 0.30), G(0.0262, 0.043, 0.21), G(0.0215, 0.038, 0.12), G(0.0222, 0.040, 0.0),
-               G(0.0215, 0.0415, -0.108)])
+    _sling(B, [G(0.0192, 0.0705, 0.416), G(0.0262, 0.052, 0.36), G(0.0262, 0.043, 0.25), G(0.0215 + DX, 0.038, 0.12), G(0.0222 + DX, 0.040, 0.0),
+               G(0.0215 + DX, 0.0415, REC_Z[0] - 0.009)])
     emp = _ak_empties(mz)
     tris, st = B.export('ak74m', emp, extras={'calibre': '5.45x39', 'length_m': 0.943})
     return tris, _emp(emp), st
@@ -774,12 +812,12 @@ def ak74m():
 def _side_mount_kobra(B):
     P, C = _akP, _akC
     # quick-detach side mount clamped on the left dovetail rail, riser arm and bridge over the dust cover
-    B.profile(P([(-0.052, 0.057), (0.042, 0.057), (0.042, 0.089), (-0.052, 0.089)]), 0.007, 'alu', x0=0.0233, bevel=0.0012)
-    B.profile(P([(-0.040, 0.061), (0.022, 0.063), (0.026, 0.069), (0.022, 0.073), (-0.040, 0.071)]), 0.004, 'alu', x0=0.0288, bevel=0.0009, seg=1)
-    B.revolve([(0, 0), (0, 0.0062), (0.003, 0.0060), (0.0042, 0.0)], 'alu', c=G(0.0303, 0.067, 0.030), axis=XL, n=8)
-    B.fx += fx_dots([G(0.0268, 0.082, z) for z in (-0.045, 0.035)], 0.0022, XL, depth=0.0004, shape='ring', kinds=['alu'])
-    B.profile(P([(-0.048, 0.088), (0.036, 0.088), (0.036, 0.111), (0.030, 0.124), (-0.042, 0.124), (-0.048, 0.111)]), 0.006, 'alu', x0=0.0228, bevel=0.0012)
-    B.box(C(0.0055, 0.1185, -0.006), (0.0385, 0.011, 0.07), 'alu', bevel=0.0015)
+    B.profile(P([(-0.052, 0.057), (0.042, 0.057), (0.042, 0.089), (-0.052, 0.089)]), 0.007, 'alu', x0=0.0233 + DX, bevel=0.0012)
+    B.profile(P([(-0.040, 0.061), (0.022, 0.063), (0.026, 0.069), (0.022, 0.073), (-0.040, 0.071)]), 0.004, 'alu', x0=0.0288 + DX, bevel=0.0009, seg=1)
+    B.revolve([(0, 0), (0, 0.0062), (0.003, 0.0060), (0.0042, 0.0)], 'alu', c=G(0.0303 + DX, 0.067, 0.030), axis=XL, n=8)
+    B.fx += fx_dots([G(0.0268 + DX, 0.082, z) for z in (-0.045, 0.035)], 0.0022, XL, depth=0.0004, shape='ring', kinds=['alu'])
+    B.profile(P([(-0.048, 0.088), (0.036, 0.088), (0.036, 0.111), (0.030, 0.124), (-0.042, 0.124), (-0.048, 0.111)]), 0.006, 'alu', x0=0.0228 + DX, bevel=0.0012)
+    B.box(C(0.0055 + DX / 2, 0.1185, -0.006), (0.0385 + DX, 0.011, 0.07), 'alu', bevel=0.0015)
     # Kobra-style collimator: low emitter housing, tall forward frame with a tilted tinted window, hood, rotary knob (right)
     B.profile(P([(-0.045, 0.124), (0.040, 0.124), (0.040, 0.142), (-0.030, 0.142), (-0.045, 0.136)]), 0.034, 'alu', bevel=0.003, seg=2)
     for sx in (1, -1):
@@ -818,8 +856,8 @@ def ak74m_optic():
     _foregrip(B, zf)
     _ak_mag(B, 'mag_black')
     eye_y = _side_mount_kobra(B)
-    _sling(B, [G(0.0192, 0.0705, 0.354), G(0.0262, 0.052, 0.30), G(0.0262, 0.047, 0.21), G(0.0215, 0.040, 0.12), G(0.0222, 0.041, 0.0),
-               G(0.0215, 0.0415, -0.108)], kind='webbing')
+    _sling(B, [G(0.0192, 0.0705, 0.416), G(0.0262, 0.052, 0.36), G(0.0262, 0.047, 0.25), G(0.0215 + DX, 0.040, 0.12), G(0.0222 + DX, 0.041, 0.0),
+               G(0.0215 + DX, 0.0415, REC_Z[0] - 0.009)], kind='webbing')
     emp = _ak_empties(mz, rear=(eye_y, -0.03), front=(eye_y, 0.052), grip_L=(0.040, 0.228), extra={'optic_eye': (eye_y, -0.12), 'foregrip': (-0.02, zf)})
     tris, st = B.export('ak74m_optic', emp, extras={'calibre': '5.45x39', 'length_m': 0.943, 'optic': 'Kobra-style collimator on a dovetail side mount',
                                                     'foregrip': True, 'sight_line_above_bore_m': round(float(eye_y - AK_BORE), 3)})
@@ -859,32 +897,33 @@ def ak12():
     P, C, O = _akP, _akC, AK_O
     _ak_receiver(B, side_rail=False, rear_sight=False, ribbed_cover=False)
     mz = _ak_barrel(B, brake='ak12', front_sight=False, cleaning_rod=False, front_swivel=False)
-    _rail(B, 0.0, G(0, 0.1030, 0)[1], G(0, 0, -0.088)[2], G(0, 0, 0.134)[2], kind='enamel')
+    _rail(B, 0.0, G(0, 0.1030, 0)[1], G(0, 0, REC_Z[0] + 0.014)[2], G(0, 0, 0.170)[2], kind='enamel')
     # rear diopter (folded) at the rear of the cover rail
-    B.box(C(0, 0.1170, -0.078), (0.020, 0.006, 0.016), 'steel', bevel=0.001)
-    B.revolve([(0, 0), (0, 0.0055), (0.016, 0.0055), (0.016, 0)], 'steel', c=G(-0.008, 0.1225, -0.078), axis=XL, n=12)
-    B.fx.append(fx_pattern(G(0, 0.128, -0.078), UP, FW, 0.016, 0.01, pat_checker(0.0012), depth=0.0003, kinds=['steel'], facing=0.2))
+    B.box(C(0, 0.1170, REC_Z[0] + 0.024), (0.020, 0.006, 0.016), 'steel', bevel=0.001)
+    B.revolve([(0, 0), (0, 0.0055), (0.016, 0.0055), (0.016, 0)], 'steel', c=G(-0.008, 0.1225, REC_Z[0] + 0.024), axis=XL, n=12)
+    B.fx.append(fx_pattern(G(0, 0.128, REC_Z[0] + 0.024), UP, FW, 0.016, 0.01, pat_checker(0.0012), depth=0.0003, kinds=['steel'], facing=0.2))
     # railed polymer handguard: chamfered box section, M-LOK slots at 3/6/9, top rail
     rings = []
-    for z, w in ((0.193, 0.046), (0.200, 0.050), (0.338, 0.050), (0.346, 0.046)):
+    for z, w in ((0.198, 0.046), (0.205, 0.050), (0.380, 0.050), (0.388, 0.046)):
         rings.append(Gr(rrect(w, 0.112 - 0.040, 0.010, nc=2, cy=0.076, rb=0.014), z))
     B.loft(rings, 'polymer', angle=40, bevel=0.0012, seg=1)
-    for k in range(4):
-        z = 0.215 + k * 0.032
+    for k in range(5):
+        z = 0.222 + k * 0.034
         for sx in (1, -1):
             B.fx.append(fx_rect(G(sx * 0.025, 0.066, z), sx * XL, UP, 0.022, 0.0075, depth=0.003, kinds=['polymer'], col='#050505', colA=0.9, radius=0.9, edge=0.1))
         B.fx.append(fx_rect(G(0, 0.040, z), DN, FW, 0.0075, 0.022, depth=0.003, kinds=['polymer'], col='#050505', colA=0.9, radius=0.9, edge=0.1))
-    B.fx.append(fx_text('КАЛАШНИКОВ', G(0.025, 0.088, 0.27), XL, UP, 0.0045, col='#000000', colA=0.0, depth=0.00025, kinds=['polymer']))
-    _rail(B, 0.0, G(0, 0.112, 0)[1], G(0, 0, 0.202)[2], G(0, 0, 0.336)[2], kind='polymer')
+    B.fx.append(fx_text('КАЛАШНИКОВ', G(0.025, 0.090, 0.30), XL, UP, 0.0045, col='#000000', colA=0.0, depth=0.00025, kinds=['polymer']))
+    _rail(B, 0.0, G(0, 0.112, 0)[1], G(0, 0, 0.206)[2], G(0, 0, 0.380)[2], kind='polymer')
     # front sight on the gas block (protected post)
-    B.profile(P([(0.343, 0.108), (0.368, 0.108), (0.366, 0.114), (0.348, 0.114)]), 0.018, 'steel', bevel=0.001, seg=1)
+    B.profile(P([(0.403, 0.104), (0.430, 0.104), (0.428, 0.114), (0.408, 0.114)]), 0.018, 'steel', bevel=0.001, seg=1)
     for sx in (1, -1):
-        B.profile(P([(0.347, 0.112), (0.366, 0.112), (0.364, 0.128), (0.350, 0.128)]), 0.0025, 'steel', x0=sx * 0.0072, bevel=0.0006, seg=1)
-    B.cyl(G(0, 0.112, 0.357), G(0, 0.126, 0.357), 0.0012, 'steel', n=8)
+        B.profile(P([(0.407, 0.112), (0.428, 0.112), (0.426, 0.128), (0.410, 0.128)]), 0.0025, 'steel', x0=sx * 0.0072, bevel=0.0006, seg=1)
+    B.cyl(G(0, 0.112, 0.418), G(0, 0.126, 0.418), 0.0012, 'steel', n=8)
     # telescoping side-folding stock
-    B.profile(P([(-0.104, 0.044), (-0.104, 0.090), (-0.126, 0.090), (-0.126, 0.044)]), 0.0315, 'alu', bevel=0.0018)
-    B.cyl(G(0.0165, 0.048, -0.116), G(0.0165, 0.086, -0.116), 0.004, 'alu', n=10)
-    B.tube(-0.126 - O[0], -0.262 - O[0], 0.0145, 'polymer', c=(0, 0.074 - O[1]), n=14, a0=np.pi / 14)
+    zr = REC_Z[0]
+    B.profile(P([(zr, 0.044), (zr, 0.090), (zr - 0.022, 0.090), (zr - 0.022, 0.044)]), 2 * RW + 0.0015, 'alu', bevel=0.0018)
+    B.cyl(G(RW + 0.0015, 0.048, zr - 0.012), G(RW + 0.0015, 0.086, zr - 0.012), 0.004, 'alu', n=10)
+    B.tube(zr - 0.022 - O[0], -0.262 - O[0], 0.0145, 'polymer', c=(0, 0.074 - O[1]), n=14, a0=np.pi / 14)
     B.fx += [fx_line(G(0, 0.074 - 0.0145, z), G(0, 0.074 - 0.0145, z + 0.006), DN, 0.004, depth=0.0008, kinds=['polymer'], facing=0.6) for z in np.arange(-0.24, -0.14, 0.018)]
     st = [(-0.200, 0.036, 0.0985, 0.049, 0.008), (-0.215, 0.040, 0.0990, 0.040, 0.010), (-0.27, 0.040, 0.0990, 0.016, 0.010),
           (-0.33, 0.040, 0.0985, -0.010, 0.010), (-0.343, 0.040, 0.098, -0.016, 0.009)]
@@ -895,10 +934,10 @@ def ak12():
     B.profile(P([(-0.343, -0.020), (-0.343, 0.100), (-0.356, 0.100), (-0.357, 0.09), (-0.357, -0.012), (-0.355, -0.020)]), 0.042, 'rubber', bevel=0.003, seg=2)
     B.fx.append(fx_pattern(G(0, 0.04, -0.357), BK, UP, 0.036, 0.11, pat_ribs(0.0045, 0.45, 1), depth=0.0006, kinds=['rubber'], facing=0.6))
     _ak_grip(B, 'polymer', style='ak12')
-    _ak_mag(B, 'mag_black', ribs=True)
+    _ak_mag(B, 'mag_black', ribs=True, waffle=True)
     eye_y = _collimator_1p87(B, -0.04, 0.1123)
-    _sling(B, [G(0.0262, 0.064, 0.334), G(0.0262, 0.050, 0.30), G(0.0262, 0.044, 0.21), G(0.0185, 0.038, 0.12), G(0.0185, 0.040, 0.0),
-               G(0.0205, 0.052, -0.120)])
+    _sling(B, [G(0.0262, 0.064, 0.376), G(0.0262, 0.050, 0.33), G(0.0262, 0.044, 0.23), G(0.0185 + DX, 0.038, 0.12), G(0.0185 + DX, 0.040, 0.0),
+               G(0.0205 + DX, 0.052, REC_Z[0] - 0.016)])
     emp = _ak_empties(mz, rear=(eye_y, -0.04), front=(eye_y, 0.06), butt=(0.04, -0.361), grip_L=(0.040, 0.24), extra={'optic_eye': (eye_y, -0.13)})
     tris, st = B.export('ak12', emp, extras={'calibre': '5.45x39', 'length_m': 0.945, 'optic': '1P87 (PK-120) collimator',
                                              'sight_line_above_bore_m': round(float(eye_y - AK_BORE), 3)})
@@ -1020,8 +1059,9 @@ def pkm():
     B.cyl(Gf(0, 0.103, 0.836), Gf(0, 0.133, 0.836), 0.0013, 'steel', n=8)
     # carry handle on the barrel: clamp, arch, wood grip
     B.tube(F.z(0.29), F.z(0.316), 0.0158, 'steel', c=(0, yb), n=14)
-    hp = [Gf(-0.003, BORE + 0.010, 0.303), Gf(-0.008, 0.128, 0.306), Gf(-0.012, 0.150, 0.316), Gf(-0.012, 0.158, 0.330)]
-    B.pipe(spline(hp, 8), 0.0045, 'steel', n=8)
+    # stamped flat bracket (not a rod) rising from the clamp, bent forward under the grip
+    hp = [Gf(-0.003, BORE + 0.012, 0.303), Gf(-0.007, 0.124, 0.305), Gf(-0.011, 0.146, 0.313), Gf(-0.012, 0.152, 0.328)]
+    B.strap(spline(hp, 8), 0.016, 0.0045, 'steel', up=(0, 0, -1))
     B.revolve([(0, 0), (0, 0.0090), (0.004, 0.0105), (0.010, 0.0118), (0.086, 0.0118), (0.094, 0.0108), (0.098, 0.0070), (0.098, 0.0)], 'wood',
               c=Gf(-0.012, 0.1585, 0.326), axis=FW, n=12)
     B.revolve([(0, 0), (0, 0.0122), (0.006, 0.0122), (0.006, 0)], 'steel', c=Gf(-0.012, 0.1585, 0.322), axis=FW, n=12)
@@ -1039,11 +1079,15 @@ def pkm():
     B.profile(P([(-0.336, -0.052), (-0.336, 0.101), (-0.348, 0.100), (-0.349, 0.09), (-0.349, -0.044), (-0.347, -0.052)]), 0.040, 'rubber', bevel=0.003)
     B.fx.append(fx_pattern(Gf(0, 0.024, -0.349), BK, UP, 0.034, 0.14, pat_ribs(0.0045, 0.45, 1), depth=0.0006, kinds=['rubber'], facing=0.6))
     # 100-round box under the receiver (right), stamped ribs, lid + latch + handle, belt into the feed tray
-    B.box(Gf(-0.012, -0.020, 0.14), (0.052, 0.110, 0.130), 'olive', bevel=0.003)
-    B.box(Gf(-0.012, 0.036, 0.14), (0.054, 0.006, 0.134), 'olive', bevel=0.002)
+    # (100-rd box: ~70 mm thick, hangs from the bracket under the right side of the receiver)
+    B.box(Gf(-0.016, -0.020, 0.14), (0.068, 0.110, 0.132), 'olive', bevel=0.003)
+    B.box(Gf(-0.016, 0.036, 0.14), (0.070, 0.006, 0.136), 'olive', bevel=0.002)
     for sx in (1, -1):
-        B.fx.append(fx_rect(Gf(-0.012 + sx * 0.026, -0.022, 0.14), sx * XL, UP, 0.10, 0.08, depth=0.0012, mode='raised', kinds=['olive'], radius=0.3, edge=0.1))
-    B.box(Gf(-0.012, 0.020, 0.2065), (0.020, 0.012, 0.004), 'steel', bevel=0.001)
+        B.fx.append(fx_rect(Gf(-0.016 + sx * 0.034, -0.022, 0.14), sx * XL, UP, 0.10, 0.08, depth=0.0012, mode='raised', kinds=['olive'], radius=0.3, edge=0.1))
+        for k in range(3):   # stamped stiffening ribs
+            B.fx.append(fx_line(Gf(-0.016 + sx * 0.0342, -0.055 + k * 0.03, 0.10), Gf(-0.016 + sx * 0.0342, -0.055 + k * 0.03, 0.18), sx * XL, 0.004,
+                                depth=0.0008, kinds=['olive'], profile='rib', facing=0.5))
+    B.box(Gf(-0.016, 0.020, 0.2075), (0.020, 0.012, 0.004), 'steel', bevel=0.001)
     B.pipe([Gf(-0.03, 0.039, 0.115), Gf(-0.03, 0.047, 0.125), Gf(-0.03, 0.047, 0.155), Gf(-0.03, 0.039, 0.165)], 0.0022, 'steel', n=6)
     B.box(Gf(-0.012, 0.038, 0.10), (0.03, 0.010, 0.016), 'steel', bevel=0.0012)       # mounting bracket
     belt = spline([Gf(-0.026, 0.030, 0.0), Gf(-0.040, 0.058, 0.0), Gf(-0.040, 0.086, 0.0), Gf(-0.028, 0.100, 0.0)], 12)
@@ -1490,7 +1534,7 @@ PM_GRIP_L = (0.0235, -0.0140, 0.0040)
 if __name__ == '__main__':
     info = {}
     only = sys.argv[1:]
-    infop = os.path.join(CACHE, 'weapons_info.json')
+    infop = os.path.join(os.environ['WOUT'] if os.environ.get('WOUT') else CACHE, 'weapons_info.json')
     if os.path.exists(infop):
         info = json.load(open(infop))
     for fn in (ak74m, pkm, rpg7, rpg22, ak12, ak74m_optic, grenade_f1, grenade_rgd5, pm):

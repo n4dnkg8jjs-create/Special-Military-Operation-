@@ -152,7 +152,7 @@ class Mats:
         if name in ('emr_gear', 'multicam_gear', 'coyote_webbing', 'mm14_gear', 'ranger_gear'):
             t = {'emr_gear': 'emr', 'multicam_gear': 'multicam', 'coyote_webbing': 'coyote', 'mm14_gear': 'mm14', 'ranger_gear': 'ranger'}[name]
             a, n = _tile(t)
-            col = (1, 1, 1, 1) if name == 'emr_gear' else (0.5, 0.5, 0.5, 1)     # EMR gear: factor 1 like the EMR uniform (see build_soldier)
+            col = (1, 1, 1, 1)     # factor 1 like the uniforms (see build_soldier.write_body; the 0.5 default darkened UA gear)
             i = g.material(name, color=col, base_tex=g.image(a, key='a_' + t), normal_tex=g.image(n, 'PNG', key='n_' + t), roughness=0.93, normal_scale=0.8)
         elif name == 'tape':
             col = '#e9e9e4' if self.fac == 'ru' else '#e8c31c'

@@ -284,10 +284,12 @@ def _tbn(P, UV):
     return T, -B, N
 
 
-def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
-    """presets: list of dict(name=..., parts=[node names], **descr).  Returns manifest list."""
+def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None, log=print):
+    """presets: list of dict(name=..., parts=[node names], **descr).  Returns manifest list.
+    bal_masks / vest_masks: per body variant, True = keep triangle (head under a balaclava / uniform under the plate carrier)"""
     g = W.g
     bal_masks = bal_masks or {}
+    vest_masks = vest_masks or {}
     used = sorted({n for p in presets for n in p['parts'] if n in rec.nodes})
     # ---------------------------------------------------------------- classify materials
     mats = set()
@@ -508,6 +510,10 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
                     mk = bal_masks.get(bal[0][-1])
                     if mk is not None and len(mk) == len(idx):
                         idx = idx[~mk]
+                if m.endswith('_camo') and 'vest' in parts and n.startswith('body_'):
+                    mk = vest_masks.get(n[-1])          # uniform triangles hidden under the vest are dropped from the preset
+                    if mk is not None and len(mk) == len(idx):
+                        idx = idx[mk]
                 if m in place:
                     uv = uvsets[(m, _uvkey(p['uv']))]['uvA']
                 else:

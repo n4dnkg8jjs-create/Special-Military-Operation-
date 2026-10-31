@@ -3,6 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { VEHICLES, WEAPONS } from '../config.js';
 import { angDiff, Squad } from './squad.js';
 import { initArmor } from './armor.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 
 let NEXT = 1000;
@@ -59,6 +60,9 @@ export class Vehicle {
     if (kind === 'btr') this.weapons[0].ammo = WEAPONS[this.weapons[0].key].mag;
     this.supply = this.def.supply ? { ...this.def.supply } : null;
     this.build();
+    // anti-drone "cope cage" over the turret: most tanks by 2024, some BTRs. Sets off a share of FPV warheads early.
+    const cageP = kind === 'tank' ? (faction.id === 'RU' ? 0.85 : 0.55) : 0.35;
+    if (!this.fallback && this.turret && Math.random() < cageP) this.addCage();
     this.immob = {}; initArmor(this);
     this.thinkT = Math.random();
   }
@@ -91,6 +95,32 @@ export class Vehicle {
     this.lod0 = []; if (this.lod1) for (const l of this.lod1) { const b = this.model.getObjectByName(l.name.replace(/_LOD1$/i, '')); if (b) this.lod0.push(b); }
     this.baseTurretRot = this.turret ? this.turret.rotation.y : 0; this.baseGunRot = this.gun ? this.gun.rotation.x : 0;
     this.game.scene.add(root);
+  }
+  addCage() {
+    const t = this.turret, gun = this.gun, box = new THREE.Box3(), b = new THREE.Box3();
+    this.root.updateMatrixWorld(true);
+    t.traverse(o => { if (!o.isMesh || /_LOD1$|_wreck$/i.test(o.name)) return; let p = o; while (p && p !== t) { if (p === gun) return; p = p.parent; } b.setFromObject(o); box.union(b); });
+    if (box.isEmpty()) return;
+    const tank = this.kind === 'tank', pad = tank ? 0.25 : 0.3, top = box.max.y + (tank ? 0.55 : 0.45);
+    const x0 = box.min.x - pad, x1 = box.max.x + pad, z0 = box.min.z - pad * (tank ? 2.2 : 1), z1 = Math.min(box.max.z + pad, box.min.z + (tank ? 3.6 : 2.4));
+    const geos = [], bar = (ax, ay, az, bx, by, bz, r = 0.022) => {
+      const a = new THREE.Vector3(ax, ay, az), c = new THREE.Vector3(bx, by, bz), L = a.distanceTo(c);
+      const g = new THREE.BoxGeometry(r * 2, r * 2, L); g.lookAt(new THREE.Vector3().subVectors(c, a)); g.translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); geos.push(g);
+    };
+    const yb = box.max.y - 0.1;
+    // corner posts and side rails welded to the turret
+    for (const x of [x0, x1]) for (const z of [z0, z1]) bar(x * 0.92, yb - 0.25, z * 0.95, x, top, z, 0.03);
+    for (const z of [z0, z1]) bar(x0, top, z, x1, top, z, 0.03);
+    for (const x of [x0, x1]) bar(x, top, z0, x, top, z1, 0.03);
+    // roof grid
+    const nx = Math.round((x1 - x0) / 0.32), nz = Math.round((z1 - z0) / 0.45);
+    for (let i = 1; i < nx; i++) { const x = x0 + (x1 - x0) * i / nx; bar(x, top, z0, x, top, z1); }
+    for (let i = 1; i < nz; i++) { const z = z0 + (z1 - z0) * i / nz; bar(x0, top, z, x1, top, z, 0.018); }
+    // a couple of side drops of mesh at the rear
+    bar(x0, top, z0, x0 * 0.95, yb, z0, 0.02); bar(x1, top, z0, x1 * 0.95, yb, z0, 0.02);
+    const m = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x3e4130, roughness: 0.85, metalness: 0.3 }));
+    m.name = 'drone_cage'; m.castShadow = true;
+    t.attach(m); this.cage = tank ? 0.55 : 0.4; this.cageMesh = m;
   }
   // desant seats: model empties ride_seat_N (+Z = facing, extras.seat_type) or a fallback layout
   seats() {

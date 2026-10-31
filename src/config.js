@@ -28,6 +28,10 @@ export const WEAPONS = {
   kpvt:   { name: 'KPVT 14.5 mm', type: 'hmg', range: 800, rof: 600, burst: [4, 8], burstGap: [0.8, 1.6], mag: 500, reload: 0, dmg: [70, 120], pen: 30, spread: 2.0, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
   pkt:    { name: 'PKT 7.62 mm', type: 'mg', range: 600, rof: 700, burst: [6, 14], burstGap: [0.6, 1.4], mag: 2000, reload: 0, dmg: [35, 80], pen: 8, spread: 2.8, sound: 'mg', tracerEvery: 3, suppress: 2.0 },
   pm:     { name: 'PM 9 mm (pistol)', type: 'pistol', range: 60, rof: 140, burst: [1, 2], burstGap: [0.35, 0.9], mag: 8, reload: 2.2, dmg: [22, 50], pen: 2, spread: 5, sound: 'rifle', tracerEvery: 99 },
+  // ATGM teams (tripod, SACLOS): tandem HEAT, long range. FPV: RPG-7 warhead strapped to a quadcopter.
+  kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
+  stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 1200, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 1000, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
+  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [110, 200], pen: 380, blast: 4, spread: 0, sound: 'rpg' },
   a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 39, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
 };
 
@@ -64,6 +68,17 @@ export const CREW_ROLES = [
   { role: 'Vehicle commander', weapon: 'pm', mags: 2, leader: true, armor: 'light', grenades: 0, crew: true },
   { role: 'Gunner', weapon: 'pm', mags: 2, armor: 'light', grenades: 0, crew: true },
   { role: 'Driver-mechanic', weapon: 'pm', mags: 2, armor: 'light', grenades: 0, crew: true },
+];
+
+// ATGM team: gunner, loader, ammo bearer (missiles in transport tubes). FPV team: pilot + launcher/assistant.
+export const ATGM_ROLES = [
+  { role: 'ATGM gunner', weapon: 'ak74m', mags: 4, leader: true, grenades: 1, atgm: 'gunner' },
+  { role: 'ATGM loader', weapon: 'ak74m', mags: 5, grenades: 1, atgm: 'loader', second: true },
+  { role: 'Ammo bearer', weapon: 'ak74m', mags: 5, grenades: 1, atgm: 'bearer' },
+];
+export const FPV_ROLES = [
+  { role: 'FPV pilot', weapon: 'ak74m', mags: 3, leader: true, grenades: 1, fpv: 'pilot' },
+  { role: 'FPV assistant', weapon: 'ak74m', mags: 5, grenades: 1, fpv: 'helper', second: true },
 ];
 
 export const VEHICLES = {

@@ -105,3 +105,33 @@ button{font:inherit;cursor:pointer}
 #menu .menu-grid{margin:18px 0}
 @media (max-height:780px){#menu .brief{font-size:14.5px;line-height:1.35}#menu h1{font-size:44px}}
 #forces{margin-top:3px;font-size:11px;letter-spacing:.12em;color:var(--dim);white-space:pre}
+
+/* order-of-battle roster (replaces the card row) */
+#cards.roster{position:absolute;left:12px;top:104px;bottom:262px;right:auto;width:236px;display:flex;flex-direction:column;gap:0;justify-content:flex-start;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+#cards.roster.mini{width:52px}
+.roster .rhead{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;font-size:11px;letter-spacing:.2em;color:var(--dim);border-bottom:1px solid var(--line)}
+.roster.mini .rhead span:first-child{display:none}
+.roster .rbtn{cursor:pointer;color:var(--ink);padding:0 4px}
+.roster .rbody{overflow-y:auto;flex:1;scrollbar-width:thin}
+.roster .rg{display:flex;justify-content:space-between;padding:5px 8px 3px;font-size:10.5px;letter-spacing:.18em;color:var(--accent);cursor:pointer;user-select:none}
+.roster.mini .rg{font-size:0;padding:2px 0;border-top:1px solid var(--line)}
+.roster .r{display:flex;align-items:center;gap:6px;height:30px;padding:0 6px 0 4px;cursor:pointer;border-left:2px solid transparent}
+.roster .r:hover{background:rgba(255,255,255,.04)}
+.roster .r.sel{background:rgba(216,178,90,.12);border-left-color:var(--accent)}
+.roster .r.dead{opacity:.32}
+.roster .r.nest{padding-left:18px}
+.roster .r .g{width:9px;font-size:10px;color:var(--accent)}
+.roster .r .ic svg{width:30px;height:20px;display:block}
+.roster .r .tx{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.1}
+.roster .r .nm{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.roster .r .st{font-size:9.5px;letter-spacing:.1em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.roster .r .st.rout{color:var(--enemy);font-weight:700}
+.roster .r .mn{font-size:13px;font-weight:700;min-width:22px;text-align:right}
+.roster .r .bars{display:flex;gap:2px;height:20px;align-items:flex-end}
+.roster .r .bars i{width:4px;height:100%;background:#2c2c28;position:relative;display:block}
+.roster .r .bars b{position:absolute;left:0;right:0;bottom:0;display:block}
+.roster .r .bars .hp b{background:#cfcab9}.roster .r .bars .am b{background:#d8b25a}.roster .r .bars .mo b{background:#8fb069}
+.roster.mini .r .tx,.roster.mini .r .bars,.roster.mini .r .g{display:none}
+.roster.mini .r{gap:2px;padding:0 3px;justify-content:center;height:26px}
+.roster.mini .r.nest{padding-left:3px}
+.roster.mini .r .mn{font-size:10px;min-width:0}

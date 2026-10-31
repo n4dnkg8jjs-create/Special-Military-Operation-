@@ -101,7 +101,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 17155884,
+  "size_bytes": 17388992,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -109,7 +109,7 @@
    "hands": 1678,
    "gloves": 1678,
    "boots": 2356,
-   "vest": 4150,
+   "vest": 4770,
    "pouches_front": 1888,
    "pouches_side": 1036,
    "pouches_back": 508,
@@ -122,7 +122,7 @@
    "legband_R": 280,
    "backpack": 976,
    "armor_assault": 948,
-   "armor_groin": 152,
+   "armor_groin": 488,
    "armor_arms": 856,
    "pouches_assault": 2416,
    "elbowpads": 568,
@@ -133,31 +133,31 @@
    "balaclava_A": 2089,
    "balaclava_B": 2089,
    "balaclava_C": 2086,
-   "combo_0": 23437,
+   "combo_0": 22426,
    "combo_0_tape": 840,
-   "combo_1": 24973,
+   "combo_1": 24820,
    "combo_1_tape": 840,
-   "combo_2": 24149,
+   "combo_2": 23650,
    "combo_2_tape": 1120,
-   "combo_3": 25217,
+   "combo_3": 24206,
    "combo_3_tape": 840,
-   "combo_4": 24413,
+   "combo_4": 24748,
    "combo_4_tape": 1120,
-   "combo_5": 24505,
+   "combo_5": 23518,
    "combo_5_tape": 840,
-   "assault_combo_0": 29480,
+   "assault_combo_0": 28805,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 28001,
+   "assault_combo_1": 27328,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 29458,
+   "assault_combo_2": 28807,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 27844,
+   "assault_combo_3": 26313,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 19743,
    "crew_combo_0_tape": 840,
-   "crew_combo_1": 22863,
+   "crew_combo_1": 23071,
    "crew_combo_1_tape": 840,
-   "crew_combo_2": 22863,
+   "crew_combo_2": 23071,
    "crew_combo_2_tape": 840
   },
   "lod1_tris": {
@@ -167,7 +167,7 @@
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
    "boots_LOD1": 760,
-   "vest_LOD1": 1162,
+   "vest_LOD1": 1335,
    "pouches_front_LOD1": 527,
    "pouches_side_LOD1": 307,
    "pouches_back_LOD1": 172,
@@ -180,7 +180,7 @@
    "legband_R_LOD1": 78,
    "backpack_LOD1": 271,
    "armor_assault_LOD1": 264,
-   "armor_groin_LOD1": 42,
+   "armor_groin_LOD1": 136,
    "armor_arms_LOD1": 238,
    "pouches_assault_LOD1": 693,
    "elbowpads_LOD1": 158,
@@ -191,31 +191,31 @@
    "balaclava_A_LOD1": 583,
    "balaclava_B_LOD1": 584,
    "balaclava_C_LOD1": 583,
-   "combo_0_LOD1": 6562,
+   "combo_0_LOD1": 6278,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 6991,
+   "combo_1_LOD1": 6949,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6760,
+   "combo_2_LOD1": 6622,
    "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 7060,
+   "combo_3_LOD1": 6777,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 6835,
+   "combo_4_LOD1": 6928,
    "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 6861,
+   "combo_5_LOD1": 6584,
    "combo_5_tape_LOD1": 336,
-   "assault_combo_0_LOD1": 8254,
+   "assault_combo_0_LOD1": 8065,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7839,
+   "assault_combo_1_LOD1": 7651,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 8248,
+   "assault_combo_2_LOD1": 8065,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7796,
+   "assault_combo_3_LOD1": 7367,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5527,
    "crew_combo_0_tape_LOD1": 336,
-   "crew_combo_1_LOD1": 6401,
+   "crew_combo_1_LOD1": 6459,
    "crew_combo_1_tape_LOD1": 336,
-   "crew_combo_2_LOD1": 6400,
+   "crew_combo_2_LOD1": 6458,
    "crew_combo_2_tape_LOD1": 336
   },
   "default_visible": [
@@ -230,7 +230,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 24277,
+  "default_config_tris": 24897,
   "materials_by_node": {
    "body_A": [
     "emr_camo",
@@ -715,7 +715,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -746,7 +748,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -759,7 +763,8 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "armor_arms"
     ]
    },
    "combo_1_tape": {
@@ -778,7 +783,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -792,7 +799,8 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ]
    },
    "combo_2_tape": {
@@ -811,7 +819,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -844,7 +854,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -858,7 +870,9 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ]
    },
    "combo_4_tape": {
@@ -877,7 +891,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -909,7 +925,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -918,8 +936,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -928,6 +944,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
@@ -949,7 +967,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -958,8 +978,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -968,6 +986,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset"
     ]
    },
@@ -987,7 +1007,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_C",
@@ -996,8 +1018,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1006,6 +1026,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_C",
      "backpack_assault"
@@ -1027,7 +1049,9 @@
      "headset": false,
      "balaclava": true,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -1036,8 +1060,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1046,6 +1068,7 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "balaclava_A"
     ]
    },
@@ -1279,7 +1302,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -1312,7 +1337,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -1325,7 +1352,8 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "armor_arms"
     ],
     "lod": 1
    },
@@ -1346,7 +1374,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -1360,7 +1390,8 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ],
     "lod": 1
    },
@@ -1381,7 +1412,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -1416,7 +1449,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -1430,7 +1465,9 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ],
     "lod": 1
    },
@@ -1451,7 +1488,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -1485,7 +1524,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -1494,8 +1535,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1504,6 +1543,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
@@ -1527,7 +1568,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -1536,8 +1579,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1546,6 +1587,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset"
     ],
     "lod": 1
@@ -1567,7 +1610,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_C",
@@ -1576,8 +1621,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1586,6 +1629,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_C",
      "backpack_assault"
@@ -1609,7 +1654,9 @@
      "headset": false,
      "balaclava": true,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -1618,8 +1665,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -1628,6 +1673,7 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "balaclava_A"
     ],
     "lod": 1
@@ -1737,7 +1783,7 @@
     "lod": 1
    }
   },
-  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
+  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. RU vest = 6B45/6B46 (Ratnik) style: front and back sections run from the collar bones / shoulder blades down to the belt line (1.015 m, trouser waist ~1.0 m), soft side sections wrap the waist (to 1.26 m), shooter's cut front / armhole cut back; 6Sh117-style pouches: three double mag pouches low on the front, radio + grenade pouch above, grenade pouches / IFAK on the sides. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
   "uniform_material": "emr_camo (all variants)",
   "gear_materials": [
    "altyn_steel",
@@ -1926,6 +1972,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_A",
      "helmet_A",
@@ -1938,7 +1986,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23437,
+    "tris": 22426,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -1958,6 +2006,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": true,
     "parts": [
      "body_B",
      "helmet_B",
@@ -1969,9 +2019,10 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "armor_arms"
     ],
-    "tris": 24973,
+    "tris": 24820,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -1991,6 +2042,8 @@
     "kneepads": true,
     "pouches_back": false,
     "legband_L": true,
+    "groin_protector": true,
+    "shoulder_protectors": false,
     "parts": [
      "body_C",
      "helmet_A",
@@ -2003,9 +2056,10 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ],
-    "tris": 24149,
+    "tris": 23650,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -2025,6 +2079,8 @@
     "kneepads": true,
     "pouches_back": true,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_A",
      "helmet_B",
@@ -2039,7 +2095,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 25217,
+    "tris": 24206,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -2059,6 +2115,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_B",
      "helmet_A",
@@ -2071,9 +2129,11 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ],
-    "tris": 24413,
+    "tris": 24748,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -2093,6 +2153,8 @@
     "kneepads": false,
     "pouches_back": true,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_C",
      "helmet_B",
@@ -2106,7 +2168,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 24505,
+    "tris": 23518,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -2128,6 +2190,8 @@
     "balaclava": true,
     "backpack_assault": true,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_A",
      "helmet_assault_A",
@@ -2135,8 +2199,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -2145,11 +2207,13 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 29480,
+    "tris": 28805,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -2169,6 +2233,8 @@
     "balaclava": false,
     "backpack_assault": false,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_B",
      "helmet_assault_B",
@@ -2176,8 +2242,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -2186,9 +2250,11 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset"
     ],
-    "tris": 28001,
+    "tris": 27328,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -2208,6 +2274,8 @@
     "balaclava": true,
     "backpack_assault": true,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_C",
      "helmet_assault_A",
@@ -2215,8 +2283,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -2225,11 +2291,13 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_C",
      "backpack_assault"
     ],
-    "tris": 29458,
+    "tris": 28807,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -2249,6 +2317,8 @@
     "balaclava": true,
     "backpack_assault": false,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": false,
     "parts": [
      "body_A",
      "helmet_assault_B",
@@ -2256,8 +2326,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -2266,9 +2334,10 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "balaclava_A"
     ],
-    "tris": 27844,
+    "tris": 26313,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -2338,7 +2407,7 @@
      "legband_R",
      "crew_vest_olive"
     ],
-    "tris": 22863,
+    "tris": 23071,
     "tape_tris": 840,
     "nodes": [
      "crew_combo_1",
@@ -2352,7 +2421,7 @@
      "helmet_crew_black": 3226,
      "crew_larynx": 658,
      "crew_belt": 1312,
-     "crew_vest_olive": 3120
+     "crew_vest_olive": 3328
     }
    },
    {
@@ -2376,7 +2445,7 @@
      "legband_R",
      "crew_vest_olive"
     ],
-    "tris": 22863,
+    "tris": 23071,
     "tape_tris": 840,
     "nodes": [
      "crew_combo_2",
@@ -2390,17 +2459,17 @@
      "helmet_crew_olive": 3226,
      "crew_larynx": 658,
      "crew_belt": 1312,
-     "crew_vest_olive": 3120
+     "crew_vest_olive": 3328
     }
    }
   ],
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ru: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (RU: olive-khaki or EMR) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
-  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
+  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
   "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable"
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 17134932,
+  "size_bytes": 17307732,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -2421,7 +2490,7 @@
    "legband_R": 280,
    "backpack": 976,
    "armor_assault": 640,
-   "armor_groin": 152,
+   "armor_groin": 488,
    "armor_arms": 856,
    "pouches_assault": 2252,
    "elbowpads": 568,
@@ -2432,31 +2501,31 @@
    "balaclava_A": 2089,
    "balaclava_B": 2089,
    "balaclava_C": 2086,
-   "combo_0": 22889,
+   "combo_0": 21597,
    "combo_0_tape": 840,
-   "combo_1": 23877,
+   "combo_1": 22593,
    "combo_1_tape": 840,
-   "combo_2": 23601,
+   "combo_2": 22901,
    "combo_2_tape": 1120,
-   "combo_3": 23845,
+   "combo_3": 22553,
    "combo_3_tape": 840,
-   "combo_4": 23865,
+   "combo_4": 23925,
    "combo_4_tape": 1120,
-   "combo_5": 23133,
+   "combo_5": 21945,
    "combo_5_tape": 840,
-   "assault_combo_0": 28449,
+   "assault_combo_0": 27493,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 27468,
+   "assault_combo_1": 25664,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 28449,
+   "assault_combo_2": 27597,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 28556,
+   "assault_combo_3": 27600,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 19743,
    "crew_combo_0_tape": 840,
-   "crew_combo_1": 22863,
+   "crew_combo_1": 23071,
    "crew_combo_1_tape": 840,
-   "crew_combo_2": 22863,
+   "crew_combo_2": 23071,
    "crew_combo_2_tape": 840
   },
   "lod1_tris": {
@@ -2466,7 +2535,7 @@
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
    "boots_LOD1": 760,
-   "vest_LOD1": 1161,
+   "vest_LOD1": 1160,
    "pouches_front_LOD1": 384,
    "pouches_side_LOD1": 313,
    "pouches_back_LOD1": 96,
@@ -2479,7 +2548,7 @@
    "legband_R_LOD1": 78,
    "backpack_LOD1": 271,
    "armor_assault_LOD1": 178,
-   "armor_groin_LOD1": 74,
+   "armor_groin_LOD1": 134,
    "armor_arms_LOD1": 238,
    "pouches_assault_LOD1": 628,
    "elbowpads_LOD1": 158,
@@ -2490,31 +2559,31 @@
    "balaclava_A_LOD1": 583,
    "balaclava_B_LOD1": 584,
    "balaclava_C_LOD1": 583,
-   "combo_0_LOD1": 6408,
+   "combo_0_LOD1": 6046,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 6685,
+   "combo_1_LOD1": 6326,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6608,
+   "combo_2_LOD1": 6412,
    "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 6676,
+   "combo_3_LOD1": 6314,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 6682,
+   "combo_4_LOD1": 6699,
    "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 6476,
+   "combo_5_LOD1": 6143,
    "combo_5_tape_LOD1": 336,
-   "assault_combo_0_LOD1": 7965,
+   "assault_combo_0_LOD1": 7698,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7691,
+   "assault_combo_1_LOD1": 7185,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 7964,
+   "assault_combo_2_LOD1": 7726,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7995,
+   "assault_combo_3_LOD1": 7728,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5527,
    "crew_combo_0_tape_LOD1": 336,
-   "crew_combo_1_LOD1": 6400,
+   "crew_combo_1_LOD1": 6459,
    "crew_combo_1_tape_LOD1": 336,
-   "crew_combo_2_LOD1": 6400,
+   "crew_combo_2_LOD1": 6458,
    "crew_combo_2_tape_LOD1": 336
   },
   "default_visible": [
@@ -3042,7 +3111,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -3073,7 +3144,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_B",
@@ -3105,7 +3178,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -3119,7 +3194,8 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ]
    },
    "combo_2_tape": {
@@ -3138,7 +3214,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -3171,7 +3249,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -3185,7 +3265,9 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ]
    },
    "combo_4_tape": {
@@ -3204,7 +3286,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -3236,7 +3320,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -3245,8 +3331,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3255,6 +3339,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ]
@@ -3275,7 +3361,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_B",
@@ -3284,8 +3372,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3294,6 +3380,7 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "headset",
      "balaclava_B"
     ]
@@ -3314,7 +3401,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_C",
@@ -3323,8 +3412,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3333,6 +3420,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ]
@@ -3353,7 +3442,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -3362,8 +3453,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3372,6 +3461,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
@@ -3607,7 +3698,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -3640,7 +3733,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_B",
@@ -3674,7 +3769,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -3688,7 +3785,8 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ],
     "lod": 1
    },
@@ -3709,7 +3807,9 @@
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_A",
@@ -3744,7 +3844,9 @@
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
-     "legband_L": true
+     "legband_L": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_B",
@@ -3758,7 +3860,9 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ],
     "lod": 1
    },
@@ -3779,7 +3883,9 @@
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
-     "legband_L": false
+     "legband_L": false,
+     "groin_protector": false,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_C",
@@ -3813,7 +3919,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -3822,8 +3930,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3832,6 +3938,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ],
@@ -3854,7 +3962,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": false,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": false
     },
     "parts": [
      "body_B",
@@ -3863,8 +3973,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3873,6 +3981,7 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "headset",
      "balaclava_B"
     ],
@@ -3895,7 +4004,9 @@
      "headset": true,
      "balaclava": false,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_C",
@@ -3904,8 +4015,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3914,6 +4023,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ],
@@ -3936,7 +4047,9 @@
      "headset": true,
      "balaclava": true,
      "backpack_assault": true,
-     "gloves": true
+     "gloves": true,
+     "groin_protector": true,
+     "shoulder_protectors": true
     },
     "parts": [
      "body_A",
@@ -3945,8 +4058,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -3955,6 +4066,8 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
@@ -4066,7 +4179,7 @@
     "lod": 1
    }
   },
-  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
+  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. UA vest = JPC-style plate carrier (plate bags ~280 x 316 mm, cummerbund), open-top triple mag shingle, admin pouch + flag, tourniquet. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
   "uniform_material": "mm14_camo (A,B), mm14_multicam_camo (C: MultiCam top, MM-14 trousers)",
   "gear_materials": [
    "ak_mag_polymer",
@@ -4259,6 +4372,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_A",
      "helmet_A",
@@ -4271,7 +4386,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 22889,
+    "tris": 21597,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -4291,6 +4406,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_B",
      "helmet_B",
@@ -4304,7 +4421,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23877,
+    "tris": 22593,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -4324,6 +4441,8 @@
     "kneepads": true,
     "pouches_back": false,
     "legband_L": true,
+    "groin_protector": true,
+    "shoulder_protectors": false,
     "parts": [
      "body_C",
      "helmet_A",
@@ -4336,9 +4455,10 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin"
     ],
-    "tris": 23601,
+    "tris": 22901,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -4358,6 +4478,8 @@
     "kneepads": true,
     "pouches_back": true,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_A",
      "helmet_B",
@@ -4372,7 +4494,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23845,
+    "tris": 22553,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -4392,6 +4514,8 @@
     "kneepads": false,
     "pouches_back": false,
     "legband_L": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_B",
      "helmet_A",
@@ -4404,9 +4528,11 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "legband_L"
+     "legband_L",
+     "armor_groin",
+     "armor_arms"
     ],
-    "tris": 23865,
+    "tris": 23925,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -4426,6 +4552,8 @@
     "kneepads": false,
     "pouches_back": true,
     "legband_L": false,
+    "groin_protector": false,
+    "shoulder_protectors": false,
     "parts": [
      "body_C",
      "helmet_B",
@@ -4439,7 +4567,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23133,
+    "tris": 21945,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -4461,6 +4589,8 @@
     "balaclava": false,
     "backpack_assault": true,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_A",
      "helmet_assault_A",
@@ -4468,8 +4598,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -4478,10 +4606,12 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ],
-    "tris": 28449,
+    "tris": 27493,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -4501,6 +4631,8 @@
     "balaclava": true,
     "backpack_assault": false,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": false,
     "parts": [
      "body_B",
      "helmet_assault_B",
@@ -4508,8 +4640,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -4518,10 +4648,11 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
      "headset",
      "balaclava_B"
     ],
-    "tris": 27468,
+    "tris": 25664,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -4541,6 +4672,8 @@
     "balaclava": false,
     "backpack_assault": true,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_C",
      "helmet_assault_A",
@@ -4548,8 +4681,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -4558,10 +4689,12 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "backpack_assault"
     ],
-    "tris": 28449,
+    "tris": 27597,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -4581,6 +4714,8 @@
     "balaclava": true,
     "backpack_assault": true,
     "gloves": true,
+    "groin_protector": true,
+    "shoulder_protectors": true,
     "parts": [
      "body_A",
      "helmet_assault_B",
@@ -4588,8 +4723,6 @@
      "vest",
      "pouches_front",
      "armor_assault",
-     "armor_groin",
-     "armor_arms",
      "pouches_assault",
      "elbowpads",
      "kneepads",
@@ -4598,11 +4731,13 @@
      "armband_R",
      "legband_R",
      "legband_L",
+     "armor_groin",
+     "armor_arms",
      "headset",
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 28556,
+    "tris": 27600,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -4672,7 +4807,7 @@
      "legband_R",
      "crew_vest_tan"
     ],
-    "tris": 22863,
+    "tris": 23071,
     "tape_tris": 840,
     "nodes": [
      "crew_combo_1",
@@ -4686,7 +4821,7 @@
      "helmet_crew_olive": 3226,
      "crew_larynx": 658,
      "crew_belt": 1312,
-     "crew_vest_tan": 3120
+     "crew_vest_tan": 3328
     }
    },
    {
@@ -4710,7 +4845,7 @@
      "legband_R",
      "crew_vest_olive"
     ],
-    "tris": 22863,
+    "tris": 23071,
     "tape_tris": 840,
     "nodes": [
      "crew_combo_2",
@@ -4724,12 +4859,12 @@
      "helmet_crew_black": 3226,
      "crew_larynx": 658,
      "crew_belt": 1312,
-     "crew_vest_olive": 3120
+     "crew_vest_olive": 3328
     }
    }
   ],
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ua: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (UA: MM-14 or olive) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
-  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
+  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
   "tape_alt_material": "tape (yellow #e8c31c)"
  },
  "soldier_anims": {
@@ -5638,12 +5773,12 @@
  },
  "ak74m": {
   "file": "ak74m.glb",
-  "size_bytes": 398852,
+  "size_bytes": 402060,
   "tris": {
    "ak74m_mesh": 3772,
    "ak74m_LOD1": 1128,
-   "magazine": 512,
-   "magazine_LOD1": 152
+   "magazine": 652,
+   "magazine_LOD1": 194
   },
   "materials": [
    "wpn_ak74m"
@@ -5681,15 +5816,16 @@
    ]
   },
   "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
-  "texel_px_per_m": 1222,
-  "magazine_node": "magazine (separate mesh; hide/reparent to mag_socket_L during reloads; its LOD1 `magazine_LOD1` is a child and moves with it)"
+  "texel_px_per_m": 1174,
+  "magazine_node": "magazine (separate mesh; hide/reparent to mag_socket_L during reloads; its LOD1 `magazine_LOD1` is a child and moves with it)",
+  "geometry_notes": "2026-10 rework (empties unchanged): proportions matched to side photos of the AK-74 / AK-74M scaled on the 943 mm length - 35.6 mm wide receiver (was 30), stock hinge right behind the grip, front trunnion / lower handguard joint at 204 mm ahead of the grip, longer handguards (lower 170 mm), rear sight block moved onto the barrel over the handguard, gas block 6 cm further forward with a longer exposed vented gas tube, ~15 mm shorter and deeper pistol grip, stock with ~15 mm comb drop and a 110 mm butt; 30-rd 5.45 magazine 66 mm deep x 30 mm thick (was 40 x 26), 15 deg rake at the mouth curving to ~33 deg (R 0.53 m), horizontal mouth, floorplate, spines and ribs"
  },
  "pkm": {
   "file": "pkm.glb",
-  "size_bytes": 432584,
+  "size_bytes": 429376,
   "tris": {
-   "pkm_mesh": 4696,
-   "pkm_LOD1": 1406
+   "pkm_mesh": 4640,
+   "pkm_LOD1": 1390
   },
   "materials": [
    "wpn_pkm"
@@ -5717,7 +5853,8 @@
    ]
   },
   "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
-  "texel_px_per_m": 1113
+  "texel_px_per_m": 1084,
+  "geometry_notes": "2026-10: 100-rd box 68 mm thick with stamped ribs (was 52 mm), flat stamped carry-handle bracket instead of a rod"
  },
  "rpg7": {
   "file": "rpg7.glb",
@@ -5826,12 +5963,12 @@
  },
  "ak12": {
   "file": "ak12.glb",
-  "size_bytes": 399924,
+  "size_bytes": 408892,
   "tris": {
    "ak12_mesh": 3852,
    "ak12_LOD1": 1150,
-   "magazine": 512,
-   "magazine_LOD1": 152
+   "magazine": 652,
+   "magazine_LOD1": 194
   },
   "materials": [
    "wpn_ak12"
@@ -5874,19 +6011,20 @@
    ]
   },
   "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
-  "texel_px_per_m": 1139,
+  "texel_px_per_m": 1102,
   "magazine_node": "magazine (separate mesh, same as ak74m)",
   "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
-  "description": "AK-12 (6P70, 2020 pattern): railed dust cover with folded rear diopter, railed polymer handguard with M-LOK slots, gas-block front sight, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser and rubber pad, ribbed black 30-rd mag, 1P87 (PK-120) collimator (olive) on the rail, sling"
+  "description": "AK-12 (6P70, 2020 pattern): railed dust cover with folded rear diopter, railed polymer handguard with M-LOK slots, gas-block front sight, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser and rubber pad, ribbed black 30-rd mag, 1P87 (PK-120) collimator (olive) on the rail, sling",
+  "geometry_notes": "2026-10 rework (empties unchanged): proportions matched to side photos of the AK-74 / AK-74M scaled on the 943 mm length - 35.6 mm wide receiver (was 30), stock hinge right behind the grip, front trunnion / lower handguard joint at 204 mm ahead of the grip, longer handguards (lower 170 mm), rear sight block moved onto the barrel over the handguard, gas block 6 cm further forward with a longer exposed vented gas tube, ~15 mm shorter and deeper pistol grip, stock with ~15 mm comb drop and a 110 mm butt; 30-rd 5.45 magazine 66 mm deep x 30 mm thick (was 40 x 26), 15 deg rake at the mouth curving to ~33 deg (R 0.53 m), horizontal mouth, floorplate, spines and ribs; AK-12 handguard to the gas block (5 M-LOK slots), front sight on the moved gas block, waffle-panel magazine"
  },
  "ak74m_optic": {
   "file": "ak74m_optic.glb",
-  "size_bytes": 449256,
+  "size_bytes": 466620,
   "tris": {
    "ak74m_optic_mesh": 4708,
-   "ak74m_optic_LOD1": 1408,
-   "magazine": 512,
-   "magazine_LOD1": 152
+   "ak74m_optic_LOD1": 1410,
+   "magazine": 652,
+   "magazine_LOD1": 194
   },
   "materials": [
    "wpn_ak74m_optic"
@@ -5934,10 +6072,11 @@
    ]
   },
   "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 (the magazine LOD1 is a child of `magazine`); one atlas material per weapon",
-  "texel_px_per_m": 1108,
+  "texel_px_per_m": 994,
   "magazine_node": "magazine (separate mesh, same as ak74m)",
   "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
-  "description": "UA AK-74M: black 6P20 furniture and magazine, quick-detach dovetail side mount with a Kobra-style collimator (tilted amber window), bottom rail on the lower handguard with a vertical foregrip, side-folding stock, sling"
+  "description": "UA AK-74M: black 6P20 furniture and magazine, quick-detach dovetail side mount with a Kobra-style collimator (tilted amber window), bottom rail on the lower handguard with a vertical foregrip, side-folding stock, sling",
+  "geometry_notes": "2026-10 rework (empties unchanged): proportions matched to side photos of the AK-74 / AK-74M scaled on the 943 mm length - 35.6 mm wide receiver (was 30), stock hinge right behind the grip, front trunnion / lower handguard joint at 204 mm ahead of the grip, longer handguards (lower 170 mm), rear sight block moved onto the barrel over the handguard, gas block 6 cm further forward with a longer exposed vented gas tube, ~15 mm shorter and deeper pistol grip, stock with ~15 mm comb drop and a 110 mm butt; 30-rd 5.45 magazine 66 mm deep x 30 mm thick (was 40 x 26), 15 deg rake at the mouth curving to ~33 deg (R 0.53 m), horizontal mouth, floorplate, spines and ribs; Kobra side mount moved out with the wider receiver"
  },
  "grenade_f1": {
   "file": "grenade_f1.glb",

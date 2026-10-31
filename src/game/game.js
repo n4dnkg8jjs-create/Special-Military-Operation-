@@ -96,6 +96,12 @@ export class Game {
         sq.board(v, true); this.playerUnits.splice(this.playerUnits.length - 1, 0, sq);
       }
     }
+    // ATGM (Kornet / Stugna-P) and FPV drone teams move up on foot
+    for (const [x, z, kind] of MAP.support || []) {
+      const sq = this.makeSquad('player', x, z, N, '', kind);
+      sq.name = kind === 'atgm' ? `${pf.id === 'RU' ? 'Kornet' : 'Stugna'} team` : 'FPV team';
+      this.playerUnits.push(sq);
+    }
   }
   zoneMarkers() {
     this.zoneMeshes = [];

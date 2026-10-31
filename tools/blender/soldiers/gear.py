@@ -43,8 +43,12 @@ def merge(parts):
 class Envelope:
     """max radial extent of a set of meshes around a vertical torso axis"""
 
-    def __init__(self, meshes, y0=0.92, y1=1.62, dy=0.01, dth_deg=2.0):
+    def __init__(self, meshes, y0=0.92, y1=1.62, dy=0.01, dth_deg=2.0, r_meshes=None):
+        """meshes: (pos, tri) sets for ray casts (self.trees: limbs, straps).  r_meshes: optional trunk-only sets for the radius
+        table (arms removed): rays that pass through an arm hole are filled by interpolation around the trunk, so panels near
+        the armpits / shoulders follow the chest and back instead of jumping out onto the deltoids."""
         self.trees = [BVHTree.FromPolygons([tuple(v) for v in m[0]], [tuple(map(int, t)) for t in m[1]], all_triangles=True) for m in meshes]
+        rtrees = self.trees if r_meshes is None else [BVHTree.FromPolygons([tuple(v) for v in m[0]], [tuple(map(int, t)) for t in m[1]], all_triangles=True) for m in r_meshes]
         self.ys = np.arange(y0, y1 + 1e-9, dy)
         self.ths = np.radians(np.arange(-180, 180, dth_deg))
         # torso centre z per height from front/back hits at x=0
@@ -61,13 +65,23 @@ class Envelope:
             o = np.array([0, y, self.zc[i]])
             for j, th in enumerate(self.ths):
                 d = np.array([np.sin(th), 0, np.cos(th)])
-                best = 0.05
-                for t in self.trees:
+                best = 0.05 if r_meshes is None else np.nan
+                for t in rtrees:
                     # first surface hit from the torso axis outward (ignores arms)
                     hit = t.ray_cast(Vector(o), Vector(d), 0.6)
                     if hit[0] is not None:
-                        best = max(best, hit[3])
+                        best = hit[3] if np.isnan(best) else max(best, hit[3])
                 R[i, j] = best
+        if r_meshes is not None:
+            # arm holes: periodic interpolation around the trunk per row (rows with too few hits copy the row below)
+            n = len(self.ths)
+            for i in range(len(self.ys)):
+                ok = ~np.isnan(R[i])
+                if ok.sum() < n // 4:
+                    R[i] = R[i - 1] if i > 0 else 0.05
+                    continue
+                k = np.arange(n)
+                R[i] = np.interp(k, np.r_[k[ok] - n, k[ok], k[ok] + n], np.r_[R[i, ok], R[i, ok], R[i, ok]])
         self.R = R
 
     def _hit(self, o, d):

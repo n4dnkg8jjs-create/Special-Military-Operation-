@@ -18,8 +18,9 @@ def _ray_r(trees, o, d, default=0.07):
     return best[3] if best is not None else default
 
 
-def limb_shell(trees, a, j, b, centre_dir, s0, s1, mat, half_ang=70, thick=0.011, gap=0.003, nu=11, nv=9, edge_s=0.025, edge_a=18):
-    """hard/padded shell wrapped around a limb near joint j: s<0 measured back along a->j, s>=0 along j->b"""
+def limb_shell(trees, a, j, b, centre_dir, s0, s1, mat, half_ang=70, thick=0.011, gap=0.003, nu=11, nv=9, edge_s=0.025, edge_a=18, r_cap=None):
+    """hard/padded shell wrapped around a limb near joint j: s<0 measured back along a->j, s>=0 along j->b.
+    r_cap: clamp each row's ray radii to (row median + r_cap) so rays that run onto the trunk (at the shoulder) cannot bulge it"""
     rows = []
     sm = 0.5 * (s0 + s1); sh = 0.5 * (s1 - s0)
     for s in np.linspace(s0, s1, nv):
@@ -36,7 +37,13 @@ def limb_shell(trees, a, j, b, centre_dir, s0, s1, mat, half_ang=70, thick=0.011
             r = _ray_r(trees, o, d)
             e = min(1.0, (half_ang - abs(np.degrees(th))) / edge_a, (sh - abs(s - sm)) / edge_s + 0.15)
             row.append((o, d, r, max(e, 0.05)))
+        if r_cap is not None:
+            med = np.median([q[2] for q in row])
+            row = [(o_, d_, min(r_, med + r_cap), e_) for (o_, d_, r_, e_) in row]
         rows.append(row)
+    if r_cap is not None:      # rows: radius never shrinks toward the top edge (smooth cap over the shoulder)
+        for k in range(len(rows) - 2, -1, -1):
+            rows[k] = [(o_, d_, max(r_, 0.9 * rows[k + 1][i][2]), e_) for i, (o_, d_, r_, e_) in enumerate(rows[k])]
     outer = np.array([[o + d * (r + gap + 0.002 + thick * e) for (o, d, r, e) in row] for row in rows]).reshape(-1, 3)
     inner = np.array([[o + d * (r + gap) for (o, d, r, e) in row] for row in rows]).reshape(-1, 3)
     n = nu * nv
@@ -68,11 +75,8 @@ def armour(env, R, fac):
     for sgn in (1, -1):
         sp = G.env_panel(env, sgn * np.pi / 2, 1.13, 0.072, 0.088, 0.016, gap=0.019, chamfer=0.0, mat=m['fabric'], nu=9, nv=9, rad=0.02)
         out += K.tag([G.orient_closed(sp)], 'armor_assault')
-    # groin protector hanging from the front plate (rigid to the pelvis)
-    Mg = PO.mat4(np.array([0.0, 1.11, 0.176]), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]))
-    Mg = Mg @ PO.T(0, 0, 0, rx=np.radians(-6))
-    out += K.tag([PO.local_part(PO.rbox(0.17, 0.20, 0.016, 0.012, 2, taper_top=-0.0), Mg @ PO.T(0, -0.10, 0.008), m['fabric'])], 'armor_groin')
-    out += K.tag([PO.local_part(PO.rbox(0.14, 0.012, 0.022, 0.004, 1), Mg @ PO.T(0, -0.005, 0.01), m['webbing'], 'hard')], 'armor_groin')
+    # groin protector hanging from the bottom of the front section (see groin_flap; skinned pelvis -> thighs)
+    out += K.tag(groin_flap(env, fac), 'armor_groin')
     if fac == 'ru':
         # neck/throat collar (6B45 assault configuration)
         col = G.band(env, 1.415, 1.475, -2.1, 2.1, 0.012, 0.014, nu=26, nv=3, mat=m['fabric'])
@@ -80,10 +84,72 @@ def armour(env, R, fac):
     # shoulder / upper-arm protectors (brassards), rigid to the upper arm
     for side, sx in (('Left', 1), ('Right', -1)):
         cd = np.array([sx * 1.0, 0.35, 0.0]); cd /= np.linalg.norm(cd)
-        p = limb_shell(env.trees, J(side + 'Shoulder'), J(side + 'Arm'), J(side + 'ForeArm'), cd, -0.035, 0.15, m['fabric'],
-                       half_ang=95, thick=0.014, gap=0.004, nu=12, nv=9, edge_s=0.03)
+        # 6B45 soft shoulder protector: padded flap sewn to the shoulder strap, over the deltoid (~15 cm), hugging the arm
+        p = limb_shell(env.trees, J(side + 'Shoulder'), J(side + 'Arm'), J(side + 'ForeArm'), cd, -0.025, 0.125, m['fabric'],
+                       half_ang=82, thick=0.011, gap=0.003, nu=12, nv=9, edge_s=0.025, r_cap=0.012)
         p['side'] = side
         out += K.tag([p], 'armor_arms')
+    return out
+
+
+def groin_flap(env, fac):
+    """soft groin protector (6B45 heavy set / UA plate-carrier groin pad): tapered padded flap conforming to the lower belly
+    and bridging the fronts of both thighs, hung from the bottom edge of the front section (RU) / under the plate carrier (UA)
+    with a webbing hanger strip at the top"""
+    m = K.RU_MATS if fac == 'ru' else K.UA_MATS
+    if fac == 'ru':
+        y_top, L, w_top, w_bot = K.RU_VEST['bottom'] + 0.022, 0.235, 0.25, 0.135
+    else:
+        y_top, L, w_top, w_bot = 1.105, 0.235, 0.23, 0.145
+    y_bot = y_top - L
+    zc = float(env.zcen(0.95))
+    nu, nv = 9, 10
+    ys = np.linspace(y_top, y_bot, nv)
+    probe = np.radians(np.linspace(-38, 38, 15))
+    rr = []
+    for y in ys:
+        o = np.array([0.0, y, zc]); best = 0.0
+        for a in probe:
+            r = _ray_r(env.trees, o, np.array([np.sin(a), 0, np.cos(a)]), default=0.0)
+            best = max(best, r * np.cos(a))          # forward-most body surface (belly, then the fronts of the thighs)
+        rr.append(best)
+    rr = np.array(rr)
+    if y_top > 0.93:     # over the vest / belt: at least the envelope front + the vest section
+        rr[ys > 0.93] = np.maximum(rr[ys > 0.93], env.r(ys[ys > 0.93], 0.0) + (0.03 if fac == 'ru' else 0.012))
+    rr = np.convolve(np.pad(rr, 2, mode='edge'), np.ones(5) / 5, mode='valid')
+    tt = (y_top - ys) / L
+    rr = rr + 0.010 + 0.012 * tt                    # hangs slightly off the thighs, more toward the bottom
+    outer, inner = [], []
+    thick = 0.013
+    for j, (y, r, t) in enumerate(zip(ys, rr, tt)):
+        hw = 0.5 * (w_top + (w_bot - w_top) * t ** 0.8)
+        for i, u in enumerate(np.linspace(-1, 1, nu)):
+            a = u * hw / r
+            d = np.array([np.sin(a), 0.0, np.cos(a)])
+            e = min(1.0, (1 - abs(u)) * hw / 0.012, (min(t, 1 - t) * L) / 0.012 + 0.15)
+            base = np.array([0.0, y, zc]) + d * r
+            inner.append(base); outer.append(base + d * (0.002 + thick * max(np.sqrt(max(e, 0)), 0.12)))
+    outer = np.array(outer); inner = np.array(inner)
+    n = nu * nv
+    Tg = G.grid_tris(nu, nv)
+    T = [Tg, Tg[:, ::-1] + n]
+    ring = [(0, i) for i in range(nu)] + [(jj, nu - 1) for jj in range(1, nv)] + [(nv - 1, i) for i in range(nu - 2, -1, -1)] + [(jj, 0) for jj in range(nv - 2, 0, -1)]
+    ids = [jj * nu + i for jj, i in ring]
+    rim = []
+    for k in range(len(ids)):
+        p_, q_ = ids[k], ids[(k + 1) % len(ids)]
+        rim += [[p_ + n, q_ + n, q_], [p_ + n, q_, p_]]
+    T.append(np.array(rim))
+    pos = np.concatenate([outer, inner])
+    uv1 = np.stack([np.tile(np.linspace(-1, 1, nu), nv) * 0.5 * w_top * 2.0, np.repeat(ys, nu) * -2.0], 1)
+    out = [G.orient_closed(G.part(pos, np.concatenate(T), m['fabric'], np.concatenate([uv1, uv1])))]
+    # webbing hanger strip across the top + two short straps
+    Mt = PO.mat4(np.array([0.0, y_top - 0.012, zc + rr[0] + thick + 0.003]), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]))
+    out.append(PO.local_part(PO.rbox(w_top * 0.82, 0.024, 0.005, 0.002, 1), Mt, m['webbing'], 'hard'))
+    for sx in (-1, 1):
+        out.append(PO.local_part(PO.rbox(0.022, 0.05, 0.004, 0.0015, 1), Mt @ PO.T(sx * w_top * 0.3, 0.02, -0.001), m['webbing'], 'hard'))
+    for q in out:
+        q['yr'] = (y_top, y_bot)      # skinning range (build_soldier.groin_weights)
     return out
 
 

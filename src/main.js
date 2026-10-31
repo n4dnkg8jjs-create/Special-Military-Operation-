@@ -20,7 +20,7 @@ async function start(opts) {
   if (Q.has('sim')) { // headless test mode: simulate N seconds, render one frame, report
     window.__done = false;
     const total = +Q.get('sim'); game.noRender = true; const cam = Q.get('cam');
-    if (cam) { if (cam !== 'fight') { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
+    if (cam) { if (!/^(fight|atgm|fpv)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
     if (Q.get('sel')) hud.select([game.playerUnits[+Q.get('sel')]]);
     if (!Q.has('deploy')) game.startBattle();
     if (Q.has('fire')) { const [fx, fz] = Q.get('fire').split(',').map(Number); game.fx.emitter(new THREE.Vector3(fx, 0, fz), 'fire', 1.3, 999); }
@@ -33,6 +33,7 @@ async function start(opts) {
       for (const e of game.squads) if (e.side === 'enemy' && !e.mounted && !e.destroyed) for (const p of game.squads) if (p.side === 'player' && !p.mounted && !p.destroyed) { const d = e.center().distanceTo(p.center()); if (d < bd) { bd = d; best = [e.center(), p.center()]; } }
       if (best) { const m = best[0].clone().lerp(best[1], 0.35); game.cam.lookAt(m.x, m.z); game.cam.tDist = +(Q.get('dist') || 38); game.cam.tYaw = Math.atan2(best[1].x - best[0].x, best[1].z - best[0].z) + 0.5; game.cam.tPitch = 0.45; }
     }
+    if (cam === 'atgm' || cam === 'fpv') { const q = game.squads.find(s => s.side === 'player' && s.kind === cam); if (q) { const c = (q.effective[0] || q.soldiers[0]).pos; game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 9); game.cam.tYaw = +(Q.get('yaw') || 2.8); game.cam.tPitch = 0.35; } }
     for (let i = 0; i < 40; i++) game.cam.update(0.05);
     if (Q.has('nofx')) { game.fx.smoke.mesh.visible = false; game.fx.glow.mesh.visible = false; }
     if (Q.has('nofog')) game.scene.fog.density = 0;
@@ -45,7 +46,7 @@ async function start(opts) {
     window.__info = { renderMs: Math.round(renderMs), calls: Math.round(ri.render.calls / 3), tris: Math.round(ri.render.triangles / 3), programs: ri.programs?.length, simMs: Math.round(performance.now() - t0), time: Math.round(game.time), over: game.over, result: game.result?.title,
       objectives: game.objectives.map(o => `${o.id}:${o.owner}:${Math.round(o.control)}`),
       player: game.stats.player, enemy: game.stats.enemy, squads: game.squads.map(s => `${s.side[0]}${s.effective.length}/${Math.round(s.morale)}${s.routing ? 'R' : ''}${s.mounted ? 'M' : ''}`).join(' '),
-      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
+      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
     window.__done = true; return;
   }
   let last = performance.now();

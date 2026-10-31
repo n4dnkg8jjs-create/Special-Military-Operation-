@@ -91,14 +91,8 @@ export class Soldier {
       this.actions = {}; this.cur = null;
       this.spine = m.getObjectByName('Spine1') || m.getObjectByName('Spine') || m.getObjectByName('spine_02');
       this.sockets = { R: m.getObjectByName('weapon_socket'), L: m.getObjectByName('weapon_socket_L'), back: m.getObjectByName('weapon_socket_back'), mag: m.getObjectByName('mag_socket_L') };
-      const wg = A.gltf[WEAPON_ASSET[this.weaponKey]] || A.gltf.ak74m;
-      if (this.sockets.R && wg) {
-        const w = wg.scene.clone(); this.sockets.R.add(w); this.weaponObj = w; this.muzzleObj = w.getObjectByName('muzzle');
-        this.wLod = [[], []]; w.traverse(o => { if (o.isMesh) (/_LOD1$/i.test(o.name) ? this.wLod[1] : this.wLod[0]).push(o); }); for (const o of this.wLod[1]) o.visible = false; if (!this.wLod[1].length) this.wLod = null;
-        w.traverse(o => { if (o.isMesh) o.castShadow = true; });
-        this.mag = w.getObjectByName('magazine'); if (this.mag) { this.magHome = { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() }; }
-        this.wSock = 'R';
-      }
+      this.attachWeapon();
+      this.attachSupportKit();
       if (A.gltf.rpg22 && this.rpg22) this.rpg22Tpl = A.gltf.rpg22.scene;
       if (this.sideKey && A.gltf[this.sideKey]) { const back = m.getObjectByName('weapon_socket_back'); if (back) back.add(A.gltf[this.sideKey].scene.clone()); }
       this.play('idle_rifle', 0);
@@ -107,18 +101,69 @@ export class Soldier {
     }
     this.scene.add(root);
   }
+  attachWeapon() {
+    const A = SHARED.assets, wg = A.gltf[WEAPON_ASSET[this.weaponKey]] || A.gltf.ak74m;
+    if (!this.sockets?.R || !wg) return;
+    const w = wg.scene.clone(); this.sockets.R.add(w); this.weaponObj = w; this.muzzleObj = w.getObjectByName('muzzle');
+    this.wLod = [[], []]; w.traverse(o => { if (o.isMesh) (/_LOD1$/i.test(o.name) ? this.wLod[1] : this.wLod[0]).push(o); }); for (const o of this.wLod[1]) o.visible = false; if (!this.wLod[1].length) this.wLod = null;
+    w.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    this.mag = w.getObjectByName('magazine'); this.magHome = this.mag ? { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() } : null;
+    this.wSock = 'R'; this.far = undefined;
+  }
+  // swap the carried weapon (ATGM survivor leaving the launcher and drawing his Makarov)
+  setWeapon(wk) {
+    if (this.weaponKey === wk || !WEAPONS[wk]) return;
+    this.weaponKey = wk; this.weapon = WEAPONS[wk]; this.inMag = this.weapon.mag; this.mags = 2; this.reloadT = 0; this.sideKey = null;
+    if (this.weaponObj) this.weaponObj.parent?.remove(this.weaponObj);
+    this.weaponObj = null; this.muzzleObj = null; this.mag = null; this.wLod = null; this.wSock = null;
+    if (!this.dropped) this.attachWeapon();
+    for (const o of this.kitObjs || []) if (o.userData.atgmKit) o.parent?.remove(o);
+    this.curName = null;
+  }
+  // ATGM tubes on the bearer's / loader's back, FPV goggles on the pilot, controller carried on the chest
+  attachSupportKit() {
+    const A = SHARED.assets, r = this.role, m = this.model; this.kitObjs = [];
+    const node = (gk, n) => { const g = A.gltf[gk]; const o = g && (n ? g.scene.getObjectByName(n) : g.scene); return o ? o.clone(true) : null; };
+    const put = (o, sock, pos, rot, tag) => { if (!o || !sock) return null; o.traverse(x => { if (x.isMesh) { x.castShadow = true; if (/_LOD1$/i.test(x.name)) x.visible = false; } }); o.position.set(...pos); o.rotation.set(...rot); o.userData[tag] = true; sock.add(o); this.kitObjs.push(o); return o; };
+    const back = this.sockets.back || m.getObjectByName('Spine2') || m.getObjectByName('Spine1');
+    if (r.atgm === 'bearer' || r.atgm === 'loader') {
+      const tn = this.faction.id === 'RU' ? 'tube_kornet' : 'tube_stugna';
+      const n = r.atgm === 'bearer' ? 2 : 1;
+      for (let i = 0; i < n; i++) put(node('atgm_tube_carried', tn) || this.tubeStandIn(), back, [i ? 0.1 : -0.1, 0.05, -0.12], [0, 0, i ? 0.12 : -0.12], 'atgmKit');
+    }
+    if (r.atgm === 'gunner') put(node(this.faction.id === 'RU' ? 'kornet' : 'stugna', this.faction.id === 'RU' ? 'kornet_folded' : 'stugna_folded'), back, [0, 0.05, -0.15], [0, 0, 0], 'atgmKit');
+    if (r.fpv === 'pilot') {
+      const head = m.getObjectByName('Head') || m.getObjectByName('head');
+      const dk = new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.55 });
+      let gog = node('fpv_goggles'), ha = gog?.getObjectByName('head_attach');
+      if (!gog) { // stand-in goggles: visor box + strap
+        gog = new THREE.Group(); const v = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.07, 0.08), dk); v.position.set(0, 0.09, 0.1); gog.add(v);
+        const st = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.008, 4, 16), dk); st.rotation.x = Math.PI / 2; st.position.set(0, 0.09, 0.0); gog.add(st);
+      }
+      if (head) put(gog, head, ha ? ha.position.clone().negate().toArray() : [0, 0, 0], [0, 0, 0], 'fpvKit');
+      let ctl = node('fpv_controller');
+      if (!ctl) { // stand-in radio: body, two sticks, antenna
+        ctl = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.11), dk); ctl.add(b);
+        for (const x of [-0.05, 0.05]) { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.04, 5), dk); k.position.set(x, 0.035, 0); ctl.add(k); }
+        const an = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.12, 4), dk); an.position.set(0.07, 0.04, 0.05); an.rotation.x = -0.6; ctl.add(an);
+      }
+      this.fpvController = put(ctl, this.sockets.R, [0, 0, 0], [0, 0, 0], 'fpvKit'); if (this.fpvController) this.fpvController.visible = false;
+    }
+  }
+  tubeStandIn() { const g = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 1.2, 10), new THREE.MeshStandardMaterial({ color: 0x4b5039, roughness: 0.8 })); g.rotation.x = 0; return g; }
   // ------------------------------------------------------------ animation
   action(name) {
     if (!this.mixer) return null;
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
   play(name, fade = 0.25, timeScale = 1, alt = []) {
     if (this.weaponKey === 'pm' && PISTOL_CLIP[name] && this.action(PISTOL_CLIP[name])) name = PISTOL_CLIP[name];
+    const asked = name;
     let a = this.action(name);
     for (let i = 0; !a && i < alt.length; i++) { name = alt[i]; a = this.action(name); }
     if (!a) return;
@@ -131,7 +176,7 @@ export class Soldier {
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
       if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000));
-      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded)/.test(name) ? 'back' : 'R');
+      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
     }
   }
   // RPG-22: shoulder a disposable launcher, fire, throw the empty tube away
@@ -190,6 +235,9 @@ export class Soldier {
     else if (this.hitT > 0) { clip = 'hit_react'; }
     else if (this.throwT > 0) { clip = this.throwWindow ? 'throw_grenade_window' : 'throw_grenade'; alt = ['throw_grenade']; }
     else if (this.stackT > 0) { clip = 'cqb_stack'; alt = ['crouch_idle']; }
+    else if (this.dodgeT > 0) { clip = 'dodge_dive'; alt = ['pinned_prone', 'prone_idle']; }
+    else if (this.supportClip && sp < 0.15) { clip = this.supportClip; alt = this.supportAlt || ['crouch_idle']; }
+    else if (this.droneAlertT > 0 && sp < 0.15 && !this.ducking && this.weaponKey !== 'rpg7') { clip = 'drone_shoot'; alt = ['aim_stand']; }
     else if (sp > 0.15) {
       if (st === 'prone') { clip = 'prone_crawl'; alt = ['crouch_walk']; }
       else if (this.state === 'light' && this.legWound) clip = 'limp_walk';
@@ -225,7 +273,8 @@ export class Soldier {
     if (this.peek && this.target && this.state !== 'dead') { this.peekT = (this.peekT ?? 0) - dt; if (this.peekT <= 0) { this.peekOut = !this.peekOut; this.peekT = this.peekOut ? 1.5 + Math.random() * 1.5 : 0.9 + Math.random() * 1.3; } }
     else { this.peekOut = false; if (!this.target || this.vel.lengthSq() > 0.2) this.peek = 0; }
     this.peekAmt = (this.peekAmt || 0) + (((this.peek && this.peekOut) ? 1 : 0) - (this.peekAmt || 0)) * Math.min(1, dt * 6);
-    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.hatchT = Math.max(0, (this.hatchT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt);
+    this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.hatchT = Math.max(0, (this.hatchT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt); this.dodgeT = Math.max(0, (this.dodgeT || 0) - dt); this.droneAlertT = Math.max(0, (this.droneAlertT || 0) - dt);
+    if (this.fpvController) { const on = this.supportClip === 'fpv_pilot'; if (this.fpvController.visible !== on) this.fpvController.visible = on; }
   }
   sync() {
     this.root.position.copy(this.pos);

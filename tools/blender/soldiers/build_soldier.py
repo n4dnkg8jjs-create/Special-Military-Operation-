@@ -1,7 +1,10 @@
 """Stage 2: soldier GLBs (soldier_ru.glb / soldier_ua.glb) from build/soldiers/body.pkl.
 Also usable as a library (build(...)) for test assemblies with animations.
 
-run: nice -n 10 python3 tools/blender/soldiers/build_soldier.py
+run: nice -n 10 python3 tools/blender/soldiers/build_soldier.py [ru] [ua]
+then: WebP textures (GT=/tmp/gt/node_modules/.bin/gltf-transform; $GT webp soldier_<fac>.glb out.glb --quality 88, see tools/optimize_assets.sh)
+      and the manifest entries: python3 tools/blender/soldiers/weapons_manifest.py <weapons...> --soldiers
+mag_socket_L is derived from the reload clip in assets/soldiers/soldier_anims.glb (mag_out event), so build the anims first.
 """
 import os, sys, pickle, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -72,13 +75,18 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             p['W'] = W
         elif grp.startswith('helmet') or grp == 'headset':
             W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Head']] = 1; p['W'] = W
-        elif grp in ('armor_arms', 'elbowpads'):
+        elif grp == 'armor_arms':
+            sd = p.get('side') or ('Left' if p['pos'][:, 0].mean() > 0 else 'Right')
+            p['W'] = deltoid_weights(rig_sk, p['pos'], sd)
+        elif grp == 'elbowpads':
             W = np.zeros((len(p['pos']), rig_sk.n), np.float32)
             sd = p.get('side') or ('Left' if p['pos'][:, 0].mean() > 0 else 'Right')
-            W[:, idx[sd + ('Arm' if grp == 'armor_arms' else 'ForeArm')]] = 1
+            W[:, idx[sd + 'ForeArm']] = 1
             p['W'] = W
         elif grp == 'armor_groin':
-            W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Hips']] = 1; p['W'] = W
+            p['W'] = groin_weights(rig_sk, p['pos'], p.get('yr'))
+        elif grp == 'vest' or grp.startswith('crew_vest'):
+            p['W'] = vest_weights(rig_sk, p['pos'], ref_pos, ref_W)
         elif grp.startswith('backpack') or grp == 'pouches_back':
             # the pack body rides on the chest only (not the clavicles, or it swings when an arm is raised);
             # shoulder straps in front keep following the clavicles
@@ -115,6 +123,53 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             for p in body:
                 p['W'] = np.repeat(w[None], len(p['pos']), 0)
     return parts
+
+
+TRUNK_BONES = ('Hips', 'LowerBack', 'Spine', 'Spine1')
+
+
+def _sstep(a, b, x):
+    t = np.clip((x - a) / (b - a), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def vest_weights(sk, pos, ref_pos, ref_W):
+    """plate carrier / soft vest: rides on the trunk chain only (no clavicle / arm / neck influence -> the panels cannot
+    flare out when the arms are raised); only the shoulder straps and the top corners on the trapezius follow the clavicle
+    at most half-way so the shoulder does not push through them"""
+    idx = sk.idx
+    Wt = AS.nearest_weights(pos, ref_pos, ref_W, k=10, bones_allowed=TRUNK_BONES, bone_idx=idx)
+    Ws = AS.nearest_weights(pos, ref_pos, ref_W, k=10, bones_allowed=TRUNK_BONES + ('LeftShoulder', 'RightShoulder'), bone_idx=idx)
+    f = 0.5 * _sstep(1.385, 1.445, pos[:, 1]) * _sstep(0.035, 0.075, np.abs(pos[:, 0]))
+    return (Wt * (1 - f[:, None]) + Ws * f[:, None]).astype(np.float32)
+
+
+def groin_weights(sk, pos, yr=None):
+    """groin protector: the top (hung from the vest / belt) is rigid with the pelvis; the lower flap blends to the average of
+    both thighs (85 % at the bottom edge): it is lifted / pushed forward when the legs swing up instead of being pierced by them"""
+    idx = sk.idx
+    W = np.zeros((len(pos), sk.n), np.float32)
+    y0, y1 = yr if yr is not None else (pos[:, 1].max(), pos[:, 1].min())
+    t = _sstep(0.12, 1.0, (y0 - pos[:, 1]) / max(y0 - y1, 1e-6)) * 0.85
+    W[:, idx['Hips']] = 1 - t
+    W[:, idx['LeftUpLeg']] = t / 2
+    W[:, idx['RightUpLeg']] = t / 2
+    return W
+
+
+def deltoid_weights(sk, pos, side):
+    """shoulder protector (deltoid pad): rigid with the upper arm, the top edge (sewn to the vest's shoulder strap) shares
+    the clavicle so it does not lift off the strap / dig into the neck when the arm is raised"""
+    idx = sk.idx
+    a, j = sk.head[idx[side + 'Shoulder']], sk.head[idx[side + 'Arm']]
+    b = sk.head[idx[side + 'ForeArm']]
+    ax = (b - j) / np.linalg.norm(b - j)
+    s = (pos - j) @ ax                        # distance down the upper arm from the shoulder joint
+    f = 0.45 * (1 - _sstep(-0.02, 0.05, s))
+    W = np.zeros((len(pos), sk.n), np.float32)
+    W[:, idx[side + 'Arm']] = 1 - f
+    W[:, idx[side + 'Shoulder']] = f
+    return W
 
 
 def head_fit(R):
@@ -160,9 +215,18 @@ def make_gear(R, fac, env, which=None):
     return parts
 
 
+ARM_BONES = ('LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand')
+
+
 def envelope(R):
+    """torso envelope of the three body variants.  The radius table ignores the arms (triangles mostly weighted to the
+    arm bones), so vest panels at armpit / shoulder height hug the chest and shoulder blades (no flare onto the deltoids)"""
     U = R['uniform']
-    env = G.Envelope([(R['variants'][v]['uniform_pos'], U['tri']) for v in 'ABC'])
+    sk = R['skel']
+    wa = U['W'][:, [sk.idx[b] for b in ARM_BONES]].sum(1)
+    trunk = U['tri'][(wa[U['tri']] < 0.35).all(1)]
+    env = G.Envelope([(R['variants'][v]['uniform_pos'], U['tri']) for v in 'ABC'],
+                     r_meshes=[(R['variants'][v]['uniform_pos'], trunk) for v in 'ABC'])
     env.smooth()
     return env
 
@@ -176,15 +240,15 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
     alb, nrm = T[key]
     uname = {('ru', 'camo'): 'emr_camo', ('ua', 'camo'): 'mm14_camo', ('ua', 'multicam'): 'mm14_multicam_camo'}[key]
     if uname not in mats_cache:
-        # EMR: colour factor 1 (the 0.5 grey default halved the camo's brightness in game: the light EMR ground rendered as a dark
-        # woodland-like olive; the crew EMR coverall already used 1).  (MM-14 keeps the old factor: UA unchanged)
-        col = (1, 1, 1, 1) if uname == 'emr_camo' else (0.5, 0.5, 0.5, 1)
-        mats_cache[uname] = g.material(uname, color=col, base_tex=g.image(alb, quality=86), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
+        # colour factor 1 for every textured material (gltfw's default factor is 0.5 sRGB = 0.21 linear, which darkened the camo
+        # and skin to ~1/5 brightness in game: EMR rendered as a dark woodland olive, MM-14 / multicam even darker, faces and
+        # hands dark brown).  The crew coveralls already used 1.
+        mats_cache[uname] = g.material(uname, color=(1, 1, 1, 1), base_tex=g.image(alb, quality=86), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
     mu = mats_cache[uname]
     ha, _ = T[('head', vn)]
-    ms = g.material('skin_' + vn, base_tex=g.image(ha, quality=88), roughness=0.55)
+    ms = g.material('skin_' + vn, color=(1, 1, 1, 1), base_tex=g.image(ha, quality=88), roughness=0.55)
     if 'eye' not in mats_cache:
-        mats_cache['eye'] = g.material('eye', base_tex=g.image(T['eye']), roughness=0.12)
+        mats_cache['eye'] = g.material('eye', color=(1, 1, 1, 1), base_tex=g.image(T['eye']), roughness=0.12)
     prims = [dict(pos=v['uniform_pos'], nrm=v['uniform_nrm'], uv=U['uv'], idx=U['tri'], mat=mu, W=U['W']),
              dict(pos=v['head_pos'], nrm=v['head_nrm'], uv=H['uv'], idx=H['tri'], mat=ms, W=H['W'])]
     for e, ep in zip(R['eyes'], v['eyes']):
@@ -204,7 +268,7 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
         write_body(W, R, fac, vn, mc)
     # hands + gloves
     hd = R['hands']
-    mh = g.material('hands_skin', base_tex=g.image(R['tex']['hands']), roughness=0.6)
+    mh = g.material('hands_skin', color=(1, 1, 1, 1), base_tex=g.image(R['tex']['hands']), roughness=0.6)
     W.skinned('hands', [dict(pos=hd['pos'], nrm=hd['nrm'], uv=hd['uv'], idx=hd['tri'], mat=mh, W=hd['W'])], lod=0.28)
     gp = hd['pos'] + hd['nrm'] * 0.0025
     gcol = '#3a3a33' if fac == 'ru' else '#5b5040'
@@ -282,8 +346,9 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     combos = None
     if combos_on:
         bal_masks = {vn: _balaclava_mask(R, vn) for vn in 'ABC'}
+        vest_masks = _vest_masks(R, [p for p in parts if p['group'] == 'vest'], log=print)
         std, ast = presets(fac)
-        m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks)
+        m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks, vest_masks=vest_masks)
         combos = dict(combos=[d for d in m1 if not d['name'].startswith('assault_')], assault_combos=[d for d in m1 if d['name'].startswith('assault_')])
         if crew_on:
             # armoured-vehicle crew presets (crew_combo_N): own atlas, record-only parts (no per-part crew nodes)
@@ -306,25 +371,34 @@ BASE = ['boots', 'vest', 'pouches_front']
 
 
 def presets(fac):
-    """standard (combo_<n>) and assault (assault_combo_<n>) presets"""
+    """standard (combo_<n>) and assault (assault_combo_<n>) presets.  Armour add-ons: groin protector flap (armor_groin) and
+    shoulder / deltoid protectors (armor_arms) on some standard presets, on most assault presets both"""
     std_spec = [('A', 'A', 'hands', ['pouches_side'], []), ('B', 'B', 'gloves', ['pouches_side', 'backpack'], []),
                 ('C', 'A', 'gloves', ['pouches_side', 'kneepads'], ['legband_L']), ('A', 'B', 'hands', ['pouches_side', 'pouches_back', 'kneepads'], []),
                 ('B', 'A', 'gloves', ['pouches_side', 'backpack'], ['legband_L']), ('C', 'B', 'hands', ['pouches_side', 'pouches_back'], [])]
+    # per standard preset: (groin flap, shoulder protectors)
+    std_armour = {'ru': [(False, False), (False, True), (True, False), (False, False), (True, True), (False, False)],
+                  'ua': [(False, False), (False, False), (True, False), (False, False), (True, True), (False, False)]}[fac]
     std = []
     for k, (b, h, hand, extra, bands) in enumerate(std_spec):
-        parts = [f'body_{b}', f'helmet_{h}', hand] + BASE + extra + BANDS + bands
+        groin, arms = std_armour[k]
+        parts = [f'body_{b}', f'helmet_{h}', hand] + BASE + extra + BANDS + bands + (['armor_groin'] if groin else []) + (['armor_arms'] if arms else [])
         std.append(dict(name=f'combo_{k}', body=f'body_{b}', helmet=f'helmet_{h}', hands=hand, backpack='backpack' in extra,
-                        kneepads='kneepads' in extra, pouches_back='pouches_back' in extra, legband_L='legband_L' in bands, parts=parts))
-    AB = ['armor_assault', 'armor_groin', 'armor_arms', 'pouches_assault', 'elbowpads', 'kneepads', 'gloves']
+                        kneepads='kneepads' in extra, pouches_back='pouches_back' in extra, legband_L='legband_L' in bands,
+                        groin_protector=groin, shoulder_protectors=arms, parts=parts))
+    AB = ['armor_assault', 'pouches_assault', 'elbowpads', 'kneepads', 'gloves']
     if fac == 'ru':
-        as_spec = [('A', 'A', True, True, True), ('B', 'B', True, False, False), ('C', 'A', True, True, True), ('A', 'B', False, True, False)]
+        # (body, helmet, headset, balaclava, assault pack, groin, shoulders)
+        as_spec = [('A', 'A', True, True, True, True, True), ('B', 'B', True, False, False, True, True), ('C', 'A', True, True, True, True, True),
+                   ('A', 'B', False, True, False, True, False)]
         hdesc = {'A': '6B47 + NVG mount + headset', 'B': 'Altyn-style heavy steel helmet (no visor)'}
     else:
-        as_spec = [('A', 'A', True, False, True), ('B', 'B', True, True, False), ('C', 'A', True, False, True), ('A', 'B', True, True, True)]
+        as_spec = [('A', 'A', True, False, True, True, True), ('B', 'B', True, True, False, True, False), ('C', 'A', True, False, True, True, True),
+                   ('A', 'B', True, True, True, True, True)]
         hdesc = {'A': 'FAST high-cut + NVG shroud + counterweight + headset', 'B': 'MICH mid-cut + goggles + headset'}
     ast = []
-    for k, (b, h, hs, bal, pack) in enumerate(as_spec):
-        parts = [f'body_{b}', f'helmet_assault_{h}'] + BASE + AB + BANDS + ['legband_L']
+    for k, (b, h, hs, bal, pack, groin, arms) in enumerate(as_spec):
+        parts = [f'body_{b}', f'helmet_assault_{h}'] + BASE + AB + BANDS + ['legband_L'] + (['armor_groin'] if groin else []) + (['armor_arms'] if arms else [])
         if hs:
             parts.append('headset')
         if bal:
@@ -332,8 +406,40 @@ def presets(fac):
         if pack:
             parts.append('backpack_assault')
         ast.append(dict(name=f'assault_combo_{k}', body=f'body_{b}', helmet=f'helmet_assault_{h}', helmet_desc=hdesc[h], headset=hs,
-                        balaclava=bal, backpack_assault=pack, gloves=True, parts=parts))
+                        balaclava=bal, backpack_assault=pack, gloves=True, groin_protector=groin, shoulder_protectors=arms, parts=parts))
     return std, ast
+
+
+def _vest_masks(R, vest_parts, reach=0.075, log=None):
+    """uniform triangles completely covered by the plate carrier: every corner, cast outward along its normal, hits the vest
+    within `reach`, and is skinned (>= 92 %) to the trunk chain the vest itself rides on -> never visible, dropped from the
+    presets (keep-mask, True = keep)"""
+    from mathutils.bvhtree import BVHTree
+    if not vest_parts:
+        return {}
+    VP = np.concatenate([p['pos'] for p in vest_parts]); VT = []
+    off = 0
+    for p in vest_parts:
+        VT.append(p['tri'] + off); off += len(p['pos'])
+    VT = np.concatenate(VT)
+    tree = BVHTree.FromPolygons([tuple(v) for v in VP], [tuple(map(int, t)) for t in VT], all_triangles=True)
+    U = R['uniform']; sk = R['skel']
+    wt = U['W'][:, [sk.idx[b] for b in TRUNK_BONES]].sum(1)
+    lab = np.array(U['labels'])
+    torso_tri = np.char.startswith(lab, 'torso')
+    out = {}
+    for vn in 'ABC':
+        P = R['variants'][vn]['uniform_pos']; N = R['variants'][vn]['uniform_nrm']
+        cov = np.zeros(len(P), bool)
+        for i in np.where(wt >= 0.92)[0]:
+            n = N[i] / max(np.linalg.norm(N[i]), 1e-9)
+            h = tree.ray_cast(Vector(P[i] + n * 0.001), Vector(n), reach)
+            cov[i] = h[0] is not None
+        hide = cov[U['tri']].all(1) & torso_tri
+        out[vn] = ~hide
+        if log:
+            log(f'vest mask {vn}: {int(hide.sum())} of {len(hide)} uniform tris hidden under the vest')
+    return out
 
 
 def _balaclava_mask(R, vn):
@@ -344,6 +450,31 @@ def _balaclava_mask(R, vn):
     slot = (np.abs(Pc[:, 1] - ec[1]) < 0.024) & (np.abs(Pc[:, 0]) < 0.066) & (Pc[:, 2] > ec[2] - 0.04)
     low = Pc[:, 1] < lm['neck'][1] - 0.01
     return ~(slot | low)
+
+
+def mag_socket_from_reload(path=None, clip='reload_stand'):
+    """mag_socket_L = the rifle's pose relative to the left hand at the clip's mag_out event (soldier_anims.glb).  The game parents
+    the `magazine` node (gun-space geometry) to this socket with an identity transform, so the magazine then stays exactly where it
+    was in the left hand when it leaves the gun, and lands back in the well at mag_in (the reload clips hold the hand on the
+    magazine identically at both events).  Returns (t, q) in LeftHand space or None if the clip is unavailable."""
+    try:
+        import check_anims as CA
+        from qmath import qmul, qinv, qrot
+        G_ = CA.read_glb(path or f'{ASSETS}/soldier_anims.glb')
+        M = CA.Model(G_)
+        P = M.pose(clip)
+        try:     # event times live in the manifest (soldier_anims.clips.<clip>.events)
+            t_out = json.load(open(f'{ASSETS}/manifest.json'))['soldier_anims']['clips'][clip]['events']['mag_out']
+        except Exception:
+            t_out = 0.7
+        f = int(round(float(t_out) * 30))
+        iR, iL, iw = M.idx['RightHand'], M.idx['LeftHand'], M.idx['weapon_socket']
+        gq = qmul(P['gq'][f, iR], M.R[iw]); gp = P['gp'][f, iR] + qrot(P['gq'][f, iR], M.T[iw])
+        qs = qmul(qinv(P['gq'][f, iL]), gq); ts = qrot(qinv(P['gq'][f, iL]), gp - P['gp'][f, iL])
+        return np.asarray(ts, float), np.asarray(qs, float) / np.linalg.norm(qs)
+    except Exception as e:      # anims not built yet / being rewritten
+        print('mag_socket_L: reload clip unavailable, using the hand-frame fallback:', e)
+        return None
 
 
 def add_sockets(W, rig, R):
@@ -359,7 +490,10 @@ def add_sockets(W, rig, R):
     q_sock = qfrom_mat(RL.T)             # gun axes expressed in hand space
     t_sock = (HL['palm'] - HL['wrist']) - RL.T @ gl
     W.socket('weapon_socket_L', 'LeftHand', t_sock, q_sock)
-    W.socket('mag_socket_L', 'LeftHand', HL['palm'] - HL['wrist'] + HL['p'] * 0.02, qfrom_mat(HL['F'] @ np.stack([[0, 0, 1.0], [0, 1.0, 0], [-1.0, 0, 0]], 1).T))
+    ms = mag_socket_from_reload()
+    if ms is None:     # fallback (old hand-frame guess; leaves the magazine ~15 cm off the palm)
+        ms = (HL['palm'] - HL['wrist'] + HL['p'] * 0.02, qfrom_mat(HL['F'] @ np.stack([[0, 0, 1.0], [0, 1.0, 0], [-1.0, 0, 0]], 1).T))
+    W.socket('mag_socket_L', 'LeftHand', *ms)
     # slung rifle on the back: diagonal, muzzle down-left, on top of the back plate (or backpack)
     s1 = sk.head[sk.idx['Spine1']]
     from qmath import qlook

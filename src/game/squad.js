@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Soldier } from './soldier.js';
-import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, TUNING, WEAPONS } from '../config.js';
+import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING, WEAPONS } from '../config.js';
+import { AtgmTeam, FpvTeam } from './support.js';
 
 let NEXT_ID = 1;
 const V = new THREE.Vector3();
@@ -11,14 +12,16 @@ export class Squad {
     this.game = game; this.id = NEXT_ID++; this.side = side; this.faction = faction; this.name = name;
     this.type = 'squad'; this.kind = kind; this.assault = kind === 'assault';
     this.crew = kind === 'crew';
-    this.soldiers = (roles || (this.assault ? ASSAULT_ROLES : this.crew ? CREW_ROLES : SQUAD_ROLES)).map((r, i) => new Soldier(this, i, r, faction, game.scene));
+    this.soldiers = (roles || (this.assault ? ASSAULT_ROLES : this.crew ? CREW_ROLES : kind === 'atgm' ? ATGM_ROLES : kind === 'fpv' ? FPV_ROLES : SQUAD_ROLES)).map((r, i) => new Soldier(this, i, r, faction, game.scene));
     this.morale = 82; this.order = null; this.holdFire = false; this.run = false;
     this.carrier = null; this.mounted = false; this.building = null; this.routing = false;
     this.underFireT = 99; this.flankDirs = []; this.selected = false; this.spotted = side === 'player';
     this.facing = 0; this.lastPos = new THREE.Vector3(); this.thinkT = Math.random();
     this.stats = { kills: 0, kia: 0, wia: 0 };
     this.supplyRpg = 0;
+    this.support = kind === 'atgm' ? new AtgmTeam(this) : kind === 'fpv' ? new FpvTeam(this) : null;
   }
+  status() { return this.support?.status(); }
   get alive() { return this.soldiers.filter(s => s.alive); }
   get effective() { return this.soldiers.filter(s => s.effective); }
   get leader() { return this.soldiers.find(s => s.role.leader && s.effective) || this.soldiers.find(s => s.role.second && s.effective) || this.effective[0]; }
@@ -29,6 +32,8 @@ export class Squad {
     out.set(0, 0, 0); for (const s of e) out.add(s.pos); out.multiplyScalar(1 / e.length); this.lastPos.copy(out); return out;
   }
   ammoFrac() {
+    const sp = this.support;
+    if (sp) return sp.drones != null ? (sp.drones + (sp.drone ? 1 : 0)) / 3 : sp.abandoned ? 0 : (sp.ammo + (sp.loaded ? 1 : 0)) / 5;
     let have = 0, max = 0;
     for (const s of this.effective) { const w = s.weapon; have += s.mags * w.mag + s.inMag; max += (s.role.mags + 1) * w.mag; }
     return max ? have / max : 0;
@@ -241,6 +246,7 @@ export class Squad {
   }
   // ------------------------------------------------------------ per-frame
   update(dt) {
+    this.support?.update(dt);
     if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
     this.updateMorale(dt);
     this.thinkT -= dt;
