@@ -374,7 +374,8 @@ def ride_clips(rig, lm, want):
 
 
 # ------------------------------------------------------------------ dismount: from the edge seat, push off and drop ~1.8 m
-JUMP_SEAT = np.array([0.0, 1.8, -1.6])   # seat point relative to the landing root (game puts the root 1.6 m out from the seat, on the ground)
+JUMP_SEAT = np.array([0.0, 1.8, -1.6])
+GRIP_BACK = (0.86, 0.30)                 # dismount_jump: left hand back on the handguard from the balance pose (start, duration s)   # seat point relative to the landing root (game puts the root 1.6 m out from the seat, on the ground)
 
 
 def dismount_jump(rig, lm, dur=1.2):
@@ -416,6 +417,7 @@ def dismount_jump(rig, lm, dur=1.2):
     gq = rig.global_from_local(lq)
     # legs: sitting dangle -> legs reach down -> feet on the ground at touchdown -> crouch (left foot forward)
     gp = fk_global(rig.sk, gq, root)
+    legs = {}
     for side, sx in (('Left', 1), ('Right', -1)):
         ank_sit = S + EDGE_FEET['ankle'] * [sx, 1, 1]
         ank_air = root + np.array([sx * 0.13, -0.80, 0.10])
@@ -438,7 +440,15 @@ def dismount_jump(rig, lm, dur=1.2):
             wf = smooth(np.clip((tt - 0.3) / (t_td - 0.3), 0, 1))
             fq[f] = qslerp(fsit, qeuler(35, -6 * sx, 0, order='YXZ'), smooth(np.clip((tt - 0.3) / 0.3, 0, 1))) if tt < t_td - 0.06 else \
                 qslerp(qeuler(35, -6 * sx, 0, order='YXZ'), fl, smooth(np.clip((tt - (t_td - 0.06)) / 0.1, 0, 1)))
+        legs[side] = (ank, pole, fq)
+    # after touchdown the pelvis was a little too high for the planted landing feet (right foot hung 2 cm above the ground)
+    land = (t >= t_td - 0.02).astype(float)
+    root, _ = A.fit_root_to_feet(rig, gq, root, {sd: legs[sd][0] * land[:, None] + fk_global(rig.sk, gq, root)[:, I[sd + 'UpLeg']] * (1 - land[:, None])
+                                                 for sd in legs})
+    for side in legs:
+        ank, pole, fq = legs[side]
         gq = leg_to(rig, gq, root, side, ank, pole, foot_q=fq)
+    gq, _ = A.lift_feet(rig, gq, root, smooth_n=0)   # toes out of the ground just before touchdown (exact: no lift spill onto the planted frames)
     # arms: right hand keeps the rifle at the chest (port), left hand: on the handguard -> pushes on the deck -> balance -> handguard
     port_p = np.array([-0.10, 1.13, 0.27]); port_q = qeuler(22, 35, -15, order='YXZ')
     gun_q, gun_p = A.gun_in_chest(rig.sk, gq, root, port_p, port_q)
@@ -447,17 +457,27 @@ def dismount_jump(rig, lm, dur=1.2):
     RLg = qfrom_mat(rig.gunL @ HL['F'].T)
     grip_t = gun_p + qrot(gun_q, np.broadcast_to(A.GUN['ak74m']['grip_L'] + [0, -0.018, 0], (F, 3)))
     grip_r = qmul(gun_q, np.broadcast_to(RLg, (F, 4)))
-    deck_t = np.broadcast_to(S + [0.25, 0.012, -0.08], (F, 3)).copy()
+    # deck push beside the hip (the old spot 8 cm behind the seat was out of reach once the trunk leaned forward: the palm
+    # hung ~9 cm above the deck), released as the body leaves the seat
+    deck_t = np.broadcast_to(S + [0.25, 0.012, 0.17], (F, 3)).copy()
     deck_r = np.broadcast_to(hand_q(rig, 'Left', np.array([0.15, 0, 1.0]), np.array([0, 1.0, 0])), (F, 4)).copy()
     bal_t = gpos[:, I['LeftArm']] + np.array([0.32, -0.12, 0.25])
     bal_r = np.broadcast_to(hand_q(rig, 'Left', np.array([0.6, -0.2, 0.8]), np.array([0, -1.0, 0.2])), (F, 4)).copy()
-    w_deck = smooth(np.clip((t - 0.12) / 0.14, 0, 1)) * (1 - smooth(np.clip((t - 0.42) / 0.1, 0, 1)))
-    w_bal = smooth(np.clip((t - 0.42) / 0.1, 0, 1)) * (1 - smooth(np.clip((t - 0.95) / 0.2, 0, 1)))
-    w_grip = 1 - np.maximum(w_deck, w_bal)
+    w_deck = smooth(np.clip((t - 0.10) / 0.12, 0, 1)) * (1 - smooth(np.clip((t - 0.32) / 0.16, 0, 1)))
+    w_bal = smooth(np.clip((t - 0.38) / 0.22, 0, 1)) * (1 - smooth(np.clip((t - GRIP_BACK[0]) / GRIP_BACK[1], 0, 1)))
+    # weights must sum to 1 (the old grip weight 1 - max(deck, bal) made them sum to 1.5 at the deck->balance crossover: the
+    # palm target shot 0.7 m up for two frames, a 109 deg forearm pop, and the hand ended up to 0.25 m off its targets)
+    w_bal = np.minimum(w_bal, 1 - w_deck)
+    w_grip = 1 - w_deck - w_bal
     ltgt = grip_t * w_grip[:, None] + deck_t * w_deck[:, None] + bal_t * w_bal[:, None]
     lrot = np.array([qslerp(qslerp(grip_r[f], deck_r[f], w_deck[f] / max(w_deck[f] + w_grip[f], 1e-6)), bal_r[f], w_bal[f]) for f in range(F)])
+    # left elbow points back / out while the palm pushes on the deck behind the shoulder (a fixed pole let the elbow plane
+    # swing 28 deg per frame as the trunk passed over the planted hand)
+    poleL = gpos[:, I['LeftArm']] + np.outer(1 - w_deck, [0.5, -0.5, -0.1]) + np.outer(w_deck, [0.45, 0.1, -0.6])
     gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=ltgt, left_rot=lrot,
-                               poleR=gpos[:, I['RightArm']] + [-0.4, -0.6, -0.2], poleL=gpos[:, I['LeftArm']] + [0.5, -0.5, -0.1])
+                               poleR=gpos[:, I['RightArm']] + [-0.4, -0.6, -0.2], poleL=poleL)
+    # the free left arm (deck push -> balance) swings through a few frames: smooth it while it is off the rifle
+    gq2 = A.smooth_locals(rig, gq2, ('LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand'), 1.8, 1 - np.maximum(w_grip, w_deck) ** 2)
     return to_clip('dismount_jump', rig, gq2, root, False, root_motion=True,
                    notes=f'push off from the edge seat and drop {S[1]:.1f} m, land in a crouch; root motion kept (vertical AND horizontal): the clip starts with '
                          f'the seat point at {S.tolist()} relative to the root, i.e. the game places the root on the ground {abs(S[2]):.1f} m out from the seat '
@@ -465,11 +485,30 @@ def dismount_jump(rig, lm, dur=1.2):
                    events={'leave_seat': t_off, 'touchdown': t_td, 'seat_offset_from_root': S.tolist()})
 
 
+def kneel_root(rig, gq, root, spec):
+    """move the pelvis back (z) so the right thigh exactly reaches the kneeling knee: lowering the hips then sits them back
+    toward the heel instead of pushing the knee along the ground"""
+    I = rig.I; sk = rig.sk
+    K = np.asarray(spec['knee'], float)
+    L1 = np.linalg.norm(sk.head[I['RightLeg']] - sk.head[I['RightUpLeg']])
+    hip = fk_global(sk, gq, root)[:, I['RightUpLeg']]
+    d2 = L1 ** 2 - (hip[:, 0] - K[0]) ** 2 - (hip[:, 1] - K[1]) ** 2
+    hz = K[2] - np.sqrt(np.maximum(d2, 0))
+    root = root.copy()
+    root[:, 2] += np.where(d2 > 0, hz - hip[:, 2], 0)
+    return root
+
+
 # ------------------------------------------------------------------ wounded / medical
 DRAG_HANDLE_REST = np.array([0.0, 1.445, -0.155])    # drag handle at the top of the back plate (bind pose, carried by Spine1)
 DRAG = dict(handle_w=np.array([0.0, 0.50, 0.42]),     # handle in the casualty's root frame (head towards +Z)
             gap=1.0)                                  # game: casualty root = dragger root + 1.0 m along the dragger's facing
 DRAG['handle_d'] = np.array([0.0, DRAG['handle_w'][1], DRAG['gap'] - DRAG['handle_w'][2]])   # same point in the dragger's frame
+
+
+def pulse_(t, t0, rise, fall):
+    up = smooth(np.clip((t - t0) / max(rise, 1e-6), 0, 1))
+    return up * (1 - smooth(np.clip((t - t0 - rise) / max(fall, 1e-6), 0, 1)))
 
 
 def lying_q(head_dir, front_dir):
@@ -518,7 +557,9 @@ def wounded_ground(rig, dur=6.0):
     root[:] = [0, 0.15, 0]
     gq = rig.global_from_local(lq)
     gq_tmp = gq
-    root = ground_clamp(rig, gq, root, clear={'Spine1': 0.13, 'Hips': 0.11, 'Head': 0.10})
+    # on the ground (the old clamp ran on the un-posed arms and lifted the body up to 8 cm off the floor)
+    root = A.settle_ground(rig, gq, root, vest=0.015, arms=False, legs=False, loop=True)
+    gq, _ = A.lift_feet(rig, gq, root, loop=True)
     # hands: right presses the lower belly (both palms when not reaching), left reaches up for help
     belly = bone_pt(rig, gq, root, 'Hips', np.array([-0.06, 1.01, 0.15]))
     belly2 = bone_pt(rig, gq, root, 'Hips', np.array([-0.02, 1.05, 0.165]))
@@ -543,6 +584,7 @@ def wounded_ground(rig, dur=6.0):
         i = I[b]
         lq[:, i] = np.array([qslerp(lqL[f, i], lqO[f, i], reach[f]) for f in range(F)])
     gq = rig.global_from_local(lq)
+    gq, _ = A.lift_feet(rig, gq, root, loop=True)
     return to_clip('wounded_ground', rig, gq, root, True,
                    notes='on the back, half rolled to the left, right hand pressing a belly wound, left knee drawn up, rocking, head lifting & looking around, '
                          'left arm reaches up for help (2.4-4.0 s); no weapon (sling it: weapon_socket_back, or drop)',
@@ -583,9 +625,11 @@ def wounded_crawl(rig, pq, pr, dur=2.0, speed=0.24):
     # forearms on the ground: each arm reaches forward (0.45 s) then pulls back while planted
     for side, sgn, phs in (('Left', 1, 0.0), ('Right', -1, 0.5)):
         u = (t / dur + phs) % 1.0
-        T_r = 0.25
+        # reach phase 35 % (was 25 %: the palm stride of 0.36 m pulled the hand back past full arm extension, the IK clamped and
+        # the elbow snapped 33 deg when the reach began); hand placed further forward
+        T_r = 0.35
         stride = speed * dur * (1 - T_r)
-        z_front = 0.40; z_back = z_front - stride
+        z_front = 0.46; z_back = z_front - stride
         reach_w = smooth(np.clip(u / T_r, 0, 1))
         z = np.where(u < T_r, z_back + (z_front - z_back) * reach_w, z_front - (z_front - z_back) * (u - T_r) / (1 - T_r))
         y = 0.035 + np.where(u < T_r, 0.07 * np.sin(np.pi * u / T_r), 0.0)
@@ -598,6 +642,7 @@ def wounded_crawl(rig, pq, pr, dur=2.0, speed=0.24):
     for side in ('Left', 'Right'):
         rig.finger_curl(lq, side, 45, 55, 15)
     gq = rig.global_from_local(lq)
+    gq, _ = A.lift_feet(rig, gq, root, loop=True)
     return to_clip('wounded_crawl', rig, gq, root, True, speed,
                    notes='belly crawl on the forearms/elbows (arms alternate reach & pull), left leg pushes, right leg dead (foot rolled out) and dragged; no weapon')
 
@@ -612,14 +657,14 @@ def being_dragged(rig, dur, steps=2):
     lq, root = rig.rest(F)
     a_p = 24.0
     q_h = lying_q([0, np.sin(np.radians(a_p)), np.cos(np.radians(a_p))], [0, np.cos(np.radians(a_p)), -np.sin(np.radians(a_p))])
-    sway = 4 * np.sin(np.pi * steps * t / dur * 0.5 + 0.3)
+    sway = 4 * np.sin(2 * np.pi * t / dur + 0.3)       # one full period per loop (was half a period: 1.5 deg seam mismatch)
     for f in range(F):
         lq[f, I['Hips']] = qmul(q_h, qaxis([0, 1.0, 0], np.radians(sway[f] * 0.6)))
     pose = dict(LowerBack=(12, 0, 0), Spine=(12, 0, 0), Spine1=(8, 0, 0), Neck=(-22, 0, 8), Head=(-18, 10, 6),
                 LeftUpLeg=(-18, -6, 8), LeftLeg=(10, 0, 0), RightUpLeg=(-16, 8, -10), RightLeg=(8, 0, 0))
     for b, e in pose.items():
         lq[:, I[b]] = qeuler(*e, order='YXZ')[None]
-    add_euler(rig, lq, 'Head', -8 * bob, 6 * np.sin(np.pi * steps * t / dur * 0.5), 4 * bob)
+    add_euler(rig, lq, 'Head', -8 * bob, 6 * np.sin(2 * np.pi * t / dur), 4 * bob)
     add_euler(rig, lq, 'Neck', -4 * bob, 0, 0)
     add_euler(rig, lq, 'LeftUpLeg', 3 * bob, 0, 2 * bob)
     add_euler(rig, lq, 'RightUpLeg', 2 * bob, 0, -2 * bob)
@@ -631,16 +676,18 @@ def being_dragged(rig, dur, steps=2):
     root = target - hp0
     # heels dragging on the ground, feet fallen outward
     gp = fk_global(rig.sk, gq, root)
-    for side, sgn in (('Left', 1), ('Right', -1)):
+    # NB: lying head-first on the back toward +Z the casualty's LEFT is world -X (the old code used +X for the left side: the legs
+    # crossed at the knees and both arms crossed under the back - right elbow 6 cm inside the torso)
+    for side, sgn in (('Left', -1), ('Right', 1)):
         hz = gp[:, I['Hips'], 2]
         ank = np.stack([gp[:, I['Hips'], 0] + sgn * 0.19, 0.085 + 0.004 * bob, hz - 0.80], 1)
-        fq = qmul(qaxis([0, 0, 1.0], np.radians(-sgn * 38)), qeuler(-98, 0, 0, order='YXZ'))
+        fq = qmul(qaxis([0, 0, 1.0], np.radians(-sgn * 38)), qeuler(-98, 0, 0, order='YXZ'))   # (world side) feet fall outward
         gq = leg_to(rig, gq, root, side, ank, gp[:, I[side + 'UpLeg']] + np.array([sgn * 0.1, 0.6, -0.3]), foot_q=fq)
     # trailing arms: limp, hands on the ground beside / behind the hips, knuckles dragging
     gp = fk_global(rig.sk, gq, root)
     hips_p = gp[:, I['Hips']]
-    for side, sgn in (('Left', 1), ('Right', -1)):
-        palm = np.stack([hips_p[:, 0] + sgn * 0.34, 0.035 + 0 * t, hips_p[:, 2] + 0.02 - 0.03 * bob], 1)
+    for side, sgn in (('Left', -1), ('Right', 1)):        # world-x side (see above)
+        palm = np.stack([hips_p[:, 0] + sgn * 0.36, 0.035 + 0 * t, hips_p[:, 2] + 0.02 - 0.03 * bob], 1)
         hq = hand_q(rig, side, np.array([sgn * 0.3, -0.2, -1.0]), np.array([0, 0.9, 0.2]))
         gq = arm_to(rig, gq, root, side, palm, hq, gp[:, I[side + 'Arm']] + np.array([sgn * 0.6, 0.0, -0.1]))
     lq = rig.local(gq); limp_fingers(rig, lq, 1.0)
@@ -680,6 +727,8 @@ def drag_wounded(rig, base_gq, base_root, sp):
     for side in ('Left', 'Right'):
         gq = leg_to(rig, gq, root, side, gp0[:, I[side + 'Foot']], gp0[:, I[side + 'Leg']] + qrot(hips, np.broadcast_to([0, 0, 0.5], (F, 3))),
                     foot_q=base_gq[:, I[side + 'Foot']])
+    gq, _ = A.lift_feet(rig, gq, root, loop=True)     # boot soles out of the ground (heels at foot strike)
+    gq[-1] = gq[0]
     steps = 2
     bob = np.abs(np.sin(np.pi * steps * t / dur))
     h = DRAG['handle_d'] + np.outer(0.012 * bob, [0, 1.0, -0.6])
@@ -703,7 +752,8 @@ def treat_wounded(rig, kq, kr, kfeet, kneel_legs, dur=6.0):
     lq = np.repeat(rig.local(kq), F, 0); root = np.repeat(kr, F, 0).copy()
     glance = np.zeros(F); gyaw = np.zeros(F)
     for t0, t1, yaw in ((1.6, 2.6, 55.0), (4.0, 4.9, -45.0)):
-        w = smooth(np.clip((t - t0) / 0.3, 0, 1)) * (1 - smooth(np.clip((t - (t1 - 0.3)) / 0.3, 0, 1)))
+        # ramps 0.42 s (were 0.3 s: the hands swung off the work point at 40 deg/frame); the glance windows are unchanged
+        w = smooth(np.clip((t - t0) / 0.42, 0, 1)) * (1 - smooth(np.clip((t - (t1 - 0.42)) / 0.42, 0, 1)))
         glance = np.maximum(glance, w); gyaw += yaw * w
     work = 1 - glance
     add_euler(rig, lq, 'Hips', 14 * work + 4, 6, 0)
@@ -715,6 +765,7 @@ def treat_wounded(rig, kq, kr, kfeet, kneel_legs, dur=6.0):
     root[:, 1] -= 0.05 * work
     lq = C.breathing(rig, lq, F, 4, 1.0)
     gq = rig.global_from_local(lq)
+    root = kneel_root(rig, gq, root, kfeet)       # hips sit back as they drop (the knee went 5 cm into the ground)
     gq = kneel_legs(rig, gq, root, kfeet)
     # work point: casualty's thigh on the ground in front of the medic (tourniquet)
     wp = np.array([0.06, 0.18, 0.52])
@@ -729,6 +780,8 @@ def treat_wounded(rig, kq, kr, kfeet, kneel_legs, dur=6.0):
     palmL = palmL * work[:, None] + (gp[:, I['LeftArm']] + np.array([0.0, -0.42, 0.25])) * glance[:, None]
     hqL = hand_q(rig, 'Left', np.array([-0.5, -0.5, 0.7]), np.array([0.0, -1.0, 0.1]))
     gq = arm_to(rig, gq, root, 'Left', palmL, hqL, gp[:, I['LeftArm']] + np.array([0.5, -0.3, -0.1]))
+    trans = np.clip(4 * glance * (1 - glance), 0, 1)       # 1 mid-transition, 0 working / glancing
+    gq = A.smooth_locals(rig, gq, ('LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand'), 2.0, trans, loop=True)
     lq = rig.local(gq)
     rig.finger_curl(lq, 'Right', 60, 70, 30); rig.finger_curl(lq, 'Left', 55, 65, 25)
     gq = rig.global_from_local(lq)
@@ -764,7 +817,12 @@ def wounded_sit(rig, dur=6.0):
     gp = fk_global(rig.sk, gq, root)
     back = gp[:, I['Spine1']] + qrot(gq[:, I['Spine1']], np.broadcast_to([0, 0.05, -0.17], (F, 3)))
     root[:, 2] += WALL_Z - back[:, 2].min()
-    root = ground_clamp(rig, gq, root, clear={'Hips': 0.105, 'LowerBack': 0.11})
+    # pelvis on the ground: hip joint 11 cm above the floor (the old ground_clamp ran on the un-posed hanging arms and sat the
+    # casualty 18 cm above the ground); legs / soles then kept out of the floor
+    root[:, 1] = 0.11
+    root[:, 1] += A._grow_smooth(np.maximum(-A.ground_lowest(rig, gq, root, vest=0.015, arms=False, legs=False), 0), 2, True)
+    # heels resting on the ground (leg IK: raise feet that are in the floor, lower the ones that hang above it)
+    gq, _ = A.lift_feet(rig, gq, root, loop=True, ankle_dy={sd: np.minimum(-A.sole_low(rig, gq, root, sd), 0) for sd in ('Left', 'Right')})
     gp = fk_global(rig.sk, gq, root)
     # right hand on the bandaged right thigh, left hand resting on the left knee
     thigh = (gp[:, I['RightUpLeg']] * 0.45 + gp[:, I['RightLeg']] * 0.55) + np.array([0.0, 0.125, 0.0])
@@ -783,14 +841,23 @@ def wounded_sit(rig, dur=6.0):
 
 # ------------------------------------------------------------------ death crumple (reworked)
 def lag(x, k=0.25):
-    """critically-damped follow of a (F, ...) signal (secondary motion)"""
-    y = np.array(x, float).copy()
+    """critically-damped follow of a (F, ...) signal (secondary motion), smoothing time k (s).
+    (The old explicit-Euler spring had omega*dt > 1 for k < 0.33 s and went unstable: on death_crumple's neck it
+    oscillated through zero and produced a 168 deg one-frame flip.)  Unconditionally stable closed-form step."""
+    x = np.asarray(x, float)
+    y = x.copy()
     v = np.zeros_like(y[0])
-    w = 2 * np.pi * (1 / max(k, 1e-3)) / FPS
+    om = 2.0 / max(k, 1e-3)
+    dt = 1.0 / FPS
+    e = om * dt
+    ex = 1.0 / (1.0 + e + 0.48 * e * e + 0.235 * e * e * e)
+    cur = x[0].copy()
     for f in range(1, len(y)):
-        a = w * w * (x[f] - y[f - 1]) - 2 * w * v
-        v = v + a
-        y[f] = y[f - 1] + v
+        ch = cur - x[f]
+        tmp = (v + om * ch) * dt
+        v = (v - om * tmp) * ex
+        cur = x[f] + (ch + tmp) * ex
+        y[f] = cur
     return y
 
 
@@ -859,17 +926,22 @@ def death_crumple(rig, stand_fn, plant_feet, dur=2.4):
             tgt = gp[:, I['Hips']] + qrot(hips_q, np.broadcast_to([-0.05, 0.25, 0.30], (F, 3)))
         tgt[:, 1] = 0.035
         cur = fk_global(rig.sk, gq, root)
-        hand_now = cur[:, I[side + 'Hand']]
-        tgt = hand_now * (1 - wr[:, None]) + tgt * wr[:, None]
-        hq_now = gq[:, I[side + 'Hand']]
         hq_g = np.broadcast_to(hand_q(rig, side, np.array([0.3, 0, 1.0]) if side == 'Left' else np.array([0.6, 0, 0.8]), np.array([0, -1.0, 0])), (F, 4))
-        hq = np.array([qslerp(hq_now[f], hq_g[f], wr[f]) for f in range(F)])
         mask = wr > 1e-3
         if mask.any():
-            sub = arm_to(rig, gq[mask], root[mask], side, tgt[mask] + qrot(hq[mask], np.broadcast_to(rig.hand[side]['palm'] - rig.hand[side]['wrist'], (mask.sum(), 3))) * 0,
-                         hq[mask], cur[mask, I[side + 'Arm']] + qrot(hips_q[mask], np.broadcast_to([0.0, -0.4, 0.3], (mask.sum(), 3))))
-            gq[mask] = sub
+            # IK onto the final ground spot, then blend the arm ROTATIONS from the limp pose by wr (the old code blended the
+            # IK target from the current hand position: the IK's own elbow/upper-arm twist differs from the limp FK pose, so the
+            # first IK frame popped the upper arm by 177 deg)
+            n = mask.sum()
+            pole = cur[mask, I[side + 'Arm']] + qrot(hips_q[mask], np.broadcast_to([0.0, -0.4, 0.3], (n, 3)))
+            sub = arm_to(rig, gq[mask], root[mask], side, tgt[mask], hq_g[mask], pole)
+            chain = [I[side + b] for b in ('Arm', 'ForeArm', 'Hand')]
+            lq_cur = rig.local(gq[mask]); lq_ik = rig.local(sub)
+            for i in chain:
+                lq_cur[:, i] = np.array([qslerp(lq_cur[k, i], lq_ik[k, i], wr[mask][k]) for k in range(n)])
+            gq[mask] = rig.global_from_local(lq_cur)
     root = ground_clamp(rig, gq, root, clear={'Hips': 0.11, 'LeftArm': 0.06, 'LeftShoulder': 0.08, 'Head': 0.10})
+    gq, _ = A.lift_feet(rig, gq, root)        # boot soles out of the ground while the knees buckle
     lq = rig.local(gq); limp_fingers(rig, lq, 1.0)
     gq = rig.global_from_local(lq)
     return to_clip('death_crumple', rig, gq, root, False, root_motion=True,
@@ -902,20 +974,34 @@ def throw_grenade_window(rig, stance_fn, plant_feet, dur=1.5):
     lift = np.sin(np.clip((t - 0.55) / 0.25, 0, 1) * np.pi) * 0.06
     lf = np.stack([0.13 + 0.03 * st, ay + lift, 0.06 + 0.28 * st], 1)
     rf = np.tile([-0.12, ay, -0.12], (F, 1))
+    # the keyed pelvis (0.95 m, shifted 10-14 cm forward at the release) over-stretched the right leg: lower it where needed so
+    # the planted feet stay on the ground (they floated 3.4 cm)
+    root, _ = A.fit_root_to_feet(rig, gq, root, {'Left': lf, 'Right': rf})
     for side, tgt, yaw in (('Left', lf, -10), ('Right', rf, -35)):
         pole = tgt + [0.05 * (1 if side == 'Left' else -1), 0.5, 0.6]
         gq = leg_to(rig, gq, root, side, tgt, pole, foot_q=np.broadcast_to(qaxis(Y, np.radians(yaw)), (F, 4)).copy())
     # right hand path (root frame): chest -> back & low -> up behind the shoulder -> high release in front -> follow through -> chest
-    path = [(0.0, [-0.12, 1.18, 0.26]), (0.30, [-0.30, 1.10, -0.10]), (0.58, [-0.34, 1.40, -0.26]), (0.76, [-0.22, 1.80, -0.02]),
+    path = [(0.0, [-0.12, 1.18, 0.26]), (0.30, [-0.30, 1.10, -0.10]), (0.44, [-0.35, 1.22, -0.21]), (0.58, [-0.34, 1.40, -0.26]), (0.76, [-0.22, 1.80, -0.02]),
             (0.86, [-0.14, 1.96, 0.30]), (1.0, [-0.06, 1.70, 0.52]), (1.2, [-0.06, 1.35, 0.45]), (dur, [-0.12, 1.18, 0.30])]
     P = spline_keys([(k, v) for k, v in path], F, 3) + root * [1, 0, 1]
     # palm orientation: holding the grenade (palm in / forward), opening upward-forward at release
-    hq_hold = hand_q(rig, 'Right', np.array([0.2, 0.9, 0.3]), np.array([0.8, 0, 0.6]))
+    gp = fk_global(rig.sk, gq, root)
+    # holding: the grenade hand turns with the arm (fingers continue the shoulder->hand line, tilted up, palm forward/in);
+    # a world-fixed hand made the forearm twist 40+ deg per frame while the arm swung up behind the shoulder
+    arm_d = P - gp[:, I['RightArm']] + [0, 0.25, 0]
+    hq_hold = hand_q(rig, 'Right', arm_d, np.broadcast_to([0.6, 0.0, 0.8], (F, 3)))
     hq_rel = hand_q(rig, 'Right', np.array([0.0, 0.6, 0.8]), np.array([0.2, 0.6, -0.8]))
     wrel = smooth(np.clip((t - 0.7) / 0.18, 0, 1)) * (1 - smooth(np.clip((t - 1.1) / 0.3, 0, 1)))
-    hq = np.array([qslerp(hq_hold, hq_rel, w) for w in wrel])
-    gp = fk_global(rig.sk, gq, root)
-    gq = arm_to(rig, gq, root, 'Right', P, hq, gp[:, I['RightArm']] + np.array([-0.6, -0.4, -0.2]))
+    hq = np.array([qslerp(hq_hold[f], hq_rel, wrel[f]) for f in range(F)])
+    # elbow direction keyed along the throw (a fixed pole flipped the elbow plane when the hand passed up behind the
+    # shoulder: 48 deg upper-arm / 54 deg hand pop at 0.45 s)
+    pole_keys = [(0.0, [-0.6, -0.4, -0.2]), (0.30, [-0.7, -0.45, 0.05]), (0.44, [-0.78, -0.28, 0.15]), (0.58, [-0.8, -0.05, 0.25]), (0.76, [-0.65, 0.15, 0.5]),
+                 (0.86, [-0.55, 0.0, 0.55]), (1.0, [-0.6, -0.45, 0.25]), (1.2, [-0.6, -0.45, 0.0]), (dur, [-0.6, -0.4, -0.2])]
+    poleR = gp[:, I['RightArm']] + spline_keys(pole_keys, F, 3)
+    gq = arm_to(rig, gq, root, 'Right', P, hq, poleR)
+    # wind-up and follow-through: smooth the arm's local rotations (the release whip 0.72-0.95 s is left sharp)
+    wsm = 1 - pulse_(t, 0.74, 0.04, 0.2)
+    gq = A.smooth_locals(rig, gq, ('RightShoulder', 'RightArm', 'RightForeArm', 'RightHand'), 2.2, wsm)
     # left hand carries the rifle by the handguard, low at the left side, swinging forward for balance at release
     lpath = [(0.0, [0.24, 0.98, 0.20]), (0.58, [0.26, 1.02, 0.28]), (0.86, [0.22, 1.05, 0.10]), (1.1, [0.24, 0.98, 0.16]), (dur, [0.24, 0.98, 0.20])]
     LP = spline_keys(lpath, F, 3) + root * [1, 0, 1]

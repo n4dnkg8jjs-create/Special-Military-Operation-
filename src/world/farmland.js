@@ -15,7 +15,7 @@ export class Farmland extends City {
   constructor(scene, assets, quality) {
     super(scene, assets, quality);
     this.rng = mulberry(4417);
-    this.streetDebris = 0;
+    this.streetDebris = 0; this.noOuterGrass = true;
     this.grassMax = quality === 'low' ? 30000 : quality === 'medium' ? 60000 : 85000; this.grassCull = 260;
     this.nav.maxIter = 320000;
     this.CS = 2; this.CN = Math.ceil(MAP_SIZE / this.CS); this.conceal = new Uint8Array(this.CN * this.CN).fill(255);
@@ -157,6 +157,11 @@ export class Farmland extends City {
           vec2 wob = vec2(vn(wp * 0.15) - 0.5, vn(wp * 0.15 + 31.0) - 0.5) * 4.0;
           vec2 suv = clamp((wp + wob) / splatSize + 0.5, 0.001, 0.999);
           vec4 sp = texture2D(tSplat, suv);
+          // beyond the map: more fields (big noise patches of fallow / stubble / ploughed) instead of smeared edge pixels
+          float outside = smoothstep(splatSize * 0.5 - 8.0, splatSize * 0.5 + 6.0, max(abs(wp.x), abs(wp.y)));
+          float fn = vn(floor(wp / 140.0) * 1.37);
+          vec4 farSp = fn < 0.4 ? vec4(0.9, 0.0, 0.0, 0.0) : fn < 0.7 ? vec4(0.1, 0.0, 1.0, 0.0) : vec4(0.05, 1.0, 0.0, 0.0);
+          sp = mix(sp, farSp, outside);
           float rowsX = texture2D(tRows, clamp(wp / splatSize + 0.5, 0.001, 0.999)).r;
           vec2 fp = rowsX > 0.5 ? wp.yx : wp;
           vec3 dirt = tile(tDirt, wp / 6.0);

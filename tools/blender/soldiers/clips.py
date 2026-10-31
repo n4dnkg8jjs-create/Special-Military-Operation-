@@ -71,6 +71,17 @@ def make_loop(gq, root, a, p, blend=6):
     """frames a..a+p, cross-faded so the last frame == first; returns gq, root (p+1 frames), stride (m)"""
     seg_q = gq[a:a + p + 1].copy(); seg_r = root[a:a + p + 1].copy()
     stride = seg_r[-1] - seg_r[0]
+    if a < blend and a + p + blend < len(gq):
+        # no frames before the start (a = 0 for limp_walk / drag_wounded): the old code skipped the blend and left a hard
+        # seam (velocity jump); fade the head into the frames that follow the end instead (shifted back by one period)
+        for k in range(blend + 1):
+            w = smooth(1 - k / blend)
+            seg_q[k] = qslerp(seg_q[k], gq[a + p + k], w)
+            seg_r[k] = seg_r[k] * (1 - w) + (root[a + p + k] - stride * [1, 0, 1]) * w
+        seg_q[-1] = seg_q[0]; seg_r[-1] = seg_r[0] + stride * [1, 0, 1]
+        for j in range(seg_q.shape[1]):
+            seg_q[:, j] = qfix_continuity(seg_q[:, j])
+        return seg_q, seg_r, stride
     # blend the tail toward the frames preceding the start (shifted by one period)
     for k in range(blend + 1):
         i = p - blend + k
@@ -184,6 +195,21 @@ def eye_local(rig, lm):
     return lm['eyeR'] - rig.sk.head[rig.I['Head']]
 
 
+AIM_BOUNDS = [(-4, 16), (-20, 20), (-12, 12), (-20, 20), (-10, 20), (-8, 14), (0, 24), (-14, 12), (-6, 18)]
+
+
+def solve_bounded(cost, bounds, starts=None):
+    """bounded Powell from the neutral pose and from the box centre; best result"""
+    n = len(bounds)
+    best = None
+    for x0 in (starts or (np.zeros(n), np.array([(lo + hi) / 2 for lo, hi in bounds]))):
+        res = minimize(cost, np.clip(x0, [b[0] for b in bounds], [b[1] for b in bounds]), method='Powell', bounds=bounds,
+                       options=dict(maxiter=20000, xtol=1e-3, ftol=1e-10))
+        if best is None or res.fun < best.fun:
+            best = res
+    return best
+
+
 def solve_aim(rig, lm, lq, root, aim_dir=np.array([0, 0, 1.0]), pocket=np.array([-0.10, 1.445, 0.135]), yaw_in=1.5,
               head=(8, -4, -10), neck=(5, 0, 0)):
     """Shouldered aim.  The head/neck take an authored cheek-weld posture (chin down, head canted right);
@@ -206,9 +232,9 @@ def solve_aim(rig, lm, lq, root, aim_dir=np.array([0, 0, 1.0]), pocket=np.array(
         l[0, rig.I['Spine']] = qmul(base[0, rig.I['Spine']], qeuler(x[0] * 0.5, x[1] * 0.5, x[2] * 0.5, order='YXZ'))
         l[0, rig.I['Spine1']] = qmul(base[0, rig.I['Spine1']], qeuler(x[0] * 0.5, x[1] * 0.5, x[2] * 0.5, order='YXZ'))
         l[0, rig.I['RightShoulder']] = qmul(base[0, rig.I['RightShoulder']], qeuler(0, x[3], x[4], order='YXZ'))
-        l[0, rig.I['Head']] = qmul(l[0, rig.I['Head']], qeuler(x[5], 0, 0, order='YXZ'))
-        l[0, rig.I['Neck']] = qmul(l[0, rig.I['Neck']], qeuler(x[6] * 0.5, 0, 0, order='YXZ'))
-        l[0, rig.I['Neck1']] = qmul(l[0, rig.I['Neck1']], qeuler(x[6] * 0.5, 0, 0, order='YXZ'))
+        l[0, rig.I['Head']] = qmul(l[0, rig.I['Head']], qeuler(x[5], 0, x[7], order='YXZ'))
+        l[0, rig.I['Neck']] = qmul(l[0, rig.I['Neck']], qeuler(x[6] * 0.5, 0, x[8] * 0.5, order='YXZ'))
+        l[0, rig.I['Neck1']] = qmul(l[0, rig.I['Neck1']], qeuler(x[6] * 0.5, 0, x[8] * 0.5, order='YXZ'))
         return l
 
     def evalx(x):
@@ -227,8 +253,11 @@ def solve_aim(rig, lm, lq, root, aim_dir=np.array([0, 0, 1.0]), pocket=np.array(
     def cost(x):
         _, _, butt, pk = evalx(x)
         return 1e4 * np.sum((butt - pk) ** 2) + 0.002 * np.sum(np.asarray(x) ** 2)
-    bounds = [(-4, 10), (-14, 14), (-10, 10), (-12, 12), (-6, 18), (-6, 12), (0, 16)]
-    res = minimize(cost, np.zeros(7), method='Powell', bounds=bounds, options=dict(maxiter=6000, xtol=1e-3, ftol=1e-8))
+    # x: spine pitch/yaw/roll (split over Spine/Spine1), clavicle yaw/roll, head pitch, neck pitch, head roll, neck roll (lateral
+    # flexion: brings the right eye over the stock).  The old 7-DOF / narrow-bound solve hit its bounds and left the butt 3-6 cm
+    # off the pocket (aim_stand 5.3 cm); this one reaches < 1 cm with a bladed, head-forward stance.
+    bounds = AIM_BOUNDS
+    res = solve_bounded(cost, bounds)
     l, gun_p, butt, pk = evalx(res.x)
     print('aim solve', np.round(res.x, 1))
     return l, gun_q, gun_p, float(np.linalg.norm(butt - pk))

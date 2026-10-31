@@ -10,6 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from meshlib import *
 import props_atlas as PA
+from meshfix import fix_mb, drop
 
 R = {k: Region(*v) for k, v in PA.REG.items()}
 
@@ -129,11 +130,11 @@ def car_vaz2107(name, seed=1, sag=0.0):
         for (zb, zt) in ((0.72, 0.3), (-0.27, -0.27), (-1.2, -0.85)):
             mb.tube([(s * 0.76, 0.86, zb), (s * 0.66, roof_y - 0.02, zt)], 0.035, 4, luv('car_body', 2.0), smooth=False)
     # dashboard, seats (burnt spring frames), steering wheel
-    mb.box((-0.75, 0.55, 0.45), (0.75, 0.82, 0.7), fit('interior_burnt', (1.5, 0.3), 3), faces='+y-z')
+    mb.box((-0.75, 0.55, 0.45), (0.75, 0.82, 0.7), fit('interior_burnt', (1.5, 0.3), 3), faces='+y-y-z')
     for sx in (-0.38, 0.38):
-        mb.box((sx - 0.24, 0.32, -0.15), (sx + 0.24, 0.45, 0.35), fit('interior_burnt', (0.5, 0.5), 4), faces='+y+z+x-x')
-        mb.box((sx - 0.24, 0.45, -0.22), (sx + 0.24, 0.98, -0.12), fit('interior_burnt', (0.5, 0.6), 5), faces='+z-z+y')
-    mb.box((-0.7, 0.32, -1.15), (0.7, 0.46, -0.65), fit('interior_burnt', (1.4, 0.5), 6), faces='+y+z')
+        mb.box((sx - 0.24, 0.3, -0.15), (sx + 0.24, 0.45, 0.35), fit('interior_burnt', (0.5, 0.5), 4), faces='+y+z-z+x-x')
+        mb.box((sx - 0.24, 0.45, -0.22), (sx + 0.24, 0.98, -0.12), fit('interior_burnt', (0.5, 0.6), 5), faces='+z-z+y+x-x')
+    mb.box((-0.7, 0.3, -1.15), (0.7, 0.46, -0.65), fit('interior_burnt', (1.4, 0.5), 6), faces='+y+z-z+x-x')
     sw = [(0.38 + 0.18 * math.cos(a), 0.8 + 0.18 * math.sin(a) * 0.8, 0.42 - 0.08 * math.sin(a)) for a in np.linspace(0, 2 * np.pi, 9)]
     mb.tube(sw, 0.015, 3, luv('chrome_burnt'), smooth=True)
     # bumpers (burnt chrome), sagging front bumper
@@ -163,10 +164,20 @@ def bus_paz(name='bus_paz_burnt', seed=2):
             P = [(x * 0.97, floor, z1), (x * 0.97, floor, z0), (x * 0.97, belt, z0), (x * 0.97, belt, z1)]
             mb.poly(P if s > 0 else P[::-1], fit('interior_burnt', (2.0, 0.6), int(abs(z0) * 10)))
             mb.poly([(x, belt, z0), (x, belt, z1), (x * 0.97, belt, z1), (x * 0.97, belt, z0)][::(1 if s > 0 else -1)], uvb)
+            for ze in (z0, z1):     # door jambs / panel ends: close the gap between the outer skin and the lining
+                if abs(abs(ze) - L2) < 1e-6:
+                    continue
+                Q = [(x, bot, ze), (x * 0.97, bot, ze), (x * 0.97, belt, ze), (x, belt, ze)]
+                mb.poly(Q, fit('interior_burnt', (0.05, 0.8), 11))
+                mb.poly(Q[::-1], fit('interior_burnt', (0.05, 0.8), 12))
     # front and rear lower faces + window frames
     for zf, sgn in ((L2, 1), (-L2, -1)):
         P = [(-W2, bot, zf), (W2, bot, zf), (W2, belt + (0.0 if sgn > 0 else 0.15), zf), (-W2, belt + (0.0 if sgn > 0 else 0.15), zf)]
         mb.poly(P if sgn > 0 else P[::-1], uvb)
+        Pi = [(px * 0.97, py, zf - sgn * 0.03) for px, py, _ in P]      # inner lining, seen from inside through the windows
+        mb.poly(Pi[::-1] if sgn > 0 else Pi, fit('interior_burnt', (2.4, 0.8), 13))
+        yt = P[2][1]; Q = [(-W2, yt, zf), (W2, yt, zf), (W2 * 0.97, yt, zf - sgn * 0.03), (-W2 * 0.97, yt, zf - sgn * 0.03)]
+        mb.poly(Q[::-1] if sgn > 0 else Q, uvb)     # top cap between skin and lining
         # destination box / upper front band
         P = [(-W2, 2.4, zf), (W2, 2.4, zf), (W2, 2.82, zf), (-W2, 2.82, zf)]
         mb.poly(P if sgn > 0 else P[::-1], uvb)
@@ -193,6 +204,15 @@ def bus_paz(name='bus_paz_burnt', seed=2):
             if newell(np.array(P))[1] < 0:
                 P = P[::-1]
             mb.poly(P, uvb)
+            # roof skin thickness: lining underneath + edges (seen from the side through the burnt-through centre strip)
+            Pb = [(p[0], p[1] - 0.03, p[2]) for p in P]
+            mb.poly(Pb[::-1], fit('interior_burnt', (1.0, 1.0), 14 + i))
+            for e in range(4):
+                a_, b_ = P[e], P[(e + 1) % 4]
+                if abs(abs(a_[2]) - L2) < 1e-6 and abs(abs(b_[2]) - L2) < 1e-6:
+                    continue        # ends are covered by the destination box band
+                Q = [b_, a_, (a_[0], a_[1] - 0.03, a_[2]), (b_[0], b_[1] - 0.03, b_[2])]
+                mb.poly(Q, fit('steel_burnt', (0.5, 0.05), 15))
     # roof bows across the open strip
     for z in zs[1:-1]:
         mb.tube([(-0.45, 2.78 - dip(z), z), (0.0, 2.85 - dip(z) * 1.2, z), (0.45, 2.78 - dip(z), z)], 0.025, 3, luv('rim'), smooth=False)
@@ -200,20 +220,20 @@ def bus_paz(name='bus_paz_burnt', seed=2):
     mb.poly([(-W2, floor, L2), (W2, floor, L2), (W2, floor, -L2), (-W2, floor, -L2)][::-1], fit('ash', (2.5, 7.0), 3, stretch=True))
     for z in np.arange(1.6, -3.2, -0.78):
         for x0, x1 in ((0.15, 1.15), (-1.15, -0.65)):
-            mb.box((x0, floor + 0.35, z - 0.2), (x1, floor + 0.45, z + 0.2), fit('interior_burnt', (1.0, 0.4), int(z * 10 + 50)), faces='+y+z-z')
-            mb.box((x0, floor + 0.45, z - 0.25), (x1, floor + 1.0, z - 0.2), fit('interior_burnt', (1.0, 0.6), int(z * 10 + 60)), faces='+z-z')
-            mb.tube([((x0 + x1) / 2, floor, z), ((x0 + x1) / 2, floor + 0.35, z)], 0.02, 3, luv('rim'), smooth=False)
+            mb.box((x0, floor + 0.35, z - 0.2), (x1, floor + 0.45, z + 0.2), fit('interior_burnt', (1.0, 0.4), int(z * 10 + 50)))
+            mb.box((x0, floor + 0.45, z - 0.25), (x1, floor + 1.0, z - 0.2), fit('interior_burnt', (1.0, 0.6), int(z * 10 + 60)), faces='+z-z+x-x+y')
+            mb.tube([((x0 + x1) / 2, floor, z), ((x0 + x1) / 2, floor + 0.36, z)], 0.02, 3, luv('rim'), smooth=False)
     # engine cowl by the driver, dashboard
     mb.box((-0.2, floor, 2.5), (0.55, floor + 0.65, 3.4), fit('bus_body', (0.8, 0.9), 4))
-    mb.box((-1.2, floor + 0.6, 3.15), (1.2, floor + 0.95, 3.42), fit('interior_burnt', (2.4, 0.4), 5), faces='+y-z')
+    mb.box((-1.2, floor + 0.6, 3.15), (1.2, floor + 0.95, 3.42), fit('interior_burnt', (2.4, 0.4), 5), faces='+y-y-z+x-x')
     # wheels: single front, dual rear (on rims)
     for s in (-1, 1):
-        rim(mb, (s * 1.05, 0.36, 2.25), r_=0.33, w=0.2)
-        rim(mb, (s * 1.0, 0.36, -1.4), r_=0.33, w=0.2)
-        rim(mb, (s * 0.75, 0.36, -1.4), r_=0.33, w=0.2)
+        rim(mb, (s * 1.05, 0.325, 2.25), r_=0.33, w=0.2)
+        rim(mb, (s * 1.0, 0.325, -1.4), r_=0.33, w=0.2)
+        rim(mb, (s * 0.75, 0.325, -1.4), r_=0.33, w=0.2)
     # chassis rails visible under the floor
     for x in (-0.55, 0.55):
-        mb.box((x - 0.06, 0.25, -3.2), (x + 0.06, floor, 3.2), fit('steel_burnt', (0.2, 3.0), 9), faces='+x-x-y')
+        mb.box((x - 0.06, 0.25, -3.2), (x + 0.06, floor, 3.2), fit('steel_burnt', (0.2, 3.0), 9), faces='+x-x-y+z-z')
     return mb
 
 
@@ -232,7 +252,8 @@ def hedgehog(name, kind='ibeam', seed=3):
     tmp = MB()
     for axis in range(3):
         # extrude profile along local X, then rotate onto the axis
-        ring0 = [(-L / 2, p[1], p[0]) for p in prof]; ring1 = [(L / 2, p[1], p[0]) for p in prof]
+        ks = (1.0, 0.985, 0.97)[axis]      # no coplanar flange / web faces where the members cross (z-fighting)
+        ring0 = [(-L / 2, p[1] * ks, p[0] * ks) for p in prof]; ring1 = [(L / 2, p[1] * ks, p[0] * ks) for p in prof]
         a = tmp.vs(ring0); b_ = tmp.vs(ring1); n = len(prof)
         sub = MB(); a = sub.vs(ring0); b_ = sub.vs(ring1)
         for k in range(n):
@@ -252,10 +273,11 @@ def hedgehog(name, kind='ibeam', seed=3):
                 if (newell(P)[0] > 0) == flip:
                     Q = Q[::-1]
                 sub.face(Q, [reg.uv(0.5, 0.5)] * 3)
-        rot = [mat_trs(), mat_trs(r=(0, 0, math.pi / 2)) @ mat_trs(r=(math.pi / 2, 0, 0)), mat_trs(r=(0, math.pi / 2, 0)) @ mat_trs(r=(0, 0, math.pi / 2))][axis]
+        # members along X, Y and Z (the old third rotation duplicated the Y member -> hedgehog had only two beams)
+        rot = [mat_trs(), mat_trs(r=(0, 0, math.pi / 2)) @ mat_trs(r=(math.pi / 2, 0, 0)), mat_trs(r=(0, -math.pi / 2, 0)) @ mat_trs(r=(math.pi / 2, 0, 0))][axis]
         tmp.merge(sub, rot)
     # gusset plates at the crossing
-    tmp.box((-0.12, -0.12, -0.004), (0.12, 0.12, 0.004), Fit(reg, (0.3, 0.3), 1))
+    tmp.box((-0.12, -0.12, -0.0065), (0.12, 0.12, 0.0065), Fit(reg, (0.3, 0.3), 1))
     # orient: body diagonal (1,1,1) vertical -> stands on three beam ends
     d = np.array([1, 1, 1.0]) / math.sqrt(3)
     axis = np.cross(d, [0, 1, 0]); ang = math.acos(np.dot(d, [0, 1, 0]))
@@ -268,7 +290,7 @@ def hedgehog(name, kind='ibeam', seed=3):
 
 
 # ------------------------------------------------------------------ sandbags
-def bag(mb, c, size, yaw, seed, region, squash=0.0):
+def bag(mb, c, size, yaw, seed, region, squash=0.0, settle=True):
     """Filled sandbag: superellipsoid pillow (6x5 grid), flattened by the weight above, tied end."""
     r = rng(seed)
     a, b, cc = size[0] / 2, size[1] / 2, size[2] / 2
@@ -300,7 +322,11 @@ def bag(mb, c, size, yaw, seed, region, squash=0.0):
             if np.dot(newell(P), P.mean(0)) < 0:
                 Q = Q[::-1]; uv = uv[::-1]
             tmp.face(Q, uv, True)
-    mb.merge(tmp, mat_trs(c, (r.normal(0, 0.03), yaw, r.normal(0, 0.03))))
+    tmp.transform(mat_trs(c, (r.normal(0, 0.03), yaw, r.normal(0, 0.03))))
+    if settle:     # rest on the bags below / the ground (no floating bags)
+        drop(mb, tmp, sink=0.012)
+    else:
+        mb.merge(tmp)
 
 
 def sandbag_wall(name, length=3.6, rows=5, seed=4, curved=0.0):
@@ -326,12 +352,13 @@ def sandbag_wall(name, length=3.6, rows=5, seed=4, curved=0.0):
         y += bh * 0.86
     # a burst bag spilling sand on top, and a couple of loose bags at the foot
     bag(mb, (r.uniform(-1, 1), 0.07, 0.55), (bl, bh, bd), r.uniform(0, 3), seed + 7, 'bag_green', squash=0.3)
-    mb.box((-0.3, y - 0.02, -0.1), (0.2, y + 0.04, 0.12), fit('soil', (0.5, 0.3), 8), faces='+y+z-z+x-x')
+    spill = MB(); spill.box((-0.3, y - 0.02, -0.1), (0.2, y + 0.04, 0.12), fit('soil', (0.5, 0.3), 8), faces='+y+z-z+x-x')
+    drop(mb, spill, sink=0.02)
     return mb
 
 
 # ------------------------------------------------------------------ tyres
-def tyre(mb, c, rot=(0, 0, 0), R0=0.3, r0=0.1, w=0.19, seg=14, sides=7, burnt=False):
+def tyre(mb, c, rot=(0, 0, 0), R0=0.3, r0=0.1, w=0.19, seg=14, sides=7, burnt=False, settle=False):
     reg = R['tyre'] if not burnt else R['ash']
     tmp = MB(); rings = []
     for i in range(seg):
@@ -353,7 +380,11 @@ def tyre(mb, c, rot=(0, 0, 0), R0=0.3, r0=0.1, w=0.19, seg=14, sides=7, burnt=Fa
             if np.dot(newell(P), cen - ring_c) < 0:
                 Q = Q[::-1]; uv = uv[::-1]
             tmp.face(Q, uv, True)
-    mb.merge(tmp, mat_trs(c, rot))
+    tmp.transform(mat_trs(c, rot))
+    if settle:
+        drop(mb, tmp, sink=0.01, step_up=True)
+    else:
+        mb.merge(tmp)
 
 
 def tyre_items():
@@ -363,7 +394,7 @@ def tyre_items():
         tyre(b, (r.normal(0, 0.03), 0.095 + k * 0.185, r.normal(0, 0.03)), (r.normal(0, 0.03), r.uniform(0, 3), r.normal(0, 0.03)), burnt=(k == 4))
     c = MB('tyre_pile')
     for k in range(4):
-        tyre(c, (r.uniform(-0.5, 0.5), 0.1 + (0.12 if k == 3 else 0), r.uniform(-0.5, 0.5)), (r.uniform(-0.3, 0.3) if k < 3 else 1.3, r.uniform(0, 3), 0))
+        tyre(c, (r.uniform(-0.5, 0.5), 0.1 + (0.32 if k == 3 else 0), r.uniform(-0.5, 0.5)), (r.uniform(-0.3, 0.3) if k < 3 else 1.3, r.uniform(0, 3), 0), settle=True)
     return [a, b, c]
 
 
@@ -376,19 +407,20 @@ def garage(name, damaged=False, seed=6):
         tbox(mb, (s * Wg / 2 - (t if s > 0 else 0), 0, -D / 2), (s * Wg / 2 + (0 if s > 0 else t), Hg, D / 2), 'silicate', 1.0, faces='+x-x+z+y')
     tbox(mb, (-Wg / 2, 0, -D / 2), (Wg / 2, Hg - 0.1, -D / 2 + t), 'silicate', 1.0, faces='-z+z')
     # lintel + brick parapet over the doors
-    tbox(mb, (-Wg / 2, 2.15, D / 2 - 0.25), (Wg / 2, Hg + 0.25, D / 2), 'silicate', 1.0, faces='+z-y+y')
+    tbox(mb, (-Wg / 2 + t, 2.15, D / 2 - 0.25), (Wg / 2 - t, Hg, D / 2), 'silicate', 1.0, faces='+z-y')
+    tbox(mb, (-Wg / 2, Hg, D / 2 - 0.25), (Wg / 2, Hg + 0.25, D / 2 + 0.002), 'silicate', 1.0, faces='+z+y')
     # roof slab (hollow-core) with roofing felt, overhang at the front
     roof = fit('roofing', (3.6, 6.0), 2, stretch=True)
     if not damaged:
-        tbox(mb, (-Wg / 2, Hg, -D / 2 - 0.1), (Wg / 2, Hg + 0.18, D / 2 + 0.15), 'roofing', 2.0, faces='+y-y+z-z')
+        tbox(mb, (-Wg / 2, Hg, -D / 2 - 0.1), (Wg / 2, Hg + 0.18, D / 2 + 0.15), 'roofing', 2.0, faces='+y-y+z-z+x-x')
     else:
-        tbox(mb, (-Wg / 2, Hg, -D / 2 - 0.1), (Wg / 2, Hg + 0.18, 0.2), 'roofing', 2.0, faces='+y-y+z-z')
+        tbox(mb, (-Wg / 2, Hg, -D / 2 - 0.1), (Wg / 2, Hg + 0.18, 0.2), 'roofing', 2.0, faces='+y-y+z-z+x-x')
         # front slab broken and fallen in at an angle
         tmp = MB(); tmp.box((-Wg / 2 + 0.05, 0, 0), (Wg / 2 - 0.05, 0.18, 2.3), roof)
         mb.merge(tmp, mat_trs((0, Hg - 0.05, 0.2)) @ rot_axis((1, 0, 0), 0.75))
     # interior darkness
     mb.box((-Wg / 2 + t, 0.01, -D / 2 + t), (Wg / 2 - t, 2.15, D / 2 - 0.3), fit('ash', (3.0, 6.0), 3), faces='-y')
-    mb.poly([(-Wg / 2 + t, 0, -D / 2 + t), (Wg / 2 - t, 0, -D / 2 + t), (Wg / 2 - t, 2.2, -D / 2 + t), (-Wg / 2 + t, 2.2, -D / 2 + t)], fit('ash', (3, 2), 4))
+    mb.poly([(-Wg / 2 + t, 0, -D / 2 + t + 0.01), (Wg / 2 - t, 0, -D / 2 + t + 0.01), (Wg / 2 - t, 2.15, -D / 2 + t + 0.01), (-Wg / 2 + t, 2.15, -D / 2 + t + 0.01)], fit('ash', (3, 2), 4))
     # steel swing doors 2 x 1.3 x 2.05
     door = 'garage_door' if seed % 2 else 'garage_door2'
     def leaf(M):
@@ -401,10 +433,10 @@ def garage(name, damaged=False, seed=6):
         leaf(mat_trs((-1.33, 0.05, zf)))
         leaf(mat_trs((1.33, 0.05, zf)) @ mat_trs(r=(0, math.pi, 0)) @ mat_trs((0, 0, 0.04)))
     else:
-        leaf(mat_trs((-1.33, 0.05, zf)) @ mat_trs(r=(0, -1.9, 0)))                                  # blown wide open
+        leaf(mat_trs((-1.33, 0.0, zf)) @ mat_trs(r=(0, -1.9, 0)))                                   # blown wide open, sagged onto the ground
         leaf(mat_trs((0.1, 0.02, zf + 1.4)) @ mat_trs(r=(-1.5, 0.3, 0.1)))                           # torn off, lying
     # padlock hasp / frame
-    mb.box((-1.36, 0, zf - 0.03), (1.36, 2.12, zf), fit('steel_rust', (2.7, 2.1), 6), faces='+z')
+    mb.box((-1.36, 0, zf - 0.07), (1.36, 2.12, zf - 0.045), fit('steel_rust', (2.7, 2.1), 6), faces='+z')
     return mb
 
 
@@ -415,13 +447,13 @@ def bus_stop():
     conc = fit('concrete', (2.0, 2.0), 1)
     mos = R['mosaic']
     # back wall with mosaic facing the street (+Z)
-    tbox(mb, (-Wb / 2, 0, -0.18), (Wb / 2, Hh, 0), 'concrete', 1.5, faces='-z+x-x')
-    mb.poly([(-Wb / 2, 0.15, 0.001), (Wb / 2, 0.15, 0.001), (Wb / 2, Hh - 0.05, 0.001), (-Wb / 2, Hh - 0.05, 0.001)],
+    tbox(mb, (-Wb / 2, 0, -0.18), (Wb / 2, Hh, 0), 'concrete', 1.5, faces='-z+z+x-x')
+    mb.poly([(-Wb / 2 + 0.15, 0.15, 0.005), (Wb / 2 - 0.15, 0.15, 0.005), (Wb / 2 - 0.15, Hh - 0.05, 0.005), (-Wb / 2 + 0.15, Hh - 0.05, 0.005)],
             lambda P, n: [mos.uv((p[0] + Wb / 2) / Wb, (p[1] - 0.15) / (Hh - 0.2)) for p in P])
     for s in (-1, 1):
         tbox(mb, (s * Wb / 2 - (0.15 if s > 0 else 0), 0, 0), (s * Wb / 2 + (0 if s > 0 else 0.15), Hh, D * 0.7), 'concrete', 1.5, faces='+x-x+z')
     # roof slab, front corner blown off
-    P = [(-Wb / 2 - 0.2, 0), (Wb / 2 + 0.2, 0), (Wb / 2 + 0.2, D - 0.6), (Wb / 2 - 0.3, D - 0.2), (Wb / 2 - 0.8, D + 0.15), (-Wb / 2 - 0.2, D + 0.15)]
+    P = [(-Wb / 2 - 0.2, -0.18), (Wb / 2 + 0.2, -0.18), (Wb / 2 + 0.2, D - 0.6), (Wb / 2 - 0.3, D - 0.2), (Wb / 2 - 0.8, D + 0.15), (-Wb / 2 - 0.2, D + 0.15)]
     tmp = MB()
     from meshlib import slab as slab_, side_uv
     slab_(tmp, [{'pts': ccw(np.array([(x, -z) for x, z in P]))}], [0, -0.16], conc, fit('concrete', (2.0, 2.0), 2), side_uv(R['concrete'], 2.0))
@@ -429,13 +461,14 @@ def bus_stop():
     # fix orientation: the slab was built in (x, z) -> rotate so local y = depth
     # bench
     for z in (0.32, 0.45):
-        mb.box((-1.2, 0.45, z - 0.05), (1.2, 0.48, z + 0.05), fit('wood', (2.4, 0.1), int(z * 100)), faces='+y+z-z')
+        mb.box((-1.2, 0.45, z - 0.05), (1.2, 0.48, z + 0.05), fit('wood', (2.4, 0.1), int(z * 100)))
     for x in (-1.0, 1.0):
         mb.box((x - 0.03, 0, 0.3), (x + 0.03, 0.45, 0.5), fit('steel_rust', (0.1, 0.5), 3), faces='+x-x+z-z')
     # sign pole with the "A" plate
     mb.tube([(Wb / 2 + 0.5, 0, D + 0.3), (Wb / 2 + 0.5, 2.6, D + 0.3)], 0.03, 5, luv('steel_rust'), smooth=False)
     sg = R['busstop_sign']
     mb.box((Wb / 2 + 0.3, 2.2, D + 0.33), (Wb / 2 + 0.7, 2.6, D + 0.35), lambda P, n: [sg.uv((p[0] - Wb / 2 - 0.3) / 0.4, (p[1] - 2.2) / 0.4) for p in P], faces='+z-z')
+    mb.box((Wb / 2 + 0.3, 2.2, D + 0.33), (Wb / 2 + 0.7, 2.6, D + 0.35), fit('steel_rust', (0.4, 0.05), 4), faces='+x-x+y-y')
     # debris on the floor
     for k in range(5):
         x, z = r.uniform(-1.5, 1.5), r.uniform(0.3, 1.6)
@@ -465,16 +498,16 @@ def playground():
     for k in range(5):
         y = 0.25 + k * 0.28
         mb.tube([(sx - 0.25, y, -0.6 + y * 0.13), (sx + 0.25, y, -0.6 + y * 0.13)], 0.015, 4, luv('paint_red'), smooth=False)
-    mb.box((sx - 0.3, 1.45, -0.45), (sx + 0.3, 1.5, -0.05), fit('steel_paint', (0.6, 0.4), 1), faces='+y-y')
+    mb.box((sx - 0.3, 1.45, -0.45), (sx + 0.3, 1.5, -0.05), fit('steel_paint', (0.6, 0.4), 1))
     rows = []
     for t in np.linspace(0, 1, 6):
         z = -0.05 + t * 2.0; y = 1.5 - 1.3 * t + 0.25 * math.sin(math.pi * t) * 0
         rows.append([(sx - 0.25, y, z), (sx - 0.2, y - 0.04, z), (sx + 0.2, y - 0.04, z), (sx + 0.25, y, z)])
     mb.ribbon(rows, lambda s, t: R['steel_paint'].uv(s, t), double=True, smooth=True)
     # sand box frame (wooden) with spilled sand
-    mb.box((-2.6, 0, 1.2), (-1.2, 0.25, 1.28), fit('wood', (1.4, 0.25), 2), faces='+y+z-z')
-    mb.box((-2.6, 0, 2.5), (-1.2, 0.25, 2.58), fit('wood', (1.4, 0.25), 3), faces='+y+z-z')
-    mb.box((-2.68, 0, 1.2), (-2.6, 0.25, 2.58), fit('wood', (1.4, 0.25), 4), faces='+y+x-x')
+    mb.box((-2.6, 0, 1.2), (-1.2, 0.25, 1.28), fit('wood', (1.4, 0.25), 2), faces='+y+z-z+x')
+    mb.box((-2.6, 0, 2.5), (-1.2, 0.25, 2.58), fit('wood', (1.4, 0.25), 3), faces='+y+z-z+x')
+    mb.box((-2.68, 0, 1.2), (-2.6, 0.25, 2.58), fit('wood', (1.4, 0.25), 4), faces='+y+x-x+z-z')
     return mb
 
 
@@ -488,12 +521,13 @@ def kiosk(name, burnt=False, seed=9):
     side = lambda P, n: [pr.uv(((p[0] + p[2]) % 1.3) / 1.3 if False else (0.5 + 0.5 * (p[0] if abs(n[2]) > 0.5 else p[2]) / max(Wk, Dk)), p[1] / 1.0) for p in P]
     # lower panels
     mb.box((-Wk / 2, 0, -Dk / 2), (Wk / 2, 1.0, Dk / 2), side, faces='+x-x+z-z')
+    mb.box((-Wk / 2, 0, -Dk / 2), (Wk / 2, 1.0, Dk / 2), fit(panel, (2.6, 2.0), 7), faces='+y')
     # glazed band 1.0..2.1 with frame posts; front glass broken, one side shuttered
     for x in np.linspace(-Wk / 2, Wk / 2, 5):
         mb.box((x - 0.03, 1.0, Dk / 2 - 0.05), (x + 0.03, 2.1, Dk / 2), fit(frame, (0.1, 1.1), int(abs(x) * 10)), faces='+z+x-x')
     for z in np.linspace(-Dk / 2, Dk / 2, 4):
         for s in (-1, 1):
-            mb.box((s * Wk / 2 - 0.05 * (s > 0), 1.0, z - 0.03), (s * Wk / 2 + 0.05 * (s < 0), 2.1, z + 0.03), fit(frame, (0.1, 1.1), int(abs(z) * 10) + 3), faces='+x-x+z')
+            mb.box((s * Wk / 2 - 0.05 * (s > 0) - 0.01 * (s < 0), 1.0, z - 0.03), (s * Wk / 2 + 0.05 * (s < 0) + 0.01 * (s > 0), 2.1, z + 0.03), fit(frame, (0.1, 1.1), int(abs(z) * 10) + 3), faces='+x-x+z')
     gl = R['glass_dark']
     for i, x in enumerate(np.linspace(-Wk / 2, Wk / 2, 5)[:-1]):
         if burnt or i == 1:
@@ -508,7 +542,8 @@ def kiosk(name, burnt=False, seed=9):
             P = P[::-1]
         if s > 0 or not burnt:
             mb.poly(P, lambda P_, n: [sh.uv(0, 0), sh.uv(1, 0), sh.uv(1, 1), sh.uv(0, 1)])
-    mb.box((-Wk / 2, 1.0, -Dk / 2), (Wk / 2, 2.1, -Dk / 2 + 0.02), fit(panel, (2.6, 1.1), 1), faces='-z')
+            mb.poly(P[::-1], fit(panel, (2.0, 1.1), 8))
+    mb.box((-Wk / 2, 1.0, -Dk / 2), (Wk / 2, 2.1, -Dk / 2 + 0.02), fit(panel, (2.6, 1.1), 1), faces='-z+z')
     # roof with overhang + sign box
     roof_tilt = mat_trs((0, 0, 0)) if not burnt else rot_axis((1, 0, 0), 0.18, origin=(0, 2.1, -Dk / 2))
     tmp = MB()
@@ -518,7 +553,7 @@ def kiosk(name, burnt=False, seed=9):
     tmp.box((-Wk / 2, 2.22, Dk / 2 - 0.1), (Wk / 2, 2.62, Dk / 2 + 0.05), fit(frame, (2.6, 0.4), 3), faces='-z+x-x')
     mb.merge(tmp, roof_tilt)
     # counter flap + scattered newspapers / debris
-    mb.box((-0.6, 0.98, Dk / 2), (0.6, 1.02, Dk / 2 + 0.3), fit(frame, (1.2, 0.3), 4), faces='+y-y+z')
+    mb.box((-0.6, 0.98, Dk / 2), (0.6, 1.02, Dk / 2 + 0.3), fit(frame, (1.2, 0.3), 4), faces='+y-y+z+x-x')
     for k in range(6):
         x, z = r.uniform(-1.6, 1.6), r.uniform(Dk / 2 + 0.2, Dk / 2 + 1.5)
         mb.poly([(x, 0.01, z), (x + 0.3, 0.01, z + 0.05), (x + 0.28, 0.01, z + 0.25), (x - 0.02, 0.01, z + 0.2)], fit('bag_white' if not burnt else 'ash', (0.3, 0.3), 20 + k))
@@ -586,6 +621,7 @@ def main():
     items.append(crater('crater_small', 1.1, 1.0, 11)); items.append(crater('crater_large_asphalt', 2.6, 1.6, 12, asphalt=True))
     info = {}
     for i, mb in enumerate(items):
+        fix_mb(mb)
         mb.to_object(mb.name, [mat], smooth_angle=35, location=((i % 6) * 9.0, 0, -(i // 6) * 10.0))
         mn, mx = mb.bounds()
         info[mb.name] = {'tris': mb.tris(), 'bbox_min': [round(float(v), 2) for v in mn], 'bbox_max': [round(float(v), 2) for v in mx]}

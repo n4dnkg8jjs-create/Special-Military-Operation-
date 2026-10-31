@@ -194,12 +194,24 @@ export class City {
       const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
       cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08));
     }
+    // the lawns carry on past the playable edge (thinner, patchy) so the grass doesn't stop on a line
+    if (!this.noOuterGrass) {
+      const half = MAP_SIZE / 2, extra = Math.round(maxN * 0.45);
+      for (let i = 0, n = 0; i < extra * 4 && n < extra; i++) {
+        const px = (this.rng() - .5) * (MAP_SIZE + 320), pz = (this.rng() - .5) * (MAP_SIZE + 320);
+        if (Math.max(Math.abs(px), Math.abs(pz)) < half + 2) continue;
+        if (Math.abs(pz) < 15 || Math.abs(px - 85) < 11 || Math.abs(px + 204) < 7 || Math.abs(px - 202) < 7 || Math.abs(Math.abs(pz) - 197) < 7) continue;
+        if (this.noise2(px * 0.03, pz * 0.03, 12) < 0.4) continue;
+        const s = 0.35 + this.rng() * 0.5; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
+        cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08)); n++;
+      }
+    }
     instance(this.scene, tpl, mats, { shadows: false, colors: cols, cullDist: this.grassCull || 340 });
   }
   roads() {
     const asphalt = this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const walk = this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    const curbMat = new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
+    const curbMat = this.assets.tex.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
     const uvPlane = (w, d, scale) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / scale, uv.getY(i) * d / scale); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0, r.z0, r.x1, r.z1, 2);
     for (const r of ROADS) {
@@ -595,7 +607,7 @@ export class City {
     // retail and services at the market crossroads
     // neighbourhood supermarket set back from the avenue behind its own car park (as ATB/Silpo boxes are)
     if (mput('supermarket_damaged', 117, -62, 0, { occ: true })) this.parkingLot(97, -44, 137, -17, mput);
-    mput('pharmacy_kiosk', 104, 34, Math.PI); mput('kiosk_modern_burnt', 132, -18, 0); mput('bus_burnt_modern', 64, 4, 0.12, { road: false });
+    mput('pharmacy_kiosk', 104, 34, Math.PI); mput('kiosk_modern_burnt', 62, -18, 0, { road: false }); mput('bus_burnt_modern', 64, 4, 0.12, { road: false });
     for (const [x, z, r] of [[100, -15.8, Math.PI], [-60, 15.8, 0], [-150, -15.8, Math.PI], [160, 15.8, 0]]) mput('bus_stop_modern', x, z, r, { road: false, cost: 6 });
     // boiler houses and garage cooperatives at the microdistrict edges
     for (const [x, z, r] of this.mapYards('boilers')) mput(R() < 0.5 ? 'boiler_house_damaged' : 'boiler_house', x, z, r, { occ: true });

@@ -17,6 +17,7 @@ from meshlib import (MB, Region, Fit, reset_scene, make_material, export_glb, up
 import city_atlas as CA
 import church_atlas as CHA
 import church as CH
+from meshfix import fix_mb, drop
 from city_geo import (R, RS, reg_of, fit, uvq, quad, tquad, tbox, fbox, wall, tube, lathe, prism, chunk, loose_bricks,
                       ribbon, sheet)
 
@@ -212,7 +213,9 @@ def substation(name, damaged=False, seed=40):
         # brick heap below the hole, scorch on the ground
         loose_bricks(mb, 1.3, D / 2 + 0.6, 1.0, 60, 'white', seed)
         for k in range(10):
-            chunk(mb, (r.uniform(0.3, 2.3), 0.1, D / 2 + r.uniform(0.2, 1.3)), (0.5, 0.25, 0.35), seed + 70 + k, 'brick_white')
+            part = MB()
+            chunk(part, (r.uniform(0.3, 2.3), 0.4, D / 2 + r.uniform(0.2, 1.3)), (0.5, 0.25, 0.35), seed + 70 + k, 'brick_white')
+            drop(mb, part, sink=0.03)
     return mb
 
 
@@ -233,15 +236,20 @@ def po2(name, kind='a', seed=50):
     # broken: left part still standing (jagged break), right part knocked flat, rebar at the break
     left = [(-2, y0), (0.35, y0), (0.05, 0.62), (0.42, 1.05), (-0.12, 1.5), (0.22, 1.85), (-0.05, y1), (-2, y1)]
     wall(mb, left, th, front, ftile, M=M, back=back, back_tile=(4, 2), side='concrete', org=(-2, y0), cap='all')
-    right = [(0.42, y0 + 0.25), (2, y0 + 0.25), (2, y1), (0.12, y1), (0.4, 1.8), (0.0, 1.5), (0.5, 1.05), (0.15, 0.6)]
-    Mf = rot_axis((1, 0, 0), 1.42, (0, 0.16, th + 0.1)) @ T(0.15, -0.1, th / 2)
-    wall(mb, right, th, front, ftile, M=Mf, back=back, back_tile=(4, 2), side='concrete', org=(-2, y0), cap='all')
-    for k in range(7):
-        y = 0.3 + k * 0.27
-        x = 0.1 + 0.15 * math.sin(k * 1.7)
-        tube(mb, [(x, y, 0.08), (x + r.uniform(0.15, 0.4), y + r.uniform(-0.1, 0.1), 0.08 + r.uniform(-0.15, 0.25))], 0.007, 3, 'pipe_rust', smooth=False)
     for k in range(9):
         chunk(mb, (r.uniform(-0.2, 1.2), 0.07, r.uniform(-0.6, 0.9)), (0.22, 0.12, 0.18), seed + k, 'concrete')
+    right = [(0.42, y0 + 0.25), (2, y0 + 0.25), (2, y1), (0.12, y1), (0.4, 1.8), (0.0, 1.5), (0.5, 1.05), (0.15, 0.6)]
+    Mf = rot_axis((1, 0, 0), 1.42, (0, 0.16, th + 0.1)) @ T(0.15, -0.1, th / 2)
+    part = MB()
+    wall(part, right, th, front, ftile, M=Mf, back=back, back_tile=(4, 2), side='concrete', org=(-2, y0), cap='all')
+    drop(mb, part, sink=0.02)       # the knocked-over half lies on the ground / the debris (was propped in the air)
+    L = np.array(left)
+    for k in range(7):
+        y = 0.3 + k * 0.27
+        # x of the jagged break edge at this height (right-hand part of the left outline), rebar starts 6 cm inside it
+        xe = min(np.interp(y, [p[1] for p in left[1:7]], [p[0] for p in left[1:7]]), 0.42)
+        x = xe - 0.06
+        tube(mb, [(x, y, 0.0), (x + 0.06 + r.uniform(0.15, 0.4), y + r.uniform(-0.1, 0.1), r.uniform(-0.15, 0.25))], 0.007, 3, 'pipe_rust', smooth=False)
     return mb
 
 
@@ -366,9 +374,9 @@ def house(name, w, d, wall_reg, roof_reg, seed, ridge='x', pitch=32, burnt=False
         # ridge cap
         for s in (1, -1):
             if ridge == 'x':
-                P = np.array([(-Lr / 2, yr + lift + 0.02, 0), (Lr / 2, yr + lift + 0.02, 0), (Lr / 2, yr + lift - 0.1, s * 0.2), (-Lr / 2, yr + lift - 0.1, s * 0.2)])
-            else:
-                P = np.array([(0, yr + lift + 0.02, Lr / 2), (0, yr + lift + 0.02, -Lr / 2), (s * 0.2, yr + lift - 0.1, -Lr / 2), (s * 0.2, yr + lift - 0.1, Lr / 2)])
+                P = np.array([(-Lr / 2, yr + lift + 0.02, 0), (Lr / 2, yr + lift + 0.02, 0), (Lr / 2, yr + lift - 0.2 * ta - 0.008, s * 0.2), (-Lr / 2, yr + lift - 0.2 * ta - 0.008, s * 0.2)])
+            else:     # ridge cap edges rest on the roof sheets (were 2.5 cm above them)
+                P = np.array([(0, yr + lift + 0.02, Lr / 2), (0, yr + lift + 0.02, -Lr / 2), (s * 0.2, yr + lift - 0.2 * ta - 0.008, -Lr / 2), (s * 0.2, yr + lift - 0.2 * ta - 0.008, Lr / 2)])
             if newell(P)[1] < 0:
                 P = P[::-1]
             quad(mb, P, RS('tin_galv', 0, 0, 1, 0.25))
@@ -395,14 +403,18 @@ def house(name, w, d, wall_reg, roof_reg, seed, ridge='x', pitch=32, burnt=False
             Mx = mat_trs((x, yp + 0.15 if k < 3 else 0.05, z), (-PI / 2 + r.uniform(-0.3, 0.3), r.uniform(0, PI), r.uniform(-0.2, 0.2)))
             sheet(mb, 1.8, 1.1, 3, 2, roof_reg, Mx @ T(-0.9, -0.55, 0), bend=lambda u, v, k=k: (0, 0, 0.25 * math.sin(u * PI * 1.3 + k) * v), double=True)
         for k in range(10):
-            chunk(mb, (r.uniform(-w / 2 + 0.8, w / 2 - 0.8), yp + 0.1, r.uniform(-d / 2 + 0.8, d / 2 - 0.8)), (0.5, 0.2, 0.4), seed + 30 + k, 'charred')
+            part = MB()
+            chunk(part, (r.uniform(-w / 2 + 0.8, w / 2 - 0.8), yp + 0.3, r.uniform(-d / 2 + 0.8, d / 2 - 0.8)), (0.5, 0.2, 0.4), seed + 30 + k, 'charred')
+            drop(mb, part, sink=0.03, ground=yp)
     # debris for wall holes
     if wall_hole:
         wname, cx, cy, rx, ry_ = wall_hole
         M = walls[wname][0]
         loose_bricks(mb, cx, 0.9, 0.9, 40, 'red' if 'brick_red' in wall_reg else 'white', seed + 9, M=M)
         for k in range(6):
-            chunk(mb, (cx + r.uniform(-1, 1), 0.1, r.uniform(0.3, 1.4)), (0.4, 0.2, 0.3), seed + 50 + k, wall_reg, M=M)
+            part = MB()
+            chunk(part, (cx + r.uniform(-1, 1), 0.3, r.uniform(0.3, 1.4)), (0.4, 0.2, 0.3), seed + 50 + k, wall_reg, M=M)
+            drop(mb, part, sink=0.03)
     return mb
 
 
@@ -416,9 +428,9 @@ def fence_prof(name, reg='prof_brown', broken=False, seed=60, gate=True):
     Hf = 2.0
     xs = [-9, -6.5, -4, -1.6, 1.6, 4, 6.5, 9] if gate else [-9, -6.75, -4.5, -2.25, 0, 2.25, 4.5, 6.75, 9]
     for x in xs:
-        post(mb, x, Hf + 0.1, 'metal_rust_paint', 0.07, -0.05)
+        post(mb, x, Hf + 0.1, 'metal_rust_paint', 0.07, -0.0385)
     for y in (0.35, 1.7):
-        fbox(mb, (-9, y, -0.1), (9, y + 0.04, -0.06), 'metal_rust_paint', faces='+y-y-z+z')
+        fbox(mb, (-9, y, -0.042), (9, y + 0.04, -0.002), 'metal_rust_paint', faces='+y-y-z+z+x-x')
     # sheets in 1.15 m strips; gate in the middle (blue sun gate leaves)
     segs = [(-9, -1.6), (1.6, 9)] if gate else [(-9, 9)]
     for (a, b) in segs:
@@ -427,14 +439,14 @@ def fence_prof(name, reg='prof_brown', broken=False, seed=60, gate=True):
             x1 = min(b, x + 1.15)
             k = int((x + 9) / 1.15)
             if broken and k in (2, 3, 9, 12):
-                if k in (2, 12):  # sheet ripped and folded down
-                    Mx = T(x, 0.3, 0.02) @ rot_axis((1, 0, 0), 1.0 + 0.3 * (k % 3), (0, 0, 0))
+                if k in (2, 12):  # sheet ripped off, lying on the ground in front of the gap (curling up at its far end)
+                    Mx = T(x, 0.012, 0.06 + 0.1 * (k % 3)) @ rot_axis((1, 0, 0), PI / 2, (0, 0, 0))
                     sheet(mb, x1 - x, 1.3, 2, 3, reg, Mx, bend=lambda u, v: (0, 0.05 * u, -0.2 * v * v), double=True)
                 x = x1; continue
             holes = []
             if broken and k in (5, 7, 14):
                 holes = [blob((x + x1) / 2 + r.uniform(-0.2, 0.2), r.uniform(0.6, 1.5), 0.22, 0.18, 10, seed + k, 0.4, 0.3)]
-            lean = rot_axis((1, 0, 0), 0.25, (0, 0, 0)) if broken and k == 10 else np.eye(4)
+            lean = rot_axis((1, 0, 0), 0.25, (0, 0.37, 0)) if broken and k == 10 else np.eye(4)   # hinged on the lower rail
             wall(mb, (x, 0.08, x1, Hf), 0.0, reg, (1.15, 1.0), holes=holes, M=lean, back=reg, cap='none', org=(-9, 0))
             x = x1
     # gate: two leaves + wicket, painted steel with the sun motif
@@ -468,11 +480,18 @@ def fence_picket(name, seed=61):
         P = [(x - 0.055, 0.05, 0), (x + 0.055, 0.05, 0), (x + 0.055, h - 0.06, 0), (x, h, 0), (x - 0.055, h - 0.06, 0)]
         P = xform(np.array(P), M)
         mb.poly(P, lambda P_, n_: [reg.uv(0, 0), reg.uv(1, 0), reg.uv(1, 0.95), reg.uv(0.5, 1), reg.uv(0, 0.95)])
-        Pb = P[::-1] + xform(np.array([[0, 0, -0.02]]), M)[0] - xform(np.array([[0, 0, 0]]), M)[0]
+        off = xform(np.array([[0, 0, -0.02]]), M)[0] - xform(np.array([[0, 0, 0]]), M)[0]
+        Pb = P[::-1] + off
         mb.poly(Pb, lambda P_, n_: [reg.uv(0, 0.95), reg.uv(0.5, 1), reg.uv(1, 0.95), reg.uv(1, 0), reg.uv(0, 0)])
+        for i in range(len(P)):
+            a, b = P[i], P[(i + 1) % len(P)]
+            mb.poly([b, a, a + off, b + off], uvq(RS('picket', col / 6 + 0.02, 0, col / 6 + 0.04, 1)))
         x += 0.16; k += 1
     # a sagging wooden gate leaf in the gap
     M = rot_axis((0, 1, 0), 0.7, (-1.2, 0, 0))
+    tube(mb, [(-1.25, 0, -0.06), (-1.25, Hf + 0.05, -0.06)], 0.05, 5, 'wood_raw', seg=2.0, cap=True, smooth=False)   # gate post
+    for yb in (0.3, 1.0):      # battens holding the gate boards together
+        fbox(mb, (-1.2, yb, -0.025), (-0.13, yb + 0.07, -0.0005), 'wood_raw', M=M)
     for i in range(6):
         xx = -1.15 + i * 0.17
         quad(mb, [(xx, 0.12, 0), (xx + 0.12, 0.12, 0), (xx + 0.12, Hf - 0.1, 0), (xx, Hf - 0.1, 0)], RS('picket', 0.02, 0, 1 / 6, 1), double=True, M=M)
@@ -492,15 +511,15 @@ def pavilion(name, kind, sign_row, seed):
     if kind == 'stall':   # open market stall: frame, counter, tarp roof
         for x in (-1.5, 1.5):
             for z in (-1.2, 1.2):
-                post(mb, x, 2.4 if z > 0 else 2.1, 'metal_rust_paint', 0.05, z)
-        Mt = frame((-1.65, 2.42, 1.4), (1, 0, 0), (0, 0.11, -1))
+                post(mb, x, 2.415 if z > 0 else 2.135, 'metal_rust_paint', 0.05, z)
+        Mt = frame((-1.65, 2.405, 1.4), (1, 0, 0), (0, -0.105, -1))
         sheet(mb, 3.3, 2.8, 4, 3, 'tarp', Mt, bend=lambda u, v: (0, 0, -0.12 * math.sin(u * PI) * math.sin(v * PI)), double=True)
         fbox(mb, (-1.5, 0, 0.9), (1.5, 0.95, 1.25), 'pav_panel', faces='+x-x+y+z-z')
-        fbox(mb, (-1.5, 0.95, 0.85), (1.5, 1.0, 1.3), 'wood_raw', faces='+y-y+z+x-x')
+        fbox(mb, (-1.5, 0.95, 0.85), (1.5, 1.0, 1.3), 'wood_raw')
         for k in range(10):   # crates
             x = -1.3 + (k % 5) * 0.55; zz = 0.98 if k < 5 else -0.9
             fbox(mb, (x - 0.22, 1.0 if k < 5 else 0, zz - 0.15), (x + 0.22, 1.25 if k < 5 else 0.28, zz + 0.15), 'wood_raw', faces='+x-x+y+z-z')
-        quad(mb, [(-1.5, 2.45, 1.42), (1.5, 2.45, 1.42), (1.5, 2.85, 1.42), (-1.5, 2.85, 1.42)], RS('pav_signs', 0, (3 - sign_row) / 4, 1, (4 - sign_row) / 4), double=True)
+        quad(mb, [(-1.5, 2.38, 1.405), (1.5, 2.38, 1.405), (1.5, 2.78, 1.405), (-1.5, 2.78, 1.405)], RS('pav_signs', 0, (3 - sign_row) / 4, 1, (4 - sign_row) / 4), double=True)
         return mb
     wall(mb, (-W / 2, 0, W / 2, Hh), 0.06, wreg, ptile, holes=front_hole, M=T(0, 0, D / 2), back='metal_grey', side='metal_grey', cap='all')
     wall(mb, (-W / 2, 0, W / 2, Hh), 0.06, wreg, ptile, M=RY(PI, (0, 0, -D / 2)), back='metal_grey', side='metal_grey', cap='all')
@@ -551,7 +570,7 @@ def pavilion(name, kind, sign_row, seed):
 def billboard(name, front, back, torn=False, seed=90):
     mb = MB(name); r = rng(seed)
     y0, Wb, Hb = 4.2, 6.0, 3.0
-    fbox(mb, (-0.17, 0, -0.17), (0.17, y0 + 0.4, 0.17), 'metal_grey', faces='+x-x+z-z')
+    fbox(mb, (-0.17, 0, -0.17), (0.17, y0 + 0.4, 0.17), 'metal_grey', faces='+x-x+z-z+y')
     tbox(mb, (-0.5, 0, -0.5), (0.5, 0.25, 0.5), 'concrete', (1, 1), faces='+x-x+y+z-z')
     M = T(0, 0, 0) if not torn else rot_axis((0, 0, 1), 0.09, (0, y0, 0))
     # frame box and the two faces
@@ -559,12 +578,15 @@ def billboard(name, front, back, torn=False, seed=90):
     holes = [blob(1.5, 1.4, 1.1, 0.8, 14, seed, 0.4, 0.3), blob(-2.0, 0.6, 0.6, 0.4, 10, seed + 1, 0.4, 0.3)] if torn else []
     wall(mb, (-Wb / 2, 0, Wb / 2, Hb), 0.0, front, (Wb, Hb), holes=holes, M=M @ T(0, y0, 0.2), back=False, cap='none', org=(-Wb / 2, 0))
     wall(mb, (-Wb / 2, 0, Wb / 2, Hb), 0.0, back, (Wb, Hb), M=M @ RY(PI, (0, y0, -0.2)), back=False, cap='none', org=(-Wb / 2, 0))
+    for Mb in (M @ T(0, y0, 0.2), M @ RY(PI, (0, y0, -0.2))):     # frame border around each face (closes the frame box)
+        wall(mb, (-Wb / 2 - 0.08, -0.08, Wb / 2 + 0.08, Hb + 0.08), 0.0, 'metal_grey', (1.0, 1.0), holes=[(-Wb / 2, 0, Wb / 2, Hb)], M=Mb,
+             back=False, cap='none')
     if torn:   # backing plate visible through the tears + a hanging paper strip
         tquad(mb, (-Wb / 2, y0, 0.12), (1, 0, 0), (0, 1, 0), Wb, Hb, 'metal_grey', (1.5, 1.5), M=M)
         sheet(mb, 0.9, 1.4, 2, 4, front, M @ T(0.9, y0 + 0.2 - 1.2, 0.24), bend=lambda u, v: (0.15 * (1 - v), 0, 0.2 * (1 - v) ** 2), double=True,
               uv_rect=(0.62, 0.15, 0.8, 0.6))
     # maintenance walkway + lamps on arms
-    fbox(mb, (-Wb / 2, y0 - 0.12, 0.2), (Wb / 2, y0 - 0.08, 0.75), 'louvre', faces='+y-y+z', M=M)
+    fbox(mb, (-Wb / 2, y0 - 0.12, 0.2), (Wb / 2, y0 - 0.08, 0.75), 'louvre', faces='+y-y+z+x-x', M=M)
     for x in (-1.8, 1.8):
         tube(mb, [(x, y0 + Hb + 0.05, 0.2), (x, y0 + Hb + 0.45, 0.7)], 0.025, 4, 'metal_grey', smooth=False, M=M)
         fbox(mb, (x - 0.2, y0 + Hb + 0.35, 0.65), (x + 0.2, y0 + Hb + 0.47, 0.9), 'metal_grey', M=M)
@@ -601,35 +623,55 @@ def bench(name, kind='concrete', seed=100):
 
 
 def waste_bin(name, tipped=False, seed=110):
-    """Soviet 0.75 m3 steel waste container: tapered open box, lifting trunnions, skids."""
+    """Soviet 0.75 m3 steel waste container: tapered open box, lifting trunnions, skids.
+    One watertight shell: outer skin, rolled lip, top cap, inner skin (2 cm wall), inner floor, bottom."""
     mb = MB(name); r = rng(seed)
-    bx, bz, tx, tz, Hh = 0.55, 0.38, 0.66, 0.47, 1.05
+    bx, bz, tx, tz, Hh, y0 = 0.55, 0.38, 0.66, 0.47, 1.05, 0.08
     reg = 'bin_green' if not tipped else 'metal_rust_paint'
-    b = [(-bx, 0.08, bz), (bx, 0.08, bz), (bx, 0.08, -bz), (-bx, 0.08, -bz)]
-    t = [(-tx, Hh, tz), (tx, Hh, tz), (tx, Hh, -tz), (-tx, Hh, -tz)]
+    wt, lip, lh = 0.02, 0.025, 0.07
+
+    def ring(y, off):
+        f = (y - y0) / (Hh - y0)
+        ex = bx + (tx - bx) * f + off; ez = bz + (tz - bz) * f + off
+        return np.array([(-ex, y, ez), (ex, y, ez), (ex, y, -ez), (-ex, y, -ez)])
+
+    def band(A, B, rg, flip=False, uvs=((0, 0), (1, 0), (1, 1), (0, 1))):
+        for i in range(4):
+            P = np.array([A[i], A[(i + 1) % 4], B[(i + 1) % 4], B[i]])
+            if flip:
+                P = P[::-1]
+            tmp.poly(P, uvq(rg, uvs if not flip else uvs[::-1]))
     tmp = MB()
-    for i in range(4):
-        P = np.array([b[i], b[(i + 1) % 4], t[(i + 1) % 4], t[i]])
-        tmp.poly(P, uvq(reg)); tmp.poly(P[::-1] * [0.985, 1, 0.985] + [0, 0.0, 0], uvq('metal_rust_paint', ((0, 1), (1, 1), (1, 0), (0, 0))))
-    P = np.array(b)
-    tmp.poly(P[::-1], uvq('metal_rust_paint')); tmp.poly(P + [0, 0.02, 0], uvq('metal_rust_paint'))
-    # rim band, trunnions, skids, rubbish inside
-    for i in range(4):
-        a, c = np.array(t[i]), np.array(t[(i + 1) % 4])
-        d = c - a; n = np.cross(d, [0, 1, 0]); n = n / np.linalg.norm(n)
-        Q = np.array([a + [0, -0.08, 0] - n * 0.02, c + [0, -0.08, 0] - n * 0.02, c - n * 0.02, a - n * 0.02])
-        tmp.poly(Q if newell(Q) @ (-n) > 0 else Q[::-1], uvq('metal_grey'))
+    band(ring(y0, 0), ring(Hh - lh, 0), reg, uvs=((0, 0), (1, 0), (1, 0.93), (0, 0.93)))   # outer skin
+    band(ring(Hh - lh, 0), ring(Hh - lh, lip), 'metal_grey')                     # lip underside
+    band(ring(Hh - lh, lip), ring(Hh, lip), 'metal_grey')                                   # lip face
+    band(ring(Hh, lip), ring(Hh, -wt), 'metal_grey')                             # top cap
+    band(ring(Hh, -wt), ring(y0 + wt, -wt), 'metal_rust_paint', uvs=((0, 1), (1, 1), (1, 0), (0, 0)))   # inner skin
+    Fl = ring(y0 + wt, -wt); tmp.poly(Fl[::-1] if newell(Fl)[1] < 0 else Fl, uvq('metal_rust_paint'))   # inner floor
+    Bt = ring(y0, 0); tmp.poly(Bt if newell(Bt)[1] < 0 else Bt[::-1], uvq('metal_rust_paint'))          # bottom
     for s in (-1, 1):
         tube(tmp, [(s * 0.6, 0.85, 0), (s * 0.78, 0.85, 0)], 0.05, 6, 'metal_grey', cap=True, smooth=False)
-        fbox(tmp, (-0.62, 0, s * 0.3 - 0.04), (0.62, 0.08, s * 0.3 + 0.04), 'metal_rust_paint', faces='+x-x+y+z-z')
+        fbox(tmp, (-0.62, 0, s * 0.3 - 0.04), (0.62, y0 + 0.005, s * 0.3 + 0.04), 'metal_rust_paint')
     if not tipped:
+        # rubbish heaped to just under the rim: fill surface + lumps resting on it
+        fy = 0.86
+        F = ring(fy, -wt - 0.002)
+        tmp.poly(F[::-1] if newell(F)[1] < 0 else F, uvq('ground'))
         for k in range(5):
-            chunk(tmp, (r.uniform(-0.4, 0.4), 0.85 + r.uniform(0, 0.25), r.uniform(-0.25, 0.25)), (0.35, 0.3, 0.3), seed + k, ['cable', 'paint_white', 'tarp', 'wood_raw', 'rubber'][k])
+            part = MB()
+            chunk(part, (r.uniform(-0.38, 0.38), fy + 0.4, r.uniform(-0.22, 0.22)), (0.35, 0.3, 0.3), seed + k, ['cable', 'paint_white', 'tarp', 'wood_raw', 'rubber'][k])
+            drop(tmp, part, sink=0.03)
         mb.merge(tmp)
     else:
-        mb.merge(tmp, mat_trs((0, 0.47, -0.5), (PI / 2 + 0.05, 0.2, 0)))
+        M = mat_trs((0, 0.47, -0.5), (PI / 2 + 0.05, 0.2, 0))
+        tmp.transform(M)
+        mn, mx = tmp.bounds()
+        tmp.transform(mat_trs((0, -mn[1] - 0.01, 0)))     # lying on its side on the ground (was sunk 12 cm)
+        mb.merge(tmp)
         for k in range(9):
-            chunk(mb, (r.uniform(-0.6, 0.6), 0.08, r.uniform(0.9, 1.8)), (0.3, 0.16, 0.25), seed + 10 + k, ['cable', 'paint_white', 'tarp', 'wood_raw', 'rubber', 'ground'][k % 6])
+            part = MB()
+            chunk(part, (r.uniform(-0.6, 0.6), 0.3, r.uniform(0.9, 1.8)), (0.3, 0.16, 0.25), seed + 10 + k, ['cable', 'paint_white', 'tarp', 'wood_raw', 'rubber', 'ground'][k % 6])
+            drop(mb, part, sink=0.02)
     return mb
 
 
@@ -646,7 +688,7 @@ def lamp(name, kind='intact', seed=120):
     else:   # arm bent down by blast, head hanging on its cable
         arm = [(0, Hp - 0.35, 0.05), (0, Hp + 0.2, 0.25), (0, Hp + 0.45, 0.7), (0.1, Hp + 0.3, 1.1), (0.2, Hp - 0.2, 1.3)]
         head_M = mat_trs((0.2, Hp - 1.0, 1.4), (1.3, 0.3, 0.2))
-        tube(mb, [(0.2, Hp - 0.2, 1.3), (0.22, Hp - 0.6, 1.33), (0.2, Hp - 0.9, 1.4)], 0.008, 3, 'cable', smooth=False)
+        tube(mb, [(0.18, Hp - 0.1, 1.26), (0.22, Hp - 0.6, 1.33), (0.2, Hp - 1.0, 1.4)], 0.008, 3, 'cable', smooth=False)
     tube(mb, arm, 0.035, 6, 'metal_grey', seg=1.0)
     # cobra head: tapered box, glass bowl underneath
     hb = [(-0.14, -0.04, -0.1), (0.14, -0.04, -0.1), (0.16, -0.06, 0.55), (-0.16, -0.06, 0.55)]
@@ -801,6 +843,9 @@ def sign_road(name, kind, seed=130):
         for x0 in (0.0,):
             P = np.array([(-0.1, 1.5, 0.04), (0.72, 1.5, 0.04), (0.72, 2.6, 0.04), (-0.1, 2.6, 0.04)])
             quad(mb, P, 'sign_dir'); quad(mb, P[::-1] - [0, 0, 0.01], 'metal_grey')
+            for i in range(4):
+                a, b = P[i], P[(i + 1) % 4]
+                quad(mb, [b, a, a - [0, 0, 0.01], b - [0, 0, 0.01]], 'metal_grey')
         return mb
     qx, qy = rect[kind]
     if kind == 'give_way':
@@ -818,6 +863,9 @@ def sign_road(name, kind, seed=130):
         P = P[::-1]; uv = uv[::-1]
     mb.poly(P, lambda P_, n_: uv)
     mb.poly(P[::-1] - [0, 0, 0.012], uvq('metal_grey', [(0.5, 0.5)] * len(P)))
+    for i in range(len(P)):      # plate rim (closes the 12 mm gap between face and back)
+        a, b = P[i], P[(i + 1) % len(P)]
+        mb.poly([b, a, a - [0, 0, 0.012], b - [0, 0, 0.012]], uvq('metal_grey'))
     fbox(mb, (-0.05, 2.0, 0.025), (0.05, 2.5, 0.04), 'metal_grey', faces='+x-x+y-y+z')
     return mb
 
@@ -938,6 +986,7 @@ def main(only=None):
             x = 0.0; zrow -= rowdepth + 4; rowdepth = 0.0
         loc = (x - mn[0], 0, zrow - mx[2])
         x += sz[0] + 3; rowdepth = max(rowdepth, sz[2])
+        fix_mb(mb)
         mb.to_object(mb.name, [mat, cmat] if any(f[3] == 1 for f in mb.F) else [mat], smooth_angle=35, location=loc)
         info[mb.name] = {'tris': mb.tris(), 'bbox_min': [round(float(v), 2) for v in mn], 'bbox_max': [round(float(v), 2) for v in mx]}
         lim = next((v for k, v in BUDGET.items() if mb.name.startswith(k)), 8000)

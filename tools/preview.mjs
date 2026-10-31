@@ -23,9 +23,9 @@ const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
 page.on('console', m => { if (/404|GPU stall|GroupMarkerNotSet/.test(m.text())) return; if (m.type() === 'error' || m.type() === 'warning' || process.env.VERBOSE) console.log('[page]', m.type(), m.text()); });
 page.on('pageerror', e => console.log('[pageerror]', e.stack || e.message));
 await page.goto(url);
-try { await page.waitForFunction('window.__done === true', null, { timeout: 240000 }); } catch (e) { console.log('timeout waiting for __done'); }
+try { await page.waitForFunction('window.__done === true', null, { timeout: 900000 }); } catch (e) { console.log('timeout waiting for __done'); }
 if (+waitMs) await page.waitForTimeout(+waitMs);
-await page.screenshot({ path: out, timeout: 180000 });
+await page.screenshot({ path: out, timeout: 600000 });
 console.log(JSON.stringify(await page.evaluate('window.__info || null')));
 if (process.env.BR) console.log(JSON.stringify(await page.evaluate('window.__br || null')));
 await browser.close(); server.close();

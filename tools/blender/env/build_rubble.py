@@ -7,6 +7,7 @@ import os, sys, math
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from PIL import Image
+from meshfix import fix_mb, settle_islands
 from meshlib import *
 from kitparts import R, chunk, rebar_bar, broken_off, side_uv, radiator, shards, cloth, frame_box, facade_region, len_uv
 from kit_design import W, H, T, TYPES
@@ -41,12 +42,13 @@ def build_debris_atlas():
     p_orm = to8(np.stack([1 - gap * 0.5, np.full((h, w), 0.85), np.zeros((h, w))], -1))
     for i, (src, gsuf) in enumerate(zip(kit, ('albedo.jpg', 'normal.png', 'orm.png'))):
         im = Image.open(src).convert('RGB')
-        g0 = Image.open(os.path.join(tex, f'rubble_{gsuf}')).convert('RGB').resize((150, 150), Image.LANCZOS)
+        tp = lambda n: os.path.join(tex, n) if os.path.exists(os.path.join(tex, n)) else os.path.join(tex, n[:-4] + '.jpg')   # ground maps may be JPG now
+        g0 = Image.open(tp(f'rubble_{gsuf}')).convert('RGB').resize((150, 150), Image.LANCZOS)
         g1 = Image.new('RGB', (448, 448))
         for gx in range(3):
             for gy in range(3):
                 g1.paste(g0, (gx * 150, gy * 150))
-        g2 = Image.open(os.path.join(tex, f'brick_{gsuf}')).convert('RGB').resize((448, 448), Image.LANCZOS)
+        g2 = Image.open(tp(f'brick_{gsuf}')).convert('RGB').resize((448, 448), Image.LANCZOS)
         if i == 0:
             g1 = Image.fromarray((np.asarray(g1).astype(np.float32) * np.array([0.78, 0.76, 0.74])).astype(np.uint8))
         im.paste(g1, (0, 224)); im.paste(g2, (448, 224))
@@ -275,6 +277,8 @@ def main():
         reset_scene()
         mat = make_material('debris', *paths)
         mb = build_pile(name, seed, R_, H_, ns, nc, nb, **kw)
+        settle_islands(mb)       # no debris pieces hovering above the pile
+        fix_mb(mb)
         ob = mb.to_object(name, [mat])
         out = os.path.join(REPO, 'assets', 'env', name + '.glb')
         size = export_glb(out)

@@ -60,8 +60,8 @@ def solve_aim_cant(rig, lm, lq, root, cant=0.0, aim_dir=np.array([0, 0, 1.0]), p
             l[0, rig.I[b]] = qmul(base[0, rig.I[b]], qeuler(x[0] * 0.5, x[1] * 0.5, x[2] * 0.5, order='YXZ'))
         l[0, rig.I['RightShoulder']] = qmul(base[0, rig.I['RightShoulder']], qeuler(0, x[3], x[4], order='YXZ'))
         l[0, rig.I['Head']] = qmul(l[0, rig.I['Head']], qeuler(x[5], 0, x[7], order='YXZ'))
-        l[0, rig.I['Neck']] = qmul(l[0, rig.I['Neck']], qeuler(x[6] * 0.5, 0, 0, order='YXZ'))
-        l[0, rig.I['Neck1']] = qmul(l[0, rig.I['Neck1']], qeuler(x[6] * 0.5, 0, 0, order='YXZ'))
+        l[0, rig.I['Neck']] = qmul(l[0, rig.I['Neck']], qeuler(x[6] * 0.5, 0, x[8] * 0.5, order='YXZ'))
+        l[0, rig.I['Neck1']] = qmul(l[0, rig.I['Neck1']], qeuler(x[6] * 0.5, 0, x[8] * 0.5, order='YXZ'))
         return l
 
     def evalx(x):
@@ -78,8 +78,9 @@ def solve_aim_cant(rig, lm, lq, root, cant=0.0, aim_dir=np.array([0, 0, 1.0]), p
     def cost(x):
         _, _, butt, pk = evalx(x)
         return 1e4 * np.sum((butt - pk) ** 2) + 0.002 * np.sum(np.asarray(x) ** 2)
-    bounds = [(-6, 12), (-16, 16), roll, (-14, 14), (-8, 20), (-8, 14), (0, 18), (-14, 14)]
-    res = minimize(cost, np.zeros(8), method='Powell', bounds=bounds, options=dict(maxiter=8000, xtol=1e-3, ftol=1e-9))
+    # + neck lateral flexion (x8) and wider spine / clavicle / neck ranges (the old bounds left the butt 2.6-7.8 cm off the pocket)
+    bounds = [(-6, 18), (-24, 24), roll, (-22, 22), (-12, 26), (-10, 14), (0, 26), (-18, 18), (-10, 28)]
+    res = C.solve_bounded(cost, bounds)
     l, gun_p, butt, pk = evalx(res.x)
     print('aim(cant) solve', np.round(res.x, 1), 'butt err %.3f' % np.linalg.norm(butt - pk))
     return l, gun_q, gun_p, float(np.linalg.norm(butt - pk))
@@ -148,7 +149,9 @@ def prone_overlay(rig, gq, root, gun_q, gun_p, pR, pL, off=PRONE_GRIP_L):
 
 # (spine roll applied, rifle cant) per stance/side; the aim pose itself leans ~8 deg right and the aim solve claws some
 # of a left lean back, so the left side needs more input for the same visible trunk lean (~27 deg standing, ~25 kneeling)
-LEAN = {('stand', 'left'): (46.0, 22.0), ('stand', 'right'): (34.0, 12.0), ('crouch', 'left'): (48.0, 20.0), ('crouch', 'right'): (27.0, 11.0)}
+# left peeks: more rifle cant (stand 22 -> 40, kneel 20 -> 32) so the cheek can stay on the stock: with the old cant the aim solve
+# could not bring the butt closer than 5.3 / 4.0 cm to the shoulder pocket
+LEAN = {('stand', 'left'): (50.0, 40.0), ('stand', 'right'): (34.0, 12.0), ('crouch', 'left'): (50.0, 32.0), ('crouch', 'right'): (27.0, 11.0)}
 
 
 def base_peek(rig, lm, side, crouch, stance_fn, plant_feet, kneel, kneel_legs):
@@ -469,7 +472,7 @@ def reload_v2(rig, name, base, dur=2.6):
     gq_aim = qmul(cq, base['relq'][None]); gp_aim = cp + qrot(cq, np.broadcast_to(base['relp'], (F, 3)))
     # workspace: lowered, pulled in, canted (top to the left), muzzle ~8 deg up relative to the aim line
     low_q = qeuler(x=-6, y=6, z=-24, order='YXZ')
-    off = np.array([0.05, -0.12, -0.10])
+    off = np.array([0.0, -0.12, -0.05])        # (was [0.05, -0.12, -0.10]: pulled that far in, the stock went ~4 cm into the chest)
     # rifle micro-motion: twist when the mag is rocked out, dip on the slap, jerk when racking
     rock = pulse(t, 0.70, 0.08, 0.15)
     slap = pulse(t, 1.76, 0.04, 0.14)
@@ -513,8 +516,8 @@ def reload_v2(rig, name, base, dur=2.6):
     Q['pouch2'] = Q['pouch']
     # the palm is exactly at the 'mag' pose (rifle-relative) at mag_out (0.70) and mag_in (1.80)
     seq = [(0.0, 'grip'), (0.22, 'grip'), (0.45, 'reach'), (0.56, 'mag'), (0.70, 'mag'), (0.80, 'mag_rock'), (1.04, 'pouch'), (1.14, 'pouch2'),
-           (1.26, 'pouch'), (1.56, 'mag_rock'), (1.66, 'mag_rock'), (1.80, 'mag'), (1.86, 'mag'), (2.02, 'ch'), (2.06, 'ch'), (2.12, 'ch_back'),
-           (2.18, 'ch'), (2.30, 'side'), (2.42, 'grip'), (dur, 'grip')]
+           (1.26, 'pouch'), (1.56, 'mag_rock'), (1.66, 'mag_rock'), (1.80, 'mag'), (1.84, 'mag'), (2.04, 'ch'), (2.07, 'ch'), (2.12, 'ch_back'),
+           (2.18, 'ch'), (2.35, 'side'), (2.47, 'grip'), (dur, 'grip')]      # hand roll back under the handguard over 0.29 s (was 0.24 s: 50 deg/frame)
     kt = np.array([s for s, _ in seq])
     tgt = np.zeros((F, 3)); rot = np.zeros((F, 4))
     for f in range(F):
@@ -527,12 +530,20 @@ def reload_v2(rig, name, base, dur=2.6):
             tgt[f] += qrot(cq[f], np.array([0.03, 0.0, 0.05])) * np.sin(np.pi * w)
         rot[f] = qslerp(Q[a][f], Q[b][f], w)
     gpos = fk_global(rig.sk, gq, root)
-    gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=tgt, left_rot=rot,
-                               poleR=gpos[:, I['RightArm']] + [-0.5, -0.4, -0.2], poleL=gpos[:, I['LeftArm']] + [0.25, -0.8, 0.0])
+    # elbow poles: the aim clip's at the start / end (the reload's own poles made the first & last frame differ from the aim
+    # pose by 3.6 deg at the elbows), the reload's in the workspace
+    poleR = gpos[:, I['RightArm']] + np.outer(1 - lift, base['pR']) + np.outer(lift, [-0.5, -0.4, -0.2])
+    poleL = gpos[:, I['LeftArm']] + np.outer(1 - lift, base['pL']) + np.outer(lift, [0.25, -0.8, 0.0])
+    gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=tgt, left_rot=rot, poleR=poleR, poleL=poleL)
+    # free transits of the left hand (rifle -> pouch -> well -> charging handle -> handguard) rotate the hand up to 30 deg per
+    # frame: smooth the left arm there (not at the contact poses: mag_out 0.70, pouch, mag_in 1.80, charging handle, grip)
+    trans = np.max([smooth(np.clip((t - a) / 0.06, 0, 1)) * (1 - smooth(np.clip((t - b + 0.06) / 0.06, 0, 1)))
+                    for a, b in ((0.73, 1.04), (1.27, 1.64), (1.84, 2.04), (2.14, 2.47))], axis=0)
+    gq2 = A.smooth_locals(rig, gq2, ('LeftArm', 'LeftForeArm', 'LeftHand'), 3.0, trans)
     lq2 = rig.local(gq2)
     curl = track([(0.0, (60, 75, 20)), (0.25, (60, 75, 20)), (0.42, (18, 22, 10)), (0.56, (55, 62, 35)), (1.02, (55, 62, 35)), (1.14, (40, 50, 25)),
-                  (1.26, (55, 62, 35)), (1.86, (55, 62, 35)), (1.98, (25, 30, 15)), (2.06, (75, 85, 40)), (2.2, (75, 85, 40)), (2.32, (20, 25, 10)),
-                  (2.42, (60, 75, 20)), (dur, (60, 75, 20))], t)
+                  (1.26, (55, 62, 35)), (1.86, (55, 62, 35)), (1.95, (25, 30, 15)), (2.07, (75, 85, 40)), (2.2, (75, 85, 40)), (2.34, (20, 25, 10)),
+                  (2.47, (60, 75, 20)), (dur, (60, 75, 20))], t)
     set_fingers(rig, lq2, 'Left', curl)
     gq2 = rig.global_from_local(lq2)
     kind = 'kneeling' if base['kind'] == 'crouch' else 'standing'
@@ -579,7 +590,7 @@ def cover_duck(rig, dur=3.0, wall_z=0.42):
     gq0 = gq[:1]
     cq, cp = A.chest_frame(rig.sk, gq, root)
     gw_q = qlook(np.array([-0.10, 1.0, -0.10]), np.array([0.15, 0.0, -1.0]))    # tipped slightly back: muzzle clear of the wall face
-    gw_p = np.array([-0.10, 0.62, 0.27])
+    gw_p = np.array([-0.10, 0.62, 0.30])          # (z was 0.27: the left forearm wrapping the handguard went 8 cm into the chest)
     relq = qmul(qinv(cq[0]), gw_q); relp = qrot(qinv(cq[0]), gw_p - cp[0])
     gun_q = qmul(cq, np.broadcast_to(relq, (F, 4))); gun_p = cp + qrot(cq, np.broadcast_to(relp, (F, 3)))
     gpos = fk_global(rig.sk, gq, root)
@@ -587,7 +598,7 @@ def cover_duck(rig, dur=3.0, wall_z=0.42):
     ltgt = gun_pt(gun_q, gun_p, [0.0, 0.075, 0.25])
     hqL = hand_q(rig, 'Left', qrot(gun_q, np.broadcast_to([-1.0, 0, 0], (F, 3))), qrot(gun_q, np.broadcast_to([0, -1.0, 0.0], (F, 3))))
     gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, left='target', left_target=ltgt, left_rot=hqL,
-                               poleR=gpos[:, I['RightArm']] + [-0.5, -0.5, 0.0], poleL=gpos[:, I['LeftArm']] + [0.5, -0.5, 0.1], curlL=(70, 80, 30))
+                               poleR=gpos[:, I['RightArm']] + [-0.5, -0.5, 0.0], poleL=gpos[:, I['LeftArm']] + [0.7, -0.3, 0.3], curlL=(70, 80, 30))
     gp2 = fk_global(rig.sk, gq2, root)
     top = gp2[:, I['Head'], 1].max() + 0.20
     return to_clip('cover_duck', rig, gq2, root, True,
@@ -620,8 +631,9 @@ def pinned_prone(rig, prone_fn, dur=3.0):
     add_euler(rig, lq, 'RightLeg', 8 * pulse(t, 0.86, 0.06, 0.5), 0, 0)
     lq = C.breathing(rig, lq, F, 4, 1.3)
     gq = rig.global_from_local(lq)
-    root = ground_clamp(rig, gq, root, clear={'Spine1': 0.13, 'Spine': 0.125, 'Hips': 0.11, 'Head': 0.115, 'Neck': 0.10, 'Neck1': 0.10,
-                                               'LeftArm': 0.06, 'RightArm': 0.06})
+    # (the old ground_clamp ran on the un-posed hanging arms, which reach ~0.3 m below the chest of a prone body: the whole
+    #  body floated ~25 cm above the ground with only the right hand down on the rifle)
+    root = A.settle_ground(rig, gq, root, vest=0.03, arms=False, loop=True)
     root[:, 1] = root[:, 1].min() + 0.012 * fl
     gq = rig.global_from_local(lq)
     gp = fk_global(rig.sk, gq, root)

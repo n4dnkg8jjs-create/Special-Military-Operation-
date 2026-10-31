@@ -22,6 +22,13 @@ def setup():
     names = {'stock_butt': 'butt', 'sight_rear': 'sight', 'sight_front': 'front_sight'}
     for k, v in wi['ak74m']['empties'].items():
         A.GUN['ak74m'][names.get(k, k)] = np.array(v[0])
+    sole = R['boots'][0]['sole'][0]
+    A.SOLE = sole[np.abs(sole[:, 1]) < 1e-6].copy()
+    # bare torso surface points (uniform mesh, rigid with their dominant spine bone) for ground contact of lying poses
+    P = R['variants']['A']['uniform_pos']; W = R['uniform']['W']
+    tb = [rig.I[b] for b in ('Hips', 'LowerBack', 'Spine', 'Spine1')]
+    m = (W[:, tb].sum(1) > 0.85) & (P[:, 1] > 0.85)
+    A.TORSO = (P[m][::3].copy(), np.array(tb)[np.argmax(W[m][::3][:, tb], 1)])
     return R, rig
 
 
@@ -66,7 +73,7 @@ def osc(F, cycles, phase=0.0):
 
 
 # ------------------------------------------------------------------ locomotion from mocap
-def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=8, poleL=None, poleR=None, curl=None, sink=0.0):
+def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=8, poleL=None, poleR=None, curl=None, sink=0.0, lock_feet=False):
     gq, root = C.mocap(rig, bvh, t0, t1)
     gq, root = C.face_forward(rig, gq, root)
     root = C.ground_fix(rig, gq, root, ground_pct)
@@ -86,7 +93,28 @@ def loco(rig, bvh, t0, t1, pmin, pmax, gunpose, lean=6, search=None, ground_pct=
         import clips_combat as CC
         gq, root = CC.sink(rig, gq, root, sink)
         gq, lock = CC.foot_lock(rig, gq, root, speed)     # pin the planted foot to the (sliding) ground, both feet to one ground height
+    else:
+        # settle: the lower boot sole touches the ground in the frames where it is lowest (ground_fix used joint heights)
+        both = np.minimum(A.sole_low(rig, gq, root, 'Left'), A.sole_low(rig, gq, root, 'Right'))
+        root = root.copy(); root[:, 1] -= np.percentile(both, 10)
+        if lock_feet:      # planted foot pinned to the sliding ground at one common height (no float between steps)
+            import clips_combat as CC
+            gq, lock = CC.foot_lock(rig, gq, root, speed)
+        else:
+            lock = None
+    if lock_feet:
+        # walking gaits always have a foot on the ground: where both soles are up (limp: the dragged foot glides 2-3 cm above
+        # the ground while the other swings) dip the pelvis so the lower one touches
+        both = np.minimum(A.sole_low(rig, gq, root, 'Left'), A.sole_low(rig, gq, root, 'Right'))
+        dip = A._grow_smooth(np.maximum(both - 0.004, 0), 2, loop=True)
+        root = root.copy(); root[:, 1] -= dip
+    # mocap toe joints snap at toe-off (run: 26 deg in one frame): light temporal smoothing
+    gq = A.smooth_locals(rig, gq, ('LeftToeBase', 'RightToeBase'), 1.0, loop=True)
+    # boot soles: no heel / toe through the ground (leg IK lifts the ankle, foot rotation kept)
+    gq, lift = A.lift_feet(rig, gq, root, loop=True)
+    gq[-1] = gq[0]
     gq, err = C.carry(rig, gq, root, gunpose, poleL=poleL, poleR=poleR)
+    err = dict(err, sole_lift=lift)
     if lock is not None:
         err = dict(err, foot_lock_corr=lock)
     return gq, root, speed, err, (a, p)
@@ -153,10 +181,10 @@ def build_all(rig, R, only=None):
                                    notes=f'combat run: CMU 16_45 (run/jog, {sp:.2f} m/s, {2 * 60 * FPS / cyc[1]:.0f} steps/min) cycle {cyc}, pelvis lowered 3.5 cm '
                                          f'(bent-knee, loaded gait; planted foot pinned to the ground), +12 deg forward lean, head level, rifle at port across the chest; planted-foot slip {slide:.3f} m/s; ik err {err}')
     if want('crouch_walk'):
-        gq, root, sp, err, cyc = loco(rig, '136_09', 2.0, 8.5, 30, 60, 'low_ready', lean=10)
+        gq, root, sp, err, cyc = loco(rig, '136_09', 2.0, 8.5, 30, 60, 'low_ready', lean=10, lock_feet=True)
         out['crouch_walk'] = to_clip('crouch_walk', rig, gq, root, True, sp, notes=f'CMU 136_09 walk crouched cycle {cyc}; ik err {err}')
     if want('limp_walk'):
-        gq, root, sp, err, cyc = loco(rig, '77_19', 1.5, 7.5, 40, 80, 'patrol', lean=6)
+        gq, root, sp, err, cyc = loco(rig, '77_19', 1.5, 7.5, 40, 80, 'patrol', lean=6, lock_feet=True)
         out['limp_walk'] = to_clip('limp_walk', rig, gq, root, True, sp, notes=f'CMU 77_19 limping (hurt right leg) cycle {cyc}; ik err {err}')
     # ---------------- kneeling family: crouch_idle, aim_crouch, reload_crouch, suppressed_cower
     if any(want(n) for n in ('crouch_idle', 'aim_crouch', 'suppressed_cower')):
@@ -200,41 +228,42 @@ def build_all(rig, R, only=None):
             C.add_local(rig, lq, 'Head', lambda f: (2.0 * osc(F, 2), 6 * osc(F, 1, 1), 0 * f))
             lq = C.breathing(rig, lq, F, 3, 1.5)
             gq = rig.global_from_local(lq)
+            root = kneel_root(rig, gq, root, kfeet)      # lowered 4 cm: sit back toward the heel (the knee sank 4 cm into the ground)
             gq = kneel_legs(rig, gq, root, kfeet)
             gq2, err = C.carry(rig, gq, root, 'cower')
             out['suppressed_cower'] = to_clip('suppressed_cower', rig, gq2, root, True, notes=f'kneeling, hunched, head down, rifle clutched; ik err {err}')
     # ---------------- prone family
     if any(want(n) for n in ('prone_idle', 'aim_prone', 'prone_crawl')):
         pq, pr = prone(rig)
+        lq_aim, gun_q, gun_p, eerr = C.solve_aim(rig, lm, rig.local(pq), pr, pocket=np.array([-0.10, 1.43, 0.13]))
+        cq0, cp0 = A.chest_frame(rig.sk, rig.global_from_local(lq_aim), pr)
+        relq = qmul(qinv(cq0[0]), gun_q); relp = qrot(qinv(cq0[0]), gun_p - cp0[0])
+        import clips_combat as CC   # support hand at the rear of the handguard (mid-handguard is out of reach with the elbows down)
         if want('aim_prone'):
-            lq_aim, gun_q, gun_p, eerr = C.solve_aim(rig, lm, rig.local(pq), pr, pocket=np.array([-0.10, 1.43, 0.13]))
             F = 3 * FPS + 1
             lq = np.repeat(lq_aim, F, 0); root = np.repeat(pr, F, 0)
             lq = C.breathing(rig, lq, F, 1, 0.6)
             gq = rig.global_from_local(lq)
-            cq0, cp0 = A.chest_frame(rig.sk, rig.global_from_local(lq_aim), pr)
-            relq = qmul(qinv(cq0[0]), gun_q); relp = qrot(qinv(cq0[0]), gun_p - cp0[0])
             cq, cp = A.chest_frame(rig.sk, gq, root)
             gqg = qmul(cq, relq[None]); gpg = cp + qrot(cq, np.broadcast_to(relp, (F, 3)))
             gpos = fk_global(rig.sk, gq, root)
-            import clips_combat as CC   # support hand at the rear of the handguard (mid-handguard is out of reach with the elbows down)
             gqa, err = CC.prone_overlay(rig, gq, root, gqg, gpg, gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
             out['aim_prone'] = to_clip('aim_prone', rig, gqa, root, True, notes=f'prone aim, elbows down, support hand at the rear of the lower handguard; butt err {eerr:.3f}; ik err {err}')
         if want('prone_idle'):
+            # (the old clip carried the rifle with a standing chest offset: in the prone chest frame that put the rifle and the
+            #  left hand ~30 cm under the ground) -> rifle off the shoulder in the aim-relative 'relaxed' pose, head up off the stock
             F = 4 * FPS + 1
-            lq = np.repeat(rig.local(pq), F, 0); root = np.repeat(pr, F, 0)
-            C.add_local(rig, lq, 'Spine1', lambda f: (6 + 0 * f, 0 * f, 0 * f))
-            C.add_local(rig, lq, 'Neck', lambda f: (10 + 0 * f, 0 * f, 0 * f))
-            C.add_local(rig, lq, 'Head', lambda f: (0 * f, 12 * osc(F, 1, 0.3), 0 * f))
+            lq = np.repeat(lq_aim, F, 0); root = np.repeat(pr, F, 0)
+            C.add_local(rig, lq, 'Neck', lambda f: (-7 + 0 * f, 0 * f, 0 * f))
+            C.add_local(rig, lq, 'Head', lambda f: (-4 + 0 * f, 12 * osc(F, 1, 0.3), 0 * f))
             lq = C.breathing(rig, lq, F, 1, 1.0)
             gq = rig.global_from_local(lq)
-            p, q = np.array([-0.05, 1.20, 0.33]), qeuler(x=-12, y=6, order='YXZ')
-            gun_q, gun_p = A.gun_in_chest(rig.sk, gq, root, p, q)
+            gun_q2, gun_p2 = prone_relaxed_gun(rig, gq, root, relq, relp, qeuler(x=7, y=6, z=-12, order='YXZ'), drop=0.03)
             gpos = fk_global(rig.sk, gq, root)
-            gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, poleR=gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], poleL=gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
-            out['prone_idle'] = to_clip('prone_idle', rig, gq2, root, True, notes=f'prone, rifle held in front; ik err {err}')
+            gq2, err = CC.prone_overlay(rig, gq, root, gun_q2, gun_p2, gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
+            out['prone_idle'] = to_clip('prone_idle', rig, gq2, root, True, notes=f'prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {err}')
         if want('prone_crawl'):
-            out['prone_crawl'] = prone_crawl(rig, pq, pr)
+            out['prone_crawl'] = prone_crawl(rig, pq, pr, relq=relq, relp=relp)
     import clips_extra as CX
     if want('wounded_crawl'):
         pq, pr = prone(rig)
@@ -312,16 +341,46 @@ def kneel(rig, F, knee=(-0.10, 0.075, -0.02), lfoot=(0.15, 0.40)):
     return gq, root, dict(knee=K, lfoot=lfoot)
 
 
+KNEE_TOE_H = 0.027   # right toe joint height when kneeling with the toes tucked flat under (= its bind-pose height above the sole)
+
+
 def kneel_legs(rig, gq, root, spec):
+    """right knee on the ground, toes tucked under (ball of the foot + toes flat on the ground), left foot flat.
+    The knee stays at spec['knee'] while the hip allows it: if the pelvis drops (thigh too long for the fixed knee) the knee
+    slides forward along the ground instead of sinking into it; if the pelvis rises the knee lifts.  The ankle height is set
+    so the toe joint sits at KNEE_TOE_H and the toe bone is turned flat (the old pose left the boot toes 8 cm underground)."""
     I = rig.I
-    K = spec['knee']
-    L2 = np.linalg.norm(rig.sk.head[I['RightFoot']] - rig.sk.head[I['RightLeg']])
-    ank = K + np.array([-0.01, 0.07, -np.sqrt(L2 ** 2 - 0.07 ** 2)])
-    gq = C.leg_ik(rig, gq, root, 'Right', ank, K + [0, -0.3, 0.5], foot_q=qeuler(62, -10, 0, order='YXZ'))
-    ay = rig.sk.head[I['LeftFoot'], 1]
+    sk = rig.sk
+    K = np.asarray(spec['knee'], float)
+    F = len(gq)
+    L1 = np.linalg.norm(sk.head[I['RightLeg']] - sk.head[I['RightUpLeg']])
+    L2 = np.linalg.norm(sk.head[I['RightFoot']] - sk.head[I['RightLeg']])
+    hip = fk_global(sk, gq, root)[:, I['RightUpLeg']]
+    dx = hip[:, 0] - K[0]
+    # knee height needed at the fixed knee z; thigh too long -> slide the knee forward at ground height
+    hz = hip[:, 2] - K[2]
+    yk = hip[:, 1] - np.sqrt(np.maximum(L1 ** 2 - dx ** 2 - hz ** 2, 0))
+    kz = np.full(F, K[2])
+    low = yk < K[1]
+    kz[low] = hip[low, 2] + np.sqrt(np.maximum(L1 ** 2 - dx[low] ** 2 - (hip[low, 1] - K[1]) ** 2, 0))
+    ky = np.maximum(yk, K[1])
+    Kf = np.stack([np.full(F, K[0]), ky, kz], 1)
+    fq = qeuler(62, -10, 0, order='YXZ')
+    toe_off = qrot(fq, sk.head[I['RightToeBase']] - sk.head[I['RightFoot']])
+    ah = KNEE_TOE_H - toe_off[1] - K[1]               # ankle height above the knee joint that puts the toe joint at KNEE_TOE_H
+    ank = Kf + np.array([-0.01, ah, -np.sqrt(L2 ** 2 - ah ** 2)])
+    pole = Kf + (Kf - (hip + ank) / 2) * 1.5
+    gq = C.leg_ik(rig, gq, root, 'Right', ank, pole, foot_q=fq)
+    gq[:, I['RightToeBase']] = qaxis(Y, np.radians(-10))[None]
+    ay = sk.head[I['LeftFoot'], 1]
     lf = np.array([spec['lfoot'][0], ay, spec['lfoot'][1]])
     gq = C.leg_ik(rig, gq, root, 'Left', lf, lf + [0.1, 0.6, 0.4], foot_q=qeuler(0, -12, 0, order='YXZ'))
     return gq
+
+
+def kneel_root(rig, gq, root, spec):
+    import clips_extra as CX
+    return CX.kneel_root(rig, gq, root, spec)
 
 
 def prone(rig):
@@ -342,11 +401,46 @@ def prone(rig):
     lq[:, I['RightFoot']] = qeuler(55, 15, 0, order='YXZ')
     root[:] = [0.0, 0.17, 0.0]
     gq = rig.global_from_local(lq)
-    # drop the body so the lowest point (knees/toes/pelvis front) touches the ground
-    gp = fk_global(rig.sk, gq, root)
-    low = min(gp[0, I['LeftLeg'], 1] - 0.06, gp[0, I['RightLeg'], 1] - 0.06, gp[0, I['LeftToeBase'], 1] - 0.02)
-    root[:, 1] -= low
+    # drop the body so the lowest point (knees / toes / pelvis front) touches the ground.  The old version ignored the belly,
+    # which ended 2.4 cm under the ground; now the pelvis front rests on the ground and the hips flex a little so the knees
+    # still touch.
+    L1 = np.linalg.norm(rig.sk.head[I['LeftLeg']] - rig.sk.head[I['LeftUpLeg']])
+    belly = np.array([0.0, 0.975, 0.15])
+    for it in range(4):
+        gp = fk_global(rig.sk, gq, root)
+        by = gp[0, I['Hips'], 1] + qrot(gq[0, I['Hips']], belly - rig.sk.head[I['Hips']])[1]
+        low = min(gp[0, I['LeftLeg'], 1] - 0.06, gp[0, I['RightLeg'], 1] - 0.06, gp[0, I['LeftToeBase'], 1] - 0.02, by - 0.012)
+        root[:, 1] -= low
+        gp = fk_global(rig.sk, gq, root)
+        for side in ('Left', 'Right'):
+            dk = gp[0, I[side + 'Leg'], 1] - 0.06
+            if dk > 0.002:          # thigh down by a (hip flexion), knee bends by a: the shin keeps its angle, knee & foot go down
+                a = np.degrees(np.arcsin(min(dk / L1, 0.3)))
+                lq[:, I[side + 'UpLeg']] = qmul(lq[:, I[side + 'UpLeg']], qeuler(-a, 0, 0, order='YXZ')[None])
+                lq[:, I[side + 'Leg']] = qmul(lq[:, I[side + 'Leg']], qeuler(a, 0, 0, order='YXZ')[None])
+        gq = rig.global_from_local(lq)
     return gq, root
+
+
+GUN_LOW_PTS = np.array([[0, -0.22, 0.17], [0, 0.084, 0.621], [0, -0.09, -0.337], [0, -0.05, 0.40]])   # AK mag bottom, muzzle, butt toe, handguard bottom
+
+
+def prone_relaxed_gun(rig, gq, root, relq, relp, dq, drop=0.03, push=None, clear=0.012):
+    """rifle in the prone aim pose (carried by the chest), turned by dq about the support-hand grip, lowered `drop` m, then
+    lifted where any low point (magazine, muzzle, butt) would go under the ground"""
+    F = len(gq)
+    cq, cp = A.chest_frame(rig.sk, gq, root)
+    gun_q = qmul(cq, np.broadcast_to(relq, (F, 4))); gun_p = cp + qrot(cq, np.broadcast_to(relp, (F, 3)))
+    import clips_combat as CC
+    gl = A.GUN['ak74m']['grip_L'] + CC.PRONE_GRIP_L
+    piv = gun_p + qrot(gun_q, np.broadcast_to(gl, (F, 3)))
+    gun_q = qmul(gun_q, np.broadcast_to(dq, (F, 4)))
+    gun_p = piv - qrot(gun_q, np.broadcast_to(gl, (F, 3))) - [0, drop, 0]
+    if push is not None:
+        gun_p = gun_p + push
+    lowp = np.stack([gun_p + qrot(gun_q, np.broadcast_to(p, (F, 3))) for p in GUN_LOW_PTS], 1)[..., 1].min(1)
+    gun_p = gun_p + np.outer(np.maximum(clear - lowp, 0), [0, 1.0, 0])
+    return gun_q, gun_p
 
 
 def reload_clip(rig, name, lq_aim, root1, relq, relp, legs, dur=2.6):
@@ -413,7 +507,7 @@ def reload_clip(rig, name, lq_aim, root1, relq, relp, legs, dur=2.6):
     return to_clip(name, rig, gq2, root, False, notes=f'mag change: magazine leaves gun at 0.70 s (attach to mag_socket_L), new mag in at 1.80 s, charging handle 2.05-2.2 s; ik err {err}')
 
 
-def prone_crawl(rig, pq, pr, wounded=False, dur=1.6):
+def prone_crawl(rig, pq, pr, wounded=False, dur=1.6, relq=None, relp=None):
     """elbow crawl (rifle cradled) or wounded crawl (no rifle, arms pulling, right leg dragged)"""
     I = rig.I
     F = int(dur * FPS) + 1
@@ -442,13 +536,14 @@ def prone_crawl(rig, pq, pr, wounded=False, dur=1.6):
     gq = rig.global_from_local(lq)
     speed = 0.35 if not wounded else 0.22
     if not wounded:
-        p, q = np.array([-0.04, 1.22, 0.30]), qeuler(x=-10, y=12, order='YXZ')
-        gun_q, gun_p = A.gun_in_chest(rig.sk, gq, root, p, q)
-        # gun is pushed forward / pulled with the elbows
-        gun_p = gun_p + np.stack([0 * s, 0 * s, 0.05 * s], 1)
+        # rifle low in front, canted, carried by the chest (aim-relative 'relaxed' pose; the old standing-chest offset put the
+        # rifle and the left hand 25 cm under the ground), pushed forward / pulled with the elbows
+        import clips_combat as CC
+        gun_q, gun_p = prone_relaxed_gun(rig, gq, root, relq, relp, qeuler(x=8, y=8, z=-22, order='YXZ'), drop=0.03,
+                                         push=np.stack([0 * s, 0 * s, 0.03 * s - 0.03], 1))
         gpos = fk_global(rig.sk, gq, root)
-        gq2, err = A.rifle_overlay(rig, gq, root, gun_q, gun_p, poleR=gpos[:, I['RightArm']] + [-0.5, -0.5, 0.0], poleL=gpos[:, I['LeftArm']] + [0.5, -0.5, 0.0])
-        return to_clip('prone_crawl', rig, gq2, root, True, speed, notes=f'authored elbow (low) crawl, rifle cradled; ik err {err}')
+        gq2, err = CC.prone_overlay(rig, gq, root, gun_q, gun_p, gpos[:, I['RightArm']] + [-0.5, -0.5, 0.0], gpos[:, I['LeftArm']] + [0.5, -0.5, 0.0])
+        return to_clip('prone_crawl', rig, gq2, root, True, speed, notes=f'authored elbow (low) crawl, rifle held low in front; ik err {err}')
     # wounded: arms alternately reach forward and pull (palm targets on the ground, world space)
     gpos = fk_global(rig.sk, gq, root)
     lq_ref = rig.sk.local_from_global(gq)
@@ -576,6 +671,8 @@ def keyed_death(rig, name, keys, dur, notes):
         clear[I[b]] = 0.08
     pen = np.max(clear[None] - gp[:, :, 1], axis=1)
     root[:, 1] += np.maximum(pen, 0)
+    root[:, 1] += A._grow_smooth(np.maximum(-A.ground_lowest(rig, gq, root, vest=0.015), 0), 3)   # bare torso / limbs / soles
+    gq, _ = A.lift_feet(rig, gq, root)        # boot soles out of the ground while the knees buckle
     lq = rig.local(gq)
     for side in ('Left', 'Right'):
         rig.finger_curl(lq, side, 25, 35, 5)
@@ -649,12 +746,21 @@ def mocap_death(rig, name, bvh, t0, t1, carry_until=0.2):
     I = rig.I
     start_feet = min(gp[0, I['LeftFoot'], 1], gp[0, I['RightFoot'], 1])
     root[:, 1] += rig.sk.head[I['LeftFoot'], 1] - start_feet
-    gp = fk_global(rig.sk, gq, root)
-    low_end = np.min(gp[-1, :, 1])
-    # blend vertical correction toward the end so the corpse rests on the ground
+    # vertical correction: never below the ground (bare torso surface + 1.5 cm of plate carrier, limb radii, boot soles; the
+    # old version only blended the END pose onto the ground and let the back go 15 cm through the floor mid-fall), and
+    # resting on the ground at the end
     F = len(gq)
-    w = smooth_(np.linspace(0, 1, F))
-    root[:, 1] -= w * (low_end - 0.07)
+    w = smooth_(np.clip(np.linspace(-0.3, 1, F), 0, 1))
+    corr = np.zeros(F)
+    for it in range(3):
+        low = A.ground_lowest(rig, gq, root + np.outer(corr, [0, 1, 0]), vest=0.015)
+        corr = corr + A._grow_smooth(np.maximum(-low, 0), 3)
+        low = A.ground_lowest(rig, gq, root + np.outer(corr, [0, 1, 0]), vest=0.015)
+        corr = corr - w * low[-1]
+    low = A.ground_lowest(rig, gq, root + np.outer(corr, [0, 1, 0]), vest=0.015)
+    corr = corr + A._grow_smooth(np.maximum(-low, 0), 3)
+    root[:, 1] += corr
+    gq, _ = A.lift_feet(rig, gq, root)
     # hold the final pose 0.5 s
     hold = int(0.5 * FPS)
     gq = np.concatenate([gq, np.repeat(gq[-1:], hold, 0)])
@@ -672,6 +778,7 @@ def throw(rig):
     gq, root = C.rotate_y(gq, root, -ang)
     root = C.ground_fix(rig, gq, root)
     root = root - root[0] * [1, 0, 1]
+    gq, _ = A.lift_feet(rig, gq, root)          # mocap heel 1.6 cm through the floor in the follow-through
     lq = rig.local(gq)
     rig.finger_curl(lq, 'Right', 45, 55, 20)
     return to_clip('throw_grenade', rig, rig.global_from_local(lq), root, False, root_motion=False,

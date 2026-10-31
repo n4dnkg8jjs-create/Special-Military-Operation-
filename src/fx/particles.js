@@ -151,7 +151,7 @@ class Tracers {
   add(a, b, speed, color) {
     const d = new THREE.Vector3().subVectors(b, a), L = d.length(); if (L < 1) return;
     if (this.list.length >= this.max) this.list.shift();
-    speed = Math.min(speed, 560); this.list.push({ a: a.clone(), dir: d.divideScalar(L), L, speed, t: 0, color, len: Math.min(9, 2 + speed * 0.008) });
+    speed = Math.min(speed, 560); this.list.push({ a: a.clone(), dir: d.divideScalar(L), L, speed, t: 0, color, len: Math.min(5.5, 1.5 + speed * 0.006) });
   }
   update(dt, cam) {
     const tmp = new THREE.Vector3(), head = new THREE.Vector3(), tail = new THREE.Vector3(), side = new THREE.Vector3();
@@ -162,11 +162,11 @@ class Tracers {
       if (hd - tl < 0.05) continue;
       head.copy(t.a).addScaledVector(t.dir, hd); tail.copy(t.a).addScaledVector(t.dir, Math.min(tl, hd));
       tmp.addVectors(head, tail).multiplyScalar(0.5);
-      const dist = tmp.distanceTo(cam), w = Math.max(0.05, dist * 0.0022);
+      const dist = tmp.distanceTo(cam), w = Math.max(0.022, dist * 0.0011);
       side.subVectors(cam, tmp).cross(t.dir).normalize().multiplyScalar(w);
       const o = n * 12;
       this.pos.set([tail.x - side.x, tail.y - side.y, tail.z - side.z, tail.x + side.x, tail.y + side.y, tail.z + side.z, head.x - side.x, head.y - side.y, head.z - side.z, head.x + side.x, head.y + side.y, head.z + side.z], o);
-      const k = 4.5, c = t.color; for (let v = 0; v < 4; v++) this.col.set([c[0] * k, c[1] * k, c[2] * k], o + v * 3);
+      const k = 1.7, c = t.color; for (let v = 0; v < 4; v++) this.col.set([c[0] * k, c[1] * k, c[2] * k], o + v * 3);
       if (++n >= this.max) break;
     }
     const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true; g.setDrawRange(0, n * 6);

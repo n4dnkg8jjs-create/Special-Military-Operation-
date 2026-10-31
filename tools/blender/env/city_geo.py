@@ -272,16 +272,24 @@ def chunk(mb, centre, size, seed, reg, rot=None, M=None):
         mb.poly(Q[[0, 1, 2]], f); mb.poly(Q[[0, 2, 3]], f)
 
 
-def loose_bricks(mb, cx, cz, rad, n, colour, seed, y0=0.0, M=None):
+def loose_bricks(mb, cx, cz, rad, n, colour, seed, y0=0.0, M=None, settle=True, ground=None):
     r = rng(seed)
     reg = R['brick_' + colour]
+    if ground is None:
+        ground = y0
     for k in range(n):
         a = r.uniform(0, 2 * np.pi); d = rad * math.sqrt(r.random())
         y = y0 + 0.035 + max(0.0, (1 - d / rad)) * rad * 0.3 * r.random()
         Mr = mat_trs((cx + math.cos(a) * d, y, cz + math.sin(a) * d), (r.uniform(-0.4, 0.4), r.uniform(0, 3.14), r.uniform(-0.4, 0.4)))
         if M is not None:
             Mr = M @ Mr
-        mb.box((-0.125, -0.033, -0.06), (0.125, 0.033, 0.06), Fit(reg, (0.5, 0.15), seed + k), faces='+x-x+y+z-z', M=Mr)
+        part = MB()
+        part.box((-0.125, -0.033, -0.06), (0.125, 0.033, 0.06), Fit(reg, (0.5, 0.15), seed + k), M=Mr)
+        if settle:      # let it fall onto the heap / the ground (no bricks hanging in the air)
+            from meshfix import drop
+            drop(mb, part, sink=0.008, ground=ground)
+        else:
+            mb.merge(part)
 
 
 def ribbon(mb, rows, reg, double=True, uv_rect=(0, 0, 1, 1)):

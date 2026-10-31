@@ -8,6 +8,7 @@ import os, sys, math
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from PIL import Image
+from meshfix import fix_mb
 from meshlib import *
 from texlib import spectral, norm01, colorize, srgb, lerp, to8, normal_from_height, smoothstep, blur, CACHE, quantize_normal
 
@@ -86,7 +87,7 @@ def lathe(mb, profile, centre, sides, region, M=None):
 def insulator(mb, base, glass=False):
     """Pin insulator (ShF-20 porcelain / green glass): steel pin + bell."""
     x, y, z = base
-    mb.tube([(x, y, z), (x, y + 0.12, z)], 0.012, 4, ruv('galv'), smooth=False)
+    mb.tube([(x, y, z), (x, y + 0.275, z)], 0.012, 4, ruv('galv'), smooth=False)     # pin runs up through the bell (bell was not touching it)
     prof = [(0.06, 0.0), (0.075, 0.03), (0.06, 0.06), (0.07, 0.09), (0.05, 0.13), (0.035, 0.16), (0.0, 0.17)]
     lathe(mb, prof, (x, y + 0.1, z), 8, 'glass' if glass else 'porcelain')
     return np.array([x, y + 0.26, z])
@@ -180,22 +181,23 @@ def trolley_pole():
     secs = [(0.0, 3.4, 0.135, 0.125), (3.4, 6.6, 0.115, 0.105), (6.6, 9.5, 0.095, 0.085)]
     for y0, y1, r0, r1 in secs:
         mb.tube([(0, y0 - (0.2 if y0 == 0 else 0), 0), (0, y1, 0)], [r0, r1], 10, ruv('galv', 3.0), smooth=True)
-        mb.tube([(0, y1 - 0.06, 0), (0, y1 + 0.02, 0)], r1 + 0.012, 10, ruv('steel'), smooth=True)
+        mb.tube([(0, y1 - 0.06, 0), (0, y1 + 0.02, 0)], r1 + 0.006, 10, ruv('steel'), smooth=True, cap=True)   # joint collar hugging the tube
     lathe(mb, [(0.12, 0), (0.1, 0.06), (0.0, 0.1)], (0, 9.5, 0), 10, 'steel')
     # base plinth (painted collar) and access door
-    mb.tube([(0, -0.1, 0), (0, 0.9, 0)], 0.15, 10, ruv('steel'), smooth=True)
+    mb.tube([(0, -0.1, 0), (0, 0.9, 0)], 0.142, 10, ruv('steel'), smooth=True, cap=True)
     pts_att = []
     # span-wire clamp ring + strain insulator facing the road (+Z)
     for y in (6.9, 6.25):
-        mb.tube([(0, y - 0.05, 0), (0, y + 0.05, 0)], 0.125, 10, ruv('steel'), smooth=True)
-        ins = [(0, y, 0.12), (0, y, 0.25), (0, y - 0.02, 0.45)]
+        rp = next(r0 + (r1 - r0) * (y - y0) / (y1 - y0) for y0, y1, r0, r1 in secs if y0 <= y <= y1)
+        mb.tube([(0, y - 0.05, 0), (0, y + 0.05, 0)], rp + 0.008, 10, ruv('steel'), smooth=True, cap=True)   # clamp ring on the pole (was 2-3 cm off it)
+        ins = [(0, y, rp), (0, y, 0.25), (0, y - 0.02, 0.45)]
         mb.tube(ins[:2], 0.012, 4, ruv('galv'), smooth=False)
         lathe(mb, [(0.035, 0), (0.05, 0.05), (0.035, 0.1), (0.05, 0.15), (0.035, 0.2)], (0, 0, 0), 6, 'porcelain',
               M=mat_trs((0, y, 0.25), (math.pi / 2, 0, 0)))
         pts_att.append(np.array([0, y, 0.48]))
     cobra_lamp(mb, np.array([0, 8.6, 0.09]), (0, 0, 1), L=2.0, h=0.6)
     # bracket for the hanging span wire stub (cut, hanging)
-    mb.tube([(0, 6.9, 0.48), (0.05, 6.4, 0.9), (0.08, 5.2, 1.1), (0.1, 3.9, 1.0)], 0.008, 3, ruv('steel', 3.0))
+    mb.tube([(0, 6.9, 0.44), (0.05, 6.4, 0.9), (0.08, 5.2, 1.1), (0.1, 3.9, 1.0)], 0.008, 3, ruv('steel', 3.0))
     return mb, pts_att
 
 
@@ -266,6 +268,8 @@ def main():
     mw = make_material('razor_wire', *paths, double=True)
     info = {}
     def emit(mb, mat, loc, attach=None):
+        if mat is m:          # single-sided pole material (razor wire is double sided)
+            fix_mb(mb)
         ob = mb.to_object(mb.name, [mat], smooth_angle=50, location=loc)
         if attach is not None:
             for i, p in enumerate(attach):

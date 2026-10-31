@@ -13,7 +13,17 @@ from meshlib import MB, Region, Fit, newell, xform, mat_trs, rot_axis, rng, blob
 import modern_atlas as MA
 import city_geo as G
 
-G.R = {k: Region(*v, pad=MA.PAD) for k, v in MA.REG.items()}
+
+
+def _region(x0, y0, x1, y1, W=MA.S, H=MA.SH, pad=MA.PAD):
+    """Region in the non-square (W x H) modern atlas (meshlib.Region assumes a square atlas)."""
+    r = Region.__new__(Region); r.S = W; r.px = (x0, y0, x1, y1)
+    r.u0 = (x0 + pad) / W; r.u1 = (x1 - pad) / W
+    r.v0 = 1 - (y1 - pad) / H; r.v1 = 1 - (y0 + pad) / H
+    return r
+
+
+G.R = {k: _region(*v) for k, v in MA.REG.items()}
 from city_geo import tquad, tbox, fbox, wall, lathe, prism, quad, chunk, tube   # noqa: E402
 
 AR = {k: Region(*v, S=MA.SA, pad=MA.PAD) for k, v in MA.AREG.items()}
@@ -586,135 +596,9 @@ def boiler_house(name, damaged=False, seed=320):
 
 # ====================================================================== supermarket
 def supermarket(name, damaged=False, seed=340):
-    """Single-storey 2010s supermarket box 40 x 22 m, 5.2 m to the parapet: light-grey sandwich-panel walls on a
-    dark plinth, 28 m aluminium-glass storefront on the +Z side with sliding entrance, dark fascia with unbranded
-    'ПРОДУКТИ' / 'МАРКЕТ' signs, steel entrance canopy over the parking edge (+Z, 5 m deep), loading door at the
-    back, rooftop HVAC.  Intact: a third of the glazing shot out, two bays boarded with OSB.  Damaged: storefront
-    blown in (mullions bent / torn out, glass gone), shelving visible, roof sagging and holed, sign hanging, canopy
-    half collapsed, debris."""
-    mb = TMB(name); r = rng(seed)
-    L, D, H = 40.0, 22.0, 5.2
-    gx0, gx1, gh = -14.0, 14.0, 3.6
-    poly = [(-L / 2, -D / 2), (L / 2, -D / 2), (L / 2, D / 2), (-L / 2, D / 2)]
-    soot_pts = []
-    for (a, b) in outward_edges(poly):
-        M, Lw = edge_frame(a, b)
-        nrm = M[:3, 2]; front = nrm[2] > 0.9; back_ = nrm[2] < -0.9
-        holes = []
-        if front:
-            holes = [(Lw / 2 + gx0, 0.2, Lw / 2 + gx1, gh)]
-        if back_:
-            holes = [(Lw / 2 - 2.0, 0.0, Lw / 2 + 2.0, 3.4)]
-        facade_wall(mb, a, b, 0.0, H, 'sandwich', (3.0, 3.0), holes=holes, th=0.25, back='interior_dark' if damaged else False, side='steel_dark')
-        tbox(mb, (0, 0, 0), (Lw, 0.5, 0.03), 'plinth', (1.2, 0.6), M=M, faces='+z+y')
-        tbox(mb, (0, H, -0.25), (Lw, H + 0.08, 0.05), 'steel_dark', (3.0, 1.0), M=M, faces='+y+z')
-        if back_:
-            tquad(mb, (Lw / 2 - 2.0, 0.0, -0.12), (1, 0, 0), (0, 1, 0), 4.0, 3.4, 'garage_door', (4.0, 3.4), M=M)
-            tbox(mb, (Lw / 2 - 2.6, 3.5, 0), (Lw / 2 + 2.6, 3.65, 1.4), 'steel_dark', (2, 2), M=M)
-        if front:
-            # fascia band over the storefront + signs
-            tbox(mb, (Lw / 2 + gx0 - 0.5, gh, 0), (Lw / 2 + gx1 + 0.5, H, 0.12), 'steel_dark', (3.0, 2.0), M=M, faces='+z+y-y+x-x')
-            sg = [(Lw / 2 - 11.0, 8.0, 'sign_products'), (Lw / 2 + 3.5, 7.0, 'sign_market')]
-            for k, (x0, w, reg) in enumerate(sg):
-                Ms = M
-                if damaged and k == 0:   # hanging from its right end
-                    Ms = M @ rot_axis((0, 0, 1), 0.42, origin=(x0 + w, gh + 1.45, 0.2))
-                tbox(mb, (x0, gh + 0.15, 0.12), (x0 + w, gh + 1.45, 0.3), 'steel_dark', (3, 2), M=Ms, faces='+x-x+y-y')
-                tquad(mb, (x0, gh + 0.15, 0.3), (1, 0, 0), (0, 1, 0), w, 1.3, reg, (w, 1.3), M=Ms)
-            # storefront bays (2 m), mullions
-            nb = int((gx1 - gx0) / 2.0)
-            boarded = {3, 10}
-            for i in range(nb):
-                x0 = Lw / 2 + gx0 + i * 2.0
-                if damaged:
-                    if r.random() < 0.25:     # odd shard-rimmed pane left in the frame
-                        aquad(mb, xform(np.array([[x0 + 0.05, 0.3, -0.08], [x0 + 1.95, 0.3, -0.08], [x0 + 1.95, gh - 0.1, -0.08], [x0 + 0.05, gh - 0.1, -0.08]]), M), 'glass_crack_b')
-                else:
-                    if i in boarded:
-                        tquad(mb, (x0, 0.2, -0.06), (1, 0, 0), (0, 1, 0), 2.0, gh - 0.2, RS('door_board', 0.5, 0, 1, 1), (2.0, gh - 0.2), M=M)
-                    else:
-                        reg = 'glass_shop_broken' if r.random() < 0.33 else 'glass_shop'
-                        tquad(mb, (x0, 0.2, -0.1), (1, 0, 0), (0, 1, 0), 2.0, gh - 0.2, reg, (2.0, gh - 0.2), M=M)
-            for i in range(nb + 1):
-                x = Lw / 2 + gx0 + i * 2.0
-                if damaged and r.random() < 0.45 and 0 < i < nb:
-                    # bent / torn mullion
-                    ang = r.uniform(0.25, 0.9) * r.choice([-1, 1])
-                    Mb = M @ rot_axis((1, 0, 0), -abs(ang), origin=(x, 0.2, 0)) @ rot_axis((0, 0, 1), ang * 0.3, origin=(x, 0.2, 0))
-                    tbox(mb, (x - 0.04, 0.2, -0.08), (x + 0.04, gh * r.uniform(0.5, 0.95), 0.0), 'steel_dark', (1, 3.6), M=Mb, faces='+x-x+z-z')
-                else:
-                    tbox(mb, (x - 0.04, 0.2, -0.1), (x + 0.04, gh, 0.0), 'steel_dark', (1, 3.6), M=M, faces='+x-x+z')
-            if not damaged:
-                tbox(mb, (Lw / 2 + gx0, 2.75, -0.1), (Lw / 2 + gx1, 2.85, 0.0), 'steel_dark', (3, 1), M=M, faces='+z+y-y')     # transom
-    # roof: flat membrane inside the parapet (sagging grid when damaged)
-    nx, nz = 10, 6
-    def roof_y(x, z):
-        if not damaged:
-            return H - 0.4
-        s = math.exp(-((x - 3.0) / 9.0) ** 2 - (z / 6.0) ** 2)
-        return H - 0.4 - 1.3 * s
-    hole = blob(5.0, 1.0, 2.6, 2.0, 14, seed + 2, 0.35, 0.5) if damaged else None
-    holep = Polygon(hole).buffer(0) if damaged else None
-    rg = G.R['roof_membrane']
-    for i in range(nx):
-        for j in range(nz):
-            x0 = -L / 2 + 0.25 + (L - 0.5) * i / nx; x1 = -L / 2 + 0.25 + (L - 0.5) * (i + 1) / nx
-            z0 = -D / 2 + 0.25 + (D - 0.5) * j / nz; z1 = -D / 2 + 0.25 + (D - 0.5) * (j + 1) / nz
-            if damaged and holep.intersects(sbox(x0, z0, x1, z1)) and holep.intersection(sbox(x0, z0, x1, z1)).area > 0.35 * (x1 - x0) * (z1 - z0):
-                continue
-            P = [(x0, roof_y(x0, z1), z1), (x1, roof_y(x1, z1), z1), (x1, roof_y(x1, z0), z0), (x0, roof_y(x0, z0), z0)]
-            mb.poly(P, Fit(rg, (2.0, 2.0), i * 7 + j))
-            if damaged:
-                mb.poly(P[::-1], Fit(G.R['interior_dark'], (4.0, 4.0), i * 7 + j))
-    for (x, z) in ((-12, -4), (-6, -5), (10, -6), (15, 3)):
-        if damaged and abs(x - 3) < 8:
-            continue
-        tbox(mb, (x - 1.0, roof_y(x, z), z - 0.7), (x + 1.0, roof_y(x, z) + 1.1, z + 0.7), 'steel_galv', (2.0, 1.1), faces='+x-x+z-z+y')
-    # entrance canopy (5 m deep over the parking edge)
-    cz0, cz1, cy = D / 2, D / 2 + 5.0, 3.5
-    cols = [(-10.0, cz1 - 0.3), (-3.3, cz1 - 0.3), (3.3, cz1 - 0.3), (10.0, cz1 - 0.3)]
-    for k, (x, z) in enumerate(cols):
-        if damaged and k == 3:
-            beam(mb, (x + 0.3, 0.1, z + 0.4), (x + 3.2, 0.25, z + 1.2), 0.2, 0.2, 'steel_dark')          # knocked down
-            continue
-        tbox(mb, (x - 0.1, 0, z - 0.1), (x + 0.1, cy, z + 0.1), 'steel_dark', (1, 3.5), faces='+x-x+z-z')
-    Mc = None
-    if damaged:
-        Mc = rot_axis((0, 0, 1), 0.38, origin=(4.5, cy, 0))
-    tmp = TMB()
-    tbox(tmp, (-11.0, cy, cz0), (11.0, cy + 0.35, cz1), 'steel_dark', (3.0, 3.0), faces='+x-x+z-y')
-    tbox(tmp, (-11.0, cy + 0.35, cz0), (11.0, cy + 0.36, cz1), 'roof_membrane', (2.0, 2.0), faces='+y')
-    if damaged:
-        # split the canopy: left part stays, right part hinges down at x = 4.5
-        left = TMB(); right = TMB()
-        tbox(left, (-11.0, cy, cz0), (4.5, cy + 0.35, cz1), 'steel_dark', (3.0, 3.0), faces='+x-x+z-y')
-        tbox(left, (-11.0, cy + 0.35, cz0), (4.5, cy + 0.36, cz1), 'roof_membrane', (2.0, 2.0), faces='+y')
-        tbox(right, (4.5, cy, cz0), (11.0, cy + 0.35, cz1), 'steel_dark', (3.0, 3.0), faces='+x-x+z-y')
-        tbox(right, (4.5, cy + 0.35, cz0), (11.0, cy + 0.36, cz1), 'roof_membrane', (2.0, 2.0), faces='+y')
-        mb.merge(left); mb.merge(right, rot_axis((0, 0, 1), -0.5, origin=(4.5, cy, 0)))
-    else:
-        mb.merge(tmp)
-    if damaged:
-        # interior: floor, shelving rows, debris, glass shards outside
-        tquad(mb, (-L / 2 + 0.25, 0.03, D / 2 - 0.25), (1, 0, 0), (0, 0, -1), L - 0.5, D - 0.5, 'interior_dark', (4, 4))
-        for k in range(6):
-            z = D / 2 - 5.0 - k * 2.4
-            ang = r.normal(0, 0.06) + (0.5 if k == 0 else 0.0)
-            tbox(mb, (-12.0, 0, -0.35), (12.0, 1.9, 0.35), 'steel_dark', (3.0, 2.0), M=mat_trs((r.normal(0, 0.5), 0, z), (0, ang, 0 if k else 0.0)), faces='+x-x+y+z-z')
-        rubble(mb, -6.0, D / 2 - 2.5, 2.2, 10, seed + 5, regs=('sandwich_burnt', 'concrete', 'steel_dark'), hmax=0.7)
-        rubble(mb, 4.0, D / 2 - 6.0, 3.0, 12, seed + 6, regs=('sandwich', 'roof_membrane', 'concrete'), hmax=1.0)
-        for k in range(30):
-            x, z = r.uniform(-14, 14), r.uniform(D / 2 + 0.2, D / 2 + 3.5)
-            s_ = r.uniform(0.15, 0.4)
-            mb.poly([(x, 0.012, z), (x + s_, 0.012, z + 0.05), (x + s_ * 0.6, 0.012, z + s_ * 0.8)], G.fit('glass_dark', (0.4, 0.4)))
-        for k in range(5):     # sandwich-panel sheets blown off
-            x, z = r.uniform(-15, 15), r.uniform(D / 2 + 1.0, D / 2 + 4.5)
-            tquad(mb, (0, 0, 0), (1, 0, 0), (0, 0, -1), 2.6, 1.0, 'sandwich', (3.0, 1.0), M=mat_trs((x, 0.06, z), (r.normal(0, 0.15), r.uniform(0, 3), r.normal(0, 0.15))), double=True)
-        soot_pts += [np.array([-4.0, 2.5, D / 2]), np.array([6.0, 2.0, D / 2]), np.array([5.0, H, 1.0])]
-    tint(mb, ground_ao(1.0, 0.62))
-    for p in soot_pts:
-        tint(mb, soot_blob(p, 2.5, 0.25, up=1.6))
-    return mb
+    """Neighbourhood supermarket box (see modern_market.py)."""
+    import modern_market as MK
+    return MK.supermarket(name, damaged, seed)
 
 
 # ====================================================================== pharmacy pavilion / burnt kiosk
@@ -788,6 +672,8 @@ def pharmacy_kiosk(name, burnt=False, seed=360):
     cross = RS('decals', 0.52, 0.52, 0.98, 0.98) if not burnt else 'soot'
     tquad(mb, (-0.4, -0.4, 0.08), (1, 0, 0), (0, 1, 0), 0.8, 0.8, cross, (0.8, 0.8), M=Mx)
     tquad(mb, (0.4, -0.4, -0.08), (-1, 0, 0), (0, 1, 0), 0.8, 0.8, cross, (0.8, 0.8), M=Mx)
+    import modern_yard as MY
+    MY.kiosk_extras(mb, burnt, seed)
     tint(mb, ground_ao(0.8, 0.6))
     if burnt:
         tint(mb, lambda p: 0.55 + 0.45 * min(1, abs(p[1] - 1.2) / 2.0))
@@ -863,7 +749,7 @@ def all_items():
            (boiler_house('boiler_house'), 'bh'), (boiler_house('boiler_house_damaged', True), 'bh'),
            (supermarket('supermarket'), 'sm'), (supermarket('supermarket_damaged', True), 'sm'),
            (pharmacy_kiosk('pharmacy_kiosk'), 'pk'), (pharmacy_kiosk('kiosk_modern_burnt', True), 'pk'),
-           (garage_row(), 'gr'), (window_sandbags(), 'ws')]
+           (__import__('modern_yard').garage_row(), 'gr'), (window_sandbags(), 'ws')]
     return out
 
 
@@ -872,11 +758,11 @@ NODE_NOTES = {
     'kindergarten_damaged': 'same footprint; shell hole in the centre roof, 6 burnt-out windows with soot plumes, +X/+Z wing corner collapsed to a rubble mound (slabs hanging, interior exposed).',
     'boiler_house': '18 x 12 m brick hall (6.2 m + parapet) at x<0 of the footprint; 30 m steel stack with 2 tiers of 3 guy wires to anchors 8 m out (the footprint includes the anchors).',
     'boiler_house_damaged': 'stack torn at 17 m, upper section lying across the caved-in hall roof, snapped guys hanging, front breach, burnt windows.',
-    'supermarket': '40 x 22 m box, 5.2 m, storefront on +Z with signs, entrance canopy 22 x 5 m over the parking edge (+Z); some glazing shot out / boarded.',
-    'supermarket_damaged': 'storefront blown in, shelves visible, roof sagging + holed, sign hanging, canopy half collapsed, glass / panel debris.',
-    'pharmacy_kiosk': '6 x 4 x 3.1 m glass pavilion, door +Z, green-cross box at the front-right corner.',
+    'supermarket': '40 x 22 m single-storey retail box (walls at x -20.2..19.8, z -13.0..9.0 after recentring), parapet 6.0 m; two-tone envelope (light-grey sandwich sides / back, anthracite ACM shop front, red ACM fascia wrapping 6 m round the ends), 18 m aluminium shopfront with interior shelving, glazed vestibule with sliding doors, ПРОДУКТИ box letters + basket lightbox, 26 x 4.1 m entrance canopy on 5 columns (+Z), ATM / terminal / parcel locker / citylight, trolley shelter, loading dock with 2 roller shutters + ramp at +X (to x 23.4), bin enclosure at -X (to x -23.4); roof: 2 AHUs + ducts, 3 condensers, 6 smoke-vent domes, hatch, flue, walkways. Wartime: 2 bays boarded (ПРАЦЮЄМО), 1 shot out, blast tape.',
+    'supermarket_damaged': 'same footprint: shopfront blown in (bent / torn mullions, shard-rimmed + cracked panes, 3 OSB bays), interior exposed (toppled gondolas, checkouts, hanging ceiling tiles), vestibule wrecked (door leaf on the apron), right canopy half collapsed with 2 columns down, sagging roof bay with a torn hole + purlins and a tilted AHU, shot-up fascia (letters missing / hanging / fallen), scorch above openings, east shutter blown out, glass / cladding / stock / trolley debris.',
+    'pharmacy_kiosk': 'plus split AC, АПТЕКА lightbox, shutter box, tiled step, bin. 6 x 4 x 3.1 m glass pavilion, door +Z, green-cross box at the front-right corner.',
     'kiosk_modern_burnt': 'burnt-out twin of pharmacy_kiosk (same footprint).',
-    'garage_row': '6 garages 3.3 x 6 m (row 19.8 x 6), gates to +Z; 2 open, one burnt with a sagging roof.',
+    'garage_row': 'silicate / red brick, concrete lintels, roofing felt with patches + drip edge, mixed painted swing gates (padlock, numbers) and galvanised roll-up doors, gutter / downpipe, dish, stove flue, weeds. 6 garages 3.3 x 6 m (row 19.8 x 6), gates to +Z; 2 open, one burnt with a sagging roof.',
     'window_sandbags': 'stack for a 1.5 m ground-floor window: 1.8 m wide, 2.3 m high, 0.7 m deep at the base; back face at z = -0.35 goes against the facade (place with the stack centre 0.37 m in front of the wall).',
 }
 NOTES = ('Two materials: modern_atlas (2048^2 opaque, tools/blender/env/modern_atlas.py; brick / concrete / glass / ground regions '

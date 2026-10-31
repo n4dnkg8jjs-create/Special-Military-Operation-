@@ -60,10 +60,16 @@ def main():
                                'knee + elbow pads, assault pack with radio, gloves',
                         'UA': 'heavier plate carrier with shoulder & groin protection and side plates; FAST high-cut with NVG shroud, counterweight pouch and '
                               'headset (or MICH + goggles); grenade pouches, radio, IFAK, tourniquet; elbow/knee pads, gloves, MultiCam or MM-14'},
-        'weapons': {'ak74m': 'AK-74M 943 mm, black polymer furniture, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), two-chamber muzzle brake',
-                    'grenades': 'F-1 (ribbed 55 mm cast body) and RGD-5 (smooth 58 mm egg), both with UZRGM fuze, spoon and pull ring',
-                    'pkm': 'PKM 1190 mm, skeleton-style stock, 100-rd box, folded bipod, carry handle',
-                    'rpg7': 'RPG-7 with wooden heat guards, PGO-7 sight and PG-7V (85 mm) round loaded'},
+        'weapons': {'ak74m': 'AK-74M (6P20) 943 mm: plum polymer furniture, ribbed dust cover, stamped receiver with trunnion rivets and mag-well dimples, '
+                             'side rail, tangent rear sight, 90-deg gas block with vented gas tube, cleaning rod, AK-74 two-chamber brake, side-folding '
+                             'solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), 2-point sling',
+                    'grenades': 'F-1 (segmented 55 mm cast body) and RGD-5 (smooth 58 mm egg with seam), both with UZRGM fuze, spoon and pull ring',
+                    'pkm': 'PKM 1190 mm: stamped receiver, ribbed feed cover + tray, fluted barrel, gas cylinder under the barrel, folded bipod, '
+                           'barrel carry handle, slotted flash hider, skeleton stock, 100-rd box with belt feeding the tray, sling',
+                    'rpg7': 'RPG-7V: birch heat guards with clamp bands, trigger group, folding iron sights, PGO-7 optic on the left bracket, flared '
+                            'venturi, sling, PG-7V (85 mm) round loaded',
+                    'texturing': 'one PBR atlas per weapon (base colour / ORM / tangent normal, JPEG), procedural with edge wear, cavity grime, '
+                                 'stamped/moulded detail and stencils in the normal + colour maps; ~1100-1400 px/m on rifles'},
     }
     out['skeleton'] = {
         'rig': 'MakeHuman cmu_mb (CMU-BVH compatible names); joint nodes carry identity rest rotations (world-aligned frames); skins use inverse bind = translate(-joint).',
@@ -155,9 +161,10 @@ def main():
                                           'seamlessly during a burst (one recoil cycle per loop) and cross-fades back into the aim clip.'),
                                 peeks=dict(
                                     clips='peek_left / peek_right (standing), peek_crouch_left / peek_crouch_right (kneeling), 2 s loops',
-                                    geometry='leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 24-27 deg about the aim axis to the '
+                                    geometry='leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 22-28 deg about the aim axis to the '
                                              'named side (the soldier\'s own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted '
-                                             '11-22 deg, right eye on the sight line. The head sits 0.27-0.35 m to the lean side of the root (events.head_out_m): with the '
+                                             '11-12 deg (right peeks) / 32-40 deg (left peeks: the cheek stays on the stock), right eye on the sight line, butt in the '
+                                             'shoulder pocket (< 1.5 cm). The head sits 0.23-0.36 m to the lean side of the root (events.head_out_m): with the '
                                              'corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it.'),
                                 cover=dict(
                                     cover_duck='deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below '
@@ -201,20 +208,26 @@ def main():
         g, tris, mats = read_glb(f'{ASSETS}/{w}.glb')
         out[w] = dict(file=f'{w}.glb', size_bytes=os.path.getsize(f'{ASSETS}/{w}.glb'), tris=tris, materials=sorted({m for ms in mats.values() for m in ms}),
                       empties={k: v[0] for k, v in wi[w]['empties'].items()},
-                      conventions='origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1')
-    out['ak74m']['magazine_node'] = 'magazine (separate mesh; hide/reparent to mag_socket_L during reloads)'
+                      conventions='origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1 '
+                                  '(the magazine LOD1 is a child of `magazine`); one atlas material per weapon',
+                      texel_px_per_m=wi[w].get('texel_px_per_m'))
+    out['ak74m']['magazine_node'] = 'magazine (separate mesh; hide/reparent to mag_socket_L during reloads; its LOD1 `magazine_LOD1` is a child and moves with it)'
     for w in ('ak12', 'ak74m_optic'):
         if w in out:
             out[w]['magazine_node'] = 'magazine (separate mesh, same as ak74m)'
             out[w]['aim_note'] = ('The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher '
                                   '(optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.')
-    out['ak12']['description'] = ('AK-12 (6P70, 2020 pattern): railed hinged dust cover + railed handguard, AK-12 muzzle brake, telescoping/side-folding '
-                                  'stock with cheek riser, ribbed 30-rd mag, 1P87-style collimator (olive) on the rail')
-    out['ak74m_optic']['description'] = ('UA AK-74M upgrade: Picatinny dust-cover rail with an EOTech-style holographic sight, aluminium railed gas-tube '
-                                         'cover and lower handguard, vertical foregrip, original side-folding stock')
+    out['ak12']['description'] = ('AK-12 (6P70, 2020 pattern): railed dust cover with folded rear diopter, railed polymer handguard with M-LOK slots, '
+                                  'gas-block front sight, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser and rubber pad, ribbed black '
+                                  '30-rd mag, 1P87 (PK-120) collimator (olive) on the rail, sling')
+    out['ak74m_optic']['description'] = ('UA AK-74M: black 6P20 furniture and magazine, quick-detach dovetail side mount with a Kobra-style collimator '
+                                         '(tilted amber window), bottom rail on the lower handguard with a vertical foregrip, side-folding stock, sling')
     if 'rpg22' in out:
         out['rpg22']['carried'] = dict(file='rpg22_carried.glb', note='collapsed transport configuration, origin at the tube centre')
         out['rpg22']['conventions'] = 'origin = right hand on the tube under the firing housing, +Z muzzle, +Y up; parent to weapon_socket for the launcher clips'
+    if 'rpg7' in out:
+        out['rpg7']['grip_L_note'] = ('grip_L sits under the front heat guard (z = 0.17), where the launcher clips put the left palm '
+                                      '(clips_extra.LAUNCHER); the RPG-7V has a single pistol grip')
     for w in ('grenade_f1', 'grenade_rgd5'):
         if w in out:
             out[w]['conventions'] = ('origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), '

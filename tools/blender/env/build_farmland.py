@@ -16,6 +16,7 @@ import farmland_atlas as FA
 import farmland_foliage as FF
 import farmland_trees as FT
 import farmland_geo as FG
+from meshfix import fix_mb
 
 BUDGET = {'tree_': 5000, 'bush_': 2000, 'sunflower': 250, 'corn': 250, 'weeds': 250, 'barn_': 12000, '_lod1': 300}
 
@@ -81,6 +82,7 @@ def main(only=None):
             x = 0.0; zrow -= rowdepth + 4; rowdepth = 0.0
         loc = (x - mn[0], 0, zrow - mx[2])
         x += sz[0] + 3; rowdepth = max(rowdepth, sz[2])
+        fix_mb(mb, skip_mats=(1,))
         ob = to_blender(mb, [m_atlas, m_fol], loc)
         # top-level empty carries the asset name; the mesh is its child. KHR_mesh_quantization (gltf-transform quantize)
         # writes the dequantisation scale/offset onto the *mesh* node, which farmland.js instancing then keeps

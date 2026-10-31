@@ -40,6 +40,7 @@ export class Assets {
       this.tex[t] = await this.loadTexSet(t, renderer);
       progress(++done / (jobs.length + 6), t);
     }
+    { const c = await this.loadTexSet('curb', renderer, true); if (c) this.tex.curb = c; }
     // farmland ground sets are optional (the ground shader has procedural fallbacks)
     if (opts.rural) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
     this.buildKit();

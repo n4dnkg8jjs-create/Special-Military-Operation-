@@ -79,98 +79,98 @@
   },
   "supermarket": {
    "size": [
-    40.1,
-    5.9,
-    28.4
+    46.8,
+    7.32,
+    27.6
    ],
-   "tris": 1470,
+   "tris": 5814,
    "bbox_min": [
-    -20.05,
+    -23.4,
     0.0,
-    -14.2
+    -13.8
    ],
    "bbox_max": [
-    20.05,
-    5.9,
-    14.2
+    23.4,
+    7.32,
+    13.8
    ],
-   "notes": "40 x 22 m box, 5.2 m, storefront on +Z with signs, entrance canopy 22 x 5 m over the parking edge (+Z); some glazing shot out / boarded."
+   "notes": "40 x 22 m single-storey retail box (walls at x -20.2..19.8, z -13.0..9.0 after recentring), parapet 6.0 m; two-tone envelope (light-grey sandwich sides / back, anthracite ACM shop front, red ACM fascia wrapping 6 m round the ends), 18 m aluminium shopfront with interior shelving, glazed vestibule with sliding doors, ПРОДУКТИ box letters + basket lightbox, 26 x 4.1 m entrance canopy on 5 columns (+Z), ATM / terminal / parcel locker / citylight, trolley shelter, loading dock with 2 roller shutters + ramp at +X (to x 23.4), bin enclosure at -X (to x -23.4); roof: 2 AHUs + ducts, 3 condensers, 6 smoke-vent domes, hatch, flue, walkways. Wartime: 2 bays boarded (ПРАЦЮЄМО), 1 shot out, blast tape."
   },
   "supermarket_damaged": {
    "size": [
-    40.1,
-    6.07,
-    29.4
+    46.8,
+    7.7,
+    29.07
    ],
-   "tris": 2558,
+   "tris": 9693,
    "bbox_min": [
-    -20.05,
-    -0.22,
-    -14.2
+    -23.4,
+    -0.38,
+    -13.8
    ],
    "bbox_max": [
-    20.05,
-    5.85,
-    15.2
+    23.4,
+    7.32,
+    15.27
    ],
-   "notes": "storefront blown in, shelves visible, roof sagging + holed, sign hanging, canopy half collapsed, glass / panel debris."
+   "notes": "same footprint: shopfront blown in (bent / torn mullions, shard-rimmed + cracked panes, 3 OSB bays), interior exposed (toppled gondolas, checkouts, hanging ceiling tiles), vestibule wrecked (door leaf on the apron), right canopy half collapsed with 2 columns down, sagging roof bay with a torn hole + purlins and a tilted AHU, shot-up fascia (letters missing / hanging / fallen), scorch above openings, east shutter blown out, glass / cladding / stock / trolley debris."
   },
   "pharmacy_kiosk": {
    "size": [
     7.15,
     3.23,
-    4.3
+    4.78
    ],
-   "tris": 416,
+   "tris": 524,
    "bbox_min": [
     -3.57,
     0.0,
-    -2.15
+    -2.39
    ],
    "bbox_max": [
     3.57,
     3.23,
-    2.15
+    2.39
    ],
-   "notes": "6 x 4 x 3.1 m glass pavilion, door +Z, green-cross box at the front-right corner."
+   "notes": "plus split AC, АПТЕКА lightbox, shutter box, tiled step, bin. 6 x 4 x 3.1 m glass pavilion, door +Z, green-cross box at the front-right corner."
   },
   "kiosk_modern_burnt": {
    "size": [
     7.46,
-    3.1,
-    5.35
+    3.16,
+    5.57
    ],
-   "tris": 438,
+   "tris": 590,
    "bbox_min": [
     -3.52,
-    0.0,
-    -2.1
+    -0.06,
+    -2.34
    ],
    "bbox_max": [
     3.93,
     3.1,
-    3.25
+    3.23
    ],
    "notes": "burnt-out twin of pharmacy_kiosk (same footprint)."
   },
   "garage_row": {
    "size": [
-    20.3,
-    2.89,
-    7.59
+    20.4,
+    3.77,
+    7.75
    ],
-   "tris": 666,
+   "tris": 1568,
    "bbox_min": [
-    -10.15,
+    -10.2,
     0.0,
-    -3.8
+    -3.88
    ],
    "bbox_max": [
-    10.15,
-    2.89,
-    3.8
+    10.2,
+    3.77,
+    3.88
    ],
-   "notes": "6 garages 3.3 x 6 m (row 19.8 x 6), gates to +Z; 2 open, one burnt with a sagging roof."
+   "notes": "silicate / red brick, concrete lintels, roofing felt with patches + drip edge, mixed painted swing gates (padlock, numbers) and galvanised roll-up doors, gutter / downpipe, dish, stove flue, weeds. 6 garages 3.3 x 6 m (row 19.8 x 6), gates to +Z; 2 open, one burnt with a sagging roof."
   },
   "window_sandbags": {
    "size": [
@@ -193,134 +193,134 @@
   },
   "car_hatch_modern": {
    "size": [
-    4.07,
-    1.43,
-    2.0
+    4.08,
+    1.45,
+    1.91
    ],
-   "tris": 366,
+   "tris": 3082,
    "bbox_min": [
     -2.04,
     0.0,
-    -1.0
+    -0.96
    ],
    "bbox_max": [
     2.04,
-    1.43,
-    1.0
+    1.45,
+    0.96
    ],
-   "notes": "Lanos / Sens-like 5-door hatchback 4.07 x 1.68 x 1.43 m, cherry red, front +X."
+   "notes": "lofted smooth body (wheel-arch cut-outs, flares, crowned bonnet, raked glass), separate tyres + alloy rims, mirrors, wipers, plates; seats / headrests through the glass. Lanos / Sens-like 5-door hatchback 4.07 x 1.68 x 1.43 m, cherry red, front +X."
   },
   "car_hatch_modern_burnt": {
    "size": [
-    4.12,
+    4.1,
     1.39,
-    1.72
+    1.77
    ],
-   "tris": 766,
+   "tris": 2794,
    "bbox_min": [
-    -2.06,
-    -0.03,
-    -0.86
+    -2.05,
+    -0.02,
+    -0.89
    ],
    "bbox_max": [
-    2.06,
+    2.05,
     1.37,
-    0.86
+    0.89
    ],
    "notes": "burnt-out twin: on bare rims (~0.11 m lower), glass gone, gutted, soot / ash paint."
   },
   "car_suv_modern": {
    "size": [
-    4.32,
-    1.7,
-    2.16
+    4.33,
+    1.73,
+    2.02
    ],
-   "tris": 386,
+   "tris": 3252,
    "bbox_min": [
-    -2.16,
-    0.0,
-    -1.08
+    -2.17,
+    0.01,
+    -1.01
    ],
    "bbox_max": [
-    2.16,
-    1.7,
-    1.08
+    2.17,
+    1.74,
+    1.01
    ],
    "notes": "compact crossover 4.32 x 1.80 x 1.65 m, silver, black plastic cladding, roof rails, front +X."
   },
   "car_suv_modern_burnt": {
    "size": [
-    4.37,
-    1.59,
-    1.89
+    4.36,
+    1.58,
+    1.93
    ],
-   "tris": 766,
+   "tris": 2812,
    "bbox_min": [
-    -2.19,
-    -0.03,
-    -0.95
+    -2.18,
+    -0.02,
+    -0.96
    ],
    "bbox_max": [
     2.18,
-    1.57,
-    0.94
+    1.56,
+    0.97
    ],
    "notes": "burnt-out twin of car_suv_modern."
   },
   "car_van": {
    "size": [
-    5.93,
-    2.62,
-    2.38
+    5.94,
+    2.64,
+    2.18
    ],
-   "tris": 346,
+   "tris": 3184,
    "bbox_min": [
-    -2.96,
-    0.0,
-    -1.19
+    -2.97,
+    0.01,
+    -1.09
    ],
    "bbox_max": [
-    2.96,
-    2.62,
-    1.19
+    2.97,
+    2.65,
+    1.09
    ],
    "notes": "Sprinter-like high-roof van 5.93 x 1.99 x 2.62 m, white, front +X."
   },
   "car_van_medevac": {
    "size": [
-    5.94,
-    2.74,
-    2.38
+    6.18,
+    2.75,
+    2.18
    ],
-   "tris": 368,
+   "tris": 3230,
    "bbox_min": [
-    -2.97,
-    0.0,
-    -1.19
+    -3.21,
+    0.01,
+    -1.09
    ],
    "bbox_max": [
-    2.96,
-    2.74,
-    1.19
+    2.97,
+    2.76,
+    1.09
    ],
    "notes": "car_van with red-cross markings (sides, rear, roof) and a blue light bar."
   },
   "car_van_burnt": {
    "size": [
-    5.98,
-    2.55,
-    2.12
+    5.97,
+    2.56,
+    2.11
    ],
-   "tris": 692,
+   "tris": 3030,
    "bbox_min": [
-    -2.99,
-    -0.03,
+    -2.98,
+    -0.02,
     -1.06
    ],
    "bbox_max": [
     2.99,
-    2.52,
-    1.06
+    2.53,
+    1.05
    ],
    "notes": "burnt-out van: cab glass gone, cargo box burnt, on rims."
   },
@@ -345,60 +345,60 @@
   },
   "bus_stop_modern": {
    "size": [
-    4.5,
-    2.73,
-    2.64
+    5.9,
+    2.9,
+    2.7
    ],
-   "tris": 141,
+   "tris": 444,
    "bbox_min": [
-    -2.25,
+    -2.95,
     0.0,
-    -1.32
+    -1.35
    ],
    "bbox_max": [
-    2.25,
-    2.73,
-    1.32
+    2.95,
+    2.9,
+    1.35
    ],
-   "notes": "4.2 x 1.6 m shelter, open side +Z, back glass at -Z (alpha, cracked / shot out)."
+   "notes": "galvanised frame, ACM roof fascia, citylight end panel, cracked / shot-out glass, wooden bench, route-sign pole + timetable, bin, kerb + paving on +Z; 4.2 x 1.6 m shelter, open side +Z, back glass at -Z (alpha, cracked / shot out)."
   },
   "playground_modern": {
    "size": [
-    14.0,
-    3.31,
-    10.0
+    14.66,
+    3.87,
+    11.69
    ],
-   "tris": 776,
+   "tris": 3844,
    "bbox_min": [
-    -7.0,
-    -0.01,
-    -5.0
+    -7.33,
+    -0.02,
+    -5.84
    ],
    "bbox_max": [
-    7.0,
-    3.3,
-    5.0
+    7.33,
+    3.85,
+    5.84
    ],
-   "notes": "14 x 10 m rubber-surfaced playground (tower + slide, swings, spring riders, carousel)."
+   "notes": "rubber-tile surface in a kerb, low steel fence with gate; two HPL towers with pyramid roofs + chain bridge, U-slide, rope net, ladder, climbing wall; A-frame swing (flat seat + cradle on chains), 2 spring riders, sandbox with mushroom shade, carousel, see-saw, benches, bin, rules board. 14 x 10 m rubber-surfaced playground (tower + slide, swings, spring riders, carousel)."
   },
   "outdoor_gym": {
    "size": [
-    6.0,
-    2.6,
-    4.0
+    6.16,
+    2.7,
+    4.16
    ],
-   "tris": 410,
+   "tris": 792,
    "bbox_min": [
-    -3.0,
+    -3.08,
     0.0,
-    -2.0
+    -2.08
    ],
    "bbox_max": [
-    3.0,
-    2.6,
-    2.0
+    3.08,
+    2.7,
+    2.08
    ],
-   "notes": "street-workout set on a 6 x 4 m mat."
+   "notes": "pull-ups at 3 heights, monkey bars, Swedish wall bars, dip + parallel bars, sit-up bench, push-up handles; street-workout set on a 6 x 4 m mat."
   },
   "parking_barrier": {
    "size": [
@@ -421,41 +421,41 @@
   },
   "waste_pad": {
    "size": [
-    5.13,
-    2.2,
-    3.3
+    5.45,
+    2.63,
+    4.12
    ],
-   "tris": 310,
+   "tris": 698,
    "bbox_min": [
-    -2.56,
-    -0.2,
-    -1.65
+    -2.72,
+    -0.29,
+    -2.06
    ],
    "bbox_max": [
-    2.56,
-    2.0,
-    1.65
+    2.72,
+    2.34,
+    2.06
    ],
-   "notes": "5 x 2.6 m concrete U-pad (open side +Z), 3 euro bins (one tipped out of the pad)."
+   "notes": "profiled-sheet U enclosure under a mono-pitch roof, notices / graffiti, bin bags + cardboard; 5 x 2.6 m concrete U-pad (open side +Z), 3 euro bins (one tipped out of the pad)."
   },
   "bench_modern": {
    "size": [
-    1.8,
+    2.55,
     0.88,
-    0.6
+    1.0
    ],
-   "tris": 136,
+   "tris": 204,
    "bbox_min": [
-    -0.9,
+    -1.27,
     0.0,
-    -0.3
+    -0.5
    ],
    "bbox_max": [
-    0.9,
+    1.27,
     0.88,
-    0.3
+    0.5
    ],
-   "notes": "1.8 m park bench, seat facing +Z."
+   "notes": "cast side frames, 4 + 2 wooden slats, paving pad + bin; 1.8 m park bench, seat facing +Z."
   },
   "lamp_led": {
    "size": [

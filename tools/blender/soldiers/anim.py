@@ -84,6 +84,7 @@ class Rig:
         A0 = mat_from_cols(u0 / L1, n0, np.cross(u0 / L1, n0))
         B0 = mat_from_cols(f0 / L2, n0, np.cross(f0 / L2, n0))
         F = gq.shape[0]
+        prev_tw = None
         for f in range(F):
             S = gp[f, iu]
             T = target[f]
@@ -113,10 +114,16 @@ class Rig:
             if end_rot is not None:
                 qe = end_rot[f]
                 # distribute forearm twist toward the hand
+                # (twist angle unwrapped over the frames: slerping the raw twist quaternion flips the forearm by 180 deg
+                #  whenever the hand's twist crosses +-180 deg, i.e. a one-frame pop of the forearm & hand locals)
                 rel = qmul(qinv(qb), qe)
                 axis = f0 / L2
-                sw, tw = swing_twist(rel, axis)
-                tw_s = qslerp(np.array([0, 0, 0, 1.0]), tw, twist_share)
+                th = 2 * np.arctan2(np.dot(rel[:3], axis), rel[3])
+                th = (th + np.pi) % (2 * np.pi) - np.pi          # short way (== the old slerp) ...
+                if prev_tw is not None:                          # ... unless that jumps a full turn from the last frame
+                    th += 2 * np.pi * np.round((prev_tw - th) / (2 * np.pi))
+                prev_tw = th
+                tw_s = qaxis(axis, th * twist_share)
                 qb = qmul(qb, tw_s)
                 gq[f, ie] = qe
             else:
@@ -266,3 +273,161 @@ def gun_in_chest(sk, gq, root, rest_pos, rest_q):
     p = cp + qrot(cq, rp - s_rest)
     q = qmul(cq, rq)
     return q, p
+
+
+# ------------------------------------------------------------------ boot soles / ground contact
+SOLE = None   # (k, 3) outline of the LEFT boot sole at y = 0 in the bind pose (build_anims.setup fills it from body.pkl)
+
+
+def sole_world(rig, gq, root, side, gp=None):
+    """(F, k, 3) world positions of the boot sole outline; the part ahead of the toe joint bends with the toe"""
+    sk = rig.sk; I = sk.idx
+    F = len(gq)
+    s = SOLE * [1 if side == 'Left' else -1, 1, 1]
+    fi, ti = I[side + 'Foot'], I[side + 'ToeBase']
+    toe = s[:, 2] > sk.head[ti, 2] - 0.005
+    gp = fk_global(sk, gq, root) if gp is None else gp
+    out = np.zeros((F, len(s), 3))
+    for m, i in ((~toe, fi), (toe, ti)):
+        loc = np.broadcast_to(s[m] - sk.head[i], (F, m.sum(), 3))
+        out[:, m] = gp[:, i][:, None] + qrot(np.repeat(gq[:, i][:, None], m.sum(), 1), loc)
+    return out
+
+
+def sole_low(rig, gq, root, side, gp=None):
+    return sole_world(rig, gq, root, side, gp)[..., 1].min(1)
+
+
+def _grow_smooth(d, n=2, loop=False):
+    """smooth a non-negative per-frame correction without ever reducing it (dilate, blur, max with the original)"""
+    if n <= 0 or d.max() <= 0:
+        return d
+    F = len(d)
+    pad = np.concatenate([d[-n - 1:-1], d, d[1:n + 1]]) if loop else np.concatenate([np.repeat(d[:1], n), d, np.repeat(d[-1:], n)])
+    dil = np.array([pad[i:i + 2 * n + 1].max() for i in range(F)])
+    k = np.hanning(2 * n + 3)[1:-1]; k /= k.sum()
+    pad2 = np.concatenate([dil[-n - 1:-1], dil, dil[1:n + 1]]) if loop else np.concatenate([np.repeat(dil[:1], n), dil, np.repeat(dil[-1:], n)])
+    sm = np.convolve(pad2, k, 'valid')
+    return np.maximum(sm, d)
+
+
+def lift_feet(rig, gq, root, sides=('Left', 'Right'), floor=0.0, weight=None, smooth_n=2, loop=False, ankle_dy=None):
+    """leg IK: raise each ankle so no sole point is below `floor` (foot & toe rotations kept, knee stays in its current
+    plane).  weight: optional (F,) mask/scale of the correction; ankle_dy: optional extra signed (F,) / dict per side ankle
+    offset (e.g. to pull a floating planted foot down).  Returns gq, {side: max correction m}"""
+    sk = rig.sk; I = sk.idx
+    F = len(gq)
+    rep = {}
+    for side in sides:
+        gp = fk_global(sk, gq, root)
+        low = sole_low(rig, gq, root, side, gp)
+        dy = np.maximum(floor - low, 0)
+        if weight is not None:
+            dy = dy * weight
+        dy = _grow_smooth(dy, smooth_n, loop)
+        if ankle_dy is not None:
+            dy = dy + (ankle_dy[side] if isinstance(ankle_dy, dict) else ankle_dy)
+        rep[side] = round(float(np.abs(dy).max()), 4)
+        if np.abs(dy).max() < 1e-5:
+            continue
+        m = np.abs(dy) > 1e-5          # only the corrected frames are re-solved (others keep their exact pose)
+        hip, knee, ank = gp[m, I[side + 'UpLeg']], gp[m, I[side + 'Leg']], gp[m, I[side + 'Foot']]
+        tgt = ank + np.outer(dy[m], [0, 1.0, 0])
+        bend = knee - (hip + ank) / 2
+        nb = np.linalg.norm(bend, axis=1, keepdims=True)
+        fwd = qrot(gq[m, I['Hips']], np.broadcast_to([0, 0, 1.0], (m.sum(), 3)))
+        bend = np.where(nb > 0.01, bend / np.maximum(nb, 1e-9), fwd)     # nearly straight leg: knee forward (no noisy plane)
+        pole = knee + bend * 0.5
+        sub = gq[m].copy()
+        lq_ref = sk.local_from_global(sub)
+        rig.two_bone(sub, gp[m], side + 'UpLeg', side + 'Leg', side + 'Foot', tgt, pole, end_rot=sub[:, I[side + 'Foot']].copy(), twist_share=0.0)
+        gq = gq.copy()
+        gq[m] = rig.recompute_desc(lq_ref, sub, {side + 'UpLeg', side + 'Leg', side + 'Foot'})
+    return gq, rep
+
+
+TORSO = None  # (points (k,3) bind pose, dominant bone index (k,)) of the bare torso surface (build_anims.setup)
+LIMB_R = (('Neck', 0.06), ('Neck1', 0.06), ('Head', 0.10), ('LeftArm', 0.05), ('RightArm', 0.05), ('LeftForeArm', 0.04), ('RightForeArm', 0.04),
+          ('LeftHand', 0.025), ('RightHand', 0.025), ('LeftLeg', 0.045), ('RightLeg', 0.045), ('LeftUpLeg', 0.07), ('RightUpLeg', 0.07))
+
+
+def torso_low(rig, gq, root, gp=None):
+    """(F,) lowest bare-torso surface point"""
+    gp = fk_global(rig.sk, gq, root) if gp is None else gp
+    P, bi = TORSO
+    F = len(gq)
+    low = np.full(F, np.inf)
+    for i in np.unique(bi):
+        p = P[bi == i]
+        w = gp[:, i][:, None] + qrot(np.repeat(gq[:, i][:, None], len(p), 1), np.broadcast_to(p - rig.sk.head[i], (F, len(p), 3)))
+        low = np.minimum(low, w[..., 1].min(1))
+    return low
+
+
+ARM_BONES = ('LeftArm', 'RightArm', 'LeftForeArm', 'RightForeArm', 'LeftHand', 'RightHand')
+
+
+def ground_lowest(rig, gq, root, vest=0.025, arms=True, legs=True):
+    """(F,) clearance of the lowest body part above the floor: bare torso surface + `vest` (plate carrier), limb joints minus
+    their radii, boot soles.  arms=False: ignore the arms (before they are posed by IK)"""
+    I = rig.I
+    gp = fk_global(rig.sk, gq, root)
+    lr = [(b, v) for b, v in LIMB_R if (arms or b not in ARM_BONES) and (legs or b not in ('LeftLeg', 'RightLeg'))]
+    j = np.array([I[b] for b, _ in lr]); c = np.array([v for _, v in lr])
+    low = (gp[:, j, 1] - c[None]).min(1)
+    low = np.minimum(low, torso_low(rig, gq, root, gp) - vest)
+    if not legs:
+        return low
+    return np.minimum(low, np.minimum(sole_low(rig, gq, root, 'Left', gp), sole_low(rig, gq, root, 'Right', gp)))
+
+
+def fit_root_to_feet(rig, gq, root, ankles, slack=0.006, smooth_n=2):
+    """lower the root (per frame, smoothed) where a planted ankle target is out of the leg's reach, so the leg IK does not
+    leave the foot hanging above the ground.  ankles: {side: (F,3) ankle targets}.  Returns root, max drop (m)"""
+    sk = rig.sk; I = sk.idx
+    gp = fk_global(sk, gq, root)
+    F = len(gq)
+    drop = np.zeros(F)
+    for side, a in ankles.items():
+        Lmax = np.linalg.norm(sk.head[I[side + 'Leg']] - sk.head[I[side + 'UpLeg']]) + np.linalg.norm(sk.head[I[side + 'Foot']] - sk.head[I[side + 'Leg']])
+        Lmax -= slack
+        d = gp[:, I[side + 'UpLeg']] - np.broadcast_to(a, (F, 3))
+        h2 = np.maximum(Lmax ** 2 - d[:, 0] ** 2 - d[:, 2] ** 2, 0)
+        need = d[:, 1] - np.sqrt(h2)
+        drop = np.maximum(drop, need)
+    drop = _grow_smooth(np.maximum(drop, 0), smooth_n)
+    root = root.copy(); root[:, 1] -= drop
+    return root, float(drop.max())
+
+
+def smooth_locals(rig, gq, bones, sigma=1.5, weight=None, loop=False):
+    """temporal Gaussian smoothing of the LOCAL rotations of `bones` (sign-continuous quaternion average), blended in by
+    weight (F,) (default 1).  For free (non-contact) limb motion whose IK solution whips through a few frames."""
+    lq = rig.local(gq)
+    F = len(lq)
+    r = int(np.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2); k /= k.sum()
+    w = np.ones(F) if weight is None else np.clip(weight, 0, 1)
+    for b in bones:
+        i = rig.I[b]
+        q = qfix_continuity(lq[:, i])
+        pad = np.concatenate([q[-r - 1:-1], q, q[1:r + 1]]) if loop else np.concatenate([np.repeat(q[:1], r, 0), q, np.repeat(q[-1:], r, 0)])
+        sm = np.stack([np.convolve(pad[:, c], k, 'valid') for c in range(4)], 1)
+        sm = qnorm(sm)
+        lq[:, i] = np.array([qslerp(q[f], sm[f], w[f]) for f in range(F)])
+    return rig.global_from_local(lq)
+
+
+def settle_ground(rig, gq, root, vest=0.015, arms=False, sigma=2.0, loop=False, legs=True):
+    """lying poses: per-frame vertical root offset so the lowest body part just touches the floor (no float, no
+    penetration), smoothed (Gaussian sigma frames) then lifted again wherever the smoothing let it dip under"""
+    low = ground_lowest(rig, gq, root, vest, arms, legs)
+    F = len(low)
+    r = int(np.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2); k /= k.sum()
+    pad = np.concatenate([low[-r - 1:-1], low, low[1:r + 1]]) if loop else np.concatenate([np.repeat(low[:1], r), low, np.repeat(low[-1:], r)])
+    off = -np.convolve(pad, k, 'valid')
+    root = root.copy(); root[:, 1] += off
+    low2 = ground_lowest(rig, gq, root, vest, arms, legs)
+    root[:, 1] += _grow_smooth(np.maximum(-low2, 0), 2, loop)
+    return root

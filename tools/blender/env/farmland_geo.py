@@ -62,6 +62,22 @@ def beam(mb, a, b, w, h, reg, tile=(1.0, 1.0), up=(0, 1, 0)):
     tbox(mb, (0, -h / 2, -w / 2), (L, h / 2, w / 2), reg, tile, M=M)
 
 
+def slab_roof(mb, a, b, wid, th, top_reg, top_tile, under_reg, edge_reg=None):
+    """Mono-pitch roof sheet with real thickness: a = front-left top corner, b = back-left top corner, width along +X.
+    Top (faces up), underside, and the four edges -- no open seams, no paper-thin floating sheets."""
+    a = np.asarray(a, float); b = np.asarray(b, float); X = np.array([wid, 0, 0.0]); dn = np.array([0, -th, 0.0])
+    Lv = float(np.linalg.norm(a - b))
+    tquad(mb, b + X, (-1, 0, 0), a - b, wid, Lv, top_reg, top_tile)                       # top, normal up
+    tquad(mb, a + X + dn, (-1, 0, 0), b - a, wid, Lv, under_reg, (3, 3))                 # underside, normal down
+    er = edge_reg or under_reg
+    for P in ([a, a + X, a + X + dn, a + dn], [b + X, b, b + dn, b + X + dn], [b, a, a + dn, b + dn], [a + X, b + X, b + X + dn, a + X + dn]):
+        P = np.array(P)
+        c = P.mean(0); n = newell(P); cen = (a + b + X) / 2 + dn / 2
+        if n @ (c - cen) < 0:
+            P = P[::-1]
+        quad(mb, P, er)
+
+
 def disc(mb, c, nrm, r, n, reg, rad_uv=0.5):
     c = np.asarray(c, float); nrm = np.asarray(nrm, float); nrm /= np.linalg.norm(nrm)
     a = np.cross(nrm, [0, 1, 0] if abs(nrm[1]) < 0.9 else [1, 0, 0]); a /= np.linalg.norm(a); b = np.cross(nrm, a)
@@ -101,7 +117,7 @@ def haybale(name, burnt=False, seed=1):
             y = R + math.sin(a) * rr * j; z = math.cos(a) * rr * j
             if burnt:
                 y = R * 0.82 + math.sin(a) * rr * j * (0.82 if math.sin(a) > 0 else 1.0)
-            y = max(y, 0.02)
+            y = max(y, 0.0)
             ring.append((x, y, z))
         rings.append(mb.vs(ring))
     rg = G.R[side]
@@ -206,7 +222,7 @@ def barn(name, damaged=False, seed=20):
         holes = [gate, (3.3, 0.5, 4.3, 2.6)]
         reg = 'brick_white'
         wall(mb, outline, th, reg, (1.0, 1.0), holes=holes, M=M, back='plaster_white' if damaged else False, cap='none')
-        tquad(mb, (-gw / 2 - 0.15, 0.5 + gh, 0.02), (1, 0, 0), (0, 1, 0), gw + 0.3, 0.3, 'concrete', (2, 0.5), M=M)   # lintel
+        tquad(mb, (-gw / 2 - 0.15, 0.5 + gh, 0.008), (1, 0, 0), (0, 1, 0), gw + 0.3, 0.3, 'concrete', (2, 0.5), M=M)   # lintel
         gone = damaged and sx > 0
         if not gone:
             tquad(mb, (-gw / 2, 0.5, -0.18), (1, 0, 0), (0, 1, 0), gw, gh, RS('gate_barn', 0, 0, 1, 1), (gw, gh), M=M)
@@ -216,11 +232,11 @@ def barn(name, damaged=False, seed=20):
             tquad(mb, (-gw / 4, 0, 0), (1, 0, 0), (0, 1, 0), gw / 2, gh, RS('gate_barn', 0, 0, 0.5, 1), (gw / 2, gh), M=Mg, double=False)
         tquad(mb, (3.3, 0.5, -0.12), (1, 0, 0), (0, 1, 0), 1.0, 2.1, RS('door_blue', 0, 0, 1, 1), (1.0, 2.1), M=M)
         # gable vent louvre
-        tquad(mb, (-0.6, He + 0.6, 0.02), (1, 0, 0), (0, 1, 0), 1.2, 0.7, RS('grille', 0, 0, 1, 1), (1.2, 0.7), M=M)
+        tquad(mb, (-0.6, He + 0.6, 0.008), (1, 0, 0), (0, 1, 0), 1.2, 0.7, RS('grille', 0, 0, 1, 1), (1.2, 0.7), M=M)
     # ---- roof
     rise, run = ta, 1.0
     slope_len = (D / 2 + ov) / math.cos(pitch)
-    ye = He + 0.12 - ov * ta
+    ye = He + 0.035 - ov * ta      # sheet (3 cm incl. underside) resting on the wall heads / gable tops (was +0.12: roof hovered 9 cm up)
     bays = [(-L / 2 - 0.4 + i * 6.08, -L / 2 - 0.4 + (i + 1) * 6.08) for i in range(10)]
     lost = {('+', 3), ('+', 4), ('+', 5), ('-', 4)} if damaged else set()
     sag = {('-', 3), ('-', 5)} if damaged else set()
@@ -249,7 +265,7 @@ def barn(name, damaged=False, seed=20):
         # fascia board along the eave
         tquad(mb, (-sgn * (L / 2 + 0.4), ye - 0.18, sgn * (D / 2 + ov)), (sgn, 0, 0), (0, 1, 0), L + 0.8, 0.18, 'wood_grey', (2, 0.5))
     # ridge cap + vents
-    cap_y = He + 0.12 + D / 2 * ta
+    cap_y = He + 0.035 + D / 2 * ta
     for i, (x0, x1) in enumerate(bays):
         if damaged and i in (3, 4, 5):
             continue
@@ -260,8 +276,8 @@ def barn(name, damaged=False, seed=20):
             tquad(mb, o, du, dv, x1 - x0, 0.3, 'slate', (1.13, 1.75))
         if i % 2 == 1:
             xc = (x0 + x1) / 2
-            tbox(mb, (xc - 0.5, cap_y - 0.1, -0.5), (xc + 0.5, cap_y + 0.55, 0.5), 'wood_grey', (1, 1), faces='+x-x+z-z')
-            tquad(mb, (xc - 0.65, cap_y + 0.5, 0.75), (1, 0, 0), (0, 0.3, -0.75), 1.3, 0.81, 'slate', (1.13, 1.75))
+            tbox(mb, (xc - 0.5, cap_y - 0.25, -0.5), (xc + 0.5, cap_y + 0.55, 0.5), 'wood_grey', (1, 1), faces='+x-x+z-z')   # vent box down into the roof
+            tquad(mb, (xc - 0.65, cap_y + 0.45, 0.75), (1, 0, 0), (0, 0.3, -0.75), 1.3, 0.81, 'slate', (1.13, 1.75))   # vent cap on the box (was 5 cm above it)
             tquad(mb, (xc + 0.65, cap_y + 0.5, -0.75), (-1, 0, 0), (0, 0.3, 0.75), 1.3, 0.81, 'slate', (1.13, 1.75))
     # gable verge boards
     for sx in (1, -1):
@@ -298,23 +314,33 @@ def _barn_damage(mb, r, L, D, He, ye, pitch, bays, holes_front):
         beam(mb, (bays[3][0], He + (D / 2 - z) * math.tan(pitch) + 0.05, z), (bays[3][0] + 7.0, He + (D / 2 - z) * math.tan(pitch) - 0.6, z), 0.1, 0.12, 'wood_grey', (2, 0.5))
         beam(mb, (bays[6][0], He + (D / 2 - z) * math.tan(pitch) + 0.05, z), (bays[6][0] - 4.5, He + (D / 2 - z) * math.tan(pitch) - 1.1, z + 0.4), 0.1, 0.12, 'wood_grey', (2, 0.5))
     # hanging / fallen slate sheets
+    from meshfix import drop
+    sheets = []
     for k in range(9):
         x = r.uniform(bays[3][0] + 0.5, bays[5][1] - 1.5); z = r.uniform(-4.5, 5.0)
         y = r.uniform(0.15, 2.5)
-        M = mat_trs((x, y, z), (r.uniform(-1.2, 1.2), r.uniform(0, PI), r.uniform(-0.9, 0.9)))
-        tquad(mb, (0, 0, 0), (1, 0, 0), (0, 0, 1), 1.13, 1.75, 'slate_old', (1.13, 1.75), M=M)
-        tquad(mb, (1.13, 0, 0), (-1, 0, 0), (0, 0, 1), 1.13, 1.75, 'interior_dark', (3, 3), M=M)
+        M = mat_trs((x, y, z), (r.uniform(-1.2, 1.2) * 0.45, r.uniform(0, PI), r.uniform(-0.9, 0.9) * 0.45))
+        part = TMB('sheet')
+        tquad(part, (0, 0, 0), (1, 0, 0), (0, 0, 1), 1.13, 1.75, 'slate_old', (1.13, 1.75), M=M)
+        tquad(part, (1.13, 0, 0), (-1, 0, 0), (0, 0, 1), 1.13, 1.75, 'interior_dark', (3, 3), M=M)
+        sheets.append(part)
     # debris heap on the floor under the hole
     for k in range(26):
         x = r.uniform(bays[3][0], bays[5][1]); z = r.uniform(-4.5, 4.5)
         s = r.uniform(0.3, 1.0)
-        chunk(mb, (x, s * 0.25, z), (s * 1.5, s * 0.5, s), 900 + k, 'slate_old' if k % 3 else 'brick_white')
+        part = TMB('chunk')
+        chunk(part, (x, s * 0.25 + 0.3, z), (s * 1.5, s * 0.5, s), 900 + k, 'slate_old' if k % 3 else 'brick_white')
+        drop(mb, part, sink=0.04, ground=0.0)
+    for part in sheets:       # fallen sheets come to rest on the heap / the floor (were hanging in mid-air)
+        drop(mb, part, sink=0.01, ground=0.0)
     # spill of bricks / rubble outside each shell hole, sooty rim
     for hb in holes_front:
         P = np.asarray(hb); cx, cy = P.mean(0)
         for k in range(7):
             s = r.uniform(0.15, 0.4)
-            chunk(mb, (cx + r.normal(0, 0.8), s * 0.3, D / 2 + r.uniform(0.2, 1.6)), (s * 1.4, s * 0.6, s), 950 + k + int(cx * 10), 'brick_white')
+            part = TMB('chunk')
+            chunk(part, (cx + r.normal(0, 0.8), s * 0.3 + 0.3, D / 2 + r.uniform(0.2, 1.6)), (s * 1.4, s * 0.6, s), 950 + k + int(cx * 10), 'brick_white')
+            drop(mb, part, sink=0.03, ground=0.0, step_up=True)
     # scorch: soot around holes, on the +X gable, and over the caved-in bays
     fns = [soot_blob((float(np.asarray(hb).mean(0)[0]), float(np.asarray(hb).mean(0)[1]) + 0.8, D / 2), 2.2, 0.2) for hb in holes_front]
     fns.append(soot_blob((L / 2, 4.5, 0), 4.5, 0.25))
@@ -361,13 +387,13 @@ def machine_shed(name='machine_shed', seed=30):
     nz = 5
     for sgn in (1, -1):
         for j in range(nz + 1):
-            z = sgn * (D / 2 + 0.3) * (1 - j / nz)
+            z = sgn * (D / 2 + 0.3) * (1 - j / nz) if j > 0 else sgn * (D / 2 - 0.06)     # eave purlin sits on the rafter ends
             y = He + (D / 2 - abs(z)) * ta + 0.14
             if j < nz:
                 beam(mb, (-L / 2 - 0.3, y, z), (L / 2 + 0.3, y, z), 0.1, 0.14, 'steel_rust', (1, 1))
         dv = np.array([0, math.sin(pitch), -sgn * math.cos(pitch)])
         slope_len = (D / 2 + 0.3) / math.cos(pitch)
-        ye = He + 0.24 - 0.3 * ta
+        ye = He + 0.23 - 0.3 * ta      # sheet underside on the purlin tops (was 1-3 cm above them)
         for i in range(5):
             x0, x1 = xs[i] - (0.3 if i == 0 else 0), xs[i + 1] + (0.3 if i == 4 else 0)
             missing = (i == 2 and sgn > 0) or (i == 3)
@@ -376,7 +402,7 @@ def machine_shed(name='machine_shed', seed=30):
                 xa, xb = x0 + (x1 - x0) * k / n_sh, x0 + (x1 - x0) * (k + 1) / n_sh
                 if missing and r.random() < 0.85:
                     if r.random() < 0.35:   # hanging torn sheet
-                        o = np.array([xa if sgn > 0 else xb, ye + slope_len * 0.55 * math.sin(pitch), sgn * (D / 2 + 0.3 - slope_len * 0.55 * math.cos(pitch))])
+                        o = np.array([xa if sgn > 0 else xb, ye - 0.025 + slope_len * 0.6 * math.sin(pitch), sgn * (D / 2 + 0.3 - slope_len * 0.6 * math.cos(pitch))])
                         M = rot_axis((1, 0, 0), sgn * r.uniform(1.0, 1.4), origin=o)
                         du = np.array([1.0 if sgn > 0 else -1.0, 0, 0])
                         tquad(mb, o, du, dv, xb - xa, r.uniform(1.2, 2.6), 'corr_rust', (xb - xa, 2.0), M=M, double=True)
@@ -388,7 +414,7 @@ def machine_shed(name='machine_shed', seed=30):
                 P = [o - [0, 0.02, 0], o + dv * Ls - [0, 0.02, 0], o + dv * Ls + du * (xb - xa) - [0, 0.02, 0], o + du * (xb - xa) - [0, 0.02, 0]]
                 mb.poly(P, G.fit('steel_rust', (2, 2)))
     # back wall cladding (-Z), 2.4 m, corrugated
-    tquad(mb, (L / 2, 0.06, -D / 2 - 0.16), (-1, 0, 0), (0, 1, 0), L, 2.4, 'corr_rust', (1.0, 2.4), double=True)
+    tquad(mb, (L / 2, 0.06, -D / 2 - 0.155), (-1, 0, 0), (0, 1, 0), L, 2.4, 'corr_rust', (1.0, 2.4), double=True)
     # props left inside: oil drums, a tyre
     for k, (x, z) in enumerate(((-12.5, -6.3), (-11.7, -6.2), (-12.1, -5.5), (8.0, -6.0))):
         G.lathe(mb, [(0.0, 0.06), (0.29, 0.06), (0.29, 0.94), (0.0, 0.94)], 10, 'metal_rust_paint', M=T(x, 0, z), around=2)
@@ -408,7 +434,7 @@ def grain_silo(name='grain_silo', seed=40):
         cx = sx * 3.9
         lathe(mb, [(Rb + 0.25, 0.0), (Rb + 0.25, 0.3), (Rb, 0.3)], 20, 'concrete', M=T(cx, 0, 0), around=6)
         lathe_bands(mb, Rb, 0.3, Hb, 20, 'silo_steel', around=6, band=1.0, M=T(cx, 0, 0))
-        lathe(mb, [(Rb + 0.08, Hb), (Rb * 0.18, Hb + 2.1), (0.0, Hb + 2.2)], 20, 'tin_galv', M=T(cx, 0, 0), around=6)
+        lathe(mb, [(Rb + 0.08, Hb - 0.07), (Rb * 0.18, Hb + 2.1), (0.0, Hb + 2.2)], 20, 'tin_galv', M=T(cx, 0, 0), around=6)   # eave on the wall head
         lathe(mb, [(0.35, Hb + 2.1), (0.35, Hb + 2.55), (0.5, Hb + 2.6), (0.0, Hb + 2.75)], 8, 'tin_galv', M=T(cx, 0, 0))
         # ladder up the side
         for dz in (-0.22, 0.22):
@@ -435,7 +461,7 @@ def grain_silo(name='grain_silo', seed=40):
     for y in np.arange(1.2, 15.5, 0.9):
         cyl(mb, (-0.25, y, 0.62), (0.25, y, 0.62), 0.015, 3, 'steel_rust')
         if y > 2.5:
-            G.tube(mb, [(-0.4, y, 0.4), (-0.4, y, 1.1), (0.4, y, 1.1), (0.4, y, 0.4)], 0.015, 3, 'steel_rust', seg=3)
+            G.tube(mb, [(-0.4, y, 0.34), (-0.4, y, 1.1), (0.4, y, 1.1), (0.4, y, 0.34)], 0.015, 3, 'steel_rust', seg=3)
     tint(mb, lambda p: (0.72 + 0.28 * min(1, p[1] / 3.0)) * (0.92 + 0.08 * math.sin(p[0] * 3.1 + p[2] * 2.3)))
     return mb
 
@@ -449,11 +475,11 @@ def water_tower(name, damaged=False, seed=50):
     mb = TMB(name); r = rng(seed)
     Rs, Hs, Rt, Ht = 0.9, 13.2, 1.8, 3.4
     tank = 'tank_holed' if damaged else 'tank_rust'
-    lathe(mb, [(1.5, 0.0), (1.5, 0.45), (1.1, 0.6), (Rs + 0.05, 0.65)], 16, 'concrete', around=4)
+    lathe(mb, [(1.5, 0.0), (1.5, 0.45), (1.1, 0.6), (Rs - 0.02, 0.66)], 16, 'concrete', around=4)
     lathe_bands(mb, Rs, 0.6, Hs, 16, 'tank_rust', around=3, band=1.05)
     lathe(mb, [(Rs, Hs), (Rt * 0.95, Hs + 0.5), (Rt, Hs + 0.7)], 20, 'tank_rust', around=4)
     lathe_bands(mb, Rt, Hs + 0.7, Hs + 0.7 + Ht, 20, tank, around=6, band=1.1)
-    lathe(mb, [(Rt + 0.1, Hs + 0.7 + Ht), (0.25, Hs + 0.7 + Ht + 1.0), (0.0, Hs + 0.7 + Ht + 1.05)], 20, 'tank_rust', around=4)
+    lathe(mb, [(Rt + 0.1, Hs + 0.7 + Ht - 0.065), (0.25, Hs + 0.7 + Ht + 1.0), (0.0, Hs + 0.7 + Ht + 1.05)], 20, 'tank_rust', around=4)
     yt = Hs + 0.7 + Ht + 1.05
     lathe(mb, [(0.12, yt - 0.1), (0.12, yt + 0.4), (0.25, yt + 0.45), (0.0, yt + 0.55)], 6, 'steel_rust')
     # door at the base
@@ -481,11 +507,15 @@ def water_tower(name, damaged=False, seed=50):
         cyl(mb, (Rt + 0.62, yw + 0.06, dz), (Rt + 0.2, Hs + 0.7 + Ht + 0.1, dz), 0.025, 4, 'steel_rust', seg=3)
     for y in np.arange(0.95, ytop, 0.6):
         cyl(mb, (Rs + 0.2, y, -0.22), (Rs + 0.2, y, 0.22), 0.015, 3, 'steel_rust')
-    if damaged:   # broken ladder piece lying at the foot, peeled tank plate
+    for y in np.arange(1.5, ytop - 0.3, 3.0):      # wall brackets: the ladder is fixed to the shaft (was free-standing)
         for dz in (-0.22, 0.22):
-            cyl(mb, (Rs + 0.6, 0.05, dz - 1.6), (Rs + 1.9, 0.3, dz + 1.7), 0.025, 4, 'steel_rust', seg=3)
+            cyl(mb, (Rs - 0.03, y, dz * 0.8), (Rs + 0.2, y, dz), 0.015, 3, 'steel_rust')
+    if damaged:   # broken ladder piece lying at the foot, peeled tank plate
+        lying = TMB('ladder')
+        for dz in (-0.22, 0.22):
+            cyl(lying, (Rs + 0.6, 0.025, dz - 1.6), (Rs + 1.9, 0.3, dz + 1.7), 0.025, 4, 'steel_rust', seg=3)
         a0 = 2.4
-        c = np.array([math.cos(a0) * Rt, Hs + 0.7 + Ht * 0.45, math.sin(a0) * Rt])
+        c = np.array([math.cos(a0) * Rt * 0.985, Hs + 0.7 + Ht * 0.45, math.sin(a0) * Rt * 0.985])
         nrm = np.array([math.cos(a0), 0, math.sin(a0)]); tg = np.array([-math.sin(a0), 0, math.cos(a0)])
         P = [c - tg * 0.5 - [0, 0.5, 0], c + tg * 0.5 - [0, 0.5, 0], c + tg * 0.5 + nrm * 0.7 + [0, 0.1, 0], c - tg * 0.4 + nrm * 0.55 + [0, 0.3, 0]]
         mb.poly(P, G.fit('tank_rust', (1.2, 1.2))); mb.poly(P[::-1], G.fit('steel_rust', (1.2, 1.2)))
@@ -493,6 +523,8 @@ def water_tower(name, damaged=False, seed=50):
     tint(mb, lambda p: (0.75 + 0.25 * min(1, p[1] / 2.0)))
     if damaged:
         mb.transform(rot_axis((0, 0, 1), math.radians(2.0)))
+        tint(lying, lambda p: 0.75)
+        mb.merge(lying)       # the broken-off ladder lies on the ground (not tilted with the tower)
     return mb
 
 
@@ -507,13 +539,17 @@ def wheel(mb, c, R, w, rim_r, tyre=True, burnt=False, segs=16, rim='mtz_red', ax
         lathe(mb, [(rim_r, -w / 2 + 0.03), (R * 0.82, -w / 2 - 0.01), (R * 0.96, -w / 2)], segs, 'rubber', M=M, around=2)
         lathe(mb, [(R * 0.96, w / 2), (R * 0.82, w / 2 + 0.01), (rim_r, w / 2 - 0.03)], segs, 'rubber', M=M, around=2)
     reg = 'burnt_metal' if burnt else rim
-    lathe(mb, [(rim_r, -w / 2 + 0.05), (rim_r, w / 2 - 0.05)], segs, reg, M=M, around=1)
+    e = 0.03 if (tyre and not burnt) else 0.05
+    lathe(mb, [(rim_r, -w / 2 + e), (rim_r, w / 2 - e)], segs, reg, M=M, around=1)
+    if burnt:      # bare rim: the barrel is seen from both sides -> 8 mm steel wall with an inner face and edge rings
+        ri = rim_r - 0.008
+        lathe(mb, [(rim_r, w / 2 - e), (ri, w / 2 - e), (ri, -w / 2 + e), (rim_r, -w / 2 + e)], segs, reg, M=M, around=1)
     for s in (1, -1):
         y = s * (w / 2 - 0.08)
         prof = [(rim_r, y), (rim_r * 0.55, y * 0.5), (0.12, y * 0.5), (0.0, y * 0.5 + s * 0.05)]
         lathe(mb, prof if s > 0 else prof[::-1], segs, reg, M=M)
     if burnt:   # bead wire rings sagging
-        G.tube(mb, [c + np.array([0, math.cos(t) * rim_r * 1.05, math.sin(t) * rim_r * 1.05]) for t in np.linspace(0, 2 * PI, 13)], 0.012, 3, 'steel_rust', seg=4)
+        G.tube(mb, [c + np.array([0, math.cos(t) * rim_r * 1.0, math.sin(t) * rim_r * 1.0]) for t in np.linspace(0, 2 * PI, 13)], 0.012, 3, 'steel_rust', seg=4)
 
 
 def mtz80(name, burnt=False, seed=60):
@@ -528,6 +564,8 @@ def mtz80(name, burnt=False, seed=60):
     Rr, Rf = 0.765, 0.485
     zr, zf = -0.95, 1.4                                     # rear / front axle positions
     yr_, yf = Rr - drop * 1.6, Rf - drop
+    if burnt:      # tyres burnt off: it sits on the steel rims (was floating 4-6 cm above the ground)
+        yr_, yf = 0.52 - 0.01, 0.3 - 0.01
     # chassis / engine block / transmission
     tbox(mb, (-0.38, yf - 0.15, zr), (0.38, yf + 0.38, zf + 0.85), dark, (1, 1))
     tbox(mb, (-0.5, yr_ - 0.35, zr - 0.55), (0.5, yr_ + 0.35, zr + 0.6), dark, (1, 1))
@@ -538,13 +576,17 @@ def mtz80(name, burnt=False, seed=60):
         q = [(xs * 0.42, y0h, 0.05), (xs * 0.4, y0h, 2.25), (xs * 0.36, y1h - 0.05, 2.25), (xs * 0.38, y1h, 0.05)]
         mb.poly(q if xs < 0 else q[::-1], G.fit(blue, (2.2, 0.8)))
     mb.poly([(-0.38, y1h, 0.05), (-0.36, y1h - 0.05, 2.25), (0.36, y1h - 0.05, 2.25), (0.38, y1h, 0.05)][::-1], G.fit('burnt_ash' if burnt else blue, (0.8, 2.2)))
+    mb.poly([(0.42, y0h, 0.05), (-0.42, y0h, 0.05), (-0.38, y1h, 0.05), (0.38, y1h, 0.05)], G.fit(dark, (0.8, 0.8)))   # hood rear (firewall)
     face = RS('mtz_face', 0, 0.5, 1, 1) if not burnt else 'burnt_metal'
     mb.poly([(-0.4, y0h, 2.25), (0.4, y0h, 2.25), (0.36, y1h - 0.05, 2.25), (-0.36, y1h - 0.05, 2.25)], G.uvq(face, ((0.12, 0.05), (0.88, 0.05), (0.85, 0.95), (0.15, 0.95))) if not burnt else G.fit('burnt_metal', (1, 1)))
     # side panels with louvres / badge
-    if not burnt:
+    if not burnt:     # louvre / badge panels laid on the slanted, tapering hood sides (5 mm proud)
+        def hx(y, z):
+            return 0.42 - 0.02 * (z - 0.05) / 2.2 - 0.04 * (y - y0h) / (y1h - y0h) + 0.005
         for xs in (1, -1):
-            o = np.array([xs * 0.415, y0h + 0.12, 0.9 if xs > 0 else 1.9]); du = np.array([0, 0, 1.0 if xs > 0 else -1.0])
-            tquad(mb, o + [xs * 0.005, 0, 0], du, (0, 1, 0), 1.0, 0.55, RS('mtz_face', 0, 0, 1, 0.5), (1.0, 0.55))
+            zz = (0.9, 1.9) if xs > 0 else (1.9, 0.9); ya, yb = y0h + 0.12, y0h + 0.67
+            P = [(xs * hx(ya, zz[0]), ya, zz[0]), (xs * hx(ya, zz[1]), ya, zz[1]), (xs * hx(yb, zz[1]), yb, zz[1]), (xs * hx(yb, zz[0]), yb, zz[0])]
+            quad(mb, P, RS('mtz_face', 0, 0, 1, 0.5))
     # headlights on the grille sides
     for xs in (1, -1):
         G.lathe(mb, [(0.0, 0.0), (0.09, 0.0), (0.09, 0.08), (0.0, 0.1)], 8, 'chrome' if False else 'paint_white', M=T(xs * 0.28, y0h - 0.05, 2.3) @ mat_trs((0, 0, 0), (PI / 2, 0, 0)))
@@ -556,6 +598,8 @@ def mtz80(name, burnt=False, seed=60):
     for xs in (1, -1):
         wheel(mb, (xs * 0.82, yr_, zr), Rr, 0.42, 0.52, burnt=burnt, segs=18)
         wheel(mb, (xs * tw, yf, zf), Rf, 0.25, 0.3, burnt=burnt, segs=14)
+    cyl(mb, (-0.74, yr_, zr), (0.74, yr_, zr), 0.09, 8, dark, cap=True)        # rear axle housing into both hubs
+    cyl(mb, (-0.78, yf, zf), (0.78, yf, zf), 0.05, 6, dark, cap=True)         # front stub axles
     # rear fenders (arched strip + flat top) and platform
     for xs in (1, -1):
         x0, x1 = xs * 0.58, xs * 1.08
@@ -570,7 +614,7 @@ def mtz80(name, burnt=False, seed=60):
     cy0, cy1 = yr_ + 0.42, 2.78 - drop * 1.5
     cz0, cz1 = zr - 0.6, zr + 0.75
     for (x, z) in ((-0.55, cz0), (0.55, cz0), (-0.55, cz1), (0.55, cz1)):
-        tbox(mb, (x - 0.035, cy0, z - 0.035), (x + 0.035, cy1, z + 0.035), cabr, (1, 1), faces='+x-x+z-z')
+        tbox(mb, (x - 0.035, cy0, z - 0.035), (x + 0.035, cy1 + (0.05 if burnt else 0.0), z + 0.035), cabr, (1, 1), faces='+x-x+z-z+y')
     rf = 0.06 if not burnt else 0.03
     Mroof = None if not burnt else rot_axis((1, 0, 0), 0.06, origin=(0, cy1, cz1))
     tbox(mb, (-0.66, cy1, cz0 - 0.1), (0.66, cy1 + 0.12, cz1 + 0.1), cabr, (1.4, 1.4), M=Mroof, regs={'+y': 'burnt_ash'} if burnt else None)
@@ -582,12 +626,15 @@ def mtz80(name, burnt=False, seed=60):
             mb.poly(P, G.fit('glass_dark', (1.2, 1.3), stretch=True))
             mb.poly(P[::-1], G.fit('glass_dark', (1.2, 1.3), stretch=True))
     # seat + steering wheel
-    tbox(mb, (-0.22, cy0 + 0.1, cz0 + 0.25), (0.22, cy0 + 0.45, cz0 + 0.6), 'rubber' if not burnt else 'ash', (1, 1))
-    G.tube(mb, [(0, cy0 + 0.3, cz1 - 0.35), (0, cy0 + 0.95, cz1 - 0.15)], 0.025, 4, dark)
-    G.lathe(mb, [(0.2, -0.02), (0.22, 0.0), (0.2, 0.02)], 10, 'rubber' if not burnt else 'burnt_metal', M=T(0, cy0 + 0.98, cz1 - 0.13) @ mat_trs((0, 0, 0), (0.9, 0, 0)))
+    tbox(mb, (-0.22, cy0, cz0 + 0.25), (0.22, cy0 + 0.45, cz0 + 0.6), 'rubber' if not burnt else 'ash', (1, 1))     # seat on its pedestal
+    Msw = T(0, cy0 + 0.98, cz1 - 0.13) @ mat_trs((0, 0, 0), (0.9, 0, 0))
+    G.tube(mb, [(0, cy0 - 0.01, cz1 - 0.45), (0, cy0 + 0.98, cz1 - 0.13)], 0.025, 4, dark)                          # column floor -> wheel hub
+    G.lathe(mb, [(0.2, -0.02), (0.22, 0.0), (0.2, 0.02)], 10, 'rubber' if not burnt else 'burnt_metal', M=Msw)
+    for sp in ((0.21, 0, 0), (-0.21, 0, 0), (0, 0, -0.21)):                                                         # spokes
+        G.tube(mb, [xform(np.array([(0, 0, 0)]), Msw)[0], xform(np.array([sp]), Msw)[0]], 0.012, 3, dark)
     # exhaust stack + air intake in front of the cab
-    cyl(mb, (0.25, y1h - 0.05, 0.55), (0.25, 2.55 - drop, 0.55), 0.05, 6, 'steel_rust' if not burnt else 'burnt_metal', seg=2)
-    cyl(mb, (-0.25, y1h - 0.05, 0.55), (-0.25, 2.2 - drop, 0.55), 0.07, 6, dark, seg=2)
+    cyl(mb, (0.25, y1h - 0.05, 0.55), (0.25, 2.55 - drop, 0.55), 0.05, 6, 'steel_rust' if not burnt else 'burnt_metal', seg=2, cap=True)
+    cyl(mb, (-0.25, y1h - 0.05, 0.55), (-0.25, 2.2 - drop, 0.55), 0.07, 6, dark, seg=2, cap=True)
     # 3-point hitch at the rear
     for xs in (1, -1):
         beam(mb, (xs * 0.3, yr_ - 0.2, zr - 0.55), (xs * 0.4, yr_ - 0.45, zr - 1.3), 0.05, 0.08, dark, (1, 1))
@@ -607,7 +654,7 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     red, burnt, dark = 'burnt_paint', 'burnt_metal', 'burnt_metal'
     zf, zr = 1.7, -2.6
     Rf, Rr = 0.82, 0.5
-    yf, yr_ = Rf - 0.12, Rr - 0.08
+    yf, yr_ = 0.62 - 0.01, 0.36 - 0.01      # on the bare rims (were 6-8 cm above the ground)
     # main body (thresher): box with sloped front
     prof = [(-1.45, 0.75, -3.4), (1.45, 0.75, -3.4)]
     tbox(mb, (-1.4, 0.75, -3.5), (1.4, 2.7, 1.2), red, (1.2, 1.2), regs={'+y': 'burnt_ash'})
@@ -624,14 +671,18 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     for xs in (1, -1):
         mb.poly([(xs * 2.05, 0.3, hz0), (xs * 2.05, 0.3, hz1 + 0.3), (xs * 2.05, 0.75, hz1), (xs * 2.05, 1.3, hz0)][::(1 if xs > 0 else -1)], G.fit(red, (2, 1)))
         mb.poly([(xs * 2.05, 0.3, hz0), (xs * 2.05, 0.3, hz1 + 0.3), (xs * 2.05, 0.75, hz1), (xs * 2.05, 1.3, hz0)][::(-1 if xs > 0 else 1)], G.fit(burnt, (2, 1)))
-    cyl(mb, (-2.0, 0.55, hz0 + 0.35), (2.0, 0.55, hz0 + 0.35), 0.18, 8, burnt, seg=1.2)          # auger
-    for k in range(5):   # reel bats
+    cyl(mb, (-2.05, 0.49, hz0 + 0.35), (2.05, 0.49, hz0 + 0.35), 0.18, 8, burnt, seg=1.2)        # auger, end plate to end plate, in the trough
+    rc = np.array([0, 1.45, hz0 + 0.9])
+    cyl(mb, rc + [-1.95, 0, 0], rc + [1.95, 0, 0], 0.05, 6, burnt, seg=1.5, cap=True)       # reel shaft
+    for k in range(5):   # reel bats on spider arms
         a = k * 2 * PI / 5
         p = np.array([0, 1.45 + math.sin(a) * 0.55, hz0 + 0.9 + math.cos(a) * 0.55])
         sag = np.array([0, -0.25 if k == 2 else 0.0, 0])
         G.tube(mb, [p + [-1.9, 0, 0], p + [0, 0, 0] + sag, p + [1.9, 0, 0]], 0.03, 3, burnt, seg=1.5)
-    for xs in (1, -1):
-        cyl(mb, (xs * 1.95, 1.45, hz0 + 0.9), (xs * 1.2, 2.0, hz0 - 0.6), 0.04, 4, burnt, seg=2)
+        for xs in (1, -1):
+            G.tube(mb, [rc + [xs * 1.88, 0, 0], p + [xs * 1.88, 0, 0]], 0.02, 3, burnt, seg=1.0)
+    for xs in (1, -1):   # reel support arms down to the top of the header back wall
+        cyl(mb, (xs * 1.97, 1.45, hz0 + 0.9), (xs * 1.97, 1.28, hz0 + 0.02), 0.04, 4, burnt, seg=2)
     # grain tank on top (open, lid sprung) + cab front-left
     tbox(mb, (-1.3, 2.7, -2.0), (1.0, 3.6, 0.6), red, (1.2, 1.2), faces='+x-x+z-z')
     tquad(mb, (-1.3, 2.75, 0.6), (1, 0, 0), (0, 0, -1), 2.3, 2.6, 'ash', (1.2, 1.2))
@@ -643,8 +694,8 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     tquad(mb, (cx0, cy0, cz1), (1, 0, 0), (0, 0, -1), cx1 - cx0, cz1 - cz0, 'ash', (1.2, 1.2))
     tquad(mb, (cx0, 1.9, cz1), (1, 0, 0), (0, 1, 0), cx1 - cx0, 0.4, red, (1.2, 0.4))
     # unloading auger folded along the left side
-    G.tube(mb, [(-1.6, 3.0, -2.2), (-1.65, 3.25, 0.2), (-1.7, 3.3, 1.6)], 0.16, 8, burnt, seg=1.2)
-    cyl(mb, (-1.7, 3.3, 1.6), (-1.7, 2.9, 1.9), 0.12, 6, burnt)
+    G.tube(mb, [(-1.55, 3.0, -2.2), (-1.55, 3.25, 0.2), (-1.55, 3.3, 1.6)], 0.16, 8, burnt, seg=1.2)   # against the body side
+    cyl(mb, (-1.55, 3.3, 1.6), (-1.55, 2.9, 1.9), 0.12, 6, burnt)
     # split drum housing on the right (open panel hanging)
     tquad(mb, (1.41, 1.2, 0.2), (0, 0, -1), (0, 1, 0), 1.6, 1.1, 'interior_dark', (1.2, 1.2))
     tquad(mb, (1.41, 1.2, 0.2), (0.6, -0.3, -0.75), (0, 1, 0), 1.6, 1.1, red, (1.2, 1.2), double=True)
@@ -655,6 +706,8 @@ def combine_niva_burnt(name='combine_niva_burnt', seed=70):
     for xs in (1, -1):
         wheel(mb, (xs * 1.55, yf, zf - 0.3), Rf, 0.55, 0.62, burnt=True, segs=18)
         wheel(mb, (xs * 1.15, yr_, zr), Rr, 0.3, 0.36, burnt=True, segs=12)
+        tbox(mb, (xs * 0.9 - 0.06, yr_, zr - 0.06), (xs * 0.9 + 0.06, 0.78, zr + 0.06), dark, (1, 1))     # steering-axle king posts
+    tbox(mb, (-1.1, yr_ - 0.06, zr - 0.06), (1.1, yr_ + 0.06, zr + 0.06), dark, (1, 1))                     # rear steering axle
     tint(mb, lambda p: 0.62 + 0.38 * min(1, p[1] / 2.6) * (0.85 + 0.15 * math.sin(p[2] * 2.1 + p[0] * 3.3)))
     return mb
 
@@ -674,15 +727,17 @@ def trailer(name='trailer_farm', seed=80):
         tbox(mb, (xs * 0.55 - 0.07, yb - 0.25, -Lb / 2 + 0.1), (xs * 0.55 + 0.07, yb, Lb / 2 - 0.1), 'metal_dark', (1, 1), faces='+x-x-y+z-z')
     for z in (-1.1, 0.9):
         cyl(mb, (-1.0, 0.45, z), (1.0, 0.45, z), 0.05, 6, 'metal_dark')
+        for xs in (1, -1):   # leaf-spring hangers: axle up to the chassis rails
+            tbox(mb, (xs * 0.55 - 0.05, 0.41, z - 0.07), (xs * 0.55 + 0.05, yb - 0.24, z + 0.07), 'metal_dark', (1, 1))
         for xs in (1, -1):
             wheel(mb, (xs * 0.98, 0.45, z), 0.45, 0.28, 0.25, segs=14, rim='trailer_blue')
     # drawbar
     for xs in (1, -1):
         beam(mb, (xs * 0.5, yb - 0.15, Lb / 2 - 0.2), (0, 0.65, Lb / 2 + 1.5), 0.08, 0.1, 'metal_dark', (1, 1))
     lathe(mb, [(0.0, -0.03), (0.09, -0.03), (0.09, 0.03), (0.0, 0.03)], 8, 'metal_dark', M=T(0, 0.65, Lb / 2 + 1.55))
-    cyl(mb, (0, 0.1, Lb / 2 + 1.2), (0, 0.6, Lb / 2 + 1.25), 0.03, 4, 'metal_dark')   # prop stand
+    cyl(mb, (0.09, 0.0, Lb / 2 + 1.2), (0.09, 0.67, Lb / 2 + 1.2), 0.03, 4, 'metal_dark', cap=True)   # prop stand: ground to drawbar
     for xs in (1, -1):
-        tbox(mb, (xs * 0.95 - 0.08, yb - 0.1, -Lb / 2 - 0.02), (xs * 0.95 + 0.08, yb + 0.04, -Lb / 2), 'mtz_red', (1, 1), faces='+z-z')
+        tbox(mb, (xs * 0.95 - 0.08, yb - 0.1, -Lb / 2 - 0.02), (xs * 0.95 + 0.08, yb + 0.04, -Lb / 2), 'mtz_red', (1, 1))
     tint(mb, lambda p: 0.75 + 0.25 * min(1, p[1] / 1.4))
     return mb
 
@@ -694,9 +749,9 @@ def well_village(name='well_village', seed=90):
     mb = TMB(name); r = rng(seed)
     lathe(mb, [(0.55, 0.0), (0.55, 0.85), (0.47, 0.85), (0.47, 0.6)], 14, 'concrete', around=3)
     tbox(mb, (-0.47, 0.84, -0.47), (0.0, 0.88, 0.47), 'wood_grey', (1, 1), faces='+x-x+y+z-z')
-    disc(mb, (0.2, 0.62, 0), (0, 1, 0), 0.44, 10, 'interior_dark')
+    disc(mb, (0.0, 0.62, 0), (0, 1, 0), 0.475, 14, 'interior_dark')      # dark water / shaft, centred, closes the ring
     for xs in (1, -1):
-        tbox(mb, (xs * 0.66 - 0.06, 0, -0.06), (xs * 0.66 + 0.06, 1.75, 0.06), 'wood_grey', (1, 1.75), faces='+x-x+z-z')
+        tbox(mb, (xs * 0.66 - 0.06, 0, -0.06), (xs * 0.66 + 0.06, 2.1, 0.06), 'wood_grey', (1, 1.75), faces='+x-x+z-z+y')
     cyl(mb, (-0.6, 1.25, 0), (0.6, 1.25, 0), 0.1, 8, 'wood_raw', seg=1.2, cap=True)
     G.tube(mb, [(0.6, 1.25, 0), (0.85, 1.25, 0), (0.85, 1.0, 0.05), (1.0, 1.0, 0.05)], 0.018, 4, 'metal_dark', seg=1)
     cyl(mb, (-0.1, 1.15, 0.1), (-0.1, 0.95, 0.1), 0.006, 3, 'metal_dark')
@@ -705,9 +760,12 @@ def well_village(name='well_village', seed=90):
     yr, ye = 2.15, 1.7
     for sgn in (1, -1):
         tquad(mb, (-sgn * 0.8, ye, sgn * 0.65), (sgn, 0, 0), (0, yr - ye, -sgn * 0.65), 1.6, math.hypot(yr - ye, 0.65), 'wood_grey', (1, 1), double=True)
-    for xs in (1, -1):
-        P = [(xs * 0.67, ye, 0.6), (xs * 0.67, ye, -0.6), (xs * 0.67, yr - 0.03, 0)]
+    yg = ye + (yr - ye) * 0.05 / 0.65 - 0.004
+    for xs in (1, -1):   # gables touch the roof boards (were 3 cm below them)
+        P = [(xs * 0.67, yg, 0.6), (xs * 0.67, yg, -0.6), (xs * 0.67, yr - 0.004, 0)]
         mb.poly(P if xs > 0 else P[::-1], G.fit('wood_grey', (1.2, 0.5)))
+        mb.poly(P[::-1] if xs > 0 else P, G.fit('wood_grey', (1.2, 0.5)))
+    tbox(mb, (-0.8, yr - 0.12, -0.03), (0.8, yr - 0.026, 0.03), 'wood_raw', (1.6, 0.1))     # ridge beam
     tint(mb, ground_ao(0.6, 0.7))
     return mb
 
@@ -718,8 +776,10 @@ def shed_wood(name='shed_wood', seed=100):
     mb = TMB(name); r = rng(seed)
     W, D, H0, H1 = 4.0, 3.0, 2.15, 2.55
     tbox(mb, (-W / 2, 0, -D / 2), (W / 2, 0.2, D / 2), 'brick_red', (1, 1), faces='+x-x+z-z+y')
+    t_, hz = 0.04, lambda z: H0 + (H1 - H0) * (z + D / 2) / D      # wall height at world z
+    a_, b_ = -D / 2 + t_, D / 2 - t_
     outlines = {'front': [(-W / 2, 0.2), (W / 2, 0.2), (W / 2, H1), (-W / 2, H1)], 'back': [(-W / 2, 0.2), (W / 2, 0.2), (W / 2, H0), (-W / 2, H0)],
-                'right': [(-D / 2, 0.2), (D / 2, 0.2), (D / 2, H0), (-D / 2, H1)], 'left': [(-D / 2, 0.2), (D / 2, 0.2), (D / 2, H1), (-D / 2, H0)]}
+                'right': [(a_, 0.2), (b_, 0.2), (b_, hz(-b_)), (a_, hz(-a_))], 'left': [(a_, 0.2), (b_, 0.2), (b_, hz(b_)), (a_, hz(a_))]}
     Ms = {'front': T(0, 0, D / 2), 'back': RY(PI, (0, 0, -D / 2)), 'right': RY(PI / 2, (W / 2, 0, 0)), 'left': RY(-PI / 2, (-W / 2, 0, 0))}
     for k, M in Ms.items():
         holes = [(0.2, 0.2, 1.2, 2.05)] if k == 'front' else [(-0.4, 1.2, 0.2, 1.7)] if k == 'right' else []
@@ -728,10 +788,9 @@ def shed_wood(name='shed_wood', seed=100):
     tquad(mb, (-0.4, 1.2, -0.03), (1, 0, 0), (0, 1, 0), 0.6, 0.5, RS('window_barn', 0.1, 0.1, 0.5, 0.5), (0.6, 0.5), M=Ms['right'])
     # roof: falls from front (H1) to back (H0), overhang 0.3
     ov = 0.3
-    a = np.array([-W / 2 - ov, H1 + 0.05 + ov * (H1 - H0) / D, D / 2 + ov]); b = np.array([-W / 2 - ov, H0 + 0.05 - ov * (H1 - H0) / D, -D / 2 - ov])
-    dv = (b - a); Lv = float(np.linalg.norm(dv))
-    tquad(mb, b + [W + 2 * ov, 0, 0], (-1, 0, 0), a - b, W + 2 * ov, Lv, 'slate_old', (1.13, 1.75))  # normal = du x dv must point up
-    tquad(mb, a + [W + 2 * ov, -0.02, 0], (-1, 0, 0), b - a, W + 2 * ov, Lv, 'interior_dark', (3, 3))
+    th = 0.025      # roof sheet + battens, underside resting on the wall tops (was a paper sheet 3 cm above them)
+    a = np.array([-W / 2 - ov, H1 + th + ov * (H1 - H0) / D, D / 2 + ov]); b = np.array([-W / 2 - ov, H0 + th - ov * (H1 - H0) / D, -D / 2 - ov])
+    slab_roof(mb, a, b, W + 2 * ov, th, 'slate_old', (1.13, 1.75), 'interior_dark', 'wood_grey')
     tint(mb, ground_ao(0.7, 0.65))
     return mb
 
@@ -741,15 +800,17 @@ def outhouse(name='outhouse', seed=110):
     mb = TMB(name); r = rng(seed)
     W, D, H0, H1 = 1.1, 1.25, 2.0, 2.2
     Ms = {'front': T(0, 0, D / 2), 'back': RY(PI, (0, 0, -D / 2)), 'right': RY(PI / 2, (W / 2, 0, 0)), 'left': RY(-PI / 2, (-W / 2, 0, 0))}
+    t_, hz = 0.03, lambda z: H0 + (H1 - H0) * (z + D / 2) / D
+    a_, b_ = -D / 2 + t_, D / 2 - t_
     outl = {'front': [(-W / 2, 0), (W / 2, 0), (W / 2, H1), (-W / 2, H1)], 'back': [(-W / 2, 0), (W / 2, 0), (W / 2, H0), (-W / 2, H0)],
-            'right': [(-D / 2, 0), (D / 2, 0), (D / 2, H0), (-D / 2, H1)], 'left': [(-D / 2, 0), (D / 2, 0), (D / 2, H1), (-D / 2, H0)]}
+            'right': [(a_, 0), (b_, 0), (b_, hz(-b_)), (a_, hz(-a_))], 'left': [(a_, 0), (b_, 0), (b_, hz(b_)), (a_, hz(a_))]}
     for k, M in Ms.items():
         holes = [(-0.08, 1.6, 0.08, 1.75)] if k == 'front' else []
         wall(mb, outl[k], 0.03, 'wood_grey' if k != 'front' else 'wood_green', (1.0, 2.2), holes=holes, M=M, back='wood_grey')
     tquad(mb, (-0.38, 1.0, D / 2 + 0.005), (1, 0, 0), (0, 0, 0) + np.array([0, 1, 0]), 0.03, 0.12, 'metal_dark', (1, 1))
-    a = np.array([-W / 2 - 0.12, H1 + 0.04, D / 2 + 0.15]); b = np.array([-W / 2 - 0.12, H0 + 0.02, -D / 2 - 0.15])
-    tquad(mb, b + [W + 0.24, 0, 0], (-1, 0, 0), a - b, W + 0.24, float(np.linalg.norm(a - b)), 'felt_roof', (1, 1))
-    tquad(mb, a + [W + 0.24, -0.02, 0], (-1, 0, 0), b - a, W + 0.24, float(np.linalg.norm(a - b)), 'wood_grey', (1, 1))
+    th = 0.025; sl = (H1 - H0) / D      # roof boards resting on the walls (the old sheet floated 2-4 cm above them)
+    a = np.array([-W / 2 - 0.12, H1 + th + 0.15 * sl, D / 2 + 0.15]); b = np.array([-W / 2 - 0.12, H0 + th - 0.15 * sl, -D / 2 - 0.15])
+    slab_roof(mb, a, b, W + 0.24, th, 'felt_roof', (1, 1), 'wood_grey')
     tint(mb, ground_ao(0.5, 0.7))
     return mb
 
@@ -776,8 +837,11 @@ def woodpile(name='woodpile', seed=120):
         tbox(mb, (sgn * (L / 2 + 0.04) - 0.04, 0, Dd / 2 - 0.03), (sgn * (L / 2 + 0.04) + 0.04, 1.3, Dd / 2 + 0.05), 'wood_grey', (1, 1.3), faces='+x-x+z-z')
         P = [(sgn * L / 2, 0, Dd / 2), (sgn * L / 2, 0, -Dd / 2), (sgn * L / 2, top(sgn * L / 2), -Dd / 2), (sgn * L / 2, top(sgn * L / 2), Dd / 2)]
         mb.poly(P if sgn > 0 else P[::-1], G.fit('bark_acacia', (0.9, 1.1), stretch=True))
-    M = mat_trs((0.1, H + 0.02, 0), (0.0, 0.1, 0.06))
-    tquad(mb, (-0.65, 0, 0.55), (1, 0, 0), (0, 0, -1), 1.3, 1.1, 'slate_old', (1.13, 1.75), M=M, double=True)
+    M = mat_trs((0.1, H + 0.15, 0), (0.0, 0.1, 0.06))
+    part = TMB('slate')
+    tbox(part, (-0.65, -0.012, -0.55), (0.65, 0.0, 0.55), 'slate_old', (1.13, 1.75), M=M)
+    from meshfix import drop
+    drop(mb, part, sink=0.01)        # the slate sheet lies on the stack (was hovering above the lower end logs)
     for k in range(4):
         p0 = np.array([r.uniform(-1.2, 1.2), 0.08, r.uniform(0.6, 1.3)]); d = np.array([math.cos(r.uniform(0, PI)), 0, math.sin(r.uniform(0, PI))])
         cyl(mb, p0, p0 + d * r.uniform(0.35, 0.5), 0.07, 5, 'bark_oak', cap=True)
@@ -812,7 +876,7 @@ def greenhouse_frame(name='greenhouse_frame', seed=130):
             for PP, uu in ((P, uv), (P[::-1], uv[::-1])):
                 mb.face(mb.vs(PP), uu, False, LEAF)
     for k in range(3):   # loose shreds hanging from the ridge
-        z = r.uniform(0, 2.5); x = r.uniform(-0.6, 0.6)
+        z = r.uniform(0, 2.5); x = r.uniform(-0.6, 0.6) * 0      # torn strips hang from the ridge rail
         p = np.array([x, math.sqrt(max(0.0, 1 - (x / (W / 2)) ** 2)) * Hh, z])
         P = [p + [-0.25, 0, 0], p + [0.25, 0, 0], p + [0.3, -1.2, 0.2], p + [-0.2, -1.4, 0.15]]
         uv = [film.uv(0.1, 0.9), film.uv(0.3, 0.9), film.uv(0.3, 0.2), film.uv(0.1, 0.2)]
@@ -835,7 +899,7 @@ def fence_wattle(name='fence_wattle', seed=140):
             P = P[::-1]; uv = uv[::-1]
         mb.face(mb.vs(P), uv, False, LEAF)
     for x in (-1.5, 0.0, 1.5):
-        cyl(mb, (x, -0.05, 0.0), (x + r.normal(0, 0.02), 1.15, r.normal(0, 0.02)), 0.04, 5, 'bark_acacia', seg=1.2)
+        cyl(mb, (x, -0.05, 0.0), (x + r.normal(0, 0.02), 1.15, r.normal(0, 0.02)), 0.04, 5, 'bark_acacia', seg=1.2, cap=True)
     lathe(mb, [(0.0, 0.0), (0.06, 0.0), (0.1, 0.12), (0.08, 0.2), (0.05, 0.2)], 8, 'brick_red', M=T(0.0, 1.15, 0) @ mat_trs((0, 0, 0), (PI, 0, 0)) @ T(0, -0.2, 0))
     return mb
 
@@ -847,7 +911,7 @@ def fence_wood_village(name='fence_wood_village', seed=150):
     for x in (-1.5, 1.5):
         tbox(mb, (x - 0.05, 0, -0.1), (x + 0.05, 1.3, 0.0), 'wood_grey', (1, 1.3), faces='+x-x+y+z-z')
     for y in (0.3, 1.0):
-        tbox(mb, (-1.5, y, -0.08), (1.5, y + 0.08, -0.03), 'wood_grey', (1.5, 0.5), faces='+y-y+z-z')
+        tbox(mb, (-1.5, y, -0.07), (1.5, y + 0.08, -0.0205), 'wood_grey', (1.5, 0.5), faces='+y-y+z-z')
     n = 15
     for k in range(n):
         if k == 9:
@@ -860,6 +924,9 @@ def fence_wood_village(name='fence_wood_village', seed=150):
         f = Fit(G.R[reg], (0.4, 1.3), seed + k)
         mb.poly(xform(P, M), f)
         mb.poly(xform(P[::-1] + [0, 0, -0.02], M), f)
+        for i in range(len(P)):     # picket edges (2 cm board)
+            a, b = P[i], P[(i + 1) % len(P)]
+            mb.poly(xform(np.array([b, a, a + [0, 0, -0.02], b + [0, 0, -0.02]]), M), Fit(G.R['wood_grey'], (0.1, 1.3), seed + k))
     tint(mb, ground_ao(0.4, 0.7))
     return mb
 
@@ -882,6 +949,9 @@ def gate_village(name='gate_village', seed=160):
         uvs = ((0, 0), (1, 0), (1, 1), (0, 1))
         quad(mb, xform(P, M), reg, uvs)
         quad(mb, xform(P[::-1] + [0, 0, -0.02], M), reg, uvs[::-1])
+        for i in range(4):      # leaf edges (2 cm sheet + frame)
+            a, b = P[i], P[(i + 1) % 4]
+            quad(mb, xform(np.array([b, a, a + [0, 0, -0.02], b + [0, 0, -0.02]]), M), 'metal_dark')
     tint(mb, ground_ao(0.5, 0.75))
     return mb
 
@@ -891,10 +961,10 @@ def bus_stop_village(name='bus_stop_village', seed=170):
     over wheat, two side walls, cantilevered flat roof slab, a bench, painted lower band, chips / pocks."""
     mb = TMB(name); r = rng(seed)
     W, H, D = 3.6, 2.6, 1.6
-    tbox(mb, (-W / 2, 0, -D / 2 - 0.15), (W / 2, H, -D / 2), 'conc_painted', (W, H), faces='+x-x-z+y', regs={'-z': 'concrete'})
-    tquad(mb, (-W / 2 + 0.2, 0.9, -D / 2 + 0.002), (1, 0, 0), (0, 1, 0), W - 0.4, H - 1.1, RS('mosaic', 0, 0, 1, 1), (W - 0.4, H - 1.1))
-    tquad(mb, (-W / 2, 0, -D / 2 + 0.001), (1, 0, 0), (0, 1, 0), W, 0.9, RS('conc_painted', 0, 0, 1, 0.3), (W, 0.9))
-    tquad(mb, (-W / 2, 2.4, -D / 2 + 0.001), (1, 0, 0), (0, 1, 0), W, 0.2, 'conc_painted', (W, 0.2))
+    tbox(mb, (-W / 2, 0, -D / 2 - 0.15), (W / 2, H, -D / 2), 'conc_painted', (W, H), faces='+x-x-z+y+z', regs={'-z': 'concrete'})   # +z: no holes beside the mosaic
+    tquad(mb, (-W / 2 + 0.2, 0.9, -D / 2 + 0.008), (1, 0, 0), (0, 1, 0), W - 0.4, H - 1.1, RS('mosaic', 0, 0, 1, 1), (W - 0.4, H - 1.1))
+    tquad(mb, (-W / 2, 0, -D / 2 + 0.008), (1, 0, 0), (0, 1, 0), W, 0.9, RS('conc_painted', 0, 0, 1, 0.3), (W, 0.9))
+    tquad(mb, (-W / 2, 2.4, -D / 2 + 0.008), (1, 0, 0), (0, 1, 0), W, 0.2, 'conc_painted', (W, 0.2))
     for sx in (1, -1):
         tbox(mb, (sx * W / 2 - 0.08, 0, -D / 2), (sx * W / 2 + 0.08, H, D / 2 - 0.4), 'conc_painted', (1.2, H))
     tbox(mb, (-W / 2 - 0.25, H, -D / 2 - 0.25), (W / 2 + 0.25, H + 0.16, D / 2 + 0.3), 'concrete', (2, 2))
@@ -918,7 +988,7 @@ def cross_roadside(name='cross_roadside', seed=180):
     # rushnyk: towel hanging from each arm end + across
     rs = RS('rushnyk', 0, 0, 1, 1)
     for sx in (1, -1):
-        P = [(sx * 0.42, 1.98, 0.075), (sx * 0.58, 1.98, 0.075), (sx * 0.6, 1.2, 0.09), (sx * 0.4, 1.2, 0.09)]
+        P = [(sx * 0.42, 1.98, 0.064), (sx * 0.58, 1.98, 0.064), (sx * 0.6, 1.2, 0.08), (sx * 0.4, 1.2, 0.08)]     # draped on the arm face
         uv = [rs.uv(0.2, 1), rs.uv(0.5, 1), rs.uv(0.5, 0), rs.uv(0.2, 0)]
         if sx < 0:
             P = [P[1], P[0], P[3], P[2]]; uv = [uv[1], uv[0], uv[3], uv[2]]
@@ -957,7 +1027,10 @@ def berm_earth(name='berm_earth', seed=190):
     for k in range(10):
         x = r.uniform(-3.8, 3.8); z = r.uniform(-0.9, 0.9)
         s = r.uniform(0.15, 0.35)
-        chunk(mb, (x, f(x, z) + s * 0.15, z), (s * 1.3, s * 0.6, s), 990 + k, 'soil')
+        part = TMB('clod')
+        chunk(part, (x, f(x, z) + s * 0.15, z), (s * 1.3, s * 0.6, s), 990 + k, 'soil')
+        from meshfix import drop
+        drop(mb, part, sink=0.04)
     tint(mb, lambda p: 0.8 + 0.25 * min(1, p[1] / 0.9))
     return mb
 
@@ -977,7 +1050,7 @@ def trench_segment(name='trench_segment', seed=200):
         o = np.array([3.0 if sgn > 0 else -3.0, 0.03, sgn * hw]); du = np.array([-1.0 if sgn > 0 else 1.0, 0, 0])
         tquad(mb, o, du, (0, 1, 0), 6.0, Htop - 0.03, 'wood_grey', (1.5, 0.8))
         for x in np.arange(-3.0, 3.01, 1.5):   # revetment stakes
-            cyl(mb, (x, 0.03, sgn * (hw + 0.02)), (x, Htop + 0.08, sgn * (hw + 0.02)), 0.04, 4, 'bark_acacia')
+            cyl(mb, (x, 0.03, sgn * (hw + 0.02)), (x, Htop + 0.08, sgn * (hw + 0.02)), 0.04, 4, 'bark_acacia', cap=True)
     # parapets: spoil mounds
     def parapet(sgn, H, Wd):
         def f(x, z):
@@ -1022,8 +1095,9 @@ def dugout_entrance(name='dugout_entrance', seed=210):
     for x in (-0.52, 0.52):
         cyl(mb, (x, 0, zf), (x, 0.92, zf), 0.08, 6, 'bark_acacia', cap=True)
     cyl(mb, (-0.75, 0.92, zf + 0.02), (0.75, 0.92, zf + 0.02), 0.09, 6, 'bark_acacia', cap=True)
-    for k in range(4):   # roof logs ends sticking out
-        cyl(mb, (-1.2 + k * 0.8, 0.82, zf - 0.6), (-1.2 + k * 0.8, 0.88, zf + 0.15), 0.08, 5, 'bark_acacia', cap=True)
+    for k in range(4):   # roof log ends sticking out, bedded in the mound (outer ones were hovering 18 cm above it)
+        x = -1.2 + k * 0.8; y0 = min(0.82, f(x, zf - 0.6) - 0.03)
+        cyl(mb, (x, y0, zf - 0.6), (x, y0 + 0.06, zf + 0.15), 0.08, 5, 'bark_acacia', cap=True)
     # steps down (dark trench floor wedge in front)
     tquad(mb, (-0.45, 0.025, zf + 1.4), (1, 0, 0), (0, 0, -1), 0.9, 1.4, RS('trench_floor', 0, 0, 1, 1), (0.9, 1.4))
     for sgn in (1, -1):

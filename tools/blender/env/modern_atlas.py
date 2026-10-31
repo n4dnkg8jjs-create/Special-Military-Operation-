@@ -16,6 +16,8 @@ import texlib
 import city_atlas as CA
 import farmland_atlas as FA
 import burnt_tex as B
+import modern_market_atlas as MKA
+import modern_yard_atlas as MYA
 from meshlib import blob
 
 
@@ -40,7 +42,8 @@ def Draw(img):
     return _Draw(img)
 
 
-S = 2048
+S = 2048          # atlas width
+SH = 4096         # atlas height (rows 0-7 = original 2048^2 layout, rows 8+ = supermarket / detailed props)
 C = 256
 PAD = 12     # gutter: every region is painted 12 px smaller and wrap-padded, UVs inset by the same amount, so tiled
              # regions repeat seamlessly and mip levels up to ~3-4 sample the region's own wrapped texels, not neighbours
@@ -53,6 +56,11 @@ GRID = [
     ['bus_burnt', 'bus_burnt+', 'bus_burnt+', 'bus_burnt+', 'steel_galv', 'steel_dark', 'plastic_play', 'rubber_mat'],
     ['wood_slats', 'garage_door', 'garage_burnt', 'interior_dark', 'asphalt', 'steel_rust', 'tyre_car', 'bin_euro'],
     ['sandbag', 'ash', 'soot', 'glass_dark', 'metal_grey', 'paint_white', 'ground', 'lamp_parts'],
+    # supermarket (modern_market_atlas.py)
+    ['sm_clad', 'sm_acm', 'sm_fascia', 'sm_glass', 'sm_glass+', 'sm_glass_dmg', 'sm_shutter', 'sm_roof'],
+    ['sm_interior', 'sm_misc', 'sm_misc2'],
+    # courtyard props (modern_yard_atlas.py)
+    ['pg_hpl', 'pg_hpl+', 'pg_sand', 'pg_mat', 'pg_mat2', 'gar_door', 'roof_felt', 'yard_misc'],
 ]
 REG = {}
 for j, row in enumerate(GRID):
@@ -123,6 +131,10 @@ def _pil(a):
 
 def _arr(img):
     return np.asarray(img.convert('RGB')).astype(np.float32) / 255
+
+
+def fy_(y, P):
+    return P.fy(y)
 
 
 def car_paint(name, shape, seed, burnt=False):
@@ -244,6 +256,32 @@ def car_paint(name, shape, seed, burnt=False):
             if (xc - xd) <= (H - belt):             # near-vertical tailgate glass in the rear projection
                 dg.rectangle([P.fz(spec['gw'][1] - 0.04, True), fy(H - 0.06), P.fz(-spec['gw'][1] + 0.04, True), fy(belt + 0.05)], fill=255)
             dl.line([(P.fz(W / 2 - 0.1, True), fy(belt - 0.02)), (P.fz(-W / 2 + 0.1, True), fy(belt - 0.02))], fill=200, width=2)
+    # interior silhouettes seen through the glazing (seat backs / headrests, dashboard + steering wheel)
+    inner = Image.new('L', (w, h), 0); di = Draw(inner)
+    if name != 'bus':
+        xa, xd, xb, xc = gx
+        seats = [xa - 1.3] + ([spec['doors'][2] - 0.05] if name != 'van' else [])
+        for x in seats:
+            di.rounded_rectangle([P.sx(x - 0.12), P.sy(belt + 0.42), P.sx(x + 0.12), P.sy(belt + 0.2)], radius=3, fill=255)
+            di.rectangle([P.sx(x - 0.16), P.sy(belt + 0.2), P.sx(x + 0.2), P.sy(belt - 0.05)], fill=200)
+        di.rectangle([P.sx(xa - 0.55), P.sy(belt + 0.1), P.sx(xa + 0.05), P.sy(belt - 0.05)], fill=220)      # dash
+        if name != 'van':
+            di.ellipse([P.fz(0.55), fy_(belt + 0.22, P), P.fz(0.21), fy_(belt - 0.02, P)], outline=255, width=3)
+            di.rectangle([P.fz(W / 2 - 0.05), fy_(belt + 0.08, P), P.fz(-W / 2 + 0.05), fy_(belt - 0.02, P)], fill=230)
+        else:
+            di.ellipse([P.fz(0.6), fy_(belt + 0.35, P), P.fz(0.22), fy_(belt + 0.05, P)], outline=255, width=3)
+            di.rectangle([P.fz(W / 2 - 0.05), fy_(belt + 0.18, P), P.fz(-W / 2 + 0.05), fy_(belt + 0.04, P)], fill=230)
+        # number plates: white with dark characters + blue UA strip
+        for rear in (False, True):
+            y0, y1 = (0.46, 0.36) if name != 'van' else (0.51, 0.41)
+            dla.rectangle([P.fz(0.26, rear), fy_(y0, P), P.fz(-0.26, rear), fy_(y1, P)], fill=(232, 232, 228))
+            dlm.rectangle([P.fz(0.26, rear), fy_(y0, P), P.fz(-0.26, rear), fy_(y1, P)], fill=255)
+            xs_ = sorted([P.fz(0.26, rear), P.fz(-0.26, rear)])
+            dla.rectangle([xs_[0], fy_(y0, P), xs_[0] + 4, fy_(y1, P)], fill=(30, 70, 170))
+            for k in range(6):
+                xx_ = xs_[0] + 7 + k * (xs_[1] - xs_[0] - 9) / 6
+                dla.rectangle([xx_, fy_(y0 - 0.025, P), xx_ + 3, fy_(y1 + 0.025, P)], fill=(30, 30, 30))
+    inner = np.asarray(inner, np.float32) / 255
     lines = np.asarray(lines, np.float32) / 255; glass = np.asarray(glass, np.float32) / 255
     plast = np.asarray(plast, np.float32) / 255; lampm = np.asarray(lampm, np.float32) / 255; lampc = np.asarray(lamps, np.float32) / 255
     n = spectral(0, 1.3, seed, fmin=3, fmax=60, shape=shape); f = spectral(0, 0.5, seed + 1, fmin=30, shape=shape)
@@ -253,9 +291,10 @@ def car_paint(name, shape, seed, burnt=False):
         alb = col * (0.92 + 0.08 * norm01(f))[..., None] + np.zeros(shape + (3,))
         # dust low on the body, a little grime
         alb = lerp(alb, srgb('#8a8070'), (smoothstep(P.sy(0.7), P.sy(0.25), yy) * side)[..., None] * 0.35)
-        alb = lerp(alb, srgb('#5a554c'), smoothstep(0.9, 1.8, n) * 0.15)
+        alb = lerp(alb, srgb('#5a554c'), smoothstep(1.2, 2.2, n) * 0.06)
         alb = lerp(alb, srgb('#26282a'), plast * 0.92)
-        gl = colorize(norm01(n * 0.3 + f * 0.2) * 0.6 + norm01(-yy) * 0.4, [(0, '#16191c'), (0.6, '#2a3238'), (1, '#55636c')])
+        gl = colorize(norm01(n * 0.3 + f * 0.2) * 0.5 + norm01(-yy) * 0.5, [(0, '#1e2428'), (0.6, '#36414a'), (1, '#6a7a84')])
+        gl = lerp(gl, srgb('#0b0c0d'), (inner * 0.85)[..., None])
         alb = lerp(alb, gl, glass)
         alb = lerp(alb, lampc, lampm)
         alb = lerp(alb, srgb('#111111'), lines * 0.85)
@@ -283,7 +322,7 @@ def car_paint(name, shape, seed, burnt=False):
         keep = np.zeros(shape, np.float32)
         keep += smoothstep(P.sy(0.4), P.sy(0.55), yy) * smoothstep(P.sy(belt - 0.05), P.sy(0.6), yy) * side
         keep *= smoothstep(0.55, 1.0, norm01(spectral(0, 1.8, seed + 12, fmin=3, fmax=40, shape=shape)))
-        alb, hgt, rough, metal = B.burnt_steel(shape, seed, ash=0.55, rust=0.06, paint=srgb(spec['paint']) * 0.75,
+        alb, hgt, rough, metal = B.burnt_steel(shape, seed, ash=0.4, rust=0.06, contrast=0.75, paint=srgb(spec['paint']) * 0.75,
                                                paint_keep=keep * 0.8, low_soot=soot, wrap=False)
         # glazing gone: window areas black (only seen on frames), lamps gutted, plastic burnt off
         alb = lerp(alb, srgb('#0e0d0c'), np.clip(glass + lampm * 0.8 + plast * 0.5, 0, 1) * 0.9)
@@ -306,6 +345,12 @@ def _sign(shape, text, bg, fg, seed, size=None, logo=None):
 
 
 def paint(name, rect, seed):
+    if name in MKA.NAMES:
+        x0, y0, x1, y1 = rect
+        return MKA.paint(name, (y1 - y0, x1 - x0), seed)
+    if name in MYA.NAMES:
+        x0, y0, x1, y1 = rect
+        return MYA.paint(name, (y1 - y0, x1 - x0), seed)
     if name in SHARED_CA:
         cseed = 8000 + list(CA.REG).index(name) * 7
         return CA.paint(name, rect, cseed)
@@ -647,17 +692,36 @@ def paint(name, rect, seed):
     return alb.astype(np.float32), np.asarray(hgt, np.float32), np.clip(rough, 0, 1).astype(np.float32), np.asarray(metal, np.float32) + np.zeros(shape, np.float32)
 
 
-def build():
-    alb = np.zeros((S, S, 3), np.float32) + 0.5; hgt = np.zeros((S, S), np.float32)
-    rough = np.full((S, S), 0.85, np.float32); metal = np.zeros((S, S), np.float32); ao = np.ones((S, S), np.float32)
+def build(only=None):
+    """Paint the whole atlas, or (only = list of region-name prefixes, env REPAINT=a,b) repaint just those regions
+    into the cached maps (the other regions keep their cached pixels)."""
+    paths = [os.path.join(CACHE, f'modern_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
     g = PAD
     wp = lambda a: np.pad(a, ((g, g), (g, g)) + ((0, 0),) * (a.ndim - 2), mode='wrap')
+    part = only and all(os.path.exists(p) for p in paths) and Image.open(paths[0]).size == (S, SH)
+    if part:
+        A = np.asarray(Image.open(paths[0]).convert('RGB')).copy(); N = np.asarray(Image.open(paths[1]).convert('RGB')).copy()
+        O = np.asarray(Image.open(paths[2]).convert('RGB')).copy()
+        for i, (name, rc) in enumerate(REG.items()):
+            if not any(name.startswith(o) for o in only):
+                continue
+            x0, y0, x1, y1 = rc
+            a, hh, rr, mm = paint(name, (x0 + g, y0 + g, x1 - g, y1 - g), 12000 + i * 7)
+            hh = wp(hh)
+            A[y0:y1, x0:x1] = to8(wp(a))
+            N[y0:y1, x0:x1] = quantize_normal(to8(blur(normal_from_height(hh, 1.0, wrap=True).astype(np.float32) / 255.0, 0.5, wrap=True)), 6)
+            O[y0:y1, x0:x1] = quantize_normal(to8(blur(np.stack([cavity_ao(hh, 3, 0.3, wrap=True), wp(rr), wp(mm)], -1), 0.5, wrap=True)), 6)
+        Image.fromarray(A).save(paths[0], quality=90, optimize=True)
+        Image.fromarray(N).save(paths[1], optimize=True, compress_level=9)
+        Image.fromarray(O).save(paths[2], optimize=True, compress_level=9)
+        return paths
+    alb = np.zeros((SH, S, 3), np.float32) + 0.5; hgt = np.zeros((SH, S), np.float32)
+    rough = np.full((SH, S), 0.85, np.float32); metal = np.zeros((SH, S), np.float32); ao = np.ones((SH, S), np.float32)
     for i, (name, rc) in enumerate(REG.items()):
         x0, y0, x1, y1 = rc
         a, hh, rr, mm = paint(name, (x0 + g, y0 + g, x1 - g, y1 - g), 12000 + i * 7)
         alb[y0:y1, x0:x1] = wp(a); hgt[y0:y1, x0:x1] = wp(hh); rough[y0:y1, x0:x1] = wp(rr); metal[y0:y1, x0:x1] = wp(mm)
         ao[y0:y1, x0:x1] = wp(cavity_ao(hh, 3, 0.3, wrap=True))
-    paths = [os.path.join(CACHE, f'modern_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
     Image.fromarray(to8(alb)).save(paths[0], quality=90, optimize=True)
     nrm = to8(blur(normal_from_height(hgt, 1.0, wrap=False).astype(np.float32) / 255.0, 0.5, wrap=False))
     Image.fromarray(quantize_normal(nrm, 6)).save(paths[1], optimize=True, compress_level=9)

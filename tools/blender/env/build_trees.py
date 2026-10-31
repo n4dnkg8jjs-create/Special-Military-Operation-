@@ -9,6 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 import cv2
 from PIL import Image
+from meshfix import fix_mb
 from meshlib import *
 from texlib import spectral, norm01, colorize, srgb, lerp, to8, normal_from_height, smoothstep, blur, CACHE, quantize_normal, voronoi
 
@@ -278,20 +279,20 @@ def tree(name, species, seed, height, stripped=True, broken_top=False, leafy=Fal
         r0 *= 1.6
         pts = curve((0, -0.15, 0), (r.normal(0, 0.03), 1, r.normal(0, 0.03)), height * 0.6, 8, r, wobble=0.03)
         rad = r0 * np.linspace(1.0, 0.62, len(pts)); rad[0] *= 1.3
-        mb.tube(pts, rad, 9, bark_uv(circ), smooth=True, mat=BARK)
+        mb.tube(pts, rad, 9, bark_uv(circ), smooth=True, mat=BARK, cap=True)     # sawn-off top is closed (was an open hollow)
         top, td = pts[-1], pts[-1] - pts[-2]
         for k in range(6):
             d = _rot_towards(td, math.radians(r.uniform(25, 55)), k * 1.05 + r.normal(0, 0.2))
             kn = curve(top - td * 0.1, d, r.uniform(0.5, 1.3), 3, r, wobble=0.12)
             kr = rad[-1] * r.uniform(0.45, 0.6)
-            mb.tube(kn, np.linspace(kr, kr * 1.15, len(kn)), 7, bark_uv(circ), smooth=True, mat=BARK)
+            mb.tube(kn, np.linspace(kr, kr * 1.15, len(kn)), 7, bark_uv(circ), smooth=True, mat=BARK, cap=True)
             mb.poly([kn[-1] + [kr, 0.02, 0], kn[-1] + [-kr * 0.5, 0.05, kr * 0.8], kn[-1] + [-kr * 0.5, 0.03, -kr * 0.8]], Fit_wood, mat=WOOD)
             for j in range(r.integers(4, 8)):
                 if stripped and r.random() < 0.35:
                     continue
                 sd = np.array([r.normal(0, 0.18), 1, r.normal(0, 0.18)])
                 L = r.uniform(1.5, 4.5) * (0.5 if stripped and r.random() < 0.4 else 1)
-                sh = curve(kn[-1] + r.normal(0, kr * 0.4, 3), sd, L, 4, r, wobble=0.06)
+                sh = curve(kn[-1] - (kn[-1] - kn[-2]) * 0.12 + r.normal(0, kr * 0.25, 3), sd, L, 4, r, wobble=0.06)   # shoots grow out of the knuckle
                 mb.tube(sh, np.linspace(0.035, 0.008, len(sh)), 4, bark_uv(circ), smooth=True, mat=BARK)
                 if not stripped or r.random() < 0.3:
                     for m_ in range(2):
@@ -447,6 +448,7 @@ def main():
     ]
     info = {}
     for i, (mb, sp) in enumerate(items):
+        fix_mb(mb, skip_mats=(2,))
         ob = mb.to_object(mb.name, [mats[sp], mats['wood'], mats['leaves'], mats['soil']], smooth_angle=70, location=(i * 9.0, 0, 0))
         # drop unused material slots
         used = sorted(set(f[3] for f in mb.F))

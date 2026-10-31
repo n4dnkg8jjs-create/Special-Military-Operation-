@@ -20,13 +20,15 @@ import modern_atlas as MA
 import modern_geo as MG
 import modern_props as MP
 
-BUDGET = {'kindergarten': 8000, 'boiler_house': 8000, 'supermarket': 8000, 'garage_row': 8000, 'car_': 3000, 'bus_': 3000,
-          'playground': 2500, 'checkpoint': 1500, 'pharmacy': 800, 'kiosk': 800}
+BUDGET = {'kindergarten': 8000, 'boiler_house': 8000, 'supermarket': 10000, 'garage_row': 8000, 'car_': 4000, 'bus_': 3000,
+          'playground': 5000, 'checkpoint': 1500, 'pharmacy': 1500, 'kiosk': 1500, 'outdoor_gym': 1800, 'bus_stop': 1200, 'waste_pad': 1500, 'bench': 400}
 
 
 def atlases():
     a = [os.path.join(MA.CACHE, f'modern_atlas_{s}') for s in ('albedo.jpg', 'normal.png', 'orm.png')]
-    if not all(os.path.exists(p) for p in a) or os.environ.get('REBUILD_ATLAS'):
+    if os.environ.get('REPAINT'):
+        a = MA.build(os.environ['REPAINT'].split(','))
+    elif not all(os.path.exists(p) for p in a) or os.environ.get('REBUILD_ATLAS'):
         a = MA.build()
     f = [os.path.join(MA.CACHE, f'modern_alpha_{s}') for s in ('albedo.png', 'normal.png', 'orm.png')]
     if not all(os.path.exists(p) for p in f) or os.environ.get('REBUILD_ATLAS'):

@@ -644,18 +644,20 @@ def antidrone_net_frame(name='antidrone_net_frame', seed=490):
 
 
 def all_items():
-    out = [(car('car_hatch_modern', 'hatch', 'intact', 500), 'ch'), (car('car_hatch_modern_burnt', 'hatch', 'burnt', 501), 'ch'),
-           (car('car_suv_modern', 'suv', 'intact', 502), 'cs'), (car('car_suv_modern_burnt', 'suv', 'burnt', 503), 'cs'),
-           (car('car_van', 'van', 'intact', 504), 'cv'), (car('car_van_medevac', 'van', 'medevac', 505), 'cv'),
-           (car('car_van_burnt', 'van', 'burnt', 506), 'cv'), (car('bus_burnt_modern', 'bus', 'burnt', 507), 'bb'),
-           (bus_stop_modern(), 'bs'), (playground_modern(), 'pg'), (outdoor_gym(), 'og'), (parking_barrier(), 'pb'),
-           (waste_pad(), 'wp'), (bench_modern(), 'bm'), (lamp_led(), 'll'), (ad_column(), 'ac'),
+    import modern_cars as MC
+    import modern_yard as MY
+    out = [(MC.car('car_hatch_modern', 'hatch', 'intact', 500), 'ch'), (MC.car('car_hatch_modern_burnt', 'hatch', 'burnt', 501), 'ch'),
+           (MC.car('car_suv_modern', 'suv', 'intact', 502), 'cs'), (MC.car('car_suv_modern_burnt', 'suv', 'burnt', 503), 'cs'),
+           (MC.car('car_van', 'van', 'intact', 504), 'cv'), (MC.car('car_van_medevac', 'van', 'medevac', 505), 'cv'),
+           (MC.car('car_van_burnt', 'van', 'burnt', 506), 'cv'), (car('bus_burnt_modern', 'bus', 'burnt', 507), 'bb'),
+           (MY.bus_stop_modern(), 'bs'), (MY.playground_modern(), 'pg'), (MY.outdoor_gym(), 'og'), (parking_barrier(), 'pb'),
+           (MY.waste_pad(), 'wp'), (MY.bench_modern(), 'bm'), (lamp_led(), 'll'), (ad_column(), 'ac'),
            (checkpoint_blocks(), 'cb'), (antidrone_net_frame(), 'an')]
     return out
 
 
 NODE_NOTES = {
-    'car_hatch_modern': 'Lanos / Sens-like 5-door hatchback 4.07 x 1.68 x 1.43 m, cherry red, front +X.',
+    'car_hatch_modern': 'lofted smooth body (wheel-arch cut-outs, flares, crowned bonnet, raked glass), separate tyres + alloy rims, mirrors, wipers, plates; seats / headrests through the glass. Lanos / Sens-like 5-door hatchback 4.07 x 1.68 x 1.43 m, cherry red, front +X.',
     'car_hatch_modern_burnt': 'burnt-out twin: on bare rims (~0.11 m lower), glass gone, gutted, soot / ash paint.',
     'car_suv_modern': 'compact crossover 4.32 x 1.80 x 1.65 m, silver, black plastic cladding, roof rails, front +X.',
     'car_suv_modern_burnt': 'burnt-out twin of car_suv_modern.',
@@ -663,12 +665,12 @@ NODE_NOTES = {
     'car_van_medevac': 'car_van with red-cross markings (sides, rear, roof) and a blue light bar.',
     'car_van_burnt': 'burnt-out van: cab glass gone, cargo box burnt, on rims.',
     'bus_burnt_modern': 'burnt-out 12 m low-floor city bus (Bogdan / Electron type) 12.0 x 2.55 x 3.05 m: window band open, roof sagging and holed, seat frames, on rims; front +X.',
-    'bus_stop_modern': '4.2 x 1.6 m shelter, open side +Z, back glass at -Z (alpha, cracked / shot out).',
-    'playground_modern': '14 x 10 m rubber-surfaced playground (tower + slide, swings, spring riders, carousel).',
-    'outdoor_gym': 'street-workout set on a 6 x 4 m mat.',
+    'bus_stop_modern': 'galvanised frame, ACM roof fascia, citylight end panel, cracked / shot-out glass, wooden bench, route-sign pole + timetable, bin, kerb + paving on +Z; 4.2 x 1.6 m shelter, open side +Z, back glass at -Z (alpha, cracked / shot out).',
+    'playground_modern': 'rubber-tile surface in a kerb, low steel fence with gate; two HPL towers with pyramid roofs + chain bridge, U-slide, rope net, ladder, climbing wall; A-frame swing (flat seat + cradle on chains), 2 spring riders, sandbox with mushroom shade, carousel, see-saw, benches, bin, rules board. 14 x 10 m rubber-surfaced playground (tower + slide, swings, spring riders, carousel).',
+    'outdoor_gym': 'pull-ups at 3 heights, monkey bars, Swedish wall bars, dip + parallel bars, sit-up bench, push-up handles; street-workout set on a 6 x 4 m mat.',
     'parking_barrier': 'housing at x = -0.15, 4 m boom along +X to the rest post.',
-    'waste_pad': '5 x 2.6 m concrete U-pad (open side +Z), 3 euro bins (one tipped out of the pad).',
-    'bench_modern': '1.8 m park bench, seat facing +Z.',
+    'waste_pad': 'profiled-sheet U enclosure under a mono-pitch roof, notices / graffiti, bin bags + cardboard; 5 x 2.6 m concrete U-pad (open side +Z), 3 euro bins (one tipped out of the pad).',
+    'bench_modern': 'cast side frames, 4 + 2 wooden slats, paving pad + bin; 1.8 m park bench, seat facing +Z.',
     'lamp_led': '8 m LED street light, arm and head reach +X 1.65 m.',
     'ad_column': 'round advertising column 1.2 m dia x 3.3 m.',
     'checkpoint_blocks': '10 x 4 m FBS-block chicane with sandbags, tyres, hedgehog, stop board.',

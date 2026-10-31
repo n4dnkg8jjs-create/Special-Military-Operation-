@@ -5,7 +5,7 @@ import { angDiff } from './squad.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
 const rf = (a, b) => a + Math.random() * (b - a);
-const TRACER = { RU: [0.35, 1.0, 0.3], UA: [1.0, 0.16, 0.1] };
+const TRACER = { RU: [0.62, 1.0, 0.34], UA: [1.0, 0.42, 0.14] }; // green-yellow / orange-red burning tracer compound
 
 export class Combat {
   constructor(game) { this.g = game; this.projectiles = []; }
