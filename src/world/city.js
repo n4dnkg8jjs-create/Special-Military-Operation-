@@ -4,62 +4,22 @@ import { Building, KitPool } from './buildings.js';
 import { instance, trs } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Map 1 — Novozavodsk eastern microdistrict. North (−Z) is the attacker's side.
-export const MAP_SIZE = 520, BOUNDS = 245;
-const E = MAP_SIZE / 2 + 2;
-export const ROADS = [
-  { x0: -E, x1: E, z0: -10, z1: 10, w: 'avenue' },       // Prospekt Myru (E–W)
-  { x0: -102, x1: -88, z0: -E, z1: E },                   // vul. Shkilna (N–S)
-  { x0: 78, x1: 92, z0: -E, z1: E },                      // vul. Zavodska (N–S)
-  { x0: -E, x1: E, z0: -116, z1: -104 },                  // north E–W
-  { x0: -E, x1: E, z0: 99, z1: 111 },                     // south E–W
-  { x0: -E, x1: E, z0: -201, z1: -193 },                  // northern outskirts lane
-  { x0: -E, x1: E, z0: 193, z1: 201 },                    // southern outskirts lane
-  { x0: -208, x1: -200, z0: -E, z1: E },                  // western ring road
-  { x0: 198, x1: 206, z0: -E, z1: E },                    // eastern ring road
-];
-const SIDEWALK = 3.2;
-export const OBJECTIVES = [
-  { id: 'A', name: 'School No. 7', x: -62, z: 50 },
-  { id: 'B', name: 'Market Crossroads', x: 95, z: 12 },
-];
-// Staging grounds for the deployment phase (axis-aligned rectangles in world metres)
-export const DEPLOY_ZONES = {
-  player: { x0: -240, x1: 240, z0: 203, z1: 250 },
-  enemy: { x0: -240, x1: 240, z0: -250, z1: -203 },
-};
-export const SPAWNS = {
-  attacker: [[-95, -240], [85, -240], [-30, -235], [150, -238]],
-  defender: [[-95, 240], [85, 240], [0, 235]],
-};
-// x, z, rot, modules, floors, depthModules, sections, kind, predamage
-// x, z, rot, modules, floors, depthModules, sections, kind, predamage, opts
-const BUILDINGS = [
-  [-150, -150, 0, 15, 5, 4, 3, 'brick', 1.0], [-150, -60, 0, 15, 9, 4, 3, 'nine', 1.2],
-  [-30, -150, 0, 18, 5, 4, 4, 'khrushchyovka', 0.9], [-40, -60, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 1.3],
-  [30, -68, 0, 12, 9, 4, 2, 'nine', 1.4], [150, -150, Math.PI / 2, 15, 5, 4, 3, 'khrushchyovka', 0.8],
-  [150, -55, 0, 12, 5, 4, 3, 'brick', 1.2], [40, -160, 0, 10, 5, 4, 2, 'khrushchyovka', 0.7],
-  [-60, 40, Math.PI, 10, 3, 4, 2, 'school', 1.0], [-78, 62, Math.PI / 2, 6, 3, 4, 1, 'school', 0.9],
-  [-150, 50, Math.PI / 2, 15, 9, 4, 3, 'nine', 1.1], [10, 60, 0, 12, 5, 4, 3, 'brick', 1.0],
-  [40, 28, Math.PI, 12, 5, 4, 3, 'khrushchyovka', 1.2, { shops: true }], [140, 70, 0, 14, 5, 4, 3, 'khrushchyovka', 0.9],
-  [112, 26, Math.PI, 6, 2, 3, 1, 'shop', 1.0, { shops: true }], [-140, 150, 0, 15, 5, 4, 3, 'khrushchyovka', 0.6],
-  [-20, 150, 0, 18, 9, 4, 3, 'nine', 0.7], [140, 160, Math.PI / 2, 12, 5, 4, 3, 'khrushchyovka', 0.5],
-  // infill (appended so indices above stay stable)
-  [-70, -160, Math.PI / 2, 8, 5, 4, 2, 'khrushchyovka', 1.0], [-140, -30, 0, 12, 5, 4, 3, 'brick', 1.3, { shops: true }],
-  [-65, -80, Math.PI / 2, 10, 9, 4, 2, 'nine', 1.3], [30, -35, 0, 10, 5, 4, 2, 'khrushchyovka', 1.4, { shops: true }],
-  [130, -80, 0, 10, 5, 4, 2, 'khrushchyovka', 1.1], [120, -160, Math.PI / 2, 10, 5, 4, 2, 'khrushchyovka', 0.8],
-  [-150, 128, 0, 10, 5, 4, 2, 'brick', 0.6], [55, 75, Math.PI / 2, 8, 5, 4, 2, 'khrushchyovka', 0.9],
-  [150, 30, Math.PI / 2, 8, 9, 4, 2, 'nine', 1.0], [-20, 25, Math.PI, 8, 5, 4, 2, 'brick', 1.1, { shops: true }],
-  [50, 150, 0, 12, 5, 4, 3, 'khrushchyovka', 0.5],
-  // outer ring: 9-storeys, 12–16-storey point towers, brick blocks
-  [232, -150, Math.PI / 2, 12, 9, 4, 3, 'nine', 1.0], [232, -45, 0, 6, 16, 6, 1, 'tower', 1.1], [232, 72, Math.PI / 2, 14, 5, 4, 3, 'brick', 0.8],
-  [232, 160, 0, 6, 12, 6, 1, 'tower', 0.6], [-232, -150, Math.PI / 2, 14, 5, 4, 3, 'brick', 1.0], [-232, -45, 0, 6, 16, 6, 1, 'tower', 1.2],
-  [-232, 60, Math.PI / 2, 15, 9, 4, 3, 'nine', 0.9], [-232, 160, 0, 6, 12, 6, 1, 'tower', 0.5],
-  [-10, -88, 0, 6, 14, 6, 1, 'tower', 1.3], [150, 124, 0, 10, 5, 4, 2, 'brick', 0.7, { shops: true }],
-];
+import { MAPS } from './maps.js';
 
-function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const onRoad = (x, z, pad = 0) => ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
+// Active map: live bindings, set by setMap() before the world is built.
+export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
+let BUILDINGS, E;
+export function setMap(id) {
+  MAP = MAPS[id] || MAPS.city;
+  MAP_SIZE = MAP.sizeM; BOUNDS = MAP.bounds; ROADS = MAP.roads; OBJECTIVES = MAP.objectives;
+  DEPLOY_ZONES = MAP.deployZones; SPAWNS = MAP.spawns; BUILDINGS = MAP.buildings; E = MAP_SIZE / 2 + 2;
+  return MAP;
+}
+setMap('city');
+const SIDEWALK = 3.2;
+
+export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+export const onRoad = (x, z, pad = 0) => ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
 
 export class City {
   constructor(scene, assets, quality) {
@@ -71,7 +31,7 @@ export class City {
   }
   build() {
     this.ground(); this.roads();
-    this.placeBuildings();
+    this.placeBuildings(); this.facadeDecals();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.defences();
     this.craters(); this.paintGround(); this.skyline();
@@ -149,25 +109,38 @@ export class City {
       px.lineWidth = 2.4 * k; px.globalAlpha = 0.8;
       for (const e of b.entrances) {
         let best = null, bd = 1e9; for (const r of ROADS) { const cx = Math.max(r.x0 - SIDEWALK, Math.min(r.x1 + SIDEWALK, e.x)), cz = Math.max(r.z0 - SIDEWALK, Math.min(r.z1 + SIDEWALK, e.z)); const d = Math.hypot(cx - e.x, cz - e.z); if (d < bd) { bd = d; best = [cx, cz]; } }
-        if (best && bd < 90) { px.beginPath(); px.moveTo(...toPx(e.x, e.z)); const mx = (e.x + best[0]) / 2 + (R() - .5) * 8, mz = (e.z + best[1]) / 2 + (R() - .5) * 8; px.quadraticCurveTo(...toPx(mx, mz), ...toPx(best[0], best[1])); px.stroke(); }
+        if (best && bd < 90) { px.beginPath(); px.moveTo(...toPx(e.x, e.z)); if (Math.abs(best[0] - e.x) > 0.5 && Math.abs(best[1] - e.z) > 0.5) px.lineTo(...toPx(e.x, best[1])); px.lineTo(...toPx(best[0], best[1])); px.stroke(); }
       }
       if (b.entrances.length > 1) { px.lineWidth = 3 * k; px.globalAlpha = 0.6; px.beginPath(); px.moveTo(...toPx(b.entrances[0].x, b.entrances[0].z)); for (const e of b.entrances) px.lineTo(...toPx(e.x, e.z)); px.stroke(); }
     }
-    // mud: craters and low spots
+    // mud: craters only (scorched, churned)
     const mud = layer(), mx = mud.getContext('2d'); mx.filter = `blur(${2 * k}px)`; mx.fillStyle = '#fff';
     const cm = this.craterMesh, M = new THREE.Matrix4(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
     const blob = (ctx, x, z, r, alpha) => { ctx.globalAlpha = alpha; ctx.beginPath(); const n = 14, ph = R() * 6.28; for (let i = 0; i <= n; i++) { const a = i / n * 6.28, rr = r * (0.55 + 0.45 * this.noise2(Math.cos(a + ph) * 2 + x, Math.sin(a + ph) * 2 + z, 9) + (R() - .5) * 0.25); const [px2, pz2] = toPx(x + Math.cos(a) * rr, z + Math.sin(a) * rr); i ? ctx.lineTo(px2, pz2) : ctx.moveTo(px2, pz2); } ctx.fill(); };
-    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); blob(mx, v.x + (R() - .5) * sc.x * 0.4, v.z + (R() - .5) * sc.x * 0.4, sc.x * 0.75, 0.4); blob(rx, v.x, v.z, sc.x * 1.0, 0.25); }
-    const g1 = rx.getImageData(0, 0, N, N).data, g2 = px.getImageData(0, 0, N, N).data, g3 = mx.getImageData(0, 0, N, N).data;
+    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); blob(mx, v.x, v.z, sc.x * 0.6, 0.5); blob(rx, v.x, v.z, sc.x * 0.9, 0.25); }
+    // lawns: an ordered plan — the whole district is laid out as courtyard lawns and road verges, then we cut
+    // out roads + pavements, a trampled apron around every block, straight footpaths and the dirt yards
+    const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
+    lx.globalCompositeOperation = 'destination-out'; lx.fillStyle = '#000'; lx.strokeStyle = '#000'; lx.lineCap = 'butt';
+    for (const r of ROADS) lx.fillRect(...toPx(r.x0 - SIDEWALK - 0.8, r.z0 - SIDEWALK - 0.8), (r.x1 - r.x0 + SIDEWALK * 2 + 1.6) * k, (r.z1 - r.z0 + SIDEWALK * 2 + 1.6) * k);
+    for (const b of this.buildings) { lx.save(); lx.translate(...toPx(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 2.6) * k, (-b.D / 2 - 2.6) * k, (b.L + 5.2) * k, (b.D + 5.2) * k); lx.restore(); }
+    for (const b of this.buildings) for (const e of b.entrances) {
+      let best = null, bd = 1e9; for (const r of ROADS) { const cx = Math.max(r.x0 - SIDEWALK, Math.min(r.x1 + SIDEWALK, e.x)), cz = Math.max(r.z0 - SIDEWALK, Math.min(r.z1 + SIDEWALK, e.z)); const d = Math.hypot(cx - e.x, cz - e.z); if (d < bd) { bd = d; best = [cx, cz]; } }
+      if (best && bd < 90) { lx.lineWidth = 2.2 * k; lx.beginPath(); lx.moveTo(...toPx(e.x, e.z)); if (Math.abs(best[0] - e.x) > 0.5 && Math.abs(best[1] - e.z) > 0.5) lx.lineTo(...toPx(e.x, best[1])); lx.lineTo(...toPx(best[0], best[1])); lx.stroke(); }
+    }
+    for (const [x, z, r, rot] of this.dirtYards || []) { lx.save(); lx.translate(...toPx(x, z)); lx.rotate(-rot); lx.fillRect(-r * k, -r * 0.7 * k, r * 2 * k, r * 1.4 * k); lx.restore(); }
+    lx.globalCompositeOperation = 'source-over';
+    const lawnB = layer(), lb = lawnB.getContext('2d'); lb.filter = `blur(${0.7 * k}px)`; lb.drawImage(lawn, 0, 0);
+    const g1 = rx.getImageData(0, 0, N, N).data, g2 = px.getImageData(0, 0, N, N).data, g3 = mx.getImageData(0, 0, N, N).data, g4 = lb.getImageData(0, 0, N, N).data;
     const out = new Uint8Array(N * N * 4);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = i / k - o, z = j / k - o, p = (j * N + i) * 4;
-      const n1 = this.noise2(x / 18, z / 18, 1) * 0.65 + this.noise2(x / 5, z / 5, 2) * 0.35;
-      const n2 = this.noise2(x / 30, z / 30, 3);
-      const rubble = g1[p] / 255, path = g2[p] / 255;
-      let grass = Math.min(1, Math.max(0, (n1 - 0.24) * 2.3)) * (1 - rubble * 0.85) * (1 - path * 0.9);
-      const mudv = Math.max(g3[p] / 255 * (0.5 + this.noise2(x / 2, z / 2, 5) * 0.7), Math.max(0, (n2 - 0.74) * 2.5) * 0.5);
-      out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = path * 255;
+      const rubble = g1[p] / 255, path = g2[p] / 255, lw = g4[p] / 255;
+      const n1 = this.noise2(x / 14, z / 14, 1);
+      // lawns are full; only shell-churned / heavily walked spots wear through
+      let grass = lw * (0.82 + n1 * 0.18) * (1 - rubble * 0.85) * (1 - path * 0.6);
+      const mudv = g3[p] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
+      out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = Math.max(path, (1 - lw) * 0.5) * 255;
     }
     const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
     this.groundUniforms.tSplat.value = t; this.splatData = out; this.splatN = N;
@@ -203,7 +176,8 @@ export class City {
     const gg = mergeGeometries(qs); const nrm = gg.attributes.normal; for (let i = 0; i < nrm.count; i++) nrm.setXYZ(i, 0, 1, 0); // light like the ground
     const tpl = new THREE.Mesh(gg, mat);
     const N = this.splatN, k = N / MAP_SIZE, o = MAP_SIZE / 2, mats = [], cols = [];
-    for (let i = 0; i < 160000 && mats.length < 52000; i++) {
+    const maxN = this.grassMax || 52000;
+    for (let i = 0; i < maxN * 3.2 && mats.length < maxN; i++) {
       const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
       if (gw < 0.35 || this.rng() > gw) continue;
@@ -211,7 +185,7 @@ export class City {
       const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
       cols.push(new THREE.Color().setHSL(0.16 + (this.rng() - .5) * 0.06, 0.1 + this.rng() * 0.15, 0.78 + this.rng() * 0.2));
     }
-    instance(this.scene, tpl, mats, { shadows: false, colors: cols });
+    instance(this.scene, tpl, mats, { shadows: false, colors: cols, cullDist: this.grassCull || 340 });
   }
   roads() {
     const asphalt = this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -261,7 +235,7 @@ export class City {
       this.buildings.push(b);
     }
     // a pancaked section on the nine-storey at (30,-68) and the one at (-150,-60)
-    this.buildings[4].pancake(4, 6); this.buildings[1].pancake(9, 10);
+    for (const [i, a, c] of MAP.pancakes || []) this.buildings[i]?.pancake(a, c);
     const aabb = b => { const c = Math.abs(Math.cos(b.rot)), sn = Math.abs(Math.sin(b.rot)); const hx = (b.L * c + b.D * sn) / 2, hz = (b.L * sn + b.D * c) / 2; return [b.x - hx, b.x + hx, b.z - hz, b.z + hz]; };
     this.buildings.forEach((b, i) => { const A = aabb(b);
       this.buildings.forEach((o, j) => { if (j <= i) return; const B = aabb(o); if (A[0] < B[1] && A[1] > B[0] && A[2] < B[3] && A[3] > B[2]) console.warn('building overlap', i, j); });
@@ -298,6 +272,48 @@ export class City {
         b.occ.push(this.nav.addOccluder(ctr.x, ctr.z, hx, b.D / 2, b.rot, b.height, b));
       }
     }
+  }
+  // Facade decals that break up the repeating damage kit: soot plumes above burnt-out windows, shrapnel
+  // pock-mark clusters on spandrels, big scorches on blank end walls. Placed only on solid wall areas
+  // (window head 2.30 m .. next sill 3.66 m), hidden again when the panel they sit on goes.
+  facadeDecals() {
+    const kinds = ['soot', 'pocks', 'scorch', 'streak'], tex = kinds.map(decalTexture);
+    const g = new THREE.PlaneGeometry(1, 1); g.translate(0, 0.5, 0);
+    const meshes = tex.map(t => { const m = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 2600); m.count = 0; m.receiveShadow = true; m.frustumCulled = false; this.scene.add(m); return m; });
+    const { W, H } = this.assets.kit, R = this.rng, list = this.decals = [], q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    const add = (k, b, p, lx, y, w, h, dep) => {
+      const m = meshes[k]; if (m.count >= 2600) return;
+      const o = b.outward(p), c = b.panelCenter(p, new THREE.Vector3()), side = new THREE.Vector3(o.z, 0, -o.x);
+      v.copy(c).addScaledVector(side, lx).addScaledVector(o, 0.02); v.y = p.floor * H + y;
+      q.setFromAxisAngle(Y, b.rot + p.rot); sc.set(w, h, 1);
+      const M = new THREE.Matrix4().compose(v, q, sc); const i = m.count++; m.setMatrixAt(i, M);
+      list.push({ m, i, p, dep });
+    };
+    for (const b of this.buildings) {
+      const at = b.panelMap || new Map();
+      for (const p of b.panels) {
+        if (p.gone || p.state === 3 || p.shop) continue;
+        const up = at.get(p.side + ':' + p.col + ':' + (p.floor + 1));
+        const blank = /blank/.test(p.type);
+        if (blank) {
+          if (p.state >= 1 && R() < 0.55) add(2, b, p, (R() - .5) * 1.2, 0.3 + R() * 1.0, 1.6 + R() * 1.6, 1.4 + R() * 1.3, null);
+          if (R() < 0.35 + p.state * 0.2) add(1, b, p, (R() - .5) * 1.6, 0.4 + R() * 1.6, 0.9 + R() * 1.2, 0.8 + R() * 0.9, null);
+          if (R() < 0.12) add(3, b, p, (R() - .5) * 2, 0.8, 0.5 + R() * 0.5, 1.8 + R() * 1.2, null);
+          continue;
+        }
+        if (up && (up.state === 3 || up.gone)) continue;
+        const band = up?.balcony ? 0.5 : 1.28;               // solid wall between this window head and the next sill
+        if (p.state >= 2 && R() < 0.8) add(0, b, p, (R() - .5) * 0.3, 2.33, 1.2 + R() * 0.6, band, up);
+        else if (p.state >= 1 && R() < 0.45) add(1, b, p, (R() - .5) * 1.2, 2.34, 0.8 + R() * 0.8, Math.min(band, 0.6 + R() * 0.6), up);
+        else if (R() < 0.08) add(3, b, p, (R() - .5) * 2.4, 2.33, 0.35 + R() * 0.3, band, up);
+      }
+    }
+    for (const m of meshes) { m.instanceMatrix.needsUpdate = true; }
+  }
+  // hide decals whose wall is gone (called from the game a few times a second)
+  updateDecals() {
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const d of this.decals || []) { if (d.off) continue; const b = d.p.b; if (d.p.gone || d.p.state === 3 || (d.dep && (d.dep.gone || d.dep.state === 3)) || (b && b.goneCols?.has(d.p.col) && (d.p.side === 'front' || d.p.side === 'back'))) { d.off = true; d.m.setMatrixAt(d.i, zero); d.m.instanceMatrix.needsUpdate = true; } }
   }
   // ---------------------------------------------------------------- rubble
   rubbleTemplates() {
@@ -347,7 +363,7 @@ export class City {
       }
     }
     // scattered debris on streets
-    for (let i = 0; i < 60; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); add(x, z, 0.35 + this.rng() * 0.4, this.rng() * 6.28); }
+    for (let i = 0; i < (this.streetDebris ?? 60); i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); add(x, z, 0.35 + this.rng() * 0.4, this.rng() * 6.28); }
     T.forEach((t, k) => place[k].length && instance(this.scene, t, place[k]));
     this.rubbleInstances = place;
   }
@@ -469,8 +485,9 @@ export class City {
     // garage rows in courtyards
     // fixed courtyards: playgrounds behind these residential blocks, garage rows behind those
     const yardOf = (bi, r) => { const b = this.buildings[bi]; if (!b) return null; for (const f of [0, -0.25, 0.25]) for (const d of [15, 19, 12]) { const p = b.toWorld(f * b.L, 0, -b.D / 2 - d); if (free(p.x, p.z, r)) return [p.x, p.z, b.rot]; } return null; };
-    for (const bi of [11, 15, 3, 7]) { const y = yardOf(bi, 6); if (y) put('playground', y[0], y[1], y[2], 1, 1, 6); }
-    for (const bi of [6, 16, 0, 13]) { const y = yardOf(bi, 9); if (!y) continue; const [x, z, rot] = y; const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 4; i++) put('garage', x + dx * (i - 1.5), z + dz * (i - 1.5), rot, 1, 1, BLOCK); }
+    this.dirtYards = [];
+    for (const bi of [11, 15, 3, 7]) { const y = yardOf(bi, 6); if (y) { put('playground', y[0], y[1], y[2], 1, 1, 6); this.dirtYards.push([y[0], y[1], 9, y[2]]); } }
+    for (const bi of [6, 16, 0, 13]) { const y = yardOf(bi, 9); if (!y) continue; const [x, z, rot] = y; const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 4; i++) put('garage', x + dx * (i - 1.5), z + dz * (i - 1.5), rot, 1, 1, BLOCK); this.dirtYards.push([x, z, 11, rot]); }
     for (let i = 0; i < 45; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) put('tyre', x, z, this.rng() * 6, 1, 0); }
     for (const v of Object.values(placeList)) instance(this.scene, v.t, v.m);
     this.put = put; this._pl = placeList;
@@ -604,14 +621,14 @@ export class City {
     const mat = new THREE.MeshStandardMaterial({ color: 0x2c2722, roughness: 1, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     const tex = craterTexture(); mat.map = tex; mat.color.set(0xffffff);
     const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
-    this.craterMesh = new THREE.InstancedMesh(g, mat, 400); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
+    this.craterCap = MAP.kind === 'rural' ? 1400 : 400; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); this.addCrater(x, z, 2 + this.rng() * 4); }
     if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
   }
   addCrater(x, z, size) {
     if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size]); return; }
-    const c = this.craterMesh; if (c.count >= 400) return;
+    const c = this.craterMesh; if (c.count >= this.craterCap) return;
     c.setMatrixAt(c.count++, trs(x, 0.07 + c.count * 0.0004, z, Math.random() * 6.28, size)); c.instanceMatrix.needsUpdate = true;
   }
   // distant city silhouette beyond the playable area
@@ -722,10 +739,24 @@ export class City {
   }
 }
 
-function catenary(a, b, sag) {
+export function catenary(a, b, sag) {
   const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10; const p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); } return pts;
 }
-function craterTexture() {
+function decalTexture(kind) {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const r = Math.random;
+  if (kind === 'soot') { // plume rising from a window head: dense at the bottom, feathering up
+    for (let i = 0; i < 70; i++) { const px = 64 + (r() - .5) * 70 * (0.4 + i / 70), py = 128 - Math.pow(r(), 0.8) * 120, rr = 10 + r() * 22; const g = x.createRadialGradient(px, py, 0, px, py, rr); const a = 0.10 + 0.25 * (py / 128); g.addColorStop(0, `rgba(14,12,10,${a})`); g.addColorStop(1, 'rgba(14,12,10,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); }
+  } else if (kind === 'pocks') { // shrapnel/bullet pocks: dark core, pale chipped rim
+    for (let i = 0; i < 46; i++) { const px = 64 + (r() - .5) * 110 * Math.sqrt(r()), py = 64 + (r() - .5) * 110 * Math.sqrt(r()), rr = 1 + r() * 3.2; x.fillStyle = 'rgba(205,200,190,0.55)'; x.beginPath(); x.arc(px, py, rr * 1.9, 0, 7); x.fill(); x.fillStyle = 'rgba(30,28,25,0.85)'; x.beginPath(); x.arc(px + 0.4, py + 0.4, rr, 0, 7); x.fill(); }
+  } else if (kind === 'scorch') { // shell strike on a blank wall: blast star + soot
+    const g = x.createRadialGradient(64, 64, 0, 64, 64, 62); g.addColorStop(0, 'rgba(10,9,8,0.75)'); g.addColorStop(0.5, 'rgba(25,22,19,0.45)'); g.addColorStop(1, 'rgba(25,22,19,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 30; i++) { const a = r() * 6.28; x.strokeStyle = `rgba(15,13,11,${0.2 + r() * 0.3})`; x.lineWidth = 1 + r() * 2.5; x.beginPath(); x.moveTo(64 + Math.cos(a) * 12, 64 + Math.sin(a) * 12); x.lineTo(64 + Math.cos(a) * (35 + r() * 28), 64 + Math.sin(a) * (35 + r() * 28)); x.stroke(); }
+  } else { // rust / water streaks running down from a joint
+    for (let i = 0; i < 8; i++) { const px = 20 + r() * 88; const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(70,52,36,0)'); g.addColorStop(0.1, 'rgba(70,52,36,0.35)'); g.addColorStop(1, 'rgba(70,52,36,0)'); x.fillStyle = g; x.fillRect(px, 0, 2 + r() * 5, 128); }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+export function craterTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
   // ejecta speckle on the rim first, then the scorched bowl
   for (let i = 0; i < 900; i++) { const a = Math.random() * 6.28, r = 45 + Math.pow(Math.random(), 0.6) * 80; const v = 40 + Math.random() * 60; x.fillStyle = `rgba(${v + 15},${v + 8},${v},${0.15 + Math.random() * 0.45})`; x.beginPath(); x.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 0.6 + Math.random() * 2.6, 0, 7); x.fill(); }

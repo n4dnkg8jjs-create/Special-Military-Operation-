@@ -98,7 +98,7 @@ export class NavGrid {
     return [x, z];
   }
   // A* with octile heuristic. clearance in metres (infantry 0.45, BTR 1.9, tank 2.1). Returns [[x,z],...]
-  findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = 120000) {
+  findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = this.maxIter || 120000) {
     [sx, sz] = this.nearestFree(sx, sz, clearance, 6);
     [tx, tz] = this.nearestFree(tx, tz, clearance, 40);
     const s = this.idx(sx, sz), t = this.idx(tx, tz); if (s < 0 || t < 0) return null;
@@ -121,24 +121,29 @@ export class NavGrid {
         if (q >= 4 && (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance))) continue;
         let c = this.cost[kk]; if (vehicle && c > 1) c = c * 2.5; // rubble slows armour more
         // stay off walls: prefer cells with more clearance
-        const wall = this.clear[kk] < clearance + 1.2 ? 0.6 : 0;
+        // vehicles keep off walls; infantry hug them (move along facades and fences, not across open ground)
+        const cl = this.clear[kk];
+        const wall = vehicle ? (cl < clearance + 1.2 ? 0.6 : 0) : (cl < 0.9 ? 0.35 : cl < 2.6 ? -0.32 : 0);
         const ng = g[k] + C[q] * (c + wall);
         if (st[kk] !== gen || ng < g[kk]) { st[kk] = gen; g[kk] = ng; from[kk] = k; heap.push(ng + h(kk) * 1.02, kk); }
       }
     }
     const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
-    return this.smooth(raw.map(k => [this.cx(k), this.cz(k)]), clearance, best === t ? [tx, tz] : null);
+    return this.smooth(raw.map(k => [this.cx(k), this.cz(k)]), clearance, best === t ? [tx, tz] : null, !vehicle);
   }
   lineFree(ax, az, bx, bz, clearance) {
     const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5));
     for (let i = 1; i < steps; i++) { const f = i / steps; if (!this.passable(this.idx(ax + (bx - ax) * f, az + (bz - az) * f), clearance)) return false; }
     return true;
   }
-  smooth(p, clearance, end) {
+  smooth(p, clearance, end, hug = false) {
     if (p.length < 3) { if (end) p[p.length - 1] = end; return p; }
     const out = [p[0]]; let a = 0;
+    const nearWall = q => { const i = this.idx(q[0], q[1]); return i >= 0 && this.clear[i] < 2.8; };
     while (a < p.length - 1) {
       let b = p.length - 1;
+      // infantry along a wall: only short shortcuts, so the route keeps following the wall
+      if (hug && nearWall(p[a])) b = Math.min(b, a + 6);
       while (b > a + 1 && !this.lineFree(p[a][0], p[a][1], p[b][0], p[b][1], clearance)) b--;
       out.push(p[b]); a = b;
     }
@@ -155,7 +160,14 @@ export class NavGrid {
       for (const o of l) {
         if (seen.has(o) || o.dead || (o.smokeUntil && o.smokeUntil < (globalThis.__gameTime || 0)) || (ignore && (o === ignore || o.ref === ignore)) || (ignore2 && (o === ignore2 || o.ref === ignore2))) continue; seen.add(o);
         const t = segRect(ax, az, bx, bz, o); if (t === null) continue;
-        const y = ay + (by - ay) * t; if (y < o.h) return o;
+        const y = ay + (by - ay) * t; if (y >= o.h) continue;
+        if (o.foliage) {
+          // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
+          const L = Math.hypot(bx - ax, bz - az), inside = (segT1 - t) * L;
+          const endIn = t <= 0.0001 || segT1 >= 0.9999;
+          if (inside < (endIn ? 9 : 4.5)) continue;
+        }
+        return o;
       }
     }
     return null;
@@ -172,5 +184,7 @@ function segRect(ax, az, bx, bz, o) {
     let a = (-h - p) / d, b = (h - p) / d; if (a > b) [a, b] = [b, a];
     t0 = Math.max(t0, a); t1 = Math.min(t1, b); if (t0 > t1) return null;
   }
+  segT1 = t1;
   return t0;
 }
+let segT1 = 1;

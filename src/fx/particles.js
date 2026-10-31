@@ -217,7 +217,13 @@ export class FX {
     for (let i = 0; i < 26; i++) this.smoke.spawn({ x: pos.x + (Math.random() - .5) * 3, y: 0.5 + Math.random() * 2, z: pos.z + (Math.random() - .5) * 3, vx: (Math.random() - .5) * 3, vy: 0.4 + Math.random() * 0.6, vz: (Math.random() - .5) * 3, life: life * (0.6 + Math.random() * 0.4), size0: 2, size1: 10 + Math.random() * 5, r: 0.86, g: 0.86, b: 0.84, a0: 0.75, a1: 0, drag: 0.6, wind: [this.wind[0] * 0.4, this.wind[1] * 0.4], fadeIn: 1.5 });
   }
   // persistent emitters: fire (burning wreck/building), plume (distant columns), smoulder
-  emitter(pos, kind, scale = 1, life = Infinity) { const e = { pos: pos.clone(), kind, scale, acc: 0, life, t: 0 }; if (kind === 'fire') e.flame = this.flames.add(pos, scale); this.emitters.push(e); return e; }
+  emitter(pos, kind, scale = 1, life = Infinity, attach = null) { const e = { pos: pos.clone(), kind, scale, acc: 0, life, t: 0, attach }; if (kind === 'fire') e.flame = this.flames.add(pos, scale); this.emitters.push(e); return e; }
+  // move an emitter whose support is gone down onto the rubble
+  drop(e, y = 0.4) {
+    if (e.dropped) return; e.dropped = true; e.attach = null; e.pos.y = y;
+    if (e.flame) { e.flame.dead = true; e.scale *= 0.85; e.flame = this.flames.add(e.pos, e.scale); }
+    if (e.life === Infinity) e.life = e.t + 60 + Math.random() * 60;
+  }
   vehicleDust(pos, speed) {
     if (Math.random() > speed * 0.06) return;
     this.smoke.spawn({ x: pos.x + (Math.random() - .5) * 2, y: 0.4, z: pos.z + (Math.random() - .5) * 2, vy: 0.3, life: 3, size0: 1, size1: 4, r: 0.6, g: 0.56, b: 0.5, a0: 0.25, a1: 0, drag: 1, wind: this.wind });

@@ -110,7 +110,7 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire|reload|throw|hit|dismount)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
@@ -174,7 +174,12 @@ export class Soldier {
       else clip = 'wounded_ground';
     } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
     else if (this.jumpT > 0) { clip = 'dismount_jump'; alt = ['crouch_idle']; }
-    else if (this.launcherT > 0) { clip = this.stance === 'stand' ? 'aim_launcher' : 'aim_launcher_kneel'; alt = ['aim_launcher', 'aim_stand']; }
+    else if (this.launcherT > 0) {
+      const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;
+      if (this.launchFired) { clip = 'fire_launcher' + k; alt = ['fire_launcher', aim]; }
+      else if (this.launcherT > 1.4) { clip = 'launcher_raise' + k; alt = ['launcher_raise', aim, 'aim_launcher']; }
+      else { clip = aim; alt = ['aim_launcher', 'aim_stand']; }
+    }
     else if (this.dragging && this.dragPhase === 'treat') { clip = 'treat_wounded'; alt = ['crouch_idle']; }
     else if (this.dragging && this.dragPhase === 'drag') { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
     else if (this.hitT > 0) { clip = 'hit_react'; }
@@ -188,7 +193,9 @@ export class Soldier {
       ts = THREE.MathUtils.clamp(sp / (CLIP_SPEED[clip] || 1.4), 0.5, 1.8);
       alt.push('walk_rifle');
     } else if (this.reloadT > 0) { clip = st === 'stand' ? 'reload_stand' : 'reload_crouch'; alt = ['reload_stand', 'aim_crouch']; }
-    else if (this.suppression > 70 && this.squad.morale < 45) { clip = 'suppressed_cower'; alt = ['crouch_idle']; }
+    else if (this.ducking) { if (st === 'prone') { clip = 'pinned_prone'; alt = ['prone_idle']; } else { clip = 'cover_duck'; alt = ['suppressed_cower', 'crouch_idle']; } }
+    else if (this.peek && this.target) { const L = this.peek < 0 ? 'left' : 'right', c = st === 'stand' ? '' : 'crouch_'; clip = (this.firingT > 0 ? 'fire_peek_' : 'peek_') + c + L; alt = this.firingT > 0 ? ['peek_' + c + L, st === 'stand' ? 'aim_stand' : 'aim_crouch'] : [st === 'stand' ? 'aim_stand' : 'aim_crouch']; }
+    else if (this.target && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
     else if (this.target) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
     else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
     if (this.mixer) {
@@ -208,10 +215,16 @@ export class Soldier {
       if (this.state === 'dead' || this.state === 'critical' || this.state === 'stable') { m.rotation.x = -Math.PI / 2 * 0.95; m.scale.y = 1; m.position.y = 0.2; }
       else { m.rotation.x = 0; m.position.y = sp > 0.1 ? Math.abs(Math.sin(performance.now() * 0.012 * sp)) * 0.06 : 0; }
     }
+    this.firingT = Math.max(0, (this.firingT || 0) - dt);
+    // corner peek cycle: lean out, fire, lean back into cover, repeat
+    if (this.peek && this.target && this.state !== 'dead') { this.peekT = (this.peekT ?? 0) - dt; if (this.peekT <= 0) { this.peekOut = !this.peekOut; this.peekT = this.peekOut ? 1.5 + Math.random() * 1.5 : 0.9 + Math.random() * 1.3; } }
+    else { this.peekOut = false; if (!this.target || this.vel.lengthSq() > 0.2) this.peek = 0; }
+    this.peekAmt = (this.peekAmt || 0) + (((this.peek && this.peekOut) ? 1 : 0) - (this.peekAmt || 0)) * Math.min(1, dt * 6);
     this.hitT = Math.max(0, (this.hitT || 0) - dt); this.throwT = Math.max(0, (this.throwT || 0) - dt); this.jumpT = Math.max(0, (this.jumpT || 0) - dt); this.stackT = Math.max(0, (this.stackT || 0) - dt);
   }
   sync() {
     this.root.position.copy(this.pos);
+    if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.7; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.7; }
     this.root.rotation.y = this.heading;
     this.root.visible = this.visible && this.inside !== 'btr' && this.state !== 'evac' && this.inView !== false;
   }
@@ -223,7 +236,7 @@ export class Soldier {
   get inBuilding() { return !!this.inside && typeof this.inside === 'object'; }
   get bld() { return this.inBuilding ? this.inside.panel.b : null; }
   get aboard() { return this.inside === 'btr' || this.inside === 'ride'; }
-  headHeight() { if (this.inside === 'ride') return 1.0; return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? 0.35 : this.stance === 'crouch' ? 1.05 : 1.55; }
+  headHeight() { if (this.inside === 'ride') return 1.0; return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? (this.ducking ? 0.22 : 0.35) : this.stance === 'crouch' ? (this.ducking ? 0.75 : 1.05) : 1.55; }
   die(kind) {
     this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0);
     this.deathClip = kind || pick(['death_front', 'death_back', 'death_crumple'], Math.random());

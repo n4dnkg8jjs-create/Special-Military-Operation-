@@ -140,6 +140,10 @@ export class Building {
       }
       this.collapsedCorner = side;
     }
+    // structural plausibility: a blown-out panel cracks the panels above it (nothing intact floats over a hole)
+    const at = new Map(); for (const p of this.panels) at.set(p.side + ':' + p.col + ':' + p.floor, p);
+    for (const p of this.panels) if (p.state === 3) { const a = at.get(p.side + ':' + p.col + ':' + (p.floor + 1)), b2 = at.get(p.side + ':' + p.col + ':' + (p.floor + 2)); if (a) a.state = Math.max(a.state, 2); if (b2) b2.state = Math.max(b2.state, 1); }
+    this.panelMap = at;
   }
   // Pancake a vertical slice of the building (all floors) between cols a..b.
   pancake(a, b) {
@@ -168,6 +172,7 @@ export class Building {
     for (const p of this.panels) {
       if (p.gone) continue;
       col.copy(this.tint).offsetHSL(0, 0, (this.rng() - 0.5) * 0.04);
+      if (p.state > 0) col.multiplyScalar(p.state === 1 ? 0.86 + this.rng() * 0.14 : 0.7 + this.rng() * 0.22); // uneven soot / weathering
       p.color = col.clone();
       pool.add(`${p.type}_${STATES[p.state]}`, this.panelMatrix(p, tmpM), p, p.color);
       if (p.balcony && p.state < 2) { p.acc = { slot: -1, cell: this.cell }; pool.add('balcony_slab', tmpM, p.acc, p.color); }

@@ -13,7 +13,7 @@ async function tryGLB(url) { try { const r = await fetch(url, { method: 'HEAD' }
 export class Assets {
   constructor() { this.missing = []; this.gltf = {}; this.manifest = {}; this.kit = null; this.tex = {}; }
 
-  async load(progress, renderer) {
+  async load(progress, renderer, opts = {}) {
     const jobs = [
       ['soldier_ua', 'assets/soldiers/soldier_ua.glb'], ['soldier_ru', 'assets/soldiers/soldier_ru.glb'],
       ['soldier_anims', 'assets/soldiers/soldier_anims.glb'],
@@ -22,6 +22,7 @@ export class Assets {
       ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'],
       ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
     ];
+    if (opts.rural) jobs.push(['farmland', 'assets/env/farmland.glb']);
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};
     // rubble files are discovered from the env manifest (or a default list)
     const rubbleList = (this.manifest.env.rubble_files) || ['rubble_1', 'rubble_2', 'rubble_3', 'rubble_4', 'rubble_5', 'rubble_6'];
@@ -39,16 +40,19 @@ export class Assets {
       this.tex[t] = await this.loadTexSet(t, renderer);
       progress(++done / (jobs.length + 6), t);
     }
+    // farmland ground sets are optional (the ground shader has procedural fallbacks)
+    if (opts.rural) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
     this.buildKit();
   }
 
-  async loadTexSet(name, renderer) {
+  async loadTexSet(name, renderer, optional = false) {
     const base = `assets/textures/${name}`;
     const one = (suf, srgb) => new Promise(res => texLoader.load(`${base}_${suf}`, t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
       if (srgb) t.colorSpace = THREE.SRGBColorSpace; res(t);
     }, undefined, () => res(null)));
     const [map, normalMap, orm] = await Promise.all([one('albedo.jpg', true), one('normal.jpg'), one('orm.jpg')]);
+    if (!map && optional) return null;
     if (!map) { this.missing.push('tex:' + name); return Fallback.textureSet(name, renderer); }
     return { map, normalMap, roughnessMap: orm, aoMap: orm, metalnessMap: null };
   }

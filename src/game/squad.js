@@ -49,8 +49,10 @@ export class Squad {
     const sp = Math.max(1.8, Math.min(4.2, width / Math.max(1, perRank - 1)));
     const out = [];
     for (let i = 0; i < this.soldiers.length; i++) {
-      const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp;
-      let px = x + right[0] * off - fwd[0] * rank * 3 + (Math.random() - .5) * 0.8, pz = z + right[1] * off - fwd[1] * rank * 3 + (Math.random() - .5) * 0.8;
+      // loose, staggered line: alternate men sit forward/back, irregular spacing — never a parade-ground rank
+      const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp + (Math.random() - .5) * sp * 0.45;
+      const depth = rank * 3.2 + (k % 2 ? 1.6 : -0.4) + (Math.random() - .5) * 1.8;
+      let px = x + right[0] * off - fwd[0] * depth, pz = z + right[1] * off - fwd[1] * depth;
       // snap to a nearby cell offering cover toward the facing direction
       let best = null, bestS = -1;
       for (let r = 0; r <= 3.5; r += 0.9) for (let a = 0; a < 8; a++) {
@@ -72,6 +74,7 @@ export class Squad {
     if (this.mounted && this.carrier) { this.carrier.orderMove(x, z, facing, run); return; }
     this.order = { type: 'move', x, z, facing, width, run };
     this.run = run; this.facing = facing;
+    if (this.pinned && this.side === 'player') this.game.hud?.alert(`${this.name} is pinned down — will move when the fire slackens`, 'bad');
     const slots = this.formationSlots(x, z, facing, width);
     // assign slots by lateral order to avoid crossing
     const right = [Math.cos(facing), -Math.sin(facing)];
@@ -81,6 +84,8 @@ export class Squad {
     const ss = slots.slice(0, ms.length).sort((a, b) => lat(a) - lat(b));
     ms.forEach((s, i) => {
       s.goal = ss[i]; s.goalHeading = facing; s.path = null;
+      // individual pace and reaction time so the squad doesn't move in lockstep
+      s.speedMul = 0.86 + Math.random() * 0.24; s.startDelay = s.role.leader ? 0 : 0.15 + Math.random() * 0.9;
       // fire-team bounding: team B (odd) covers and waits until team A has reached its positions
       if (bound && i % 2 === 1 && ms.length > 3) { s.waitTeam = true; s.waitT = 9; }
       else { s.waitTeam = false; this.game.requestPath(s, s.pos.x, s.pos.z, ss[i][0], ss[i][1], 0.45); }
@@ -200,6 +205,11 @@ export class Squad {
     if (this.ammoFrac() < 0.15) d -= 0.6;
     if (this.flankDirs.length >= 2) { const a = this.flankDirs; let spread = 0; for (let i = 1; i < a.length; i++) { let x = Math.abs(a[i] - a[0]) % (Math.PI * 2); if (x > Math.PI) x = Math.PI * 2 - x; spread = Math.max(spread, x); } if (spread > 1.6) d -= 0.9; }
     this.flankDirs.length = 0;
+    // PINNED: sustained heavy fire on most of the squad
+    let heavy = 0; for (const s of e) if (s.suppression > 60) heavy++;
+    if (!this.pinned && (supp > 60 || heavy >= Math.ceil(e.length * 0.7)) && !this.mounted) { this.pinned = true; if (this.side === 'player') this.game.hud?.alert(`${this.name} is PINNED DOWN`, 'bad'); }
+    else if (this.pinned && supp < 32 && heavy <= Math.floor(e.length * 0.3)) this.pinned = false;
+    if (this.mounted) this.pinned = false;
     if (this.underFireT > 6) {
       let r = TUNING.moraleRegen * (this.leader?.role.leader ? 1.4 : 1);
       if (this.building) r += 0.5;
@@ -298,7 +308,8 @@ export class Squad {
         const threat = s.target ? s.target.pos : null;
         const cov = threat ? this.game.nav.coverFrom(s.pos.x, s.pos.z, threat.x, threat.z) : 0;
         const lowc = this.game.nav.low[this.game.nav.idx(s.pos.x, s.pos.z)] === 1;
-        if (s.suppression > 75 && cov < 0.5) s.stance = 'prone';
+        if ((s.suppression > 70 || this.pinned) && cov < 0.5 && !lowc) s.stance = 'prone';
+        else if (s.suppression > 70 || this.pinned) s.stance = 'crouch';
         else if (cov > 0.5) s.stance = lowc ? 'crouch' : (s.weaponKey === 'rpg7' ? 'stand' : 'crouch');
         else if (this.underFireT < 4) s.stance = s.weaponKey === 'pkm' ? 'prone' : 'crouch';
         else s.stance = s.weaponKey === 'pkm' && s.target ? 'prone' : 'stand';
@@ -321,6 +332,12 @@ export class Squad {
   updateSoldier(s, dt) {
     const g = this.game;
     s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
+    // heavily suppressed: duck behind the wall / window sill, pop up for a burst, duck again
+    if (s.suppression > 55 || this.pinned) {
+      s.duckT = (s.duckT ?? 0) - dt;
+      if (s.duckT <= 0) { s.ducking = !s.ducking; s.duckT = s.ducking ? 1.2 + s.suppression / 35 + Math.random() * 1.5 : 0.8 + Math.random() * 0.9; }
+      if (s.suppression > 92) s.ducking = true;
+    } else s.ducking = false;
     if (s.state === 'dead' || s.state === 'evac') { s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); s.sync(); return; }
     if (s.aboard) { s.sync(); return; }
     // bleeding
@@ -360,8 +377,11 @@ export class Squad {
   moveStep(s, dt) {
     const g = this.game;
     if (s.jumpT > 0) { s.vel.set(0, 0, 0); return; }
-    const moving = s.path && s.pathI < s.path.length;
+    let moving = s.path && s.pathI < s.path.length;
     let speed = 0;
+    // pinned down: nobody gets up and moves (except to drag a wounded mate)
+    const pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
+    if (moving && (pinned || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; s.pos.y = 0; return; }
     if (moving) {
       const wp = s.path[s.pathI];
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
@@ -372,19 +392,33 @@ export class Squad {
       if (s.state === 'light' && s.legWound) base *= 0.55;
       if (s.state === 'critical') base = 0.3;
       if (s.dragging && s.dragPhase === 'drag') base = TUNING.dragSpeed;
+      else base *= s.speedMul || 1;
       const ci = g.nav.idx(s.pos.x, s.pos.z); if (ci >= 0 && g.nav.cost[ci] > 2 && g.nav.cost[ci] < 255) base *= 0.7;
       // cohesion: don't outrun the squad too much
       speed = base;
       if (d < 0.4) { s.pathI++; if (s.pathI >= s.path.length) { s.path = null; s.crawl = false; } }
       else { V.set(dx / d, 0, dz / d); s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6)); }
     } else s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
-    // separation from squadmates & vehicles
-    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt; s.pos.x += dx * k; s.pos.z += dz * k; } }
-    for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { s.pos.x += dx / d * (r - d); s.pos.z += dz / d * (r - d); } }
+    // separation from squadmates & vehicles (never shoves anyone into a wall)
+    const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
+    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
+    for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
+    // already inside a blocked cell (pushed, collapsed rubble, spawned badly): step out to the nearest free spot
+    if (!free(s.pos.x, s.pos.z)) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 0.45, 8); s.pos.x = fx; s.pos.z = fz; if (s.goal) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } }
     const nx = s.pos.x + s.vel.x * dt, nz = s.pos.z + s.vel.z * dt;
-    const idx = g.nav.idx(nx, nz);
-    if (idx >= 0 && g.nav.cost[idx] !== 255) { s.pos.x = nx; s.pos.z = nz; }
-    else if (moving) { s.vel.multiplyScalar(0.3); s.pathI = Math.min(s.pathI + 1, s.path.length); if (s.pathI >= s.path.length) s.path = null; }
+    if (free(nx, nz)) { s.pos.x = nx; s.pos.z = nz; }
+    else if (free(nx, s.pos.z)) { s.pos.x = nx; s.vel.z *= 0.5; }      // slide along the wall
+    else if (free(s.pos.x, nz)) { s.pos.z = nz; s.vel.x *= 0.5; }
+    else if (moving) { s.vel.multiplyScalar(0.3); s.blockedT = (s.blockedT || 0) + dt; }
+    // watchdog: wanted to move but made no progress for a while -> replan from where we stand
+    if (moving) {
+      s.wdT = (s.wdT || 0) + dt;
+      if (s.wdT > 2.5) { const moved = s.wdP ? Math.hypot(s.pos.x - s.wdP[0], s.pos.z - s.wdP[1]) : 9; s.wdP = [s.pos.x, s.pos.z]; s.wdT = 0;
+        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0;
+          if (s.stuckN > 2) { const [fx, fz] = nav.nearestFree(s.pos.x + (Math.random() - .5) * 3, s.pos.z + (Math.random() - .5) * 3, 0.6, 8); s.pos.x = fx; s.pos.z = fz; }
+          if (s.stuckN > 5) { s.goal = null; s.stuckN = 0; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); }
+        else if (moved >= 0.6) s.stuckN = 0; }
+    } else { s.wdT = 0; s.wdP = null; }
     // footsteps (close to camera only)
     if (s.vel.lengthSq() > 1 && g.camDist(s.pos) < 35) { s.stepT = (s.stepT || 0) + dt * s.vel.length(); if (s.stepT > 1.6) { s.stepT = 0; g.sfx(Math.random() < .6 ? 'footstep_rubble' : 'footstep_gravel', s.pos, { gain: 0.5 }); } }
     s.pos.y = 0;

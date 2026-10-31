@@ -1,15 +1,12 @@
 import * as THREE from 'three';
-import { SPAWNS, OBJECTIVES } from '../world/city.js';
+import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
 
 // Enemy commander. Phase 1: dug-in defenders hold both objectives. Phase 2 (after the player takes an
 // objective, or 40% into the round): counterattack waves from the north — mounted approach riding on
 // armour, dismount at staging, fire-team bounding through cover with smoke, flanking routes, tank
 // overwatch with stand-off from RPG teams, assault squads storming garrisoned buildings, artillery.
-const STAGING = {
-  A: [[-62, -38], [-95, -52], [-20, -28], [-120, -25]],
-  B: [[85, -62], [120, -32], [60, -40], [150, -25]],
-};
-const OVERWATCH = { A: [[-95, -70], [-10, -40]], B: [[85, -95], [110, -40]] };
+const STAGING = new Proxy({}, { get: (_, k) => MAP.ai.staging[k] });
+const OVERWATCH = new Proxy({}, { get: (_, k) => MAP.ai.overwatch[k] });
 
 export class Commander {
   constructor(game) {
@@ -23,7 +20,7 @@ export class Commander {
   deployArmy() {
     const g = this.g, N = 0; // facing south (+Z)
     this.army = [];
-    const lay = [[-95, -168, 'mech', 'A'], [-30, -172, 'assault', 'A'], [85, -168, 'mech', 'B'], [130, -172, 'foot', 'B'], [-60, -180, 'tank', 'A'], [40, -180, 'tank', 'B']];
+    const lay = MAP.ai.army;
     for (const [x, z, kind, obj] of lay) {
       if (kind === 'tank') { const v = g.makeVehicle('enemy', 'tank', x, z, N); this.army.push({ kind: 'tank', v, obj, state: 'move', t: 2, home: OVERWATCH[obj][0] }); continue; }
       if (kind === 'mech') { const v = g.makeVehicle('enemy', 'btr', x, z, N); const s = g.makeSquad('enemy', x, z + 6, N, 'Enemy squad'); s.board(v, true); this.army.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() }); continue; }

@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { Renderer } from '../engine/renderer.js';
 import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
-import { City, OBJECTIVES, SPAWNS, BOUNDS, DEPLOY_ZONES } from '../world/city.js';
+import { City, OBJECTIVES, SPAWNS, BOUNDS, DEPLOY_ZONES, MAP, setMap, mulberry } from '../world/city.js';
+import { Farmland } from '../world/farmland.js';
+import { updateLods } from '../world/instancer.js';
 import { FX } from '../fx/particles.js';
 import { Audio } from '../audio/sfx.js';
 import { Squad } from './squad.js';
@@ -23,20 +25,24 @@ export class Game {
     this.stats = { player: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 }, enemy: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 } };
     this.mortars = TUNING.mortarStrikes; this.strikes = [];
     this.noRender = Q.has('norender');
+    setMap(opts.map || 'city'); this.map = MAP;
   }
   async init(progress) {
     const canvas = document.getElementById('view');
     this.renderer = new Renderer(canvas, this.opts.quality);
     this.scene = this.renderer.scene;
     this.assets = new Assets();
-    await this.assets.load((f, k) => progress(f * 0.65, `Loading ${k}`), this.renderer.r);
+    await this.assets.load((f, k) => progress(f * 0.65, `Loading ${k}`), this.renderer.r, { rural: MAP.kind === 'rural' });
     progress(0.68, 'Loading sound library');
     this.audio = new Audio();
     await this.audio.init(f => progress(0.68 + f * 0.12, 'Loading sound library'));
-    progress(0.82, 'Building Novozavodsk');
+    progress(0.82, `Building ${MAP.name}`);
     await new Promise(r => setTimeout(r, 20));
-    this.city = new City(this.scene, this.assets, this.opts.quality);
-    this.city.build();
+    // world generation is fully seeded so a map looks identical on every load
+    const rnd = Math.random; Math.random = mulberry(MAP.sizeM * 31 + (MAP.kind === 'rural' ? 7 : 3));
+    this.city = new (MAP.kind === 'rural' ? Farmland : City)(this.scene, this.assets, this.opts.quality);
+    if (MAP.fog && this.scene.fog) this.scene.fog.density = MAP.fog;
+    try { this.city.build(); } finally { this.genRandom = Math.random; }
     this.nav = this.city.nav;
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
@@ -51,11 +57,12 @@ export class Game {
     this.commander = new Commander(this);
     if (Q.has('autoplay')) this.autoDef = new AutoDefender(this);
     // atmosphere: burning buildings & distant smoke columns
-    for (const [x, z, s] of [[-150, -60, 1.2], [30, -68, 1.4], [-40, -60, 1], [150, -150, 0.8], [140, 70, 0.7]]) this.fx.emitter(new THREE.Vector3(x + (Math.random() - .5) * 20, 14, z), 'smoulder', 2 * s);
-    for (const [x, z, s] of [[-320, -380, 1.4], [260, -420, 1.8], [420, -120, 1.1], [-460, 60, 1.2], [80, -520, 2.2]]) this.fx.emitter(new THREE.Vector3(x, 10, z), 'plume', s);
-    for (const b of this.city.buildings) for (const p of b.panels) if (p.state === 3 && p.floor > 1 && Math.random() < 0.08) this.fx.emitter(b.panelCenter(p, new THREE.Vector3()), 'fire', 0.8);
-    if (this.audio.ok) { this.audio.play('ambience_city', null, { gain: 0.8 }); this.audio.play('ambience_wind', null, { gain: 0.6 }); this.audio.play('ambience_battle', null, { gain: 0.5 }); }
-    this.cam.lookAt(0, 140); this.cam.tYaw = 0.1; this.cam.tDist = 150;
+    for (const [x, z, s] of MAP.smoulder) this.fx.emitter(new THREE.Vector3(x + (Math.random() - .5) * (MAP.kind === 'rural' ? 6 : 20), MAP.kind === 'rural' ? 6 : 14, z), 'smoulder', 2 * s);
+    for (const [x, z, s] of MAP.plumes) this.fx.emitter(new THREE.Vector3(x, 10, z), 'plume', s);
+    for (const b of this.city.buildings) for (const p of b.panels) if (p.state === 3 && p.floor > 1 && Math.random() < 0.08) this.fx.emitter(b.panelCenter(p, new THREE.Vector3()), 'fire', 0.8, undefined, { b, p });
+    Math.random = rnd;
+    if (this.audio.ok) { this.audio.play(MAP.ambience || 'ambience_city', null, { gain: 0.8 }); this.audio.play('ambience_wind', null, { gain: 0.6 }); this.audio.play('ambience_battle', null, { gain: 0.5 }); }
+    this.cam.lookAt(MAP.cam[0], MAP.cam[1]); this.cam.tYaw = 0.1; this.cam.tDist = MAP.cam[2];
     progress(1, 'Ready');
   }
   // ---------------------------------------------------------------- forces
@@ -77,7 +84,7 @@ export class Game {
     const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
     const pf = this.playerFaction, B = this.city.buildings;
     // --- player: motorized rifle company riding on armour at the southern edge
-    const lineup = [[-112, 188, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]];
+    const lineup = MAP.lineup;
     this.playerUnits = [];
     let bn = 1, tn = 1;
     for (const [x, z, kind, sqName] of lineup) {
@@ -149,8 +156,11 @@ export class Game {
     const t0 = performance.now();
     while (this.pathQueue.length && performance.now() - t0 < budgetMs) {
       const e = this.pathQueue.shift(), r = e.pathReq; if (!r) continue; e.pathReq = null;
-      const p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, r.clearance, r.vehicle);
-      e.path = p && p.length ? p : [[r.tx, r.tz]]; e.pathI = e.path.length > 1 ? 1 : 0;
+      let p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, r.clearance, r.vehicle);
+      if (!p || !p.length) p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, Math.max(0.4, r.clearance * 0.75), r.vehicle);
+      // no route: never walk a straight line through walls — only go direct if that line is actually clear
+      if (!p || !p.length) p = this.nav.lineFree(r.sx, r.sz, r.tx, r.tz, Math.min(0.45, r.clearance)) ? [[r.tx, r.tz]] : null;
+      e.path = p; e.pathI = p && p.length > 1 ? 1 : 0; e.pathFail = !p;
     }
   }
   // ---------------------------------------------------------------- casualties / events
@@ -218,19 +228,29 @@ export class Game {
       else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside === 'ride' ? 220 : 280, u.building]);
     }
     for (const u of this.unitsOf(other)) {
-      const pts = u.type === 'vehicle' ? [[u.pos.x, 1.6, u.pos.z, null]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null]);
-      let seen = false;
-      const fired = u.type === 'squad' ? (u.firedT ?? 99) < 3 : (u.firedT ?? 99) < 3;
-      for (const [x, y, z, ign] of pts) {
+      const ca = this.city.concealAt;
+      const pts = u.type === 'vehicle' ? [[u.pos.x, 1.6, u.pos.z, null, ca ? Math.max(0.8, ca.call(this.city, u.pos.x, u.pos.z)) : 1]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null, (ca && !s.inBuilding && !s.aboard ? ca.call(this.city, s.pos.x, s.pos.z) : 1) * (s.stance === 'prone' ? 0.75 : s.stance === 'crouch' ? 0.9 : 1)]);
+      // detection is a meter, not a switch: it fills faster for close, moving or firing targets, needs line
+      // of sight, falls off with distance and concealment, and drains when nobody is looking
+      let seen = false, best = 0;
+      const fired = (u.firedT ?? 99) < 3;
+      const moving = u.type === 'vehicle' ? Math.abs(u.speed || 0) > 0.5 : u.effective.some(s => s.vel.lengthSq() > 1);
+      const tracked = u.seenBy?.[side] != null && this.time - u.seenBy[side] < 4;
+      for (const [x, y, z, ign, cf] of pts) {
         for (const sp of spotters) {
           const d = Math.hypot(sp[0] - x, sp[2] - z);
-          if (d < 30 || (fired && d < 300)) { seen = true; break; }
-          const range = sp[3] * (u.type === 'vehicle' ? 1.1 : 1) * (u.type === 'squad' && u.building ? 0.75 : 1);
+          if (d < 25) { best = 9; break; }
+          const range = sp[3] * (u.type === 'vehicle' ? 1.25 : 1) * (u.type === 'squad' && u.building ? 0.75 : 1) * (fired ? 1.6 : 1) * cf;
           if (d > range) continue;
-          if (this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u)) { seen = true; break; }
+          const f = Math.pow(1 - d / range, 1.4) * (moving ? 1.6 : 1) * (fired ? 2.5 : 1) * (tracked ? 2 : 1) * (u.type === 'vehicle' ? 1.5 : 1);
+          if (f * 3 <= best) continue;
+          if (this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u)) best = Math.max(best, f * 3);
         }
-        if (seen) break;
+        if (best >= 9) break;
       }
+      u.detect ||= {}; const dm = u.detect[side] || 0;
+      u.detect[side] = best > 0 ? Math.min(1.6, dm + best * 0.5 * (0.6 + Math.random() * 0.8)) : Math.max(0, dm - 0.35);
+      seen = u.detect[side] >= 1;
       u.seenBy ||= {};
       if (seen) u.seenBy[side] = this.time;
       if (side === 'player') { u.spotted = u.seenBy.player != null && this.time - u.seenBy.player < 3; if (u.type === 'squad') for (const s of u.soldiers) s.visible = u.spotted || s.state === 'dead'; }
@@ -318,12 +338,26 @@ export class Game {
       if (near !== s.shadowOn) { s.shadowOn = near; s.root.traverse(o => { if (o.isMesh) o.castShadow = near; }); }
     }
   }
+  // fires / smoke columns sitting on a building fall onto the rubble once their floor or section is gone
+  supportEmitters() {
+    const W = this.assets.kit.W; this.city.updateDecals?.();
+    for (const e of this.fx.emitters) {
+      if (e.dead || e.dropped || e.pos.y < 1.5 || (e.kind !== 'fire' && e.kind !== 'smoulder')) continue;
+      if (e.attach?.p?.gone) { this.fx.drop(e); continue; }
+      const b = this.city.buildingAt(e.pos.x, e.pos.z, 2.5);
+      if (!b) { this.fx.drop(e, e.kind === 'fire' ? 0.4 : 1); continue; }
+      const [lx] = b.toLocal(e.pos.x, e.pos.z), col = Math.max(0, Math.min(b.modules - 1, Math.floor((lx + b.L / 2) / W)));
+      if (b.goneCols.has(col) || (b.pancaked && col >= b.pancaked[0] - 1 && col <= b.pancaked[1] + 1)) { this.fx.drop(e, e.kind === 'fire' ? 0.6 : 2); continue; }
+      if (e.pos.y > b.height + 1) e.pos.y = b.height;
+    }
+  }
   frame(dt) {
+    this.supT = (this.supT || 0) - dt; if (this.supT <= 0) { this.supT = 0.5; this.supportEmitters(); }
     this.cullSoldiers();
     this.update(dt);
     this.cam.update(Math.min(dt, 0.05));
     this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); if (this.city.windUniform) this.city.windUniform.value += dt; this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
-    const cp = this.renderer.camera.position;
+    const cp = this.renderer.camera.position; updateLods(cp);
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }

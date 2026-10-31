@@ -88,5 +88,5 @@ export const TUNING = {
   lostObjectiveGrace: 90,    // seconds to retake an objective before defeat
   mortarStrikes: 3,
   // movement speeds (m/s)
-  walk: 2.1, run: 5.0, crouchWalk: 1.5, crouchRun: 3.3, crawl: 0.5,
+  walk: 1.55, run: 4.2, crouchWalk: 1.2, crouchRun: 2.8, crawl: 0.45,
 };

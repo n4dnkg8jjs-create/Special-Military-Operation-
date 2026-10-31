@@ -82,10 +82,10 @@ export class Vehicle {
   orderMove(x, z, facing = null, fast = false) {
     if (this.destroyed || this.immobile) return;
     this.order = { type: 'move', x, z, facing }; this.fast = fast;
-    this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'tank' ? 2.0 : 1.8, true);
+    this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'tank' ? 2.0 : 1.8, true);
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
-  halt() { this.path = null; this.order = null; }
+  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     if (this.destroyed) { this.updateWreck(dt); return; }
@@ -119,14 +119,24 @@ export class Vehicle {
       for (const o of this.game.vehicles) if (o !== this && !o.destroyed) { const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z, od = Math.hypot(ox, oz); if (od < def.radius + o.def.radius + 3 && (ox * Math.sin(this.heading) + oz * Math.cos(this.heading)) > 0) targetSpeed *= 0.15; }
     } else if (this.order?.facing != null && !this.immobile) { const err = angDiff(this.order.facing, this.heading); if (Math.abs(err) > 0.05) turn = THREE.MathUtils.clamp(err * 2, -1, 1) * (def.wheeled ? 0 : 1); }
     if (this.crew < 2) targetSpeed *= 0.5;
+    // stuck recovery: back up with opposite lock for a moment, then replan
+    if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, true); }
+    else if (this.path && !this.immobile) {
+      this.wdT = (this.wdT || 0) + dt;
+      if (this.wdT > 3) { const moved = this.wdP ? Math.hypot(this.pos.x - this.wdP[0], this.pos.z - this.wdP[1]) : 9; this.wdP = [this.pos.x, this.pos.z]; this.wdT = 0; if (moved < 1.2) { this.reverseT = 1.6; this.revTurn = Math.sign(turn || 1); } }
+    } else { this.wdT = 0; this.wdP = null; }
     const acc = targetSpeed > this.speed ? def.accel : def.accel * 2;
     this.speed += THREE.MathUtils.clamp(targetSpeed - this.speed, -acc * dt, acc * dt);
     const tr = def.wheeled ? turn * def.turnRate * Math.min(1, Math.abs(this.speed) / 3) : turn * def.turnRate;
     this.heading += tr * dt;
     this.angVel = tr;
     const nx = this.pos.x + Math.sin(this.heading) * this.speed * dt, nz = this.pos.z + Math.cos(this.heading) * this.speed * dt;
-    const i = this.game.nav.idx(nx, nz);
-    if (i >= 0 && this.game.nav.cost[i] !== 255) { this.pos.x = nx; this.pos.z = nz; } else this.speed *= 0.5;
+    // hull footprint: centre plus a probe at the leading edge (front when driving, rear when reversing)
+    const nav = this.game.nav, free = (x, z) => { const k = nav.idx(x, z); return k >= 0 && nav.cost[k] !== 255; };
+    const lead = (this.speed >= 0 ? 1 : -1) * def.length * 0.45, fx = nx + Math.sin(this.heading) * lead, fz = nz + Math.cos(this.heading) * lead;
+    if (free(nx, nz) && free(fx, fz)) { this.pos.x = nx; this.pos.z = nz; }
+    else { this.speed *= 0.3; if (this.path && !(this.reverseT > 0) && this.speed >= 0) { this.blockT = (this.blockT || 0) + dt; if (this.blockT > 0.8) { this.blockT = 0; this.reverseT = 1.4; this.revTurn = Math.sign(turn || 1); } } }
+    if (!free(this.pos.x, this.pos.z)) { const [ex, ez] = nav.nearestFree(this.pos.x, this.pos.z, this.kind === 'tank' ? 2.0 : 1.8, 12); this.pos.x = ex; this.pos.z = ez; }
     this.dist = (this.dist || 0) + this.speed * dt;
     if (Math.abs(this.speed) > 0.4) this.game.city.crushCheck(this, this.game);
     // suspension pitch from acceleration

@@ -1,7 +1,13 @@
-# Special Military Operation — *Hold the Line* (Map 1: Novozavodsk)
+# Special Military Operation — *Hold the Line*
 
-A 3D real-time tactics game in the style of *Napoleon: Total War*, set in a fictional, shelled-out post-Soviet city in a
-Russo-Ukrainian-style war. Runs in the browser (Three.js / WebGL2, no build step).
+A 3D real-time tactics game in the style of *Napoleon: Total War*, set in a fictional Russo-Ukrainian-style war.
+Two maps, picked in the main menu (each card shows its size):
+
+| Map | Size | Setting |
+|---|---|---|
+| **Novozavodsk** | Medium · 520 × 520 m | Shelled-out Soviet panel-block microdistrict — collapsible blocks, garrisons, street fighting |
+| **Novomykolaivka Fields** | Large · 900 × 900 m | Steppe farmland cut by tree-line windbreaks, two villages, a kolkhoz farm, cratered fields, sunflower and maize cover |
+ Runs in the browser (Three.js / WebGL2, no build step).
 
 You command a motorized rifle company — three 8-man squads riding on their BTRs, a 6-man assault squad riding on the
 lead tank, and a two-tank section. **Deploy** your units in the southern staging ground while the enemy AI deploys in
@@ -56,7 +62,12 @@ GitHub Pages works too (Settings → Pages → deploy from branch `main`, root).
   Vehicles resolve armour by facing (front/side/rear) vs kinetic or shaped-charge penetration: crew casualties, fires,
   immobilisation, gun damage, ammunition cook-off (T-72 turret toss), passengers bailing out.
 - **Suppression & cover** — directional cover from the navigation grid (walls, rubble, wrecks, sandbags), stance changes,
-  hand grenades at close range, smoke screens that block line of sight, spotting / fog of war.
+  hand grenades at close range, smoke screens that block line of sight. Sustained heavy fire **pins** a squad (PINNED
+  over its banner): it can't move, its aim collapses, men duck behind walls and pop up for bursts; soldiers at wall
+  corners lean out, fire and lean back. Infantry routes hug walls; formations are loose and staggered.
+- **Spotting & accuracy** — detection is a meter that fills faster for close, moving or firing units and falls off with
+  distance, crops, tree lines (you can see out of a belt, not through it), stance and buildings. Hit chance drops steeply
+  with range; tank guns need a ranging shot and are poor against single men at distance.
 - **Enemy AI** — timed waves, mounted approach, dismount at staging points, bounding advance through cover with smoke,
   tank overwatch, building clearing, artillery and mortar harassment.
 

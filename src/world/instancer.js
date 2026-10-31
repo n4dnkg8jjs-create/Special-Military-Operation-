@@ -2,13 +2,33 @@ import * as THREE from 'three';
 
 // Turns N placements of an Object3D template into one InstancedMesh per sub-mesh.
 const CELL = 90;
+// Distance LOD per cell: {near, far, cx, cz, d1, d2}. near shown < d1, far (optional) shown d1..d2, nothing beyond d2.
+export const LODS = [];
 export function instance(scene, template, matrices, opts = {}) {
   // group placements by spatial cell so each InstancedMesh can be frustum/shadow culled
   const cells = new Map(), v = new THREE.Vector3();
   matrices.forEach((M, i) => { v.setFromMatrixPosition(M); const k = Math.floor(v.x / CELL) + ',' + Math.floor(v.z / CELL); (cells.get(k) || cells.set(k, []).get(k)).push(i); });
   const out = [];
-  for (const idx of cells.values()) out.push(...instanceOne(scene, template, idx.map(i => matrices[i]), { ...opts, colors: opts.colors ? idx.map(i => opts.colors[i]) : null }));
+  for (const [key, idx] of cells) {
+    const sub = idx.map(i => matrices[i]), o = { ...opts, colors: opts.colors ? idx.map(i => opts.colors[i]) : null };
+    const near = instanceOne(scene, template, sub, o); out.push(...near);
+    if (opts.lodDist || opts.cullDist) {
+      const [cx, cz] = key.split(',').map(Number);
+      const far = opts.lod ? instanceOne(scene, opts.lod, sub, { ...o, shadows: opts.lodShadows ?? o.shadows }) : [];
+      LODS.push({ near, far, cx: (cx + 0.5) * CELL, cz: (cz + 0.5) * CELL, d1: opts.lodDist || opts.cullDist, d2: opts.lod ? (opts.cullDist || 1e9) : (opts.cullDist || 1e9), state: -1 });
+    }
+  }
   return out;
+}
+// call once per frame (cheap: a few hundred cells)
+export function updateLods(cam) {
+  for (const L of LODS) {
+    const d = Math.max(0, Math.hypot(cam.x - L.cx, cam.z - L.cz, cam.y * 0.6) - CELL * 0.5);
+    const st = d < L.d1 ? 0 : d < L.d2 ? 1 : 2;
+    if (st === L.state) continue; L.state = st;
+    for (const m of L.near) m.visible = st === 0;
+    for (const m of L.far) m.visible = st === 1;
+  }
 }
 function instanceOne(scene, template, matrices, { shadows = true, colors = null } = {}) {
   template.updateMatrixWorld(true);

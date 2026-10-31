@@ -16,13 +16,14 @@ export class HUD {
     this.selected = new Set(); this.groups = {}; this.banners = new Map();
     this.timerEl = document.getElementById('timer'); this.phaseEl = document.getElementById('phase'); this.fpsEl = document.getElementById('fps');
     document.getElementById('hud').classList.remove('hidden');
+    for (const o of game.objectives) { const n = document.querySelector(`#obj-${o.id} .name`); if (n) n.textContent = o.name; }
     this.rings(); this.drawMinimapBase(); this.rebuildCards();
     this.mm.addEventListener('mousedown', e => this.minimapClick(e));
     this.mm.addEventListener('contextmenu', e => { e.preventDefault(); this.minimapClick(e, true); });
     this.frames = 0; this.fpsT = 0;
     document.getElementById('startBattle').addEventListener('click', () => game.startBattle());
   }
-  battleStarted() { document.getElementById('deploybar').classList.add('hidden'); this.alert('Battle started — capture School No. 7 and the Market Crossroads', 'good'); }
+  battleStarted() { document.getElementById('deploybar').classList.add('hidden'); this.alert(`Battle started — capture ${this.g.objectives.map(o => o.name).join(' and the ')}`, 'good'); }
   // ------------------------------------------------------------ selection rings
   rings() {
     const g = this.g;
@@ -137,9 +138,9 @@ export class HUD {
       if (!b) {
         const el = document.createElement('div'); el.className = 'banner';
         const col = u.side === 'player' ? u.faction.color : '#c8483a';
-        el.innerHTML = `<div class="flag" style="border-color:${col}">${u.side === 'player' ? u.name : (u.type === 'squad' ? 'Infantry' : u.name)}</div><div class="mb"><i></i></div><div class="pole"></div>`;
+        el.innerHTML = `<div class="pin">PINNED</div><div class="flag" style="border-color:${col}">${u.side === 'player' ? u.name : (u.type === 'squad' ? 'Infantry' : u.name)}</div><div class="mb"><i></i></div><div class="pole"></div>`;
         el.addEventListener('mousedown', e => { if (u.side === 'player' && e.button === 0) { e.stopPropagation(); this.select([u], e.shiftKey); } });
-        document.body.appendChild(el); b = { el, bar: el.querySelector('.mb i') }; this.banners.set(u, b);
+        document.body.appendChild(el); b = { el, bar: el.querySelector('.mb i'), pin: el.querySelector('.pin') }; this.banners.set(u, b);
       }
       const c = u.type === 'squad' ? (u.leader || u.alive[0])?.pos || u.center() : u.pos;
       v.set(c.x, (u.type === 'squad' ? 2.4 : 4.2) + (u.type === 'squad' && u.leader?.inside && u.leader.inside !== 'btr' ? u.leader.pos.y : 0), c.z).project(cam);
@@ -147,6 +148,7 @@ export class HUD {
       b.el.style.display = 'flex';
       b.el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`; b.el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
       b.el.classList.toggle('sel', this.selected.has(u));
+      const pinned = u.type === 'squad' && u.pinned && !u.routing; if (pinned !== b.pinned) { b.pinned = pinned; b.pin.style.display = pinned ? 'block' : 'none'; }
       const val = u.type === 'squad' ? u.morale : Math.max(0, u.hp / u.def.hp * 100);
       b.bar.style.width = `${val}%`; b.bar.style.background = u.type === 'squad' && u.routing ? '#c8483a' : val < 45 ? '#d8b25a' : '#8fb069';
     }
@@ -168,7 +170,9 @@ export class HUD {
   drawMinimapBase() {
     const c = document.createElement('canvas'); c.width = c.height = 440; const x = c.getContext('2d'); const k = 440 / MAP_SIZE, o = MAP_SIZE / 2;
     x.fillStyle = '#3a3730'; x.fillRect(0, 0, 440, 440);
-    x.fillStyle = '#5c5a54'; for (const r of ROADS) x.fillRect((r.x0 + o) * k, (r.z0 + o) * k, (r.x1 - r.x0) * k, (r.z1 - r.z0) * k);
+    this.g.city.minimapBase?.(x, k, o);
+    for (const r of ROADS) { x.fillStyle = r.type === 'track' ? '#6e6248' : '#5c5a54'; x.fillRect((r.x0 + o) * k, (r.z0 + o) * k, Math.max(1, (r.x1 - r.x0) * k), Math.max(1, (r.z1 - r.z0) * k)); }
+    this.g.city.minimapOver?.(x, k, o);
     this.mmBase = c;
   }
   drawMinimap() {
