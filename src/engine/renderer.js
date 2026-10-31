@@ -9,15 +9,13 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
 // Colour grade + vignette + grain, applied before OutputPass (linear HDR in, so keep it gentle).
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, sat: { value: 0.78 }, warm: { value: 0.035 }, vig: { value: 0.42 }, grain: { value: 0.035 }, flash: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, sat: { value: 0.93 }, warm: { value: 0.0 }, vig: { value: 0.2 }, grain: { value: 0.0 }, flash: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float time,sat,warm,vig,grain,flash; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
     void main(){ vec4 c=texture2D(tDiffuse,vUv); float l=dot(c.rgb,vec3(.2126,.7152,.0722));
       c.rgb=mix(vec3(l),c.rgb,sat); c.rgb*=vec3(1.+warm,1.,1.-warm*1.4);
-      c.rgb = mix(c.rgb, c.rgb*vec3(0.92,0.97,1.04), smoothstep(0.6,0.0,l)*0.5); // cool shadows
       vec2 d=vUv-.5; c.rgb*=1.-vig*dot(d,d)*1.6;
-      c.rgb+= (h(vUv*vec2(1920.,1080.)+fract(time)*91.)-.5)*grain*(0.4+l);
       c.rgb+= flash*vec3(1.,.85,.6);
       gl_FragColor=c; }`,
 };
@@ -31,20 +29,20 @@ export class Renderer {
     this.r.setSize(innerWidth, innerHeight);
     this.r.shadowMap.enabled = !lo;
     this.r.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.r.toneMapping = THREE.AgXToneMapping;
+    this.r.toneMapping = THREE.NeutralToneMapping;
     this.r.toneMappingExposure = 1.0;
     this.r.outputColorSpace = THREE.SRGBColorSpace;
 
     const scene = this.scene = new THREE.Scene();
     // Overcast, smoky late-autumn afternoon.
-    scene.fog = new THREE.FogExp2(0x9a978e, 0.0026);
+    scene.fog = new THREE.FogExp2(0xb3b7b6, 0.0021);
     this.camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.5, 2500);
 
     // Overcast smoky sky dome (custom so brightness stays controllable) + matching image-based light.
-    const sunDir = this.sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(58), THREE.MathUtils.degToRad(215));
+    const sunDir = this.sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(215));
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { sunDir: { value: sunDir }, zen: { value: new THREE.Color(0x6f7c88) }, hor: { value: new THREE.Color(0xa9a59b) }, gnd: { value: new THREE.Color(0x5a554c) }, sunCol: { value: new THREE.Color(0xffe6c2) }, k: { value: 1.0 } },
+      uniforms: { sunDir: { value: sunDir }, zen: { value: new THREE.Color(0x7d91a6) }, hor: { value: new THREE.Color(0xbfc3c3) }, gnd: { value: new THREE.Color(0x6a665d) }, sunCol: { value: new THREE.Color(0xfff1dc) }, k: { value: 1.0 } },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*p; gl_Position.z = gl_Position.w; }`,
       fragmentShader: `uniform vec3 sunDir,zen,hor,gnd,sunCol; uniform float k; varying vec3 vDir;
         float h(vec3 p){ return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453); }
@@ -63,9 +61,9 @@ export class Renderer {
     const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 32, 16), skyMat));
     this.envRT = pm.fromScene(envScene, 0.02, 1, 1000);
     scene.environment = this.envRT.texture;
-    scene.environmentIntensity = 0.9;
+    scene.environmentIntensity = 0.75;
 
-    const sun = this.sun = new THREE.DirectionalLight(0xffe2c0, 2.6);
+    const sun = this.sun = new THREE.DirectionalLight(0xfff0dc, 2.9);
     sun.castShadow = !lo;
     const sm = hi ? 4096 : 2048;
     sun.shadow.mapSize.set(sm, sm);
@@ -73,7 +71,7 @@ export class Renderer {
     Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: 700 });
     sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.035;
     scene.add(sun, sun.target);
-    this.hemi = new THREE.HemisphereLight(0xb8c0c8, 0x4a4236, 0.25);
+    this.hemi = new THREE.HemisphereLight(0xc9d4df, 0x6b6253, 0.45);
     scene.add(this.hemi);
 
     // Post
@@ -86,7 +84,7 @@ export class Renderer {
     if (!lo) {
       const ao = this.ao = new GTAOPass(scene, this.camera, innerWidth, innerHeight, { depthTexture: comp.readBuffer.depthTexture });
       ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: hi ? 16 : 8 });
-      ao.blendIntensity = 0.9;
+      ao.blendIntensity = 0.75;
       comp.addPass(ao);
     }
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.5, 0.92);

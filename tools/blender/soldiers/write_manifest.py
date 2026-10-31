@@ -55,7 +55,13 @@ def main():
                     'UA helmet_B': 'MICH/ACH-style mid cut with MultiCam cover and goggles'},
         'tape_bands': 'Identification tape wrapped twice around the upper arms (~50 mm wide, ~120 mm below the shoulder joint) and around the thighs; '
                       'RU white (alt red), UA yellow. Separate meshes using material `tape` (extras.recolourable) so the game can recolour them.',
+        'assault_kit': {'RU': '6B45 in assault configuration: shoulder/upper-arm protectors, groin protector, side plates, neck collar; 6B47 with NVG mount + '
+                               'headset or Altyn-style heavy visorless helmet; balaclavas on some; grenade pouches + 6Sh117 assault pouches, IFAK, dump pouch; '
+                               'knee + elbow pads, assault pack with radio, gloves',
+                        'UA': 'heavier plate carrier with shoulder & groin protection and side plates; FAST high-cut with NVG shroud, counterweight pouch and '
+                              'headset (or MICH + goggles); grenade pouches, radio, IFAK, tourniquet; elbow/knee pads, gloves, MultiCam or MM-14'},
         'weapons': {'ak74m': 'AK-74M 943 mm, black polymer furniture, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), two-chamber muzzle brake',
+                    'grenades': 'F-1 (ribbed 55 mm cast body) and RGD-5 (smooth 58 mm egg), both with UZRGM fuze, spoon and pull ring',
                     'pkm': 'PKM 1190 mm, skeleton-style stock, 100-rd box, folded bipod, carry handle',
                     'rpg7': 'RPG-7 with wooden heat guards, PGO-7 sight and PG-7V (85 mm) round loaded'},
     }
@@ -69,7 +75,8 @@ def main():
             'weapon_socket_L': 'child of LeftHand: rifle carried by the handguard (grip_L in the palm) - use during throw_grenade',
             'weapon_socket_back': 'child of Spine1: slung rifle diagonally on the back, muzzle up over the right shoulder (RPG gunner, drag_wounded, wounded clips)',
             'mag_socket_L': 'child of LeftHand: attach ak74m `magazine` node during reloads',
-            'aim': 'child of Head at the eye midpoint (eye height)', 'aim_eye_R': 'child of Head at the right eye (sighting eye)'},
+            'aim': 'child of Head at the eye midpoint (eye height)', 'aim_eye_R': 'child of Head at the right eye (sighting eye)',
+            'drag_handle': 'child of Spine1 at the vest drag handle (top of the back plate): contact point of being_dragged / drag_wounded'},
     }
     for fac in ('ru', 'ua'):
         g, tris, mats = read_glb(f'{ASSETS}/soldier_{fac}.glb')
@@ -89,6 +96,20 @@ def main():
             uniform_material={'ru': 'emr_camo (all variants)', 'ua': 'mm14_camo (A,B), mm14_multicam_camo (C: MultiCam top, MM-14 trousers)'}[fac],
             gear_materials=sorted({m for k, ms in mats.items() for m in ms}),
             node_list=nodes)
+        cb = json.load(open(f'{CACHE}/combos_{fac}.json'))
+        clean = lambda d: {k: v for k, v in d.items()}
+        out[f'soldier_{fac}']['combos'] = [clean(d) for d in cb['combos']]
+        out[f'soldier_{fac}']['assault_combos'] = [clean(d) for d in cb['assault_combos']]
+        out[f'soldier_{fac}']['combo_notes'] = (
+            'Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material '
+            f'soldier_atlas_{fac} (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part '
+            '(body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = '
+            'the preset\'s arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as '
+            'the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all '
+            'per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at '
+            f'{"~1.0" if fac == "ru" else "~1.3"} mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded '
+            'repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex '
+            'colours keep the baked AO. Balaclava presets drop the covered face triangles.')
     out['soldier_ru']['tape_alt_material'] = 'tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable'
     out['soldier_ua']['tape_alt_material'] = 'tape (yellow #e8c31c)'
     g, tris, mats = read_glb(f'{ASSETS}/soldier_anims.glb')
@@ -107,25 +128,74 @@ def main():
         'throw_grenade': {'move_weapon_to': 'weapon_socket_L', 'release_approx': 1.25},
         'death_front': {'drop_weapon': 0.2}, 'death_back': {'drop_weapon': 0.1}, 'death_crumple': {'drop_weapon': 0.3},
         'drag_wounded': {'weapon': 'weapon_socket_back'}, 'wounded_ground': {'weapon': 'drop or weapon_socket_back'},
-        'wounded_crawl': {'weapon': 'drop or weapon_socket_back'},
+        'wounded_crawl': {'weapon': 'drop or weapon_socket_back'}, 'being_dragged': {'weapon': 'drop or weapon_socket_back'},
+        'wounded_sit': {'weapon': 'drop or weapon_socket_back'},
     }
     for k, v in events.items():
         if k in cl:
             cl[k]['events'] = v
+    for name, c in clips.items():
+        if c.get('events'):
+            cl[name]['events'] = dict(cl[name].get('events', {}), **c['events'])
+        if c.get('seat'):
+            cl[name]['seat_type'] = c['seat']
     out['soldier_anims'] = dict(file='soldier_anims.glb', size_bytes=os.path.getsize(f'{ASSETS}/soldier_anims.glb'),
                                 contents='skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear',
-                                in_place='loops have horizontal root motion stripped (Hips keeps vertical bob); deaths keep root motion and end at rest',
-                                sources='CMU mocap: walk 16_15, run 16_35, crouch walk 136_09, limp 77_19, drag 81_08, death_back 90_18, throw 113_24. '
+                                in_place='loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest',
+                                time_scaling='ground_speed_mps is the clip\'s natural speed; the game time-scales (walk ~2.0, run ~5.0, crouch ~1.5 m/s). '
+                                             'walk_rifle is a 2.1 m/s brisk walk (CMU 07_12) and run_rifle a 3.6 m/s fast run with a 17 deg combat lean (CMU 09_11) '
+                                             'so the scaled cadence stays plausible (x1.0 / x1.4).',
+                                launchers=dict(
+                                    socket='weapon_socket (identity) for both rpg22.glb and rpg7.glb in aim_launcher / aim_launcher_kneel / fire_launcher',
+                                    authored_for='RPG-22: right eye on the rear-sight line, tube underside on the right trapezius, right hand on the tube under the '
+                                                 'firing housing (= launcher origin), left palm under the front tube (rpg22 grip_L).',
+                                    rpg7_offset=dict(position=[0.0, 0.0, 0.0], note='RPG-7 also fits with identity: its tube axis is 7 mm higher and its PGO-7 eyepiece '
+                                                     'sits 5 cm left / 4 cm below the eye (head over the tube instead of beside it). For an exact PGO-7 sight picture '
+                                                     'offset the launcher by [-0.051, 0.042, 0.0] (launcher local), at the cost of a 4 cm gap above the shoulder.'),
+                                    rpg22_offset=dict(position=[0.0, 0.0, 0.0])),
+                                riding=dict(
+                                    frame='ride_sit_edge / ride_sit_deck / ride_aim: root = ride_seat_N empty (point on the sitting surface under the pelvis), '
+                                          '+Z = seat facing; Hips joint 0.118 m above and 0.035 m behind the seat point; place the soldier root exactly on the seat '
+                                          'empty (position + heading), no ground snapping.',
+                                    edge='thighs along +Z, knees ~0.42 m out, shins angled ~30 deg outward (clears the BTR\'s sloped upper hull), rifle across the lap',
+                                    deck='knees up, feet flat on the deck ~0.47 m ahead, rifle upright between the knees, butt on the deck',
+                                    dismount_jump='root on the ground at the landing point; the clip starts with the seat point at (0, 1.8, -1.6) relative to it '
+                                                  '(game: landing = seat + 1.6 m outward, seat ~1.8 m high); vertical and horizontal root motion kept; touchdown 0.84 s'),
+                                medical=dict(
+                                    drag='drag_wounded (dragger) and being_dragged (casualty) share a 2.5 s loop. Casualty root = dragger root + 1.0 m along the '
+                                         'dragger facing, casualty heading = dragger heading + 180 deg (head towards the dragger). Contact point = socket drag_handle '
+                                         '(Spine1) at (0, 0.50, 0.42) in the casualty frame = (0, 0.50, 0.58) in the dragger frame (both hands).',
+                                    treat_wounded='medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root',
+                                    wounded_sit='back against a wall plane 0.30 m behind the root (-Z)'),
+                                sources='CMU mocap: walk 07_12, run 09_11, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. '
                                         'Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. '
                                         'Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.',
                                 clips=cl)
     wi = json.load(open(f'{CACHE}/weapons_info.json'))
-    for w in ('ak74m', 'pkm', 'rpg7'):
+    for w in ('ak74m', 'pkm', 'rpg7', 'rpg22', 'ak12', 'ak74m_optic', 'grenade_f1', 'grenade_rgd5'):
+        if not os.path.exists(f'{ASSETS}/{w}.glb') or w not in wi:
+            continue
         g, tris, mats = read_glb(f'{ASSETS}/{w}.glb')
         out[w] = dict(file=f'{w}.glb', size_bytes=os.path.getsize(f'{ASSETS}/{w}.glb'), tris=tris, materials=sorted({m for ms in mats.values() for m in ms}),
                       empties={k: v[0] for k, v in wi[w]['empties'].items()},
                       conventions='origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1')
     out['ak74m']['magazine_node'] = 'magazine (separate mesh; hide/reparent to mag_socket_L during reloads)'
+    for w in ('ak12', 'ak74m_optic'):
+        if w in out:
+            out[w]['magazine_node'] = 'magazine (separate mesh, same as ak74m)'
+            out[w]['aim_note'] = ('The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher '
+                                  '(optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.')
+    out['ak12']['description'] = ('AK-12 (6P70, 2020 pattern): railed hinged dust cover + railed handguard, AK-12 muzzle brake, telescoping/side-folding '
+                                  'stock with cheek riser, ribbed 30-rd mag, 1P87-style collimator (olive) on the rail')
+    out['ak74m_optic']['description'] = ('UA AK-74M upgrade: Picatinny dust-cover rail with an EOTech-style holographic sight, aluminium railed gas-tube '
+                                         'cover and lower handguard, vertical foregrip, original side-folding stock')
+    if 'rpg22' in out:
+        out['rpg22']['carried'] = dict(file='rpg22_carried.glb', note='collapsed transport configuration, origin at the tube centre')
+        out['rpg22']['conventions'] = 'origin = right hand on the tube under the firing housing, +Z muzzle, +Y up; parent to weapon_socket for the launcher clips'
+    for w in ('grenade_f1', 'grenade_rgd5'):
+        if w in out:
+            out[w]['conventions'] = ('origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), '
+                                     'pull ring on +Z; empties centre, fuze, pin_ring')
     out['deviations'] = [
         'Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.',
         'Extra nodes beyond the contract: gloves, boots, kneepads, legband_L, pouches_front/side/back split, helmet_B per faction, *_LOD1 for every mesh node.',
@@ -133,6 +203,8 @@ def main():
         'tape_red is not a separate material in the GLB (unused glTF materials are dropped by loaders); recolour `tape` instead (value given above).',
         'throw_grenade needs the rifle moved to weapon_socket_L; wounded/drag/death clips expect the game to drop or sling the rifle.',
         'Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris.',
+        'Assault presets carry ~28-30k tris (armour + 4 extra pouch groups + headset/balaclava); use their _LOD1 (~8k) beyond close range.',
+        'GLBs use KHR_mesh_quantization (required) for int8 normals; weights are normalized u8, atlas UVs normalized u16 (all native in three.js GLTFLoader).',
     ]
     json.dump(out, open(f'{ASSETS}/manifest.json', 'w'), indent=1)
     print('manifest written', {k: out[f'soldier_{k}']['default_config_tris'] for k in ('ru', 'ua')})

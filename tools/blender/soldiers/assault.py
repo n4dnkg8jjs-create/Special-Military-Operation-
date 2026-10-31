@@ -50,7 +50,12 @@ def limb_shell(trees, a, j, b, centre_dir, s0, s1, mat, half_ang=70, thick=0.011
         rim += [[p + n, q + n, q], [p + n, q, p]]
     T.append(np.array(rim))
     pos = np.concatenate([outer, inner])
-    uv = np.concatenate([np.array([[i / nu * 0.25, jj / nv * 0.25] for jj in range(nv) for i in range(nu)])] * 2)
+    # physical tiling coordinates (1 uv = 0.5 m, like the other gear): arc length around the limb x distance along it
+    rr = np.array([[r + gap + thick * 0.5 for (o, d, r, e) in row] for row in rows])
+    ths = np.radians(np.linspace(-half_ang, half_ang, nu))
+    ss = np.linspace(s0, s1, nv)
+    uv1 = np.stack([(ths[None, :] * rr) * 2.0, np.repeat(ss[:, None], nu, 1) * 2.0], -1).reshape(-1, 2)
+    uv = np.concatenate([uv1, uv1])
     return G.orient_closed(G.part(pos, np.concatenate(T), mat, uv))
 
 

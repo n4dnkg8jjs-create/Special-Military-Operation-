@@ -19,7 +19,7 @@ SCHEMES = {
     'ua_green': dict(base=(55, 65, 39), base2=(49, 58, 35), camo=[((31, 31, 28), 0.24), ((98, 84, 60), 0.14)],
                      dust=(136, 126, 106), mud=(64, 54, 42), wear=1.15, dust_amt=0.9, fade=(84, 90, 62)),
     # UA BTR-80: green base with brown + khaki disruptive patches (2022-24 field repaints)
-    'ua_btr': dict(base=(57, 67, 40), base2=(50, 59, 36), camo=[((84, 66, 44), 0.24), ((128, 114, 80), 0.13)],
+    'ua_btr': dict(base=(57, 67, 40), base2=(50, 59, 36), camo=[((82, 63, 42), 0.24), ((116, 104, 72), 0.12)], camo_freq=0.72,
                    dust=(136, 126, 106), mud=(64, 54, 42), wear=1.2, dust_amt=0.95, fade=(84, 90, 62)),
 }
 
@@ -49,7 +49,7 @@ def compose_paint(d, scheme, decals=None, seed=1):
     col = T.mix(C(S['base']), C(S['base2']), T.sstep(0.3, 0.7, n_big))
     if S['camo']:
         for ci, (c, frac) in enumerate(S['camo']):
-            cn = T.fbm(P * np.array([1, 1, 1.4], np.float32), 0.5, 5, seed + 40 + ci * 7)
+            cn = T.fbm(P * np.array([1, 1, 1.4], np.float32), S.get('camo_freq', 0.5), 5, seed + 40 + ci * 7)
             thr = T.quantile_thr(cn, frac, valid)
             col = T.mix(col, C(c), T.sstep(thr, thr + 0.01, cn) * 0.96)
     col = col * (0.92 + 0.16 * T.fbm(P, 2.5, 3, seed + 5))[..., None]

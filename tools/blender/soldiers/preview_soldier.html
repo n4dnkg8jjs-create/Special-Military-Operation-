@@ -25,6 +25,10 @@ sun.shadow.mapSize.set(2048,2048); scene.add(sun); scene.add(new THREE.Hemispher
 sun.shadow.camera.left=sun.shadow.camera.bottom=-3; sun.shadow.camera.right=sun.shadow.camera.top=3;
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
 ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+// box=cx,cy,cz,sx,sy,sz[;...]  reference boxes (seat / deck / wall)
+if (q.get('box')) for (const b of q.get('box').split(';')) { const v=b.split(',').map(Number);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(v[3],v[4],v[5]), new THREE.MeshStandardMaterial({color:0x5a5f52,roughness:0.9}));
+  m.position.set(v[0],v[1],v[2]); m.castShadow=m.receiveShadow=true; scene.add(m); }
 const loader = new GLTFLoader();
 const gltf = await loader.loadAsync(q.get('glb'));
 const root = gltf.scene; scene.add(root); if(q.get('lift')) root.position.y=+q.get('lift'); if(q.get('noground')) ground.visible=false;
@@ -35,6 +39,11 @@ root.traverse(o=>{ if(o.isMesh){ o.castShadow=o.receiveShadow=true;
   const nm = o.parent && o.parent.type==='Group' ? o.parent.name : o.name;
   const keep = (!show || show.some(s=>nm===s||o.name===s)) && !hide.some(s=>nm===s||o.name===s) && !(q.get('hidelod') && (/_LOD1/.test(nm)||/_LOD1/.test(o.name))) && !(q.get('defaults') && o.userData && (o.userData.default_visible===false || (o.parent&&o.parent.userData&&o.parent.userData.default_visible===false)));
   o.visible = keep; if(keep){const g=o.geometry; tris += (g.index?g.index.count:g.attributes.position.count)/3;} } });
+// second actor: anim2= clip, pos2=x,y,z, rot2=deg (same glb, same anims glb)
+let root2 = null;
+if (q.get('anim2')) { const g2 = await loader.loadAsync(q.get('glb')); root2 = g2.scene; scene.add(root2);
+  const p2=(q.get('pos2')||'0,0,1').split(',').map(Number); root2.position.set(p2[0],p2[1],p2[2]); root2.rotation.y=(+(q.get('rot2')||180))*Math.PI/180;
+  root2.traverse(o=>{ if(o.isMesh){ o.castShadow=true; const nm=o.parent&&o.parent.type==='Group'?o.parent.name:o.name; o.visible=(!show||show.some(s=>nm===s||o.name===s)); } }); }
 let clips = gltf.animations;
 if (q.get('anims')) clips = (await loader.loadAsync(q.get('anims'))).animations;
 if (q.get('weapon')) {
@@ -49,6 +58,7 @@ if (q.get('anim') && clips.length){
   clip = clips.find(a=>a.name===q.get('anim')) || clips[0];
   const act = mixer.clipAction(clip); act.play(); mixer.setTime(clip.duration*(+(q.get('t')||0)));
   info.clip = clip.name + ':' + clip.duration.toFixed(2);
+  if (root2) { window.__m2 = new THREE.AnimationMixer(root2); const c2 = clips.find(a=>a.name===q.get('anim2')); if (c2) { window.__m2.clipAction(c2).play(); window.__c2 = c2; } }
 }
 const ts = q.get('ts') ? q.get('ts').split(',').map(Number) : null;
 root.updateMatrixWorld(true);
@@ -64,7 +74,7 @@ const views = azs.length, cols = views>1?Math.min(views,+(q.get('cols')||4)):1, 
 const cam = new THREE.PerspectiveCamera(+(q.get('fov')||30), (W/cols)/(H/rows), 0.01, 200);
 renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
 for(let i=0;i<views;i++){
-  if (ts && mixer){ mixer.setTime(clip.duration*ts[i]); root.updateMatrixWorld(true); }
+  if (ts && mixer){ mixer.setTime(clip.duration*ts[i]); root.updateMatrixWorld(true); if (window.__m2 && window.__c2) { window.__m2.setTime(window.__c2.duration*ts[i]); root2.updateMatrixWorld(true);} }
   const a=azs[i]*Math.PI/180, e=el*Math.PI/180;
   cam.position.set(cx+r*Math.cos(e)*Math.sin(a), cy+r*Math.sin(e), cz+r*Math.cos(e)*Math.cos(a)); cam.lookAt(cx,cy,cz);
   const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;

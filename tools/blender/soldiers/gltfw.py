@@ -23,14 +23,17 @@ class GLB:
         self.bin = bytearray()
         self.mat_index = {}
         self.img_cache = {}
+        self.quantize_normals = True
 
     # ---------------------------------------------------------------- buffers
-    def _view(self, data, target=None):
+    def _view(self, data, target=None, stride=None):
         off = len(self.bin)
         self.bin += _pad4(bytes(data))
         bv = {"buffer": 0, "byteOffset": off, "byteLength": len(data)}
         if target:
             bv["target"] = target
+        if stride:
+            bv["byteStride"] = stride
         self.g["bufferViews"].append(bv)
         return len(self.g["bufferViews"]) - 1
 
@@ -137,17 +140,40 @@ class GLB:
             if p.get('nrm') is not None:
                 n = p['nrm'].astype(np.float32)
                 n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-8)
-                attrs["NORMAL"] = self.accessor(n, "VEC3", 34962)
+                if self.quantize_normals:
+                    # KHR_mesh_quantization: normalized int8 normals, 4-byte stride
+                    q = np.zeros((len(n), 4), np.int8); q[:, :3] = np.clip(np.round(n * 127), -127, 127)
+                    bv = self._view(q.tobytes(), 34962, stride=4)
+                    self.g["accessors"].append({"bufferView": bv, "componentType": 5120, "count": int(len(n)), "type": "VEC3", "normalized": True})
+                    attrs["NORMAL"] = len(self.g["accessors"]) - 1
+                    for k in ("extensionsUsed", "extensionsRequired"):
+                        if "KHR_mesh_quantization" not in self.g.setdefault(k, []):
+                            self.g[k].append("KHR_mesh_quantization")
+                else:
+                    attrs["NORMAL"] = self.accessor(n, "VEC3", 34962)
             if p.get('uv') is not None:
-                attrs["TEXCOORD_0"] = self.accessor(p['uv'].astype(np.float32), "VEC2", 34962)
+                uv = np.asarray(p['uv'], np.float64)
+                if len(uv) and uv.min() >= 0.0 and uv.max() <= 1.0:   # core glTF: TEXCOORD may be normalized u16
+                    attrs["TEXCOORD_0"] = self.accessor(np.round(uv * 65535).astype(np.uint16), "VEC2", 34962, normalized=True)
+                else:
+                    attrs["TEXCOORD_0"] = self.accessor(uv.astype(np.float32), "VEC2", 34962)
             if p.get('color') is not None:
                 c = np.clip(p['color'], 0, 1)
-                attrs["COLOR_0"] = self.accessor((c * 255 + 0.5).astype(np.uint8), "VEC4" if c.shape[1] == 4 else "VEC3", 34962, normalized=True)
+                if c.shape[1] == 3:   # u8 RGB padded to a 4-byte stride (vertex attribute alignment rule)
+                    q = np.full((len(c), 4), 255, np.uint8); q[:, :3] = (c * 255 + 0.5).astype(np.uint8)
+                    bv = self._view(q.tobytes(), 34962, stride=4)
+                    self.g["accessors"].append({"bufferView": bv, "componentType": 5121, "count": int(len(c)), "type": "VEC3", "normalized": True})
+                    attrs["COLOR_0"] = len(self.g["accessors"]) - 1
+                else:
+                    attrs["COLOR_0"] = self.accessor((c * 255 + 0.5).astype(np.uint8), "VEC4", 34962, normalized=True)
             if p.get('joints') is not None:
                 attrs["JOINTS_0"] = self.accessor(p['joints'].astype(np.uint8 if p['joints'].max() < 256 else np.uint16), "VEC4", 34962)
-                w = p['weights'].astype(np.float32)
+                w = p['weights'].astype(np.float64)
                 w /= np.maximum(w.sum(1, keepdims=True), 1e-8)
-                attrs["WEIGHTS_0"] = self.accessor(w, "VEC4", 34962)
+                wq = np.round(w * 255).astype(np.int32)                  # normalized u8 weights (core glTF)
+                r = 255 - wq.sum(1); j = np.argmax(w, 1)
+                wq[np.arange(len(wq)), j] += r
+                attrs["WEIGHTS_0"] = self.accessor(np.clip(wq, 0, 255).astype(np.uint8), "VEC4", 34962, normalized=True)
             idx = p['idx'].reshape(-1)
             idx = idx.astype(np.uint16 if p['pos'].shape[0] < 65535 else np.uint32)
             prim = {"attributes": attrs, "indices": self.accessor(idx, "SCALAR", 34963), "mode": 4}

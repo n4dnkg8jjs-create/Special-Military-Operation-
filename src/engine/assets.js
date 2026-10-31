@@ -35,7 +35,7 @@ export class Assets {
     }));
     this.rubbleKeys = rubbleList.filter(k => this.gltf[k]);
     // tiling textures
-    for (const t of ['asphalt', 'concrete', 'brick', 'dirt', 'rubble']) {
+    for (const t of ['asphalt', 'concrete', 'brick', 'dirt', 'rubble', 'grass']) {
       this.tex[t] = await this.loadTexSet(t, renderer);
       progress(++done / (jobs.length + 6), t);
     }

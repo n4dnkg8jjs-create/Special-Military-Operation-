@@ -34,9 +34,9 @@ BELLY = 0.475
 CH_X, CH_Z = 1.45, 1.27            # crease (widest line)
 RF_X = 0.90                        # roof edge half-width
 BL_X = 0.62                        # belly half width
-NOSE = (3.86, 1.03)                # y, z of the bow edge
-WS_BOT = (2.82, 1.54)              # windscreen plate lower edge (y, z)
-WS_TOP = (2.27, ROOF)              # windscreen plate upper edge = roof front
+NOSE = (3.86, 1.07)                # y, z of the bow edge
+WS_BOT = (2.80, 1.50)              # windscreen plate lower edge (y, z)
+WS_TOP = (2.36, ROOF)              # windscreen plate upper edge = roof front
 REAR_TOP = -3.30                   # roof rear edge
 REAR_LOW = (-3.84, 1.34)           # upper rear plate lower edge
 TY = 0.95                          # turret ring centre (y)
@@ -213,7 +213,6 @@ def door(upper_h=0.55, lower_h=0.4, w=0.7):
         up.add(box(0.12, 0.07, 0.012, c=(w / 2 - 0.05, yy, 0.034)))
     up.add(rail([(-w / 2 + 0.08, upper_h * 0.45, 0.03), (-w / 2 + 0.08, upper_h * 0.45, 0.08),
                  (-w / 2 + 0.08, upper_h * 0.75, 0.08), (-w / 2 + 0.08, upper_h * 0.75, 0.03)], r=0.01, rad=0.025))
-    up.add(firing_port().scale(0.8).move(-0.02, upper_h * 0.55, 0.03))
     lo = prism([(-w / 2 + 0.03, -lower_h), (w / 2 - 0.03, -lower_h), (w / 2, -0.02), (-w / 2, -0.02)], 0.03, 'z', c=0.015,
                bev=0.008, segs=1)
     for xx in (-w * 0.3, w * 0.3):
@@ -385,7 +384,7 @@ def tyre_wheel():
         bm = bmesh.new()
         top, bot = [], []
         for t, hh in L_:
-            for d, lst in ((-0.004, bot), (0.034, top)):
+            for d, lst in ((-0.004, bot), (0.046, top)):
                 tt = t * (0.86 if d > 0 else 1.0)
                 a = theta + tt / R
                 k = hh / 0.172
@@ -513,14 +512,15 @@ def turret_bppu():
     3 + 3 902V launchers on the rear corners, rear stowage box.  Origin = ring centre on the hull roof."""
     t = B()
     pts = []
-    for i in range(12):
-        a = math.tau * (i + 0.5) / 12
+    # conical lower body (inherited from the BPU-1 family) carrying an angular welded superstructure
+    for i in range(16):
+        a = math.tau * (i + 0.5) / 16
         pts.append((0.84 * math.cos(a), 0.84 * math.sin(a), 0.0))
-        pts.append((0.80 * math.cos(a), 0.80 * math.sin(a), 0.12))
-    t.add(hull(pts, bev=0.015, segs=1))
-    bot = [(-0.42, 0.74), (0.42, 0.74), (0.74, 0.32), (0.74, -0.42), (0.52, -0.70), (-0.52, -0.70), (-0.74, -0.42), (-0.74, 0.32)]
-    top = [(-0.30, 0.56), (0.30, 0.56), (0.58, 0.24), (0.60, -0.40), (0.44, -0.60), (-0.44, -0.60), (-0.60, -0.40), (-0.58, 0.24)]
-    up = hull([(x, y, 0.10) for x, y in bot] + [(x, y, 0.58) for x, y in top], bev=0.022, segs=2, angle=20)
+        pts.append((0.64 * math.cos(a), 0.64 * math.sin(a), 0.30))
+    t.add(hull(pts, bev=0.015, segs=1, angle=25))
+    bot = [(-0.40, 0.74), (0.40, 0.74), (0.66, 0.30), (0.66, -0.42), (0.48, -0.66), (-0.48, -0.66), (-0.66, -0.42), (-0.66, 0.30)]
+    top = [(-0.30, 0.56), (0.30, 0.56), (0.54, 0.24), (0.56, -0.40), (0.42, -0.58), (-0.42, -0.58), (-0.56, -0.40), (-0.54, 0.24)]
+    up = hull([(x, y, 0.20) for x, y in bot] + [(x, y, 0.58) for x, y in top], bev=0.022, segs=2, angle=20)
     t.add(up)
     # front gun slot
     t.add(box(0.44, 0.04, 0.3, c=(0.03, 0.70, 0.34), mat='gunmetal'))
@@ -621,8 +621,8 @@ def build(variant):
         k = 0.62
         H.add(tube([(s * (CH_X + 0.03), 2.2, CH_Z - 0.012), (s * (CH_X - 0.69 * k / 1.61 * 1.0 + 0.03), 2.25 + k, CH_Z - 0.24 * k / 1.61 - 0.012)], 0.02, 6))
         for y in AXLES:
-            mg = box(0.012, 0.86, 0.12, c=(0, 0, -0.06), mat='skirt', bev=0.004, segs=1)
-            mg.add(box(0.03, 0.88, 0.025, c=(0, 0, 0.0), mat='rolled'))
+            mg = box(0.012, 0.9, 0.08, c=(0, 0, -0.04), mat='tyre', bev=0.004, segs=1)       # rubber fender lip
+            mg.add(box(0.03, 0.92, 0.025, c=(0, 0, 0.0), mat='rolled'))
             for yy in (-0.3, 0.0, 0.3):
                 mg.add(bolt(0.01, 0.008, 6, 'rolled').rot('Y', 90 * s), Matrix.Translation((s * 0.012, yy, -0.012)))
             xx = CH_X + 0.045

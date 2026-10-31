@@ -79,12 +79,41 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             p['W'] = W
         elif grp == 'armor_groin':
             W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Hips']] = 1; p['W'] = W
+        elif grp.startswith('backpack') or grp == 'pouches_back':
+            # the pack body rides on the chest only (not the clavicles, or it swings when an arm is raised);
+            # shoulder straps in front keep following the clavicles
+            Wa = AS.nearest_weights(p['pos'], ref_pos, ref_W, k=10, bones_allowed=SPINE_BONES, bone_idx=idx)
+            Ws = AS.nearest_weights(p['pos'], ref_pos, ref_W, k=10, bones_allowed=('Spine', 'Spine1'), bone_idx=idx)
+            z = p['pos'][:, 2]
+            b = np.clip((-0.07 - z) / 0.06, 0, 1)[:, None]
+            b = b * b * (3 - 2 * b)
+            p['W'] = Wa * (1 - b) + Ws * b
         elif 'local' in p or grp.startswith('pouches') or grp == 'backpack' and 'local' in p:
             c = p['pos'].mean(0, keepdims=True)
             w = AS.nearest_weights(c, ref_pos, ref_W, k=8, bones_allowed=SPINE_BONES, bone_idx=idx)
             p['W'] = np.repeat(w, len(p['pos']), 0)
         else:
             p['W'] = AS.nearest_weights(p['pos'], ref_pos, ref_W, k=10, bones_allowed=SPINE_BONES, bone_idx=idx)
+    # packs / back pouches: rigid, with the plate carrier's own weights where they rest on it (no shear when the trunk bends)
+    from scipy.spatial import cKDTree
+    vest = [p for p in parts if p.get('group') == 'vest']
+    if vest:
+        VP = np.concatenate([p['pos'] for p in vest]); VW = np.concatenate([p['W'] for p in vest])
+        tree = cKDTree(VP)
+        for grp in ('backpack', 'backpack_assault', 'pouches_back'):
+            gp_ = [p for p in parts if p.get('group') == grp]
+            body = [p for p in gp_ if p['pos'][:, 2].mean() < -0.1]
+            if not body:
+                continue
+            allp = np.concatenate([p['pos'] for p in body])
+            c = allp.mean(0)
+            # contact point: the vest vertices closest to the pack's front face
+            front = allp[allp[:, 2] > np.percentile(allp[:, 2], 85)]
+            _, nn = tree.query(front, k=6)
+            w = VW[nn.reshape(-1)].mean(0)
+            w = w / max(w.sum(), 1e-9)
+            for p in body:
+                p['W'] = np.repeat(w[None], len(p['pos']), 0)
     return parts
 
 
@@ -201,6 +230,27 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     # gear
     env = envelope(R)
     parts = make_gear(R, fac, env, groups)
+    # seat the packs directly on the plate carrier's back (no air gap)
+    vest = [p for p in parts if p['group'] == 'vest']
+    if vest:
+        VP = np.concatenate([p['pos'] for p in vest])
+        for grp in ('backpack', 'backpack_assault'):
+            body = [p for p in parts if p['group'] == grp and p['pos'][:, 2].mean() < -0.12]
+            if not body:
+                continue
+            allp = np.concatenate([p['pos'] for p in body])
+            y0, y1 = np.percentile(allp[:, 1], 20), np.percentile(allp[:, 1], 80)
+            ym = 0.5 * (y0 + y1)
+            m = (np.abs(VP[:, 0]) < 0.12) & (np.abs(VP[:, 1] - ym) < 0.06) & (VP[:, 2] < 0)
+            back_z = VP[m, 2].min()                     # plate-carrier back at the pack's mid height
+            main = max(body, key=lambda q: np.ptp(q['pos'][:, 1]) * np.ptp(q['pos'][:, 0]))   # the pack box itself
+            mp = main['pos']
+            band = mp[mp[:, 1] < np.percentile(mp[:, 1], 35)]
+            front_z = band[:, 2].max()                  # front face of the pack (lower rounded edge)
+            dz = (back_z - 0.006) - front_z
+            for p in body:
+                p['pos'] = p['pos'] + np.array([0, 0, dz])
+            print(f'{grp}: moved {dz * 100:.1f} cm onto the plate carrier')
     ref_pos = R['variants']['A']['uniform_pos']; ref_W = R['uniform']['W']
     parts = [G.box_uv(p, 2.0) if 'local' in p else p for p in parts]
     for p in parts:
@@ -235,7 +285,9 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     if sockets:
         add_sockets(W, rig, R)
     if with_lod:
+        import time as _t; _t0 = _t.time()
         W.emit_lods()
+        print('lods %.1fs' % (_t.time() - _t0))
     W.combos = combos
     return W, R, rig, tri_count
 
@@ -308,6 +360,9 @@ def add_sockets(W, rig, R):
     back_p = np.array([0.06, 1.13, -0.205]) - s1
     back_q = qlook(fwd, np.array([0, 0, -1.0]))  # muzzle up over the right shoulder, top of the gun facing away
     W.socket('weapon_socket_back', 'Spine1', back_p, back_q)
+    # drag handle at the top of the back plate (being_dragged / drag_wounded contact point)
+    import clips_extra as CX
+    W.socket('drag_handle', 'Spine1', CX.DRAG_HANDLE_REST - s1)
     lm = R['variants']['A']['lm']
     eye_mid = (lm['eyeL'] + lm['eyeR']) / 2
     W.socket('aim', 'Head', eye_mid - sk.head[sk.idx['Head']])

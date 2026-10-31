@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Game } from './game/game.js';
 import { HUD } from './ui/hud.js';
 import { Input } from './ui/input.js';
@@ -21,6 +22,7 @@ async function start(opts) {
     if (cam) { if (cam !== 'fight') { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
     if (Q.get('sel')) hud.select([game.playerUnits[+Q.get('sel')]]);
     if (!Q.has('deploy')) game.startBattle();
+    if (Q.has('fire')) { const [fx, fz] = Q.get('fire').split(',').map(Number); game.fx.emitter(new THREE.Vector3(fx, 0, fz), 'fire', 1.3, 999); }
     if (Q.has('collapse')) { const b = game.city.buildings[+Q.get('collapse')]; game.city.collapseSection(b, +(Q.get('sec') || 0), game); }
     const t0 = performance.now();
     for (let t = 0; t < total; t += 0.05) { game.frame(0.05); if (game.over) break; }
@@ -46,7 +48,7 @@ async function start(opts) {
   }
   let last = performance.now();
   const loop = now => {
-    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = Math.max(last, now);
     try { game.frame(dt); } catch (e) { console.error(e); }
     requestAnimationFrame(loop);
   };

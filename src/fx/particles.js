@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Flames } from './flames.js';
 
 // GPU-billboarded particle systems (smoke/dust lit by the sun; fire/flash/tracers additive),
 // a small pool of dynamic point lights, and helpers for composite effects.
@@ -85,7 +86,7 @@ class System {
     g.setAttribute('iPos', this.aPos); g.setAttribute('iCol', this.aCol); g.setAttribute('iMisc', this.aMisc); g.setAttribute('iVel', this.aVel);
     g.instanceCount = 0;
     this.mat = new THREE.ShaderMaterial({
-      uniforms: { map: { value: tex }, sunDir: { value: sunDir }, fogColor: { value: new THREE.Color(0x9a978e) }, fogDensity: { value: 0.0026 }, ambient: { value: new THREE.Vector3(0.35, 0.36, 0.38) }, stretchK: { value: 1 }, atlas: { value: atlas ? 1 : 0 } },
+      uniforms: { map: { value: tex }, sunDir: { value: sunDir }, fogColor: { value: new THREE.Color(0xb3b7b6) }, fogDensity: { value: 0.0021 }, ambient: { value: new THREE.Vector3(0.35, 0.36, 0.38) }, stretchK: { value: 1 }, atlas: { value: atlas ? 1 : 0 } },
       vertexShader: VERT, fragmentShader: additive ? FRAG_ADD : FRAG_ALPHA, transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
@@ -140,6 +141,7 @@ export class FX {
     this.glow.additive = true;
     // billowing fire (additive, uses the puff atlas so flames have texture instead of soft blobs)
     this.fire = new System(scene, Math.round(1600 * mul), true, puffAtlas(), sunDir, true); this.fire.additive = true;
+    this.flames = new Flames(scene, quality === 'low' ? 96 : 256); this.time = 0;
     // ground shockwave rings
     this.rings = [];
     const rg = new THREE.RingGeometry(0.85, 1, 48); rg.rotateX(-Math.PI / 2);
@@ -215,7 +217,7 @@ export class FX {
     for (let i = 0; i < 26; i++) this.smoke.spawn({ x: pos.x + (Math.random() - .5) * 3, y: 0.5 + Math.random() * 2, z: pos.z + (Math.random() - .5) * 3, vx: (Math.random() - .5) * 3, vy: 0.4 + Math.random() * 0.6, vz: (Math.random() - .5) * 3, life: life * (0.6 + Math.random() * 0.4), size0: 2, size1: 10 + Math.random() * 5, r: 0.86, g: 0.86, b: 0.84, a0: 0.75, a1: 0, drag: 0.6, wind: [this.wind[0] * 0.4, this.wind[1] * 0.4], fadeIn: 1.5 });
   }
   // persistent emitters: fire (burning wreck/building), plume (distant columns), smoulder
-  emitter(pos, kind, scale = 1, life = Infinity) { const e = { pos: pos.clone(), kind, scale, acc: 0, life, t: 0 }; this.emitters.push(e); return e; }
+  emitter(pos, kind, scale = 1, life = Infinity) { const e = { pos: pos.clone(), kind, scale, acc: 0, life, t: 0 }; if (kind === 'fire') e.flame = this.flames.add(pos, scale); this.emitters.push(e); return e; }
   vehicleDust(pos, speed) {
     if (Math.random() > speed * 0.06) return;
     this.smoke.spawn({ x: pos.x + (Math.random() - .5) * 2, y: 0.4, z: pos.z + (Math.random() - .5) * 2, vy: 0.3, life: 3, size0: 1, size1: 4, r: 0.6, g: 0.56, b: 0.5, a0: 0.25, a1: 0, drag: 1, wind: this.wind });
@@ -229,11 +231,14 @@ export class FX {
       e.t += dt; if (e.t > e.life) { e.dead = true; continue; }
       e.acc += dt; const s = e.scale, fade = e.life < Infinity ? Math.max(0, 1 - e.t / e.life) : 1;
       if (e.kind === 'fire') {
-        while (e.acc > 0.05) { e.acc -= 0.05;
-          this.fire.spawn({ x: e.pos.x + (Math.random() - .5) * s, y: e.pos.y + Math.random() * 0.4, z: e.pos.z + (Math.random() - .5) * s, vx: 0, vy: 2.2 + Math.random() * 2, vz: 0, life: 0.55 + Math.random() * 0.45, size0: 1.1 * s, size1: 0.4 * s, r: 1, g: 0.62, b: 0.22, r1: 0.95, g1: 0.22, b1: 0.04, cool: 0.7, a0: 0.9 * fade, a1: 0, drag: 0.5, wind: this.wind });
-          if (Math.random() < 0.55) this.smoke.spawn({ x: e.pos.x, y: e.pos.y + 1.4 * s, z: e.pos.z, vx: (Math.random() - .5), vy: 3 + Math.random() * 2.5, vz: (Math.random() - .5), life: 10 + Math.random() * 7, size0: 1.0 * s, size1: 8 * s, r: 0.09, g: 0.085, b: 0.08, a0: 0.65 * fade, a1: 0, drag: 0.32, wind: this.wind, fadeIn: 0.4 });
+        if (e.flame) e.flame.intensity = Math.min(1, fade * 1.5);
+        while (e.acc > 0.06) { e.acc -= 0.06;
+          // a little textured fire at the base for volume, embers, and a thick smoke column
+          if (Math.random() < 0.5) this.fire.spawn({ x: e.pos.x + (Math.random() - .5) * s, y: e.pos.y + Math.random() * 0.3, z: e.pos.z + (Math.random() - .5) * s, vx: 0, vy: 1.4 + Math.random(), vz: 0, life: 0.45 + Math.random() * 0.3, size0: 1.0 * s, size1: 0.5 * s, r: 1, g: 0.5, b: 0.15, r1: 0.8, g1: 0.18, b1: 0.03, cool: 0.7, a0: 0.55 * fade, a1: 0, drag: 0.6 });
+          if (Math.random() < 0.35) this.glow.spawn({ x: e.pos.x + (Math.random() - .5) * s, y: e.pos.y + 0.6 * s, z: e.pos.z + (Math.random() - .5) * s, vx: (Math.random() - .5) * 1.5, vy: 2.5 + Math.random() * 3, vz: (Math.random() - .5) * 1.5, life: 1.2 + Math.random() * 1.6, size0: 0.05, size1: 0.03, r: 1, g: 0.55, b: 0.18, a0: 2.2 * fade, a1: 0, drag: 0.4, wind: this.wind });
+          if (Math.random() < 0.6) this.smoke.spawn({ x: e.pos.x + (Math.random() - .5) * 0.6 * s, y: e.pos.y + 2.2 * s, z: e.pos.z + (Math.random() - .5) * 0.6 * s, vx: (Math.random() - .5), vy: 3 + Math.random() * 2.5, vz: (Math.random() - .5), life: 11 + Math.random() * 7, size0: 1.2 * s, size1: 8.5 * s, r: 0.085, g: 0.08, b: 0.075, a0: 0.7 * fade, a1: 0, drag: 0.3, wind: this.wind, fadeIn: 0.5 });
         }
-        if (Math.random() < 0.1) this.light(new THREE.Vector3(e.pos.x, e.pos.y + 1.5, e.pos.z), 0xff7a2a, 8 * s, 12 * s, 0.25);
+        if (Math.random() < 0.12) this.light(new THREE.Vector3(e.pos.x, e.pos.y + 1.5 * s, e.pos.z), 0xff7a2a, 9 * s * fade, 14 * s, 0.25);
       } else if (e.kind === 'plume') {
         while (e.acc > 0.35) { e.acc -= 0.35;
           this.smoke.spawn({ x: e.pos.x + (Math.random() - .5) * 4, y: e.pos.y, z: e.pos.z + (Math.random() - .5) * 4, vx: 0, vy: 4 + Math.random() * 2, vz: 0, life: 30 + Math.random() * 10, size0: 6 * s, size1: 38 * s, r: 0.13, g: 0.125, b: 0.12, a0: 0.55, a1: 0, drag: 0.08, wind: [this.wind[0] * 1.5, this.wind[1] * 1.5], fadeIn: 2 });
@@ -258,6 +263,7 @@ export class FX {
     this.debris.length = Math.min(w, 600); this.debrisMesh.count = this.debris.length; this.debrisMesh.instanceMatrix.needsUpdate = true;
     for (const r of this.rings) { r.t += dt; const f = r.t / r.life; r.m.scale.setScalar(0.5 + f * r.r); r.m.material.opacity = 0.35 * (1 - f); if (f >= 1) { this.scene.remove(r.m); r.m.material.dispose(); r.dead = true; } }
     this.rings = this.rings.filter(r => !r.dead);
+    this.time += dt; this.flames.update(dt, this.time);
     this.smoke.update(dt, camPos); this.glow.update(dt, null); this.fire.update(dt, null);
   }
 }

@@ -74,7 +74,7 @@ export class City {
     this.placeBuildings();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.defences();
-    this.craters(); this.skyline();
+    this.craters(); this.paintGround(); this.skyline();
     this.nav.finalize();
   }
   // ---------------------------------------------------------------- ground
@@ -85,23 +85,97 @@ export class City {
     if (p.roughnessMap) p.roughness = 1;
     return new THREE.MeshStandardMaterial(p);
   }
+  // Ground: one large plane with a splat-mapped shader (dry grass, worn paths, rubble/gravel, mud)
+  // and anti-tiling (two rotated samples blended by noise + macro tint), painted from the layout.
   ground() {
-    const g = new THREE.PlaneGeometry(MAP_SIZE + 400, MAP_SIZE + 400, 1, 1); g.rotateX(-Math.PI / 2);
-    const m = this.mat('dirt', (MAP_SIZE + 400) / 6, { color: 0xb9ad98 });
+    const S = MAP_SIZE + 400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t; };
+    const nrm = T.dirt?.normalMap ? T.dirt.normalMap.clone() : null; if (nrm) { nrm.needsUpdate = true; nrm.repeat.set(S / 6, S / 6); }
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, normalMap: nrm, normalScale: new THREE.Vector2(0.8, 0.8) });
+    const U = this.groundUniforms = { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE } };
+    m.onBeforeCompile = sh => {
+      Object.assign(sh.uniforms, U);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tSplat; uniform float splatSize;
+        float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
+        vec3 tile(sampler2D t, vec2 p){ // anti-tiling: second sample rotated/offset, blended by low-frequency noise
+          vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.87 + vec2(0.31, 0.57);
+          float n = vn(p * 0.35) * 0.7 + vn(p * 1.3) * 0.3;
+          return mix(texture2D(t, p).rgb, texture2D(t, q).rgb, smoothstep(0.38, 0.62, n)); }`)
+        .replace('#include <map_fragment>', `
+          vec2 wp = vWPos.xz;
+          vec4 sp = texture2D(tSplat, clamp(wp / splatSize + 0.5, 0.002, 0.998));
+          vec3 dirt = tile(tDirt, wp / 6.0), grass = tile(tGrass, wp / 3.5) * vec3(0.8, 0.8, 0.74), rub = tile(tRubble, wp / 5.0);
+          vec3 col = dirt;
+          col = mix(col, grass, sp.r);
+          col = mix(col, dirt * vec3(1.12, 1.08, 1.0), sp.a);            // trampled paths
+          col = mix(col, rub, sp.g);
+          col = mix(col, dirt * vec3(0.55, 0.5, 0.45), sp.b * 0.85);     // wet mud / scorched
+          col *= 0.86 + 0.28 * (vn(wp * 0.015) * 0.6 + vn(wp * 0.06) * 0.4); // macro variation
+          diffuseColor.rgb *= col;`);
+    };
     const ground = new THREE.Mesh(g, m); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
     this.groundMesh = ground;
-    // rubble-strewn ground patches near buildings + dead grass in courtyards
-    const rub = this.mat('rubble', 2.5);
-    const patches = [];
-    for (const b of BUILDINGS) for (let i = 0; i < 4; i++) {
-      const [x, , z] = [b[0] + (this.rng() - 0.5) * b[3] * 3, 0, b[1] + (this.rng() - 0.5) * 30];
-      if (onRoad(x, z, 2)) continue; patches.push([x, z, 8 + this.rng() * 10]);
+  }
+  // value-noise helper for painting
+  noise2(x, z, s) { const h = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + s * 17.3) * 43758.5453; return t - Math.floor(t); }; const i = Math.floor(x), j = Math.floor(z), f = x - i, g = z - j, u = f * f * (3 - 2 * f), v = g * g * (3 - 2 * g); return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v; }
+  // paint the splat map from the finished layout (call after buildings, rubble and craters exist)
+  paintGround() {
+    const N = 1024, k = N / MAP_SIZE, o = MAP_SIZE / 2, layer = () => { const c = document.createElement('canvas'); c.width = c.height = N; return c; };
+    const toPx = (x, z) => [(x + o) * k, (z + o) * k];
+    const R = this.rng;
+    // rubble/gravel around blocks, rubble piles and craters
+    const rub = layer(), rx = rub.getContext('2d'); rx.filter = `blur(${5 * k}px)`; rx.fillStyle = '#fff';
+    for (const b of this.buildings) { rx.save(); rx.translate(...toPx(b.x, b.z)); rx.rotate(-b.rot); rx.globalAlpha = 0.4 + R() * 0.25; rx.fillRect((-b.L / 2 - 3.5) * k, (-b.D / 2 - 3.5) * k, (b.L + 7) * k, (b.D + 7) * k); rx.restore(); }
+    rx.globalAlpha = 0.6; const v = new THREE.Vector3();
+    for (const list of this.rubbleInstances || []) for (const M of list) { v.setFromMatrixPosition(M); rx.beginPath(); rx.arc(...toPx(v.x, v.z), 3.2 * k, 0, 7); rx.fill(); }
+    // worn paths: each entrance to the nearest road edge, plus along the courtyard face
+    const pth = layer(), px = pth.getContext('2d'); px.filter = `blur(${1.2 * k}px)`; px.strokeStyle = '#fff'; px.lineCap = 'round';
+    for (const b of this.buildings) {
+      px.lineWidth = 2.4 * k; px.globalAlpha = 0.8;
+      for (const e of b.entrances) {
+        let best = null, bd = 1e9; for (const r of ROADS) { const cx = Math.max(r.x0 - SIDEWALK, Math.min(r.x1 + SIDEWALK, e.x)), cz = Math.max(r.z0 - SIDEWALK, Math.min(r.z1 + SIDEWALK, e.z)); const d = Math.hypot(cx - e.x, cz - e.z); if (d < bd) { bd = d; best = [cx, cz]; } }
+        if (best && bd < 90) { px.beginPath(); px.moveTo(...toPx(e.x, e.z)); const mx = (e.x + best[0]) / 2 + (R() - .5) * 8, mz = (e.z + best[1]) / 2 + (R() - .5) * 8; px.quadraticCurveTo(...toPx(mx, mz), ...toPx(best[0], best[1])); px.stroke(); }
+      }
+      if (b.entrances.length > 1) { px.lineWidth = 3 * k; px.globalAlpha = 0.6; px.beginPath(); px.moveTo(...toPx(b.entrances[0].x, b.entrances[0].z)); for (const e of b.entrances) px.lineTo(...toPx(e.x, e.z)); px.stroke(); }
     }
-    for (const [x, z, r] of patches) {
-      const pg = new THREE.CircleGeometry(r, 20); pg.rotateX(-Math.PI / 2);
-      const pos = pg.attributes.position; for (let i = 1; i < pos.count; i++) { const k = 0.7 + this.rng() * 0.45; pos.setX(i, pos.getX(i) * k); pos.setZ(i, pos.getZ(i) * k); }
-      const pm = new THREE.Mesh(pg, rub); pm.position.set(x, 0.015, z); pm.receiveShadow = true; this.scene.add(pm);
+    // mud: craters and low spots
+    const mud = layer(), mx = mud.getContext('2d'); mx.filter = `blur(${2 * k}px)`; mx.fillStyle = '#fff';
+    const cm = this.craterMesh, M = new THREE.Matrix4(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
+    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); mx.globalAlpha = 0.45; mx.beginPath(); mx.arc(...toPx(v.x, v.z), sc.x * 0.6 * k, 0, 7); mx.fill(); rx.globalAlpha = 0.3; rx.beginPath(); rx.arc(...toPx(v.x, v.z), sc.x * 0.9 * k, 0, 7); rx.fill(); }
+    const g1 = rx.getImageData(0, 0, N, N).data, g2 = px.getImageData(0, 0, N, N).data, g3 = mx.getImageData(0, 0, N, N).data;
+    const out = new Uint8Array(N * N * 4);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = i / k - o, z = j / k - o, p = (j * N + i) * 4;
+      const n1 = this.noise2(x / 18, z / 18, 1) * 0.65 + this.noise2(x / 5, z / 5, 2) * 0.35;
+      const n2 = this.noise2(x / 30, z / 30, 3);
+      const rubble = g1[p] / 255, path = g2[p] / 255;
+      let grass = Math.min(1, Math.max(0, (n1 - 0.24) * 2.3)) * (1 - rubble * 0.85) * (1 - path * 0.9);
+      const mudv = Math.max(g3[p] / 255 * (0.5 + this.noise2(x / 2, z / 2, 5) * 0.7), Math.max(0, (n2 - 0.74) * 2.5) * 0.5);
+      out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = path * 255;
     }
+    const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
+    this.groundUniforms.tSplat.value = t; this.splatData = out; this.splatN = N;
+    this.grassClumps();
+  }
+  // scattered dry-grass / weed clumps (crossed quads, alpha-tested) where the splat says grass
+  grassClumps() {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128; const x = c.getContext('2d');
+    for (let i = 0; i < 70; i++) { const bx = 64 + (Math.random() - .5) * 90, h = 50 + Math.random() * 70, lean = (Math.random() - .5) * 40; const g = 90 + Math.random() * 70; x.strokeStyle = `rgb(${g + 30},${g + 20},${g * 0.55})`; x.lineWidth = 1.5 + Math.random() * 2; x.beginPath(); x.moveTo(bx, 128); x.quadraticCurveTo(bx + lean * 0.3, 128 - h * 0.6, bx + lean, 128 - h); x.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1, color: 0xd8d2b8 });
+    const q1 = new THREE.PlaneGeometry(1, 1); q1.translate(0, 0.5, 0); const q2 = q1.clone(); q2.rotateY(Math.PI / 2);
+    const geo = mergeGeometries([q1, q2]); const tpl = new THREE.Mesh(geo, mat); tpl.castShadow = false;
+    const N = this.splatN, k = N / MAP_SIZE, o = MAP_SIZE / 2, mats = [];
+    for (let i = 0; i < 9000; i++) {
+      const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
+      const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; if (this.splatData[si] < 140) continue;
+      if (onRoad(px, pz, SIDEWALK + 0.5)) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
+      const s = 0.45 + this.rng() * 0.6; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.4, s, s * 1.4)));
+    }
+    instance(this.scene, tpl, mats, { shadows: false });
   }
   roads() {
     const asphalt = this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -210,10 +284,12 @@ export class City {
   }
   rubbleAndDebris() {
     const T = this.rubbleTemplates(), place = T.map(() => []);
-    const add = (x, z, s, ry) => {
+    const add = (x, z, s, ry, own = null) => {
       if (onRoad(x, z, -1) && this.rng() < 0.5) s *= 0.6;
-      const k = Math.floor(this.rng() * T.length); place[k].push(trs(x, 0, z, ry, s));
-      const r = T[k].userData.r * s;
+      const k0 = Math.floor(this.rng() * T.length), rr = T[k0].userData.r * s;
+      if (this.buildings.some(b => b !== own && (() => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + rr * 0.7 && Math.abs(lz) < b.D / 2 + rr * 0.7; })())) return;
+      const k = k0; place[k].push(trs(x, 0, z, ry, s));
+      const r = rr;
       this.nav.circle(x, z, r * 0.65, r * s > 2.5 ? 7 : 4, true);
     };
     for (const b of this.buildings) {
@@ -222,7 +298,8 @@ export class City {
         if (p.state < 2 || p.floor > 3) continue;
         if (p.state === 2 && this.rng() < 0.6) continue;
         const c = b.panelCenter(p), o = b.outward(p);
-        add(c.x + o.x * (1.5 + this.rng() * 2), c.z + o.z * (1.5 + this.rng() * 2), 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), this.rng() * 6.28);
+        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = T[0].userData.r * sc * 0.85 + 0.6 + this.rng() * 1.5;
+        add(c.x + o.x * off, c.z + o.z * off, sc, this.rng() * 6.28, b);
       }
       if (b.pancaked) for (let c = b.pancaked[0]; c <= b.pancaked[1]; c++) for (let k = 0; k < 3; k++) {
         const w = b.toWorld(-b.L / 2 + (c + 0.5) * this.assets.kit.W + (this.rng() - .5) * 3, 0, (this.rng() - .5) * b.D * 1.4);
@@ -345,12 +422,17 @@ export class City {
       if (Math.abs(x) > BOUNDS || Math.abs(z) > BOUNDS) continue;
       put('car', x, z, (horiz ? Math.PI / 2 : 0) + (this.rng() - .5) * 0.5 + (this.rng() < .5 ? Math.PI : 0), 1, 1, BLOCK);
     }
+    const free = (x, z, r) => !onRoad(x, z, r) && Math.abs(x) < BOUNDS - r && Math.abs(z) < BOUNDS - r && !this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + r && Math.abs(lz) < b.D / 2 + r; }) && [0, 1, 2, 3, 4, 5, 6, 7].every(a => { const i = this.nav.idx(x + Math.cos(a * 0.785) * r, z + Math.sin(a * 0.785) * r); return i >= 0 && this.nav.cost[i] < 5; });
+    // courtyard = the entrance side of a block, ~14 m out
+    const yards = [];
+    for (const b of this.buildings) { if (b.kind === 'school' || b.kind === 'shop' || b.kind === 'tower') continue; for (const f of [-0.25, 0.25]) { const p = b.toWorld(f * b.L, 0, -b.D / 2 - 15); yards.push([p.x, p.z, b.rot]); } }
+    const takeYard = (r) => { for (let i = 0; i < 40 && yards.length; i++) { const j = Math.floor(this.rng() * yards.length), [x, z, rot] = yards[j]; yards.splice(j, 1); if (free(x, z, r)) return [x, z, rot]; } return null; };
     put('bus', 72, 3, 0.25, 1, 1, BLOCK);
-    put('busstop', 100, -13.5, Math.PI, 1, 1, BLOCK);
-    put('kiosk', 104, 16, Math.PI * 0.95, 1, 1, BLOCK); put('kiosk', 122, 16.5, Math.PI, 1, 1, BLOCK);
+    if (free(100, -16.5, 1)) put('busstop', 100, -16.5, Math.PI, 1, 1, BLOCK);
+    for (const [x, z, r] of [[104, 17.5, Math.PI * 0.95], [126, 17.5, Math.PI], [-60, 17.5, Math.PI]]) if (free(x, z, 2)) put('kiosk', x, z, r, 1, 1, BLOCK);
     // garage rows in courtyards
-    for (const [x, z, ry] of [[-120, -95, 0], [-10, -120, 0], [120, -128, 0], [-120, 85, 0], [60, 125, 0], [-60, 125, 0]]) for (let i = 0; i < 4; i++) put('garage', x + i * 3.6, z, ry, 1, 1, BLOCK);
-    for (const [x, z] of [[-150, -100], [-30, 85], [160, 120], [10, -100]]) put('playground', x, z, this.rng() * 3, 1, 1, 6);
+    for (let n = 0; n < 6; n++) { const y = takeYard(9); if (!y) break; const [x, z, rot] = y; const dx = Math.cos(rot) * 3.6, dz = -Math.sin(rot) * 3.6; for (let i = 0; i < 4; i++) put('garage', x + dx * (i - 1.5), z + dz * (i - 1.5), rot, 1, 1, BLOCK); }
+    for (let n = 0; n < 7; n++) { const y = takeYard(6); if (!y) break; put('playground', y[0], y[1], y[2] + this.rng() * 0.4, 1, 1, 6); }
     for (let i = 0; i < 45; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) put('tyre', x, z, this.rng() * 6, 1, 0); }
     for (const v of Object.values(placeList)) instance(this.scene, v.t, v.m);
     this.put = put; this._pl = placeList;
@@ -402,7 +484,7 @@ export class City {
     for (const [x, z, r] of [[122, 46, Math.PI], [134, 46, Math.PI], [146, 46, Math.PI], [128, 56, 0]]) put('pav', x, z, r);
     for (const [x, z, r] of [[60, 16, Math.PI], [-120, -17, 0], [170, 17, Math.PI]]) put('bill', x, z, r, 6);
     // concrete ПО-2 fences around the school yard and garage rows
-    if (T.po2) { for (let x = -96; x < -36; x += 4.1) put('po2', x, 82, 0, 7); for (let z = 30; z < 82; z += 4.1) put('po2', -98, z, Math.PI / 2, 7); }
+    if (T.po2) { for (let x = -96; x < -36; x += 4.0) put('po2', x, 84, 0, 7); }
     for (const [x, z] of [[-50, 78], [-20, 78]]) put('goal', x, z, Math.PI / 2, 6);
     // street furniture
     for (let x = -E + 20; x < E - 20; x += 30) { put('lamp', x + 15, -16.6, 0, 0); put('lamp', x, 16.6, Math.PI, 0); }
@@ -442,13 +524,13 @@ export class City {
   }
   craters() {
     const T = this.propT?.crater;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x2c2722, roughness: 1, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2c2722, roughness: 1, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     const tex = craterTexture(); mat.map = tex; mat.color.set(0xffffff);
     const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
     this.craterMesh = new THREE.InstancedMesh(g, mat, 400); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); this.addCrater(x, z, 2 + this.rng() * 4); }
-    if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
+    if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
   }
   addCrater(x, z, size) {
     if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size]); return; }
@@ -568,9 +650,13 @@ function catenary(a, b, sag) {
 }
 function craterTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
-  const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0, 'rgba(18,15,12,0.95)'); g.addColorStop(0.35, 'rgba(40,34,28,0.9)'); g.addColorStop(0.55, 'rgba(70,62,52,0.75)'); g.addColorStop(0.8, 'rgba(60,54,46,0.35)'); g.addColorStop(1, 'rgba(60,54,46,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 160; i++) { const a = Math.random() * 6.28, r = 40 + Math.random() * 85; x.fillStyle = `rgba(${30 + Math.random() * 50},${26 + Math.random() * 40},${22 + Math.random() * 30},${Math.random() * 0.6})`; x.beginPath(); x.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 1 + Math.random() * 4, 0, 7); x.fill(); }
+  // ejecta speckle on the rim first, then the scorched bowl
+  for (let i = 0; i < 900; i++) { const a = Math.random() * 6.28, r = 45 + Math.pow(Math.random(), 0.6) * 80; const v = 40 + Math.random() * 60; x.fillStyle = `rgba(${v + 15},${v + 8},${v},${0.15 + Math.random() * 0.45})`; x.beginPath(); x.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 0.6 + Math.random() * 2.6, 0, 7); x.fill(); }
+  const g = x.createRadialGradient(128, 128, 0, 128, 128, 70);
+  g.addColorStop(0, 'rgba(14,12,10,0.85)'); g.addColorStop(0.5, 'rgba(32,27,22,0.75)'); g.addColorStop(0.85, 'rgba(58,50,42,0.35)'); g.addColorStop(1, 'rgba(58,50,42,0)');
+  x.fillStyle = g; x.beginPath();
+  for (let i = 0; i <= 40; i++) { const a = i / 40 * 6.28, r = 62 + (Math.random() - .5) * 18; i ? x.lineTo(128 + Math.cos(a) * r, 128 + Math.sin(a) * r) : x.moveTo(128 + Math.cos(a) * r, 128 + Math.sin(a) * r); }
+  x.fill();
+  for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28; x.strokeStyle = `rgba(20,17,14,${0.15 + Math.random() * 0.25})`; x.lineWidth = 1 + Math.random() * 3; x.beginPath(); x.moveTo(128 + Math.cos(a) * 50, 128 + Math.sin(a) * 50); x.lineTo(128 + Math.cos(a) * (80 + Math.random() * 40), 128 + Math.sin(a) * (80 + Math.random() * 40)); x.stroke(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }

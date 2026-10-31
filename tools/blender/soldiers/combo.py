@@ -13,7 +13,6 @@ import bl
 
 S = 2048
 TILE_MATS = {'emr_gear', 'multicam_gear', 'coyote_webbing', 'mm14_gear', 'ranger_gear'}
-GEAR_RECT = (0, 1024, 1024, 1024)
 
 
 def srgb2lin(c):
@@ -68,25 +67,197 @@ class Recorder:
         return self.W.g.g['materials'][mi]['name']
 
 
-def _layout(place):
-    """rects for directly-placed textures (uniforms, heads, hands, eye)"""
-    rects = {}
-    uni = sorted(n for n in place if 'camo' in n)
-    if len(uni) == 1:
-        rects[uni[0]] = (0, 0, 2048, 1024)
-    else:
-        for k, n in enumerate(uni[:2]):
-            rects[n] = (k * 1024, 0, 1024, 1024)
-    for n, r in zip(sorted(n for n in place if n.startswith('skin_')), [(1024, 1024, 512, 512), (1536, 1024, 512, 512), (1024, 1536, 512, 512)]):
-        rects[n] = r
-    if 'hands_skin' in place:
-        rects['hands_skin'] = (1536, 1536, 256, 256)
-    if 'eye' in place:
-        rects['eye'] = (1792, 1536, 128, 128)
-    return rects
+PAD = 5          # gutter around every chart (px) - keeps mip levels from bleeding between charts
+SWC = 16         # solid-colour swatch cell size (px)
+PADT = 8         # wrap padding around tiling-camo regions
+TCELL = 2        # tiling-camo region = TCELL x TCELL repeats of the tile
+# tile region size (px) per tiling material: one 0.5 m repeat. 1024 = the per-part material's own resolution
+TILE_PX = {'emr_gear': 640, 'multicam_gear': 640, 'mm14_gear': 640, 'coyote_webbing': 192, 'ranger_gear': 192}
+# texel-density targets (scale relative to each source texture, before the global fit multiplier)
+SRC_SCALE = {'camo': 1.0, 'multicam': 0.8, 'skin_': 0.5, 'hands_skin': 0.7, 'eye': 0.5}
+GEAR_PX_PER_M = 1229.0   # = uniform texel density at 2048^2 (0.81 mm/texel)
 
 
-SW0 = (1536, 1792); SWC = 16   # swatch area origin, cell size
+def _src_scale(m):
+    if 'multicam' in m and 'camo' in m:
+        return SRC_SCALE['multicam']
+    if 'camo' in m:
+        return SRC_SCALE['camo']
+    for k, v in SRC_SCALE.items():
+        if m.startswith(k):
+            return v
+    return 0.5
+
+
+def _uv_islands(uv, tri):
+    """connected components over (uv-split) vertices -> per-vertex label, {label: (min, max)}"""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = len(uv)
+    r = np.r_[tri[:, 0], tri[:, 1], tri[:, 2]]; c = np.r_[tri[:, 1], tri[:, 2], tri[:, 0]]
+    _, lab = connected_components(coo_matrix((np.ones(len(r)), (r, c)), shape=(n, n)), directed=False)
+    used = np.unique(tri)
+    isl = {}
+    for l in np.unique(lab[used]):
+        vs = used[lab[used] == l]
+        isl[int(l)] = (uv[vs].min(0), uv[vs].max(0))
+    return lab, isl
+
+
+def _uv_area(uv, tri):
+    U = uv[tri]; e1 = U[:, 1] - U[:, 0]; e2 = U[:, 2] - U[:, 0]
+    return float(np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]).sum() / 2)
+
+
+def _bilinear_clamp(img, x, y):
+    """bilinear sample at pixel coords (x, y) (texel centres at integers), clamped at the borders"""
+    h, w = img.shape[:2]
+    x = np.clip(x, 0, w - 1); y = np.clip(y, 0, h - 1)
+    x0 = np.floor(x).astype(int); y0 = np.floor(y).astype(int)
+    x1 = np.minimum(x0 + 1, w - 1); y1 = np.minimum(y0 + 1, h - 1)
+    fx = (x - x0)[:, None]; fy = (y - y0)[:, None]
+    return img[y0, x0] * (1 - fx) * (1 - fy) + img[y0, x1] * fx * (1 - fy) + img[y1, x0] * (1 - fx) * fy + img[y1, x1] * fx * fy
+
+
+def _blender_pack(uvs, tris, margin, reserve=None):
+    """pack the UV islands of all (uv, tri) sets together into [0,1]^2 (concave shapes, 90-degree rotations),
+    keeping their relative scale.  reserve=(w, h) px: a fixed block kept free in the bottom-right corner."""
+    import bpy
+    offs = np.cumsum([0] + [len(u) for u in uvs])
+    V = np.concatenate(uvs).astype(np.float64); T = np.concatenate([t + o for t, o in zip(tris, offs[:-1])]).astype(np.int64)
+    nres = 0
+    if reserve is not None:
+        # a dummy island (rectangle) that is scaled with everything; replaced by the fixed swatch block afterwards
+        w, h = reserve[0] / S, reserve[1] / S
+        base_i = len(V)
+        V = np.concatenate([V, np.array([[0, 0], [w, 0], [w, h], [0, h]]) * 1.6])
+        T = np.concatenate([T, np.array([[0, 1, 2], [0, 2, 3]]) + base_i]); nres = 4
+    bl.clear()
+    me = bpy.data.meshes.new('pack')
+    me.vertices.add(len(V)); me.vertices.foreach_set('co', np.c_[V, np.zeros(len(V))].astype(np.float32).ravel())
+    me.loops.add(len(T) * 3); me.loops.foreach_set('vertex_index', T.ravel().astype(np.int32))
+    me.polygons.add(len(T)); me.polygons.foreach_set('loop_start', np.arange(0, len(T) * 3, 3, dtype=np.int32))
+    me.polygons.foreach_set('loop_total', np.full(len(T), 3, np.int32))
+    me.update()
+    lay = me.uv_layers.new(name='UVMap'); lay.data.foreach_set('uv', V[T.ravel()].astype(np.float32).ravel())
+    ob = bpy.data.objects.new('pack', me); bpy.context.scene.collection.objects.link(ob)
+    bl.activate(ob)
+    bpy.context.scene.tool_settings.use_uv_select_sync = True
+    bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.pack_islands(udim_source='CLOSEST_UDIM', rotate=True, rotate_method='CARDINAL', scale=True, merge_overlap=False,
+                            margin_method='FRACTION', margin=margin, shape_method='CONCAVE')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    luv = np.zeros(len(T) * 3 * 2, np.float32); me.uv_layers.active.data.foreach_get('uv', luv); luv = luv.reshape(-1, 2)
+    out = np.zeros((len(V), 2)); out[T.ravel()] = luv
+    if nres:
+        # move the reserved dummy so its corner sits in the bottom-right of the atlas (the packer put it somewhere);
+        # simplest robust approach: re-check it is the dummy's space that is free -> we only use its packed position
+        r = out[-4:]
+        out = out[:-4]
+        _blender_pack.reserved = (r.min(0), r.max(0))
+    return [out[o0:o1] for o0, o1 in zip(offs[:-1], offs[1:])]
+
+
+def _clip_poly(poly, axis, k, keep_less):
+    """Sutherland-Hodgman against the line suv[axis] = k. poly: list of attribute vectors; suv at SUV_COL"""
+    out = []
+    n = len(poly)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        da = a[SUV_COL + axis] - k; db = b[SUV_COL + axis] - k
+        ina = da <= 1e-9 if keep_less else da >= -1e-9
+        inb = db <= 1e-9 if keep_less else db >= -1e-9
+        if ina:
+            out.append(a)
+        if ina != inb:
+            t = da / (da - db)
+            out.append(a + (b - a) * t)
+    return out
+
+
+SUV_COL = 0
+
+
+def _split_tiles(gparts, node_idx, tile_idx):
+    """gparts: [(node, mat, prim)] with prim uv = tiling coordinates.  Returns de-indexed-and-rewelded gear mesh whose
+    triangles each lie in one tile cell; 'loc' = position inside the cell (0..1), vmat = tile material index."""
+    rows = []; tris_cell = []; fn = []; fm = []
+    n_in = 0
+    for n, m, p in gparts:
+        col = p['color'] if p.get('color') is not None else np.ones((len(p['pos']), 3))
+        # per connected component: shift by whole tiles (pattern unchanged) so it starts in the first repeat; with a
+        # TCELL x TCELL-repeat region almost every component then fits without being cut
+        suv = np.asarray(p['uv'], np.float64).copy()
+        lab, isl = _uv_islands(p['uv'], p['idx'])
+        for l, (lo, hi) in isl.items():
+            suv[lab == l] -= np.floor(lo)
+        V = np.concatenate([suv / TCELL, p['pos'], p['nrm'], col, p['W']], 1).astype(np.float64)
+        T = p['idx'].reshape(-1, 3); n_in += len(T)
+        U = V[:, :2][T]
+        eps = 1e-7
+        c0 = np.floor(U.min(1) + eps); c1 = np.floor(U.max(1) - eps)
+        simple = np.all(c0 == c1, 1)
+        for t in np.where(simple)[0]:
+            rows.append(V[T[t]]); tris_cell.append(c0[t]); fn.append(node_idx[n]); fm.append(tile_idx[m])
+        for t in np.where(~simple)[0]:
+            pieces = [[V[i] for i in T[t]]]
+            for axis in (0, 1):
+                lo, hi = int(c0[t, axis]), int(c1[t, axis])
+                nxt = []
+                for poly in pieces:
+                    cur = poly
+                    for k in range(lo + 1, hi + 1):
+                        left = _clip_poly(cur, axis, k, True)
+                        if len(left) >= 3:
+                            nxt.append(left)
+                        cur = _clip_poly(cur, axis, k, False)
+                        if len(cur) < 3:
+                            break
+                    if len(cur) >= 3:
+                        nxt.append(cur)
+                pieces = nxt
+            for poly in pieces:
+                P = np.array(poly)
+                cell = np.floor(P[:, :2].mean(0))
+                for j in range(1, len(P) - 1):
+                    rows.append(np.stack([P[0], P[j], P[j + 1]])); tris_cell.append(cell); fn.append(node_idx[n]); fm.append(tile_idx[m])
+    R = np.stack(rows)                     # (nt, 3, cols)
+    cell = np.array(tris_cell)             # (nt, 2)
+    nt = len(R)
+    flat = R.reshape(nt * 3, -1)
+    loc = flat[:, :2] - np.repeat(cell, 3, 0)
+    vmat = np.repeat(np.array(fm), 3)
+    # re-weld identical corners (same attributes, same cell, same material)
+    key = np.concatenate([np.round(flat[:, 2:9], 6), np.round(loc, 6), vmat[:, None]], 1)
+    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    inv = inv.reshape(-1)
+    v = flat[first]
+    nb = v.shape[1] - 11
+    W = np.clip(v[:, 11:], 0, None); W /= np.maximum(W.sum(1, keepdims=True), 1e-9)
+    return dict(pos=v[:, 2:5], nrm=v[:, 5:8], col=v[:, 8:11], W=W, suv=v[:, :2], loc=loc[first], vmat=vmat[first],
+                tri=inv.reshape(-1, 3), nid=np.array(fn), mid=np.array(fm), n_in=n_in)
+
+
+def _uvkey(uv):
+    import hashlib
+    return hashlib.md5(np.ascontiguousarray(uv, np.float32).tobytes()).hexdigest()
+
+
+def _shelf(sizes, W=S, H=S):
+    """shelf packing (tallest first). sizes: [(w, h)] -> [(x, y)] or None"""
+    order = sorted(range(len(sizes)), key=lambda i: (-sizes[i][1], -sizes[i][0]))
+    pos = [None] * len(sizes)
+    x = y = sh = 0
+    for i in order:
+        w, h = sizes[i]
+        if w > W:
+            return None
+        if x + w > W:
+            y += sh; x = 0; sh = 0
+        if y + h > H:
+            return None
+        pos[i] = (x, y); x += w; sh = max(sh, h)
+    return pos
 
 
 def _bilinear(img, u, v):
@@ -123,66 +294,142 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
     for n in used:
         for p in rec.nodes[n]:
             mats.add(rec.mat_name(p['mat']))
-    place = [m for m in mats if m not in TILE_MATS and m != tape_mat and rec.specs[m]['base'] is not None]
-    tile = [m for m in mats if m in TILE_MATS]
+    place = sorted(m for m in mats if m not in TILE_MATS and m != tape_mat and rec.specs[m]['base'] is not None)
+    tile = sorted(m for m in mats if m in TILE_MATS)
     solid = sorted(m for m in mats if m not in TILE_MATS and m != tape_mat and rec.specs[m]['base'] is None)
-    rects = _layout(place)
     base = np.zeros((S, S, 3), np.float32); nrm = np.zeros((S, S, 3), np.float32); nrm[..., 2] = 1.0
     orm = np.zeros((S, S, 3), np.float32); orm[..., 0] = 1.0; orm[..., 1] = 0.9
-    def fill(rect, b, n, rough, metal):
-        x, y, w, h = rect
-        base[y:y + h, x:x + w] = b; nrm[y:y + h, x:x + w] = n; orm[y:y + h, x:x + w, 1] = rough; orm[y:y + h, x:x + w, 2] = metal
-    for m, r in rects.items():
-        sp = rec.specs[m]
-        b = lin2srgb(srgb2lin(_resize(sp['base'], r[2], r[3])) * srgb2lin(sp['color'])[None, None])
-        n = (_resize(sp['nrm'], r[2], r[3]) * 2 - 1) if sp['nrm'] is not None else np.array([0, 0, 1.0])[None, None]
-        fill(r, b, n, sp['rough'], sp['metal'])
-    sw = {}
-    for k, m in enumerate(solid):
-        cx, cy = SW0[0] + (k % 32) * SWC, SW0[1] + (k // 32) * SWC
-        sp = rec.specs[m]
-        fill((cx, cy, SWC, SWC), sp['color'][None, None], np.array([0, 0, 1.0])[None, None], sp['rough'], sp['metal'])
-        sw[m] = ((cx + SWC / 2) / S, (cy + SWC / 2) / S)
-    # ---------------------------------------------------------------- gear charts: re-unwrap + bake tiling camo
-    tp_pos, tp_tri, tp_suv, tp_W, tp_col, tp_nrm, tp_node, tp_mat = [], [], [], [], [], [], [], []
-    off = 0
+    occ = np.zeros((S, S), bool)
+    # ---------------------------------------------------------------- textured charts: UV islands of every textured material
+    uvsets = {}      # (mat, uvkey) -> dict(uv, tri, lab, isl)
+    for n in used:
+        for p in rec.nodes[n]:
+            m = rec.mat_name(p['mat'])
+            if m in place:
+                k = (m, _uvkey(p['uv']))
+                if k not in uvsets:
+                    lab, isl = _uv_islands(p['uv'], p['idx'])
+                    uvsets[k] = dict(uv=p['uv'], tri=p['idx'], lab=lab, isl=isl)
+    # ---------------------------------------------------------------- gear (tiling camo): cut triangles at tile borders
+    # every gear triangle then lies inside one repeat of its tiling texture, so all gear of one material maps into a
+    # single wrap-padded copy of that tile in the atlas -> identical camo at the identical scale, minimal atlas space
+    gparts = []
     tile_idx = {m: i for i, m in enumerate(tile)}
     node_idx = {n: i for i, n in enumerate(used)}
     for n in used:
         for p in rec.nodes[n]:
             m = rec.mat_name(p['mat'])
-            if m not in TILE_MATS:
-                continue
-            tp_pos.append(p['pos']); tp_tri.append(p['idx'] + off); tp_suv.append(p['uv']); tp_W.append(p['W'])
-            tp_col.append(p['color'] if p.get('color') is not None else np.ones((len(p['pos']), 3)))
-            tp_nrm.append(p['nrm']); tp_node.append(np.full(len(p['idx']), node_idx[n])); tp_mat.append(np.full(len(p['idx']), tile_idx[m]))
-            off += len(p['pos'])
+            if m in TILE_MATS:
+                gparts.append((n, m, p))
     gear = None
-    if tp_pos:
-        P = np.concatenate(tp_pos); T = np.concatenate(tp_tri)
-        bl.clear()
-        ob = bl.make_obj('gear_atlas', P, T, attrs={'suv': np.concatenate(tp_suv), 'Wt': np.concatenate(tp_W), 'col': np.concatenate(tp_col),
-                                                      'on': np.concatenate(tp_nrm)},
-                         face_attrs={'nid': np.concatenate(tp_node), 'mid': np.concatenate(tp_mat)})
-        bl.smart_uv(ob, 60, 0.004)
-        mm = bl.extract(ob, attrs=('suv', 'Wt', 'col', 'on'), split_normals=False)
-        me = ob.data
-        nid = np.zeros(len(me.polygons), np.int32); me.attributes['nid'].data.foreach_get('value', nid)
-        mid = np.zeros(len(me.polygons), np.int32); me.attributes['mid'].data.foreach_get('value', mid)
-        gx, gy, gw, gh = GEAR_RECT
-        uvA = np.stack([(gx + mm['uv'][:, 0] * gw) / S, (gy + mm['uv'][:, 1] * gh) / S], 1)
-        gear = dict(pos=mm['pos'], nrm=mm['on'], uv=uvA, tri=mm['tri'], W=mm['Wt'], col=mm['col'], suv=mm['suv'],
-                    nid=nid[mm['poly']], mid=mid[mm['poly']])
-        # rasterise
-        filled = np.zeros((gh, gw), bool)
-        Pt = gear['pos'][gear['tri']]; Ut = gear['suv'][gear['tri']]; At = gear['uv'][gear['tri']] * S - [gx, gy]
-        Ts, Bs, Ns = _tbn(Pt, Ut); Tt, Bt, Nt = _tbn(Pt, gear['uv'][gear['tri']])
-        texs = {m: (_f(rec.specs[m]['base']), _f(rec.specs[m]['nrm']) * 2 - 1 if rec.specs[m]['nrm'] is not None else None,
-                    srgb2lin(rec.specs[m]['color'])) for m in tile}
-        for t in range(len(Pt)):
+    if gparts:
+        gear = _split_tiles(gparts, node_idx, tile_idx)
+        log(f'gear tris {gear["n_in"]} -> {len(gear["tri"])} after tile split')
+    # ---------------------------------------------------------------- pack every chart with Blender's concave packer
+    # pre-pack coordinates = atlas px at density multiplier 1, / S.  Islands may only turn by 90 deg steps.
+    pk_uv, pk_tri, pk_src = [], [], []
+    for key, d in uvsets.items():
+        m = key[0]; K1 = rec.specs[m]['base'].shape[1] * _src_scale(m)
+        pk_uv.append(d['uv'] * K1 / S); pk_tri.append(d['tri']); pk_src.append(('tex', key, K1))
+    quad = lambda w, h: (np.array([[0, 0], [w, 0], [w, h], [0, h]], float) / S, np.array([[0, 1, 2], [0, 2, 3]]))
+    for m in tile:
+        K1 = TILE_PX.get(m, 512) * TCELL
+        u_, t_ = quad(K1 + 2 * PADT, K1 + 2 * PADT)
+        pk_uv.append(u_); pk_tri.append(t_); pk_src.append(('tile', m, K1))
+    nsw = len(solid)
+    if nsw:
+        cols = 8; rows = int(np.ceil(nsw / cols))
+        u_, t_ = quad(cols * SWC + 2 * PAD, rows * SWC + 2 * PAD)
+        pk_uv.append(u_); pk_tri.append(t_); pk_src.append(('swatch', None, None))
+    packed = _blender_pack(pk_uv, pk_tri, margin=2.0 * PAD / S)
+    a_pre = sum(_uv_area(u, t) for u, t in zip(pk_uv, pk_tri)); a_post = sum(_uv_area(u, t) for u, t in zip(packed, pk_tri))
+    mul = float(np.sqrt(a_post / a_pre))
+    log(f'atlas {fac}: density multiplier {mul:.3f} -> uniform texel {0.81 / mul / SRC_SCALE["camo"]:.2f} mm '
+        f'(EMR/MM-14 pixel = {4.5 * mul * SRC_SCALE["camo"] / 0.81:.1f}/{6.0 * mul * SRC_SCALE["camo"] / 0.81:.1f} texels; gear tile '
+        f'{0.5 / (TILE_PX["emr_gear"] * mul) * 1000:.2f} mm/texel)')
+    ROT = [np.array([[1, 0], [0, 1.0]]), np.array([[0, -1], [1, 0.0]]), np.array([[-1, 0], [0, -1.0]]), np.array([[0, 1], [-1, 0.0]])]
+    place_xf = {}     # (mat, uvkey) -> {isl: (K, R, T)}
+    tile_rect = {}    # mat -> (x, y, K)  (content origin inside the wrap padding, tile size)
+    sw = {}
+    filled = np.zeros((S, S), bool)
+    for (kind, key, K1), u_pre, newuv, tri in zip(pk_src, pk_uv, packed, pk_tri):
+        if kind == 'tile':
+            lo_ = np.floor(newuv.min(0) * S).astype(int)
+            K = int(np.floor((newuv.max(0) - newuv.min(0)).min() * S)) - 2 * PADT
+            tile_rect[key] = (lo_[0] + PADT, lo_[1] + PADT, K)
+            continue
+        if kind == 'swatch':
+            lo_ = newuv.min(0) * S + PAD; hi_ = newuv.max(0) * S - PAD
+            bw, bh = hi_ - lo_
+            cols = int(np.ceil(np.sqrt(nsw * bw / max(bh, 1)))); rows = int(np.ceil(nsw / cols))
+            cell = int(min(bw / cols, bh / rows))
+            for k, m in enumerate(solid):
+                cx, cy = int(lo_[0]) + (k % cols) * cell, int(lo_[1]) + (k // cols) * cell
+                sp = rec.specs[m]
+                base[cy:cy + cell, cx:cx + cell] = sp['color'][None, None]
+                orm[cy:cy + cell, cx:cx + cell, 1] = sp['rough']; orm[cy:cy + cell, cx:cx + cell, 2] = sp['metal']
+                filled[cy:cy + cell, cx:cx + cell] = True
+                sw[m] = ((cx + cell / 2) / S, (cy + cell / 2) / S)
+            continue
+        d = uvsets[key]; m = key[0]
+        K = int(round(K1 * mul))
+        A = d['uv'] * K; B = newuv * S
+        xf = {}
+        for l in d['isl']:
+            vs = d['lab'] == l
+            Al, Bl = A[vs], B[vs]
+            best = None
+            for ri, Rm in enumerate(ROT):
+                RA = Al @ Rm.T
+                Tt = (Bl - RA).mean(0)
+                e = np.abs(Bl - RA - Tt).max()
+                if best is None or e < best[0]:
+                    best = (e, ri, Tt)
+            e, ri, Tt = best
+            xf[l] = (K, ROT[ri], np.round(Tt))
+        place_xf[key] = xf
+        uvA = np.zeros_like(d['uv'], dtype=np.float64)
+        for l, (K_, Rm, Tt) in xf.items():
+            vs = d['lab'] == l
+            uvA[vs] = ((d['uv'][vs] * K_) @ Rm.T + Tt) / S
+        d['uvA'] = uvA; d['K'] = K
+    # ---------------------------------------------------------------- tile regions (wrap padded)
+    for m, (x, y, K) in tile_rect.items():
+        sp = rec.specs[m]
+        kt = K // TCELL; K = kt * TCELL; tile_rect[m] = (x, y, K)
+        b = lin2srgb(srgb2lin(_resize(sp['base'], kt, kt)) * srgb2lin(sp['color'])[None, None])
+        b = np.pad(np.tile(b, (TCELL, TCELL, 1)), ((PADT, PADT), (PADT, PADT), (0, 0)), mode='wrap')
+        base[y - PADT:y + K + PADT, x - PADT:x + K + PADT] = b
+        if sp['nrm'] is not None:
+            n_ = np.pad(np.tile(_resize(sp['nrm'], kt, kt) * 2 - 1, (TCELL, TCELL, 1)), ((PADT, PADT), (PADT, PADT), (0, 0)), mode='wrap')
+            nrm[y - PADT:y + K + PADT, x - PADT:x + K + PADT] = n_
+        orm[y - PADT:y + K + PADT, x - PADT:x + K + PADT, 1] = sp['rough']
+        orm[y - PADT:y + K + PADT, x - PADT:x + K + PADT, 2] = sp['metal']
+        filled[y - PADT:y + K + PADT, x - PADT:x + K + PADT] = True
+    if gear is not None:
+        uvA = np.zeros((len(gear['pos']), 2))
+        for m, i in tile_idx.items():
+            x, y, K = tile_rect[m]
+            vs = gear['vmat'] == i
+            uvA[vs, 0] = (x + np.clip(gear['loc'][vs, 0], 0, 1) * K) / S
+            uvA[vs, 1] = (y + np.clip(gear['loc'][vs, 1], 0, 1) * K) / S
+        gear['uv'] = uvA
+    # ---------------------------------------------------------------- rasterise the texture islands into the atlas
+    pres = {}
+    def prescaled(m, K):
+        if (m, K) not in pres:
+            sp = rec.specs[m]
+            b = lin2srgb(srgb2lin(_resize(sp['base'], K, K)) * srgb2lin(sp['color'])[None, None])
+            n_ = (_resize(sp['nrm'], K, K) * 2 - 1) if sp['nrm'] is not None else None
+            pres[(m, K)] = (b, n_)
+        return pres[(m, K)]
+
+    def raster(At, emit):
+        """At: (nt,3,2) atlas px coords; emit(t, bary (n,3), px (n,2))"""
+        for t in range(len(At)):
             a = At[t]
             x0, y0 = np.floor(a.min(0) - 1).astype(int); x1, y1 = np.ceil(a.max(0) + 1).astype(int)
-            x0 = max(x0, 0); y0 = max(y0, 0); x1 = min(x1, gw - 1); y1 = min(y1, gh - 1)
+            x0 = max(x0, 0); y0 = max(y0, 0); x1 = min(x1, S - 1); y1 = min(y1, S - 1)
             if x1 < x0 or y1 < y0:
                 continue
             xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
@@ -194,39 +441,42 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
             l1 = (v2[:, 0] * v1[1] - v1[0] * v2[:, 1]) / den
             l2 = (v0[0] * v2[:, 1] - v2[:, 0] * v0[1]) / den
             l0 = 1 - l1 - l2
-            eps = 0.6 / max(np.sqrt(abs(den)), 1.0)
+            eps = 0.75 / max(np.sqrt(abs(den)), 1.0)
             ins = (l0 >= -eps) & (l1 >= -eps) & (l2 >= -eps)
             if not ins.any():
                 continue
-            L = np.stack([l0, l1, l2], 1)[ins]
-            suv = L @ Ut[t]
-            m = tile[gear['mid'][t]]
-            alb, nm, fac_lin = texs[m]
-            c = lin2srgb(srgb2lin(_bilinear(alb, suv[:, 0], suv[:, 1])) * fac_lin[None])
-            px = (q[ins] - 0.5).astype(int)
-            base[gy + px[:, 1], gx + px[:, 0]] = c
-            if nm is not None:
-                ns = _bilinear(nm, suv[:, 0], suv[:, 1])
-                no = ns[:, :1] * Ts[t] + ns[:, 1:2] * Bs[t] + ns[:, 2:3] * Ns[t]
-                nt = np.stack([no @ Tt[t], no @ Bt[t], no @ Nt[t]], 1)
-                nt /= np.maximum(np.linalg.norm(nt, axis=1, keepdims=True), 1e-9)
-                nrm[gy + px[:, 1], gx + px[:, 0]] = nt
-            orm[gy + px[:, 1], gx + px[:, 0], 1] = rec.specs[m]['rough']
-            orm[gy + px[:, 1], gx + px[:, 0], 2] = rec.specs[m]['metal']
+            emit(t, np.stack([l0, l1, l2], 1)[ins], (q[ins] - 0.5).astype(int))
+
+    for key, d in uvsets.items():
+        m = key[0]; sp = rec.specs[m]
+        b, n_ = prescaled(m, d['K'])
+        tri = d['tri']; Sx = d['uv'][tri] * d['K']; At = d['uvA'][tri] * S
+        xfR = {l: v[1] for l, v in place_xf[key].items()}
+        tlab = d['lab'][tri[:, 0]]
+        def emit(t, L, px, Sx=Sx, b=b, n_=n_, sp=sp, xfR=xfR, tlab=tlab):
+            sx = L @ Sx[t]
+            base[px[:, 1], px[:, 0]] = _bilinear_clamp(b, sx[:, 0] - 0.5, sx[:, 1] - 0.5)
+            if n_ is not None:
+                ns = _bilinear_clamp(n_, sx[:, 0] - 0.5, sx[:, 1] - 0.5)
+                # island turned by a multiple of 90 deg: turn the tangent-space xy with it (+x = +u, +y = -v)
+                Rm = xfR[tlab[t]]
+                xy = np.stack([ns[:, 0], -ns[:, 1]], 1) @ Rm.T
+                nrm[px[:, 1], px[:, 0]] = np.stack([xy[:, 0], -xy[:, 1], ns[:, 2]], 1)
+            orm[px[:, 1], px[:, 0], 1] = sp['rough']; orm[px[:, 1], px[:, 0], 2] = sp['metal']
             filled[px[:, 1], px[:, 0]] = True
-        # dilate charts into the gutters
-        sub_b = base[gy:gy + gh, gx:gx + gw]; sub_n = nrm[gy:gy + gh, gx:gx + gw]; sub_o = orm[gy:gy + gh, gx:gx + gw]
-        f = filled.copy()
-        for _ in range(6):
-            nf = f.copy()
-            for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                sf = np.roll(f, (dy, dx), (0, 1))
-                take = sf & ~nf
-                for arr in (sub_b, sub_n, sub_o):
-                    arr[take] = np.roll(arr, (dy, dx), (0, 1))[take]
-                nf |= take
-            f = nf
-        log('gear atlas tris', len(gear['tri']), 'fill', round(float(filled.mean()), 3))
+        raster(At, emit)
+    # dilate all charts into their gutters (edge texels repeated) so mip levels do not bleed
+    f = filled.copy()
+    for _ in range(PAD + 3):
+        nf = f.copy()
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            sf = np.roll(f, (dy, dx), (0, 1))
+            take = sf & ~nf
+            for arr in (base, nrm, orm):
+                arr[take] = np.roll(arr, (dy, dx), (0, 1))[take]
+            nf |= take
+        f = nf
+    log('atlas fill', round(float(filled.mean()), 3), 'with gutters', round(float(f.mean()), 3))
     # ---------------------------------------------------------------- atlas material
     nrm8 = ((np.clip(nrm, -1, 1) * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8)
     am = g.material(f'soldier_atlas_{fac}', color=(1, 1, 1, 1), roughness=1.0, metallic=1.0,
@@ -258,10 +508,8 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, log=print):
                     mk = bal_masks.get(bal[0][-1])
                     if mk is not None and len(mk) == len(idx):
                         idx = idx[~mk]
-                if m in rects:
-                    x, y, w, h = rects[m]
-                    uv = np.clip(p['uv'], 0.5 / w, 1 - 0.5 / w)
-                    uv = np.stack([(x + uv[:, 0] * w) / S, (y + uv[:, 1] * h) / S], 1)
+                if m in place:
+                    uv = uvsets[(m, _uvkey(p['uv']))]['uvA']
                 else:
                     uv = np.tile(np.array(sw[m])[None], (len(pos), 1))
                 Ps.append(pos); Ns.append(p['nrm']); Us.append(uv); Is.append(idx + o1); Ws.append(p['W']); Cs.append(col); o1 += len(pos)

@@ -153,11 +153,13 @@ def build_all(rig, R, only=None):
             out['fire_stand'] = to_clip('fire_stand', rig, gqf2, rootf, False, notes='one shot recoil cycle (0.4 s); loop for auto fire, muzzle flash at t=0')
     # ---------------- locomotion
     if want('walk_rifle'):
-        gq, root, sp, err, cyc = loco(rig, '16_15', 0.3, 3.6, 30, 40, 'patrol', lean=7)
-        out['walk_rifle'] = to_clip('walk_rifle', rig, gq, root, True, sp, notes=f'CMU 16_15 cycle {cyc}; ik err {err}')
+        gq, root, sp, err, cyc = loco(rig, '07_12', 0.0, None, 26, 40, 'patrol', lean=8)
+        out['walk_rifle'] = to_clip('walk_rifle', rig, gq, root, True, sp, notes=f'tactical brisk walk: CMU 07_12 (brisk walk, ~2 m/s) cycle {cyc}; rifle at patrol; ik err {err}')
     if want('run_rifle'):
-        gq, root, sp, err, cyc = loco(rig, '16_35', 0.0, 1.35, 18, 26, 'port', lean=12)
-        out['run_rifle'] = to_clip('run_rifle', rig, gq, root, True, sp, notes=f'CMU 16_35 cycle {cyc}; ik err {err}')
+        gq, root, sp, err, cyc = loco(rig, '09_11', 0.0, None, 18, 24, 'port', lean=17)
+        out['run_rifle'] = to_clip('run_rifle', rig, gq, root, True, sp,
+                                   notes=f'combat sprint: CMU 09_11 (fast run) cycle {cyc}, +17 deg forward lean, head level, rifle at port across the chest; '
+                                         f'reads well time-scaled to ~5 m/s; ik err {err}')
     if want('crouch_walk'):
         gq, root, sp, err, cyc = loco(rig, '136_09', 2.0, 8.5, 30, 60, 'low_ready', lean=10)
         out['crouch_walk'] = to_clip('crouch_walk', rig, gq, root, True, sp, notes=f'CMU 136_09 walk crouched cycle {cyc}; ik err {err}')
@@ -250,22 +252,29 @@ def build_all(rig, R, only=None):
             out['prone_idle'] = to_clip('prone_idle', rig, gq2, root, True, notes=f'prone, rifle held in front; ik err {err}')
         if want('prone_crawl'):
             out['prone_crawl'] = prone_crawl(rig, pq, pr)
+    import clips_extra as CX
     if want('wounded_crawl'):
         pq, pr = prone(rig)
-        out['wounded_crawl'] = prone_crawl(rig, pq, pr, wounded=True)
+        out['wounded_crawl'] = CX.wounded_crawl(rig, pq, pr)
     if want('wounded_ground'):
-        out['wounded_ground'] = wounded_ground(rig)
+        out['wounded_ground'] = CX.wounded_ground(rig)
+    if want('wounded_sit'):
+        out['wounded_sit'] = CX.wounded_sit(rig)
+    if want('treat_wounded'):
+        kq, kr, kfeet = kneel(rig, 1)
+        out['treat_wounded'] = CX.treat_wounded(rig, kq, kr, kfeet, kneel_legs)
     if want('hit_react'):
         out['hit_react'] = hit_react(rig)
     if want('death_crumple'):
-        out['death_crumple'] = death_crumple(rig)
+        import clips_extra as CX
+        out['death_crumple'] = CX.death_crumple(rig, stance, plant_feet)
     if want('death_front'):
         out['death_front'] = death_front_authored(rig)
     if want('death_back'):
         out['death_back'] = mocap_death(rig, 'death_back', '90_18', 0.35, 3.2, carry_until=0.15)
     if want('throw_grenade'):
         out['throw_grenade'] = throw(rig)
-    if want('drag_wounded'):
+    if want('drag_wounded') or want('being_dragged'):
         gq, root = C.mocap(rig, '81_08', 6.0, 11.4)
         gq, root = C.face_forward(rig, gq, root)
         gq, root = C.rotate_y(gq, root, np.pi)  # walking backwards: face the body, travel toward -Z
@@ -274,11 +283,25 @@ def build_all(rig, R, only=None):
         gq, root, stride = C.make_loop(gq, root, a, p)
         sp = float(np.hypot(stride[0], stride[2]) / (p / FPS))
         root = C.strip_root(root)
-        lq = rig.local(gq)
-        for side in ('Left', 'Right'):
-            rig.finger_curl(lq, side, 70, 80, 30)
-        out['drag_wounded'] = to_clip('drag_wounded', rig, rig.global_from_local(lq), root, True, -sp,
-                                      notes=f'CMU 81_08 drag heavy object (walking backwards, hands gripping); rifle slung on back; cycle {(a, p)}')
+        lq, root = CX.drag_wounded(rig, gq, root, sp)
+        dur_d = (len(lq) - 1) / FPS
+        if want('drag_wounded'):
+            out['drag_wounded'] = to_clip('drag_wounded', rig, rig.global_from_local(lq), root, True, -sp,
+                                          notes=f'CMU 81_08 legs (walking backwards), bent over, both hands on the casualty drag handle at '
+                                                f'{np.round(CX.DRAG["handle_d"], 3).tolist()} (own root frame); casualty root {CX.DRAG["gap"]} m ahead (+Z) '
+                                                f'playing being_dragged; rifle slung on back; cycle {(a, p)}')
+        if want('being_dragged'):
+            out['being_dragged'] = CX.being_dragged(rig, dur_d)
+    # ---------------- new / reworked clips (clips_extra.py)
+    import clips_extra as CX
+    out.update(CX.launcher_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs))
+    out.update(CX.ride_clips(rig, lm, want))
+    if want('throw_grenade_window'):
+        out['throw_grenade_window'] = CX.throw_grenade_window(rig, stance, plant_feet)
+    if want('cqb_stack'):
+        out['cqb_stack'] = CX.cqb_stack(rig, stance, plant_feet)
+    if want('dismount_jump'):
+        out['dismount_jump'] = CX.dismount_jump(rig, lm)
     return out
 
 

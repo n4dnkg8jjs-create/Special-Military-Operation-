@@ -386,7 +386,7 @@ export class Combat {
       if (p.state >= 2) { g.fx.dustCloud(c, 3, 2, 8); if (g.camDist(c) < 160 && Math.random() < 0.5) g.sfx('glass_break', c); }
       if (p.state === 3 || p.gone) {
         collapsed++;
-        const r = g.city.spawnRubble(c.x + o.x * 2.2, c.z + o.z * 2.2, 0.55 + Math.random() * 0.35);
+        const r = g.city.spawnRubble(c.x + o.x * 3.2, c.z + o.z * 3.2, 0.55 + Math.random() * 0.35);
         g.fx.dustCloud(c.clone().setY(Math.max(1, c.y - 2)), 6, c.y, 18);
         // occupants of that panel fall / are hurt
         for (const sl of b.slots) if (sl.panel === p && sl.occupant) this.hitSoldier(sl.occupant, { dmg: [50, 140], type: 'blast' }, c, true);

@@ -25,6 +25,7 @@ export class RTSCamera {
   lookAt(x, z) { this.tFocus.set(x, 0, z); }
   addShake(a) { this.shake = Math.min(1.2, this.shake + a); }
   update(dt) {
+    dt = Math.max(0, Math.min(0.1, dt || 0));
     const k = this.keys, sp = (k.has('ShiftLeft') ? 2.2 : 1) * (40 + this.dist * 0.9) * dt;
     const fwd = new THREE.Vector3(-Math.sin(this.tYaw), 0, -Math.cos(this.tYaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);

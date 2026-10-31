@@ -382,7 +382,7 @@ def backpack(env, mats, fac):
     out = []
     th = np.pi
     y = 1.27
-    p = env.point(y, th, 0.004 + 0.022 + 0.05)  # over back plate + hydration
+    p = env.point(y, th, 0.004 + 0.022 + 0.01)  # straight over the back plate (a hydration bladder, if shown, sits inside)
     n = env.normal(y, th)
     up = np.array([0, 1.0, 0]); side = np.cross(up, n)
     M = PO.mat4(p, side, up, n)

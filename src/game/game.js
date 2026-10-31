@@ -77,7 +77,7 @@ export class Game {
     const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
     const pf = this.playerFaction, B = this.city.buildings;
     // --- player: motorized rifle company riding on armour at the southern edge
-    const lineup = [[-140, 186, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]];
+    const lineup = [[-112, 188, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'btr', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null]];
     this.playerUnits = [];
     let bn = 1, tn = 1;
     for (const [x, z, kind, sqName] of lineup) {

@@ -53,8 +53,13 @@
    "UA helmet_B": "MICH/ACH-style mid cut with MultiCam cover and goggles"
   },
   "tape_bands": "Identification tape wrapped twice around the upper arms (~50 mm wide, ~120 mm below the shoulder joint) and around the thighs; RU white (alt red), UA yellow. Separate meshes using material `tape` (extras.recolourable) so the game can recolour them.",
+  "assault_kit": {
+   "RU": "6B45 in assault configuration: shoulder/upper-arm protectors, groin protector, side plates, neck collar; 6B47 with NVG mount + headset or Altyn-style heavy visorless helmet; balaclavas on some; grenade pouches + 6Sh117 assault pouches, IFAK, dump pouch; knee + elbow pads, assault pack with radio, gloves",
+   "UA": "heavier plate carrier with shoulder & groin protection and side plates; FAST high-cut with NVG shroud, counterweight pouch and headset (or MICH + goggles); grenade pouches, radio, IFAK, tourniquet; elbow/knee pads, gloves, MultiCam or MM-14"
+  },
   "weapons": {
    "ak74m": "AK-74M 943 mm, black polymer furniture, side-folding solid stock, 5.45 mm 30-rd curved mag (separate `magazine` node), two-chamber muzzle brake",
+   "grenades": "F-1 (ribbed 55 mm cast body) and RGD-5 (smooth 58 mm egg), both with UZRGM fuze, spoon and pull ring",
    "pkm": "PKM 1190 mm, skeleton-style stock, 100-rd box, folded bipod, carry handle",
    "rpg7": "RPG-7 with wooden heat guards, PGO-7 sight and PG-7V (85 mm) round loaded"
   }
@@ -80,19 +85,20 @@
    "weapon_socket_back": "child of Spine1: slung rifle diagonally on the back, muzzle up over the right shoulder (RPG gunner, drag_wounded, wounded clips)",
    "mag_socket_L": "child of LeftHand: attach ak74m `magazine` node during reloads",
    "aim": "child of Head at the eye midpoint (eye height)",
-   "aim_eye_R": "child of Head at the right eye (sighting eye)"
+   "aim_eye_R": "child of Head at the right eye (sighting eye)",
+   "drag_handle": "child of Spine1 at the vest drag handle (top of the back plate): contact point of being_dragged / drag_wounded"
   }
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 4939524,
+  "size_bytes": 13867676,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
    "body_C": 10513,
    "hands": 1678,
    "gloves": 1678,
-   "boots": 1740,
+   "boots": 2356,
    "vest": 4150,
    "pouches_front": 1888,
    "pouches_side": 1036,
@@ -104,7 +110,39 @@
    "legband_L": 280,
    "armband_R": 280,
    "legband_R": 280,
-   "backpack": 976
+   "backpack": 976,
+   "armor_assault": 948,
+   "armor_groin": 152,
+   "armor_arms": 856,
+   "pouches_assault": 2416,
+   "elbowpads": 568,
+   "backpack_assault": 1080,
+   "helmet_assault_A": 1816,
+   "helmet_assault_B": 1512,
+   "headset": 252,
+   "balaclava_A": 2089,
+   "balaclava_B": 2089,
+   "balaclava_C": 2086,
+   "combo_0": 23437,
+   "combo_0_tape": 840,
+   "combo_1": 24973,
+   "combo_1_tape": 840,
+   "combo_2": 24149,
+   "combo_2_tape": 1120,
+   "combo_3": 25217,
+   "combo_3_tape": 840,
+   "combo_4": 24413,
+   "combo_4_tape": 1120,
+   "combo_5": 24505,
+   "combo_5_tape": 840,
+   "assault_combo_0": 29480,
+   "assault_combo_0_tape": 1120,
+   "assault_combo_1": 28001,
+   "assault_combo_1_tape": 1120,
+   "assault_combo_2": 29458,
+   "assault_combo_2_tape": 1120,
+   "assault_combo_3": 27844,
+   "assault_combo_3_tape": 1120
   },
   "lod1_tris": {
    "body_A_LOD1": 2939,
@@ -112,7 +150,7 @@
    "body_C_LOD1": 2939,
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
-   "boots_LOD1": 520,
+   "boots_LOD1": 760,
    "vest_LOD1": 1162,
    "pouches_front_LOD1": 527,
    "pouches_side_LOD1": 307,
@@ -124,7 +162,39 @@
    "legband_L_LOD1": 78,
    "armband_R_LOD1": 78,
    "legband_R_LOD1": 78,
-   "backpack_LOD1": 271
+   "backpack_LOD1": 271,
+   "armor_assault_LOD1": 264,
+   "armor_groin_LOD1": 42,
+   "armor_arms_LOD1": 238,
+   "pouches_assault_LOD1": 693,
+   "elbowpads_LOD1": 158,
+   "backpack_assault_LOD1": 333,
+   "helmet_assault_A_LOD1": 507,
+   "helmet_assault_B_LOD1": 423,
+   "headset_LOD1": 70,
+   "balaclava_A_LOD1": 583,
+   "balaclava_B_LOD1": 584,
+   "balaclava_C_LOD1": 583,
+   "combo_0_LOD1": 6562,
+   "combo_0_tape_LOD1": 336,
+   "combo_1_LOD1": 6991,
+   "combo_1_tape_LOD1": 336,
+   "combo_2_LOD1": 6760,
+   "combo_2_tape_LOD1": 448,
+   "combo_3_LOD1": 7060,
+   "combo_3_tape_LOD1": 336,
+   "combo_4_LOD1": 6835,
+   "combo_4_tape_LOD1": 448,
+   "combo_5_LOD1": 6861,
+   "combo_5_tape_LOD1": 336,
+   "assault_combo_0_LOD1": 8254,
+   "assault_combo_0_tape_LOD1": 448,
+   "assault_combo_1_LOD1": 7839,
+   "assault_combo_1_tape_LOD1": 448,
+   "assault_combo_2_LOD1": 8248,
+   "assault_combo_2_tape_LOD1": 448,
+   "assault_combo_3_LOD1": 7796,
+   "assault_combo_3_tape_LOD1": 448
   },
   "default_visible": [
    "body_A",
@@ -138,7 +208,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 23661,
+  "default_config_tris": 24277,
   "materials_by_node": {
    "body_A": [
     "emr_camo",
@@ -162,7 +232,9 @@
     "gloves"
    ],
    "boots": [
+    "boot_lace",
     "boot_leather",
+    "boot_metal",
     "boot_sole"
    ],
    "vest": [
@@ -210,6 +282,107 @@
     "emr_gear",
     "gear_hardware"
    ],
+   "armor_assault": [
+    "emr_gear"
+   ],
+   "armor_groin": [
+    "emr_gear"
+   ],
+   "armor_arms": [
+    "emr_gear"
+   ],
+   "pouches_assault": [
+    "emr_gear",
+    "gear_hardware",
+    "medic_red"
+   ],
+   "elbowpads": [
+    "kneepad_shell"
+   ],
+   "backpack_assault": [
+    "emr_gear",
+    "gear_hardware",
+    "radio_black"
+   ],
+   "helmet_assault_A": [
+    "emr_gear",
+    "gear_hardware"
+   ],
+   "helmet_assault_B": [
+    "altyn_steel"
+   ],
+   "headset": [
+    "radio_black"
+   ],
+   "balaclava_A": [
+    "balaclava_ru"
+   ],
+   "balaclava_B": [
+    "balaclava_ru"
+   ],
+   "balaclava_C": [
+    "balaclava_ru"
+   ],
+   "combo_0": [
+    "soldier_atlas_ru"
+   ],
+   "combo_0_tape": [
+    "tape"
+   ],
+   "combo_1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_1_tape": [
+    "tape"
+   ],
+   "combo_2": [
+    "soldier_atlas_ru"
+   ],
+   "combo_2_tape": [
+    "tape"
+   ],
+   "combo_3": [
+    "soldier_atlas_ru"
+   ],
+   "combo_3_tape": [
+    "tape"
+   ],
+   "combo_4": [
+    "soldier_atlas_ru"
+   ],
+   "combo_4_tape": [
+    "tape"
+   ],
+   "combo_5": [
+    "soldier_atlas_ru"
+   ],
+   "combo_5_tape": [
+    "tape"
+   ],
+   "assault_combo_0": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_0_tape": [
+    "tape"
+   ],
+   "assault_combo_1": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_1_tape": [
+    "tape"
+   ],
+   "assault_combo_2": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_2_tape": [
+    "tape"
+   ],
+   "assault_combo_3": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_3_tape": [
+    "tape"
+   ],
    "body_A_LOD1": [
     "emr_camo",
     "eye",
@@ -232,7 +405,9 @@
     "gloves"
    ],
    "boots_LOD1": [
+    "boot_lace",
     "boot_leather",
+    "boot_metal",
     "boot_sole"
    ],
    "vest_LOD1": [
@@ -279,6 +454,107 @@
    "backpack_LOD1": [
     "emr_gear",
     "gear_hardware"
+   ],
+   "armor_assault_LOD1": [
+    "emr_gear"
+   ],
+   "armor_groin_LOD1": [
+    "emr_gear"
+   ],
+   "armor_arms_LOD1": [
+    "emr_gear"
+   ],
+   "pouches_assault_LOD1": [
+    "emr_gear",
+    "gear_hardware",
+    "medic_red"
+   ],
+   "elbowpads_LOD1": [
+    "kneepad_shell"
+   ],
+   "backpack_assault_LOD1": [
+    "emr_gear",
+    "gear_hardware",
+    "radio_black"
+   ],
+   "helmet_assault_A_LOD1": [
+    "emr_gear",
+    "gear_hardware"
+   ],
+   "helmet_assault_B_LOD1": [
+    "altyn_steel"
+   ],
+   "headset_LOD1": [
+    "radio_black"
+   ],
+   "balaclava_A_LOD1": [
+    "balaclava_ru"
+   ],
+   "balaclava_B_LOD1": [
+    "balaclava_ru"
+   ],
+   "balaclava_C_LOD1": [
+    "balaclava_ru"
+   ],
+   "combo_0_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "combo_1_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "combo_2_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_2_tape_LOD1": [
+    "tape"
+   ],
+   "combo_3_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_3_tape_LOD1": [
+    "tape"
+   ],
+   "combo_4_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_4_tape_LOD1": [
+    "tape"
+   ],
+   "combo_5_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "combo_5_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_0_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_1_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_2_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_2_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_3_LOD1": [
+    "soldier_atlas_ru"
+   ],
+   "assault_combo_3_tape_LOD1": [
+    "tape"
    ]
   },
   "node_extras": {
@@ -333,6 +609,392 @@
    },
    "backpack": {
     "default_visible": false
+   },
+   "armor_assault": {
+    "default_visible": false
+   },
+   "armor_groin": {
+    "default_visible": false
+   },
+   "armor_arms": {
+    "default_visible": false
+   },
+   "pouches_assault": {
+    "default_visible": false
+   },
+   "elbowpads": {
+    "default_visible": false
+   },
+   "backpack_assault": {
+    "default_visible": false
+   },
+   "helmet_assault_A": {
+    "default_visible": false
+   },
+   "helmet_assault_B": {
+    "default_visible": false
+   },
+   "headset": {
+    "default_visible": false
+   },
+   "balaclava_A": {
+    "default_visible": false
+   },
+   "balaclava_B": {
+    "default_visible": false
+   },
+   "balaclava_C": {
+    "default_visible": false
+   },
+   "combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_0",
+     "body": "body_A",
+     "helmet": "helmet_A",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_1",
+     "body": "body_B",
+     "helmet": "helmet_B",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_2",
+     "body": "body_C",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ]
+   },
+   "combo_2_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_3": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_3",
+     "body": "body_A",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_4": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_4",
+     "body": "body_B",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ]
+   },
+   "combo_4_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_5": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_5",
+     "body": "body_C",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_5_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_0",
+     "body": "body_A",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "6B47 + NVG mount + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ]
+   },
+   "assault_combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_1",
+     "body": "body_B",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset"
+    ]
+   },
+   "assault_combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_2",
+     "body": "body_C",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "6B47 + NVG mount + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_C",
+     "backpack_assault"
+    ]
+   },
+   "assault_combo_2_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_3": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_3",
+     "body": "body_A",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+     "headset": false,
+     "balaclava": true,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "balaclava_A"
+    ]
+   },
+   "assault_combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
    },
    "body_A_LOD1": {
     "default_visible": true,
@@ -407,12 +1069,434 @@
    "backpack_LOD1": {
     "default_visible": false,
     "lod": 1
+   },
+   "armor_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "armor_groin_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "armor_arms_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "pouches_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "elbowpads_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "backpack_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_assault_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_assault_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "headset_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_0",
+     "body": "body_A",
+     "helmet": "helmet_A",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_1",
+     "body": "body_B",
+     "helmet": "helmet_B",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_2",
+     "body": "body_C",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "lod": 1
+   },
+   "combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_3_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_3",
+     "body": "body_A",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_3_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_4_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_4",
+     "body": "body_B",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "lod": 1
+   },
+   "combo_4_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_5_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_5",
+     "body": "body_C",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_5_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_0",
+     "body": "body_A",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "6B47 + NVG mount + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ],
+    "lod": 1
+   },
+   "assault_combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_1",
+     "body": "body_B",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset"
+    ],
+    "lod": 1
+   },
+   "assault_combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_2",
+     "body": "body_C",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "6B47 + NVG mount + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_C",
+     "backpack_assault"
+    ],
+    "lod": 1
+   },
+   "assault_combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_3_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_3",
+     "body": "body_A",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+     "headset": false,
+     "balaclava": true,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "balaclava_A"
+    ],
+    "lod": 1
+   },
+   "assault_combo_3_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
    }
   },
   "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
   "uniform_material": "emr_camo (all variants)",
   "gear_materials": [
+   "altyn_steel",
+   "balaclava_ru",
+   "boot_lace",
    "boot_leather",
+   "boot_metal",
    "boot_sole",
    "emr_camo",
    "emr_gear",
@@ -427,6 +1511,7 @@
    "skin_A",
    "skin_B",
    "skin_C",
+   "soldier_atlas_ru",
    "tape"
   ],
   "node_list": [
@@ -480,10 +1565,43 @@
    "armband_R",
    "legband_R",
    "backpack",
+   "armor_assault",
+   "armor_groin",
+   "armor_arms",
+   "pouches_assault",
+   "elbowpads",
+   "backpack_assault",
+   "helmet_assault_A",
+   "helmet_assault_B",
+   "headset",
+   "balaclava_A",
+   "balaclava_B",
+   "balaclava_C",
+   "combo_0",
+   "combo_0_tape",
+   "combo_1",
+   "combo_1_tape",
+   "combo_2",
+   "combo_2_tape",
+   "combo_3",
+   "combo_3_tape",
+   "combo_4",
+   "combo_4_tape",
+   "combo_5",
+   "combo_5_tape",
+   "assault_combo_0",
+   "assault_combo_0_tape",
+   "assault_combo_1",
+   "assault_combo_1_tape",
+   "assault_combo_2",
+   "assault_combo_2_tape",
+   "assault_combo_3",
+   "assault_combo_3_tape",
    "weapon_socket",
    "weapon_socket_L",
    "mag_socket_L",
    "weapon_socket_back",
+   "drag_handle",
    "aim",
    "aim_eye_R",
    "body_A_LOD1",
@@ -503,20 +1621,417 @@
    "legband_L_LOD1",
    "armband_R_LOD1",
    "legband_R_LOD1",
-   "backpack_LOD1"
+   "backpack_LOD1",
+   "armor_assault_LOD1",
+   "armor_groin_LOD1",
+   "armor_arms_LOD1",
+   "pouches_assault_LOD1",
+   "elbowpads_LOD1",
+   "backpack_assault_LOD1",
+   "helmet_assault_A_LOD1",
+   "helmet_assault_B_LOD1",
+   "headset_LOD1",
+   "balaclava_A_LOD1",
+   "balaclava_B_LOD1",
+   "balaclava_C_LOD1",
+   "combo_0_LOD1",
+   "combo_0_tape_LOD1",
+   "combo_1_LOD1",
+   "combo_1_tape_LOD1",
+   "combo_2_LOD1",
+   "combo_2_tape_LOD1",
+   "combo_3_LOD1",
+   "combo_3_tape_LOD1",
+   "combo_4_LOD1",
+   "combo_4_tape_LOD1",
+   "combo_5_LOD1",
+   "combo_5_tape_LOD1",
+   "assault_combo_0_LOD1",
+   "assault_combo_0_tape_LOD1",
+   "assault_combo_1_LOD1",
+   "assault_combo_1_tape_LOD1",
+   "assault_combo_2_LOD1",
+   "assault_combo_2_tape_LOD1",
+   "assault_combo_3_LOD1",
+   "assault_combo_3_tape_LOD1"
   ],
+  "combos": [
+   {
+    "name": "combo_0",
+    "body": "body_A",
+    "helmet": "helmet_A",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": false,
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 23437,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_0",
+     "combo_0_tape"
+    ],
+    "lod1": [
+     "combo_0_LOD1",
+     "combo_0_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_1",
+    "body": "body_B",
+    "helmet": "helmet_B",
+    "hands": "gloves",
+    "backpack": true,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": false,
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 24973,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_1",
+     "combo_1_tape"
+    ],
+    "lod1": [
+     "combo_1_LOD1",
+     "combo_1_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_2",
+    "body": "body_C",
+    "helmet": "helmet_A",
+    "hands": "gloves",
+    "backpack": false,
+    "kneepads": true,
+    "pouches_back": false,
+    "legband_L": true,
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "tris": 24149,
+    "tape_tris": 1120,
+    "nodes": [
+     "combo_2",
+     "combo_2_tape"
+    ],
+    "lod1": [
+     "combo_2_LOD1",
+     "combo_2_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_3",
+    "body": "body_A",
+    "helmet": "helmet_B",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": true,
+    "pouches_back": true,
+    "legband_L": false,
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 25217,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_3",
+     "combo_3_tape"
+    ],
+    "lod1": [
+     "combo_3_LOD1",
+     "combo_3_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_4",
+    "body": "body_B",
+    "helmet": "helmet_A",
+    "hands": "gloves",
+    "backpack": true,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": true,
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "tris": 24413,
+    "tape_tris": 1120,
+    "nodes": [
+     "combo_4",
+     "combo_4_tape"
+    ],
+    "lod1": [
+     "combo_4_LOD1",
+     "combo_4_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_5",
+    "body": "body_C",
+    "helmet": "helmet_B",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": false,
+    "pouches_back": true,
+    "legband_L": false,
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 24505,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_5",
+     "combo_5_tape"
+    ],
+    "lod1": [
+     "combo_5_LOD1",
+     "combo_5_tape_LOD1"
+    ]
+   }
+  ],
+  "assault_combos": [
+   {
+    "name": "assault_combo_0",
+    "body": "body_A",
+    "helmet": "helmet_assault_A",
+    "helmet_desc": "6B47 + NVG mount + headset",
+    "headset": true,
+    "balaclava": true,
+    "backpack_assault": true,
+    "gloves": true,
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ],
+    "tris": 29480,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_0",
+     "assault_combo_0_tape"
+    ],
+    "lod1": [
+     "assault_combo_0_LOD1",
+     "assault_combo_0_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_1",
+    "body": "body_B",
+    "helmet": "helmet_assault_B",
+    "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+    "headset": true,
+    "balaclava": false,
+    "backpack_assault": false,
+    "gloves": true,
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset"
+    ],
+    "tris": 28001,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_1",
+     "assault_combo_1_tape"
+    ],
+    "lod1": [
+     "assault_combo_1_LOD1",
+     "assault_combo_1_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_2",
+    "body": "body_C",
+    "helmet": "helmet_assault_A",
+    "helmet_desc": "6B47 + NVG mount + headset",
+    "headset": true,
+    "balaclava": true,
+    "backpack_assault": true,
+    "gloves": true,
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_C",
+     "backpack_assault"
+    ],
+    "tris": 29458,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_2",
+     "assault_combo_2_tape"
+    ],
+    "lod1": [
+     "assault_combo_2_LOD1",
+     "assault_combo_2_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_3",
+    "body": "body_A",
+    "helmet": "helmet_assault_B",
+    "helmet_desc": "Altyn-style heavy steel helmet (no visor)",
+    "headset": false,
+    "balaclava": true,
+    "backpack_assault": false,
+    "gloves": true,
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "balaclava_A"
+    ],
+    "tris": 27844,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_3",
+     "assault_combo_3_tape"
+    ],
+    "lod1": [
+     "assault_combo_3_LOD1",
+     "assault_combo_3_tape_LOD1"
+    ]
+   }
+  ],
+  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
   "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable"
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 6553220,
+  "size_bytes": 14239636,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
    "body_C": 10513,
    "hands": 1678,
    "gloves": 1678,
-   "boots": 1740,
+   "boots": 2356,
    "vest": 4150,
    "pouches_front": 1092,
    "pouches_side": 952,
@@ -528,7 +2043,39 @@
    "legband_L": 280,
    "armband_R": 280,
    "legband_R": 280,
-   "backpack": 976
+   "backpack": 976,
+   "armor_assault": 640,
+   "armor_groin": 152,
+   "armor_arms": 856,
+   "pouches_assault": 2252,
+   "elbowpads": 568,
+   "backpack_assault": 1080,
+   "helmet_assault_A": 2148,
+   "helmet_assault_B": 2160,
+   "headset": 252,
+   "balaclava_A": 2089,
+   "balaclava_B": 2089,
+   "balaclava_C": 2086,
+   "combo_0": 22889,
+   "combo_0_tape": 840,
+   "combo_1": 23877,
+   "combo_1_tape": 840,
+   "combo_2": 23601,
+   "combo_2_tape": 1120,
+   "combo_3": 23845,
+   "combo_3_tape": 840,
+   "combo_4": 23865,
+   "combo_4_tape": 1120,
+   "combo_5": 23133,
+   "combo_5_tape": 840,
+   "assault_combo_0": 28449,
+   "assault_combo_0_tape": 1120,
+   "assault_combo_1": 27468,
+   "assault_combo_1_tape": 1120,
+   "assault_combo_2": 28449,
+   "assault_combo_2_tape": 1120,
+   "assault_combo_3": 28556,
+   "assault_combo_3_tape": 1120
   },
   "lod1_tris": {
    "body_A_LOD1": 2939,
@@ -536,7 +2083,7 @@
    "body_C_LOD1": 2939,
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
-   "boots_LOD1": 520,
+   "boots_LOD1": 760,
    "vest_LOD1": 1161,
    "pouches_front_LOD1": 384,
    "pouches_side_LOD1": 313,
@@ -548,7 +2095,39 @@
    "legband_L_LOD1": 78,
    "armband_R_LOD1": 78,
    "legband_R_LOD1": 78,
-   "backpack_LOD1": 271
+   "backpack_LOD1": 271,
+   "armor_assault_LOD1": 178,
+   "armor_groin_LOD1": 74,
+   "armor_arms_LOD1": 238,
+   "pouches_assault_LOD1": 628,
+   "elbowpads_LOD1": 158,
+   "backpack_assault_LOD1": 332,
+   "helmet_assault_A_LOD1": 600,
+   "helmet_assault_B_LOD1": 603,
+   "headset_LOD1": 70,
+   "balaclava_A_LOD1": 583,
+   "balaclava_B_LOD1": 584,
+   "balaclava_C_LOD1": 583,
+   "combo_0_LOD1": 6408,
+   "combo_0_tape_LOD1": 336,
+   "combo_1_LOD1": 6685,
+   "combo_1_tape_LOD1": 336,
+   "combo_2_LOD1": 6608,
+   "combo_2_tape_LOD1": 448,
+   "combo_3_LOD1": 6676,
+   "combo_3_tape_LOD1": 336,
+   "combo_4_LOD1": 6682,
+   "combo_4_tape_LOD1": 448,
+   "combo_5_LOD1": 6476,
+   "combo_5_tape_LOD1": 336,
+   "assault_combo_0_LOD1": 7965,
+   "assault_combo_0_tape_LOD1": 448,
+   "assault_combo_1_LOD1": 7691,
+   "assault_combo_1_tape_LOD1": 448,
+   "assault_combo_2_LOD1": 7964,
+   "assault_combo_2_tape_LOD1": 448,
+   "assault_combo_3_LOD1": 7995,
+   "assault_combo_3_tape_LOD1": 448
   },
   "default_visible": [
    "body_A",
@@ -562,7 +2141,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 23113,
+  "default_config_tris": 23729,
   "materials_by_node": {
    "body_A": [
     "eye",
@@ -586,7 +2165,9 @@
     "gloves"
    ],
    "boots": [
+    "boot_lace",
     "boot_leather",
+    "boot_metal",
     "boot_sole"
    ],
    "vest": [
@@ -642,6 +2223,113 @@
     "gear_hardware",
     "multicam_gear"
    ],
+   "armor_assault": [
+    "multicam_gear"
+   ],
+   "armor_groin": [
+    "coyote_webbing",
+    "multicam_gear"
+   ],
+   "armor_arms": [
+    "multicam_gear"
+   ],
+   "pouches_assault": [
+    "coyote_webbing",
+    "gear_hardware",
+    "medic_red",
+    "multicam_gear",
+    "radio_black"
+   ],
+   "elbowpads": [
+    "kneepad_shell"
+   ],
+   "backpack_assault": [
+    "coyote_webbing",
+    "gear_hardware",
+    "multicam_gear",
+    "radio_black"
+   ],
+   "helmet_assault_A": [
+    "gear_hardware",
+    "multicam_gear"
+   ],
+   "helmet_assault_B": [
+    "gear_hardware",
+    "goggle_lens",
+    "multicam_gear"
+   ],
+   "headset": [
+    "radio_black"
+   ],
+   "balaclava_A": [
+    "balaclava_ua"
+   ],
+   "balaclava_B": [
+    "balaclava_ua"
+   ],
+   "balaclava_C": [
+    "balaclava_ua"
+   ],
+   "combo_0": [
+    "soldier_atlas_ua"
+   ],
+   "combo_0_tape": [
+    "tape"
+   ],
+   "combo_1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_1_tape": [
+    "tape"
+   ],
+   "combo_2": [
+    "soldier_atlas_ua"
+   ],
+   "combo_2_tape": [
+    "tape"
+   ],
+   "combo_3": [
+    "soldier_atlas_ua"
+   ],
+   "combo_3_tape": [
+    "tape"
+   ],
+   "combo_4": [
+    "soldier_atlas_ua"
+   ],
+   "combo_4_tape": [
+    "tape"
+   ],
+   "combo_5": [
+    "soldier_atlas_ua"
+   ],
+   "combo_5_tape": [
+    "tape"
+   ],
+   "assault_combo_0": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_0_tape": [
+    "tape"
+   ],
+   "assault_combo_1": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_1_tape": [
+    "tape"
+   ],
+   "assault_combo_2": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_2_tape": [
+    "tape"
+   ],
+   "assault_combo_3": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_3_tape": [
+    "tape"
+   ],
    "body_A_LOD1": [
     "eye",
     "mm14_camo",
@@ -664,7 +2352,9 @@
     "gloves"
    ],
    "boots_LOD1": [
+    "boot_lace",
     "boot_leather",
+    "boot_metal",
     "boot_sole"
    ],
    "vest_LOD1": [
@@ -719,6 +2409,113 @@
     "coyote_webbing",
     "gear_hardware",
     "multicam_gear"
+   ],
+   "armor_assault_LOD1": [
+    "multicam_gear"
+   ],
+   "armor_groin_LOD1": [
+    "coyote_webbing",
+    "multicam_gear"
+   ],
+   "armor_arms_LOD1": [
+    "multicam_gear"
+   ],
+   "pouches_assault_LOD1": [
+    "coyote_webbing",
+    "gear_hardware",
+    "medic_red",
+    "multicam_gear",
+    "radio_black"
+   ],
+   "elbowpads_LOD1": [
+    "kneepad_shell"
+   ],
+   "backpack_assault_LOD1": [
+    "coyote_webbing",
+    "gear_hardware",
+    "multicam_gear",
+    "radio_black"
+   ],
+   "helmet_assault_A_LOD1": [
+    "gear_hardware",
+    "multicam_gear"
+   ],
+   "helmet_assault_B_LOD1": [
+    "gear_hardware",
+    "goggle_lens",
+    "multicam_gear"
+   ],
+   "headset_LOD1": [
+    "radio_black"
+   ],
+   "balaclava_A_LOD1": [
+    "balaclava_ua"
+   ],
+   "balaclava_B_LOD1": [
+    "balaclava_ua"
+   ],
+   "balaclava_C_LOD1": [
+    "balaclava_ua"
+   ],
+   "combo_0_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "combo_1_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "combo_2_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_2_tape_LOD1": [
+    "tape"
+   ],
+   "combo_3_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_3_tape_LOD1": [
+    "tape"
+   ],
+   "combo_4_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_4_tape_LOD1": [
+    "tape"
+   ],
+   "combo_5_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "combo_5_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_0_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_0_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_1_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_1_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_2_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_2_tape_LOD1": [
+    "tape"
+   ],
+   "assault_combo_3_LOD1": [
+    "soldier_atlas_ua"
+   ],
+   "assault_combo_3_tape_LOD1": [
+    "tape"
    ]
   },
   "node_extras": {
@@ -773,6 +2570,393 @@
    },
    "backpack": {
     "default_visible": false
+   },
+   "armor_assault": {
+    "default_visible": false
+   },
+   "armor_groin": {
+    "default_visible": false
+   },
+   "armor_arms": {
+    "default_visible": false
+   },
+   "pouches_assault": {
+    "default_visible": false
+   },
+   "elbowpads": {
+    "default_visible": false
+   },
+   "backpack_assault": {
+    "default_visible": false
+   },
+   "helmet_assault_A": {
+    "default_visible": false
+   },
+   "helmet_assault_B": {
+    "default_visible": false
+   },
+   "headset": {
+    "default_visible": false
+   },
+   "balaclava_A": {
+    "default_visible": false
+   },
+   "balaclava_B": {
+    "default_visible": false
+   },
+   "balaclava_C": {
+    "default_visible": false
+   },
+   "combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_0",
+     "body": "body_A",
+     "helmet": "helmet_A",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_1",
+     "body": "body_B",
+     "helmet": "helmet_B",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_2",
+     "body": "body_C",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ]
+   },
+   "combo_2_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_3": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_3",
+     "body": "body_A",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_4": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_4",
+     "body": "body_B",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ]
+   },
+   "combo_4_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "combo_5": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_5",
+     "body": "body_C",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ]
+   },
+   "combo_5_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_0": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_0",
+     "body": "body_A",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ]
+   },
+   "assault_combo_0_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_1",
+     "body": "body_B",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "MICH mid-cut + goggles + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_B"
+    ]
+   },
+   "assault_combo_1_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_2": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_2",
+     "body": "body_C",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ]
+   },
+   "assault_combo_2_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
+   },
+   "assault_combo_3": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_3",
+     "body": "body_A",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "MICH mid-cut + goggles + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ]
+   },
+   "assault_combo_3_tape": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true
    },
    "body_A_LOD1": {
     "default_visible": true,
@@ -847,13 +3031,435 @@
    "backpack_LOD1": {
     "default_visible": false,
     "lod": 1
+   },
+   "armor_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "armor_groin_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "armor_arms_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "pouches_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "elbowpads_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "backpack_assault_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_assault_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_assault_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "headset_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "balaclava_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_0",
+     "body": "body_A",
+     "helmet": "helmet_A",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_1",
+     "body": "body_B",
+     "helmet": "helmet_B",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": false
+    },
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_2",
+     "body": "body_C",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "lod": 1
+   },
+   "combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_3_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_3",
+     "body": "body_A",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": true,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_3_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_4_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_4",
+     "body": "body_B",
+     "helmet": "helmet_A",
+     "hands": "gloves",
+     "backpack": true,
+     "kneepads": false,
+     "pouches_back": false,
+     "legband_L": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "lod": 1
+   },
+   "combo_4_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "combo_5_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "combo_5",
+     "body": "body_C",
+     "helmet": "helmet_B",
+     "hands": "hands",
+     "backpack": false,
+     "kneepads": false,
+     "pouches_back": true,
+     "legband_L": false
+    },
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "lod": 1
+   },
+   "combo_5_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_0_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_0",
+     "body": "body_A",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ],
+    "lod": 1
+   },
+   "assault_combo_0_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_1_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_1",
+     "body": "body_B",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "MICH mid-cut + goggles + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": false,
+     "gloves": true
+    },
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_B"
+    ],
+    "lod": 1
+   },
+   "assault_combo_1_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_2_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_2",
+     "body": "body_C",
+     "helmet": "helmet_assault_A",
+     "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+     "headset": true,
+     "balaclava": false,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ],
+    "lod": 1
+   },
+   "assault_combo_2_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
+   },
+   "assault_combo_3_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "preset": {
+     "name": "assault_combo_3",
+     "body": "body_A",
+     "helmet": "helmet_assault_B",
+     "helmet_desc": "MICH mid-cut + goggles + headset",
+     "headset": true,
+     "balaclava": true,
+     "backpack_assault": true,
+     "gloves": true
+    },
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ],
+    "lod": 1
+   },
+   "assault_combo_3_tape_LOD1": {
+    "combo": true,
+    "default_visible": false,
+    "tape": true,
+    "lod": 1
    }
   },
   "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton (vest/pouches to Hips..Spine1/clavicles, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights). Vertex colours (COLOR_0) on gear carry baked ambient occlusion.",
   "uniform_material": "mm14_camo (A,B), mm14_multicam_camo (C: MultiCam top, MM-14 trousers)",
   "gear_materials": [
    "ak_mag_polymer",
+   "balaclava_ua",
+   "boot_lace",
    "boot_leather",
+   "boot_metal",
    "boot_sole",
    "coyote_webbing",
    "eye",
@@ -872,6 +3478,7 @@
    "skin_A",
    "skin_B",
    "skin_C",
+   "soldier_atlas_ua",
    "tape"
   ],
   "node_list": [
@@ -925,10 +3532,43 @@
    "armband_R",
    "legband_R",
    "backpack",
+   "armor_assault",
+   "armor_groin",
+   "armor_arms",
+   "pouches_assault",
+   "elbowpads",
+   "backpack_assault",
+   "helmet_assault_A",
+   "helmet_assault_B",
+   "headset",
+   "balaclava_A",
+   "balaclava_B",
+   "balaclava_C",
+   "combo_0",
+   "combo_0_tape",
+   "combo_1",
+   "combo_1_tape",
+   "combo_2",
+   "combo_2_tape",
+   "combo_3",
+   "combo_3_tape",
+   "combo_4",
+   "combo_4_tape",
+   "combo_5",
+   "combo_5_tape",
+   "assault_combo_0",
+   "assault_combo_0_tape",
+   "assault_combo_1",
+   "assault_combo_1_tape",
+   "assault_combo_2",
+   "assault_combo_2_tape",
+   "assault_combo_3",
+   "assault_combo_3_tape",
    "weapon_socket",
    "weapon_socket_L",
    "mag_socket_L",
    "weapon_socket_back",
+   "drag_handle",
    "aim",
    "aim_eye_R",
    "body_A_LOD1",
@@ -948,16 +3588,445 @@
    "legband_L_LOD1",
    "armband_R_LOD1",
    "legband_R_LOD1",
-   "backpack_LOD1"
+   "backpack_LOD1",
+   "armor_assault_LOD1",
+   "armor_groin_LOD1",
+   "armor_arms_LOD1",
+   "pouches_assault_LOD1",
+   "elbowpads_LOD1",
+   "backpack_assault_LOD1",
+   "helmet_assault_A_LOD1",
+   "helmet_assault_B_LOD1",
+   "headset_LOD1",
+   "balaclava_A_LOD1",
+   "balaclava_B_LOD1",
+   "balaclava_C_LOD1",
+   "combo_0_LOD1",
+   "combo_0_tape_LOD1",
+   "combo_1_LOD1",
+   "combo_1_tape_LOD1",
+   "combo_2_LOD1",
+   "combo_2_tape_LOD1",
+   "combo_3_LOD1",
+   "combo_3_tape_LOD1",
+   "combo_4_LOD1",
+   "combo_4_tape_LOD1",
+   "combo_5_LOD1",
+   "combo_5_tape_LOD1",
+   "assault_combo_0_LOD1",
+   "assault_combo_0_tape_LOD1",
+   "assault_combo_1_LOD1",
+   "assault_combo_1_tape_LOD1",
+   "assault_combo_2_LOD1",
+   "assault_combo_2_tape_LOD1",
+   "assault_combo_3_LOD1",
+   "assault_combo_3_tape_LOD1"
   ],
+  "combos": [
+   {
+    "name": "combo_0",
+    "body": "body_A",
+    "helmet": "helmet_A",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": false,
+    "parts": [
+     "body_A",
+     "helmet_A",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 22889,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_0",
+     "combo_0_tape"
+    ],
+    "lod1": [
+     "combo_0_LOD1",
+     "combo_0_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_1",
+    "body": "body_B",
+    "helmet": "helmet_B",
+    "hands": "gloves",
+    "backpack": true,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": false,
+    "parts": [
+     "body_B",
+     "helmet_B",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 23877,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_1",
+     "combo_1_tape"
+    ],
+    "lod1": [
+     "combo_1_LOD1",
+     "combo_1_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_2",
+    "body": "body_C",
+    "helmet": "helmet_A",
+    "hands": "gloves",
+    "backpack": false,
+    "kneepads": true,
+    "pouches_back": false,
+    "legband_L": true,
+    "parts": [
+     "body_C",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "tris": 23601,
+    "tape_tris": 1120,
+    "nodes": [
+     "combo_2",
+     "combo_2_tape"
+    ],
+    "lod1": [
+     "combo_2_LOD1",
+     "combo_2_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_3",
+    "body": "body_A",
+    "helmet": "helmet_B",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": true,
+    "pouches_back": true,
+    "legband_L": false,
+    "parts": [
+     "body_A",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "kneepads",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 23845,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_3",
+     "combo_3_tape"
+    ],
+    "lod1": [
+     "combo_3_LOD1",
+     "combo_3_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_4",
+    "body": "body_B",
+    "helmet": "helmet_A",
+    "hands": "gloves",
+    "backpack": true,
+    "kneepads": false,
+    "pouches_back": false,
+    "legband_L": true,
+    "parts": [
+     "body_B",
+     "helmet_A",
+     "gloves",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "backpack",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L"
+    ],
+    "tris": 23865,
+    "tape_tris": 1120,
+    "nodes": [
+     "combo_4",
+     "combo_4_tape"
+    ],
+    "lod1": [
+     "combo_4_LOD1",
+     "combo_4_tape_LOD1"
+    ]
+   },
+   {
+    "name": "combo_5",
+    "body": "body_C",
+    "helmet": "helmet_B",
+    "hands": "hands",
+    "backpack": false,
+    "kneepads": false,
+    "pouches_back": true,
+    "legband_L": false,
+    "parts": [
+     "body_C",
+     "helmet_B",
+     "hands",
+     "boots",
+     "vest",
+     "pouches_front",
+     "pouches_side",
+     "pouches_back",
+     "armband_L",
+     "armband_R",
+     "legband_R"
+    ],
+    "tris": 23133,
+    "tape_tris": 840,
+    "nodes": [
+     "combo_5",
+     "combo_5_tape"
+    ],
+    "lod1": [
+     "combo_5_LOD1",
+     "combo_5_tape_LOD1"
+    ]
+   }
+  ],
+  "assault_combos": [
+   {
+    "name": "assault_combo_0",
+    "body": "body_A",
+    "helmet": "helmet_assault_A",
+    "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+    "headset": true,
+    "balaclava": false,
+    "backpack_assault": true,
+    "gloves": true,
+    "parts": [
+     "body_A",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ],
+    "tris": 28449,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_0",
+     "assault_combo_0_tape"
+    ],
+    "lod1": [
+     "assault_combo_0_LOD1",
+     "assault_combo_0_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_1",
+    "body": "body_B",
+    "helmet": "helmet_assault_B",
+    "helmet_desc": "MICH mid-cut + goggles + headset",
+    "headset": true,
+    "balaclava": true,
+    "backpack_assault": false,
+    "gloves": true,
+    "parts": [
+     "body_B",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_B"
+    ],
+    "tris": 27468,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_1",
+     "assault_combo_1_tape"
+    ],
+    "lod1": [
+     "assault_combo_1_LOD1",
+     "assault_combo_1_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_2",
+    "body": "body_C",
+    "helmet": "helmet_assault_A",
+    "helmet_desc": "FAST high-cut + NVG shroud + counterweight + headset",
+    "headset": true,
+    "balaclava": false,
+    "backpack_assault": true,
+    "gloves": true,
+    "parts": [
+     "body_C",
+     "helmet_assault_A",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "backpack_assault"
+    ],
+    "tris": 28449,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_2",
+     "assault_combo_2_tape"
+    ],
+    "lod1": [
+     "assault_combo_2_LOD1",
+     "assault_combo_2_tape_LOD1"
+    ]
+   },
+   {
+    "name": "assault_combo_3",
+    "body": "body_A",
+    "helmet": "helmet_assault_B",
+    "helmet_desc": "MICH mid-cut + goggles + headset",
+    "headset": true,
+    "balaclava": true,
+    "backpack_assault": true,
+    "gloves": true,
+    "parts": [
+     "body_A",
+     "helmet_assault_B",
+     "boots",
+     "vest",
+     "pouches_front",
+     "armor_assault",
+     "armor_groin",
+     "armor_arms",
+     "pouches_assault",
+     "elbowpads",
+     "kneepads",
+     "gloves",
+     "armband_L",
+     "armband_R",
+     "legband_R",
+     "legband_L",
+     "headset",
+     "balaclava_A",
+     "backpack_assault"
+    ],
+    "tris": 28556,
+    "tape_tris": 1120,
+    "nodes": [
+     "assault_combo_3",
+     "assault_combo_3_tape"
+    ],
+    "lod1": [
+     "assault_combo_3_LOD1",
+     "assault_combo_3_tape_LOD1"
+    ]
+   }
+  ],
+  "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles.",
   "tape_alt_material": "tape (yellow #e8c31c)"
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 1025460,
+  "size_bytes": 1857944,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
-  "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths keep root motion and end at rest",
-  "sources": "CMU mocap: walk 16_15, run 16_35, crouch walk 136_09, limp 77_19, drag 81_08, death_back 90_18, throw 113_24. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
+  "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest",
+  "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales (walk ~2.0, run ~5.0, crouch ~1.5 m/s). walk_rifle is a 2.1 m/s brisk walk (CMU 07_12) and run_rifle a 3.6 m/s fast run with a 17 deg combat lean (CMU 09_11) so the scaled cadence stays plausible (x1.0 / x1.4).",
+  "launchers": {
+   "socket": "weapon_socket (identity) for both rpg22.glb and rpg7.glb in aim_launcher / aim_launcher_kneel / fire_launcher",
+   "authored_for": "RPG-22: right eye on the rear-sight line, tube underside on the right trapezius, right hand on the tube under the firing housing (= launcher origin), left palm under the front tube (rpg22 grip_L).",
+   "rpg7_offset": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "note": "RPG-7 also fits with identity: its tube axis is 7 mm higher and its PGO-7 eyepiece sits 5 cm left / 4 cm below the eye (head over the tube instead of beside it). For an exact PGO-7 sight picture offset the launcher by [-0.051, 0.042, 0.0] (launcher local), at the cost of a 4 cm gap above the shoulder."
+   },
+   "rpg22_offset": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  "riding": {
+   "frame": "ride_sit_edge / ride_sit_deck / ride_aim: root = ride_seat_N empty (point on the sitting surface under the pelvis), +Z = seat facing; Hips joint 0.118 m above and 0.035 m behind the seat point; place the soldier root exactly on the seat empty (position + heading), no ground snapping.",
+   "edge": "thighs along +Z, knees ~0.42 m out, shins angled ~30 deg outward (clears the BTR's sloped upper hull), rifle across the lap",
+   "deck": "knees up, feet flat on the deck ~0.47 m ahead, rifle upright between the knees, butt on the deck",
+   "dismount_jump": "root on the ground at the landing point; the clip starts with the seat point at (0, 1.8, -1.6) relative to it (game: landing = seat + 1.6 m outward, seat ~1.8 m high); vertical and horizontal root motion kept; touchdown 0.84 s"
+  },
+  "medical": {
+   "drag": "drag_wounded (dragger) and being_dragged (casualty) share a 2.5 s loop. Casualty root = dragger root + 1.0 m along the dragger facing, casualty heading = dragger heading + 180 deg (head towards the dragger). Contact point = socket drag_handle (Spine1) at (0, 0.50, 0.42) in the casualty frame = (0, 0.50, 0.58) in the dragger frame (both hands).",
+   "treat_wounded": "medic kneels; the casualty (wounded_ground / wounded_sit) lies ~0.55 m in front of the medic root",
+   "wounded_sit": "back against a wall plane 0.30 m behind the root (-Z)"
+  },
+  "sources": "CMU mocap: walk 07_12, run 09_11, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
   "clips": {
    "idle_rifle": {
     "duration_s": 4.0,
@@ -993,24 +4062,24 @@
     }
    },
    "walk_rifle": {
-    "duration_s": 1.167,
-    "frames": 36,
+    "duration_s": 0.867,
+    "frames": 27,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 1.153,
+    "ground_speed_mps": 2.093,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "CMU 16_15 cycle (8, 35); ik err {'R': 5.578801654593729e-16, 'L': 7.537887514700948e-16}"
+    "notes": "tactical brisk walk: CMU 07_12 (brisk walk, ~2 m/s) cycle (10, 26); rifle at patrol; ik err {'R': 4.965068306494546e-16, 'L': 7.713104172907411e-16}"
    },
    "run_rifle": {
-    "duration_s": 0.8,
-    "frames": 25,
+    "duration_s": 0.767,
+    "frames": 24,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 2.941,
+    "ground_speed_mps": 3.576,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "CMU 16_35 cycle (11, 24); ik err {'R': 4.873060251453353e-16, 'L': 7.730018126164339e-16}"
+    "notes": "combat sprint: CMU 09_11 (fast run) cycle (6, 23), +17 deg forward lean, head level, rifle at port across the chest; reads well time-scaled to ~5 m/s; ik err {'R': 5.959374814064025e-16, 'L': 9.157499910099985e-16}"
    },
    "crouch_walk": {
     "duration_s": 1.3,
@@ -1123,29 +4192,75 @@
     "notes": "authored elbow (low) crawl, rifle cradled; ik err {'R': 7.683082245783184e-16, 'L': 9.222205069512407e-16}"
    },
    "wounded_crawl": {
-    "duration_s": 1.6,
-    "frames": 49,
+    "duration_s": 2.0,
+    "frames": 61,
     "fps": 30,
     "loop": true,
-    "ground_speed_mps": 0.22,
+    "ground_speed_mps": 0.24,
     "direction": "forward (+Z)",
     "root_motion": false,
-    "notes": "authored: wounded crawl, arms pulling, left leg pushing, right leg dragged; no weapon in hands",
+    "notes": "belly crawl on the forearms/elbows (arms alternate reach & pull), left leg pushes, right leg dead (foot rolled out) and dragged; no weapon",
     "events": {
      "weapon": "drop or weapon_socket_back"
     }
    },
    "wounded_ground": {
-    "duration_s": 4.0,
-    "frames": 121,
+    "duration_s": 6.0,
+    "frames": 181,
     "fps": 30,
     "loop": true,
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "authored: on the back, hands pressing abdomen wound, knees drawn, writhing & laboured breathing; no weapon",
+    "notes": "on the back, half rolled to the left, right hand pressing a belly wound, left knee drawn up, rocking, head lifting & looking around, left arm reaches up for help (2.4-4.0 s); no weapon (sling it: weapon_socket_back, or drop)",
     "events": {
-     "weapon": "drop or weapon_socket_back"
+     "weapon": "drop or weapon_socket_back",
+     "reach_for_help": [
+      2.4,
+      4.0
+     ]
+    }
+   },
+   "wounded_sit": {
+    "duration_s": 6.0,
+    "frames": 181,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "stabilised casualty sitting on the ground against a wall (wall plane z = -0.3 m behind the root, facing +Z), right leg out with the hand on the dressed thigh, left knee up, head resting back, slow breathing; no weapon",
+    "events": {
+     "weapon": "drop or weapon_socket_back",
+     "wall_z": -0.3
+    }
+   },
+   "treat_wounded": {
+    "duration_s": 6.0,
+    "frames": 181,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "medic kneeling on the right knee, bent over the casualty, applying a tourniquet (left hand holds the strap, right hand turns the windlass), glances around at 1.6-2.6 s (left) and 4.0-4.9 s (right); work point ~0.5 m in front; rifle slung (weapon_socket_back)",
+    "events": {
+     "glance": [
+      [
+       1.6,
+       2.6
+      ],
+      [
+       4.0,
+       4.9
+      ]
+     ],
+     "casualty_position_root_frame": [
+      0.06,
+      0.0,
+      0.55
+     ],
+     "weapon": "weapon_socket_back"
     }
    },
    "hit_react": {
@@ -1159,16 +4274,18 @@
     "notes": "authored flinch (impact at 0.05 s), ends in idle stance"
    },
    "death_crumple": {
-    "duration_s": 2.2,
-    "frames": 67,
+    "duration_s": 2.4,
+    "frames": 73,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": true,
-    "notes": "authored: flinch, knees buckle, drops to the knees, tips onto the left side; root motion kept; ends at rest; drop weapon ~0.3 s",
+    "notes": "reworked: flinch, rifle slips from the hands at ~0.3 s, knees buckle and hit the ground (0.6 s), trunk folds and tips onto the left side, limp arms with head lag; root motion kept; ends at rest",
     "events": {
-     "drop_weapon": 0.3
+     "drop_weapon": 0.3,
+     "knees_ground": 0.6,
+     "body_ground": 1.28
     }
    },
    "death_front": {
@@ -1219,16 +4336,160 @@
     "ground_speed_mps": 0.474,
     "direction": "backward (-Z)",
     "root_motion": false,
-    "notes": "CMU 81_08 drag heavy object (walking backwards, hands gripping); rifle slung on back; cycle (0, 75)",
+    "notes": "CMU 81_08 legs (walking backwards), bent over, both hands on the casualty drag handle at [0.0, 0.5, 0.58] (own root frame); casualty root 1.0 m ahead (+Z) playing being_dragged; rifle slung on back; cycle (0, 75)",
     "events": {
      "weapon": "weapon_socket_back"
+    }
+   },
+   "being_dragged": {
+    "duration_s": 2.5,
+    "frames": 76,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "limp casualty pulled head-first by the vest drag handle (socket drag_handle on Spine1); handle at [-0.0, 0.508, 0.425] in the casualty root frame (head towards +Z); the dragger stands 1.0 m along +Z facing -Z (drag_wounded hands at [0.0, 0.5, 0.58] in its own frame); heels on the ground (ankle min y 0.085); arms trailing; loop matches drag_wounded",
+    "events": {
+     "weapon": "drop or weapon_socket_back",
+     "drag_handle_root_frame": [
+      -0.0,
+      0.508,
+      0.425
+     ],
+     "dragger_offset_m": 1.0
+    }
+   },
+   "aim_launcher": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.012 m; ik {'R': 9.945640348601413e-16, 'L': 1.1485074744688507e-15}",
+    "events": {
+     "launcher_socket": "weapon_socket (identity)"
+    }
+   },
+   "fire_launcher": {
+    "duration_s": 1.0,
+    "frames": 31,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "launcher shot from aim_launcher: rocket leaves at 0.05 s (muzzle/backblast flash), tube jumps ~3.5 deg, shoulders absorb, back to aim at 0.9 s",
+    "events": {
+     "shot": 0.05,
+     "backblast": 0.05
+    }
+   },
+   "aim_launcher_kneel": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "launcher shouldered (right shoulder), eye at the RPG-22 rear sight, both hands on the tube; tube-on-shoulder err 0.008 m; ik {'R': 1.1082262970782368e-15, 'L': 1.1831170202396054e-15}",
+    "events": {
+     "launcher_socket": "weapon_socket (identity)"
+    }
+   },
+   "ride_sit_edge": {
+    "duration_s": 8.0,
+    "frames": 241,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "sitting on a deck edge / fender, legs over the side (shins angled ~30 deg out), rifle across the lap, ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 6.261943282059023e-16, 'L': 7.756677862503847e-16}",
+    "seat_type": "edge"
+   },
+   "ride_sit_deck": {
+    "duration_s": 8.0,
+    "frames": 241,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "sitting on the deck, knees up, rifle held upright between the knees (butt on the deck), ride sway + looking around; seat frame: Hips [0.0, 0.118, -0.035] above/behind the seat point; ik {'R': 1.0448278521973344e-15, 'L': 1.1919557542016666e-15}",
+    "seat_type": "deck"
+   },
+   "ride_aim": {
+    "duration_s": 4.0,
+    "frames": 121,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "seated on the edge, rifle shouldered, aiming outward (+Z, 6 deg down) with ride sway; butt err 0.060; ik {'R': 8.101585801848734e-16, 'L': 1.4325749365178209e-15}",
+    "seat_type": "edge"
+   },
+   "throw_grenade_window": {
+    "duration_s": 1.5,
+    "frames": 46,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "overhand lob up into a 1st/2nd-floor window: grenade in the right hand (weapon_socket), rifle in the left (weapon_socket_L); looks up, winds up, steps in with the left foot, releases high in front at 0.86 s (launch ~55 deg up), recovers by 1.5 s",
+    "events": {
+     "move_weapon_to": "weapon_socket_L",
+     "pin_pull": 0.25,
+     "release": 0.86,
+     "release_dir_up_deg": 55,
+     "grenade_socket": "weapon_socket"
+    }
+   },
+   "cqb_stack": {
+    "duration_s": 4.0,
+    "frames": 121,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "crouched stack-up beside a doorway (door ahead, +Z), rifle at low ready (muzzle ~35 deg down), weight shifts, glance back at 2.1-2.9 s; ik {'R': 6.591583993652515e-16, 'L': 1.0824674490095276e-15}",
+    "events": {
+     "glance_back": [
+      2.1,
+      2.9
+     ]
+    }
+   },
+   "dismount_jump": {
+    "duration_s": 1.2,
+    "frames": 37,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "push off from the edge seat and drop 1.8 m, land in a crouch; root motion kept (vertical AND horizontal): the clip starts with the seat point at [0.0, 1.8, -1.6] relative to the root, i.e. the game places the root on the ground 1.6 m out from the seat (facing out) and the clip ends at the root; touchdown at 0.84 s; ik {'R': 5.721958498152797e-16, 'L': 0.24678048969105948}",
+    "events": {
+     "leave_seat": 0.4,
+     "touchdown": 0.84,
+     "seat_offset_from_root": [
+      0.0,
+      1.8,
+      -1.6
+     ]
     }
    }
   }
  },
  "ak74m": {
   "file": "ak74m.glb",
-  "size_bytes": 178300,
+  "size_bytes": 142788,
   "tris": {
    "ak74m_mesh": 4588,
    "ak74m_LOD1": 1373,
@@ -1364,12 +4625,274 @@
   },
   "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1"
  },
+ "rpg22": {
+  "file": "rpg22.glb",
+  "size_bytes": 95680,
+  "tris": {
+   "rpg22_mesh": 2392,
+   "rpg22_LOD1": 714
+  },
+  "materials": [
+   "bore_black",
+   "rpg22_fibreglass",
+   "rpg22_fibreglass_dark",
+   "rubber_black",
+   "sling_webbing",
+   "stencil_yellow"
+  ],
+  "empties": {
+   "muzzle": [
+    0.0,
+    0.066,
+    0.392
+   ],
+   "rear": [
+    0.0,
+    0.066,
+    -0.462
+   ],
+   "backblast": [
+    0.0,
+    0.066,
+    -0.462
+   ],
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "grip_L": [
+    0.0,
+    0.026500000000000006,
+    0.19
+   ],
+   "sight_rear": [
+    0.004,
+    0.16,
+    -0.15
+   ],
+   "sight_front": [
+    0.004,
+    0.1555,
+    0.335
+   ],
+   "shoulder_rest": [
+    0.0,
+    0.10600000000000001,
+    -0.21
+   ]
+  },
+  "conventions": "origin = right hand on the tube under the firing housing, +Z muzzle, +Y up; parent to weapon_socket for the launcher clips",
+  "carried": {
+   "file": "rpg22_carried.glb",
+   "note": "collapsed transport configuration, origin at the tube centre"
+  }
+ },
+ "ak12": {
+  "file": "ak12.glb",
+  "size_bytes": 181332,
+  "tris": {
+   "ak12_mesh": 4712,
+   "ak12_LOD1": 1410,
+   "magazine": 480,
+   "magazine_LOD1": 144
+  },
+  "materials": [
+   "ak_mag_polymer",
+   "bore_black",
+   "gun_olive_paint",
+   "gun_polymer",
+   "gun_steel",
+   "gun_steel_worn",
+   "optic_glass",
+   "rubber_black"
+  ],
+  "empties": {
+   "muzzle": [
+    0.0,
+    0.08703999999999999,
+    0.63596
+   ],
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "grip_L": [
+    0.0,
+    0.05304,
+    0.24595999999999998
+   ],
+   "sight_rear": [
+    0.0,
+    0.16854,
+    -0.03404
+   ],
+   "sight_front": [
+    0.0,
+    0.16854,
+    0.06595999999999999
+   ],
+   "stock_butt": [
+    0.0,
+    0.05304,
+    -0.35503999999999997
+   ],
+   "optic_eye": [
+    0.0,
+    0.16854,
+    -0.12404000000000001
+   ]
+  },
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1",
+  "magazine_node": "magazine (separate mesh, same as ak74m)",
+  "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
+  "description": "AK-12 (6P70, 2020 pattern): railed hinged dust cover + railed handguard, AK-12 muzzle brake, telescoping/side-folding stock with cheek riser, ribbed 30-rd mag, 1P87-style collimator (olive) on the rail"
+ },
+ "ak74m_optic": {
+  "file": "ak74m_optic.glb",
+  "size_bytes": 206004,
+  "tris": {
+   "ak74m_optic_mesh": 5576,
+   "ak74m_optic_LOD1": 1668,
+   "magazine": 480,
+   "magazine_LOD1": 144
+  },
+  "materials": [
+   "ak_mag_polymer",
+   "bore_black",
+   "gun_polymer",
+   "gun_steel",
+   "gun_steel_worn",
+   "optic_glass",
+   "rubber_black"
+  ],
+  "empties": {
+   "muzzle": [
+    0.0,
+    0.08703999999999999,
+    0.62096
+   ],
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "grip_L": [
+    0.0,
+    0.05304,
+    0.23396
+   ],
+   "sight_rear": [
+    0.0,
+    0.17354000000000003,
+    -0.029040000000000003
+   ],
+   "sight_front": [
+    0.0,
+    0.17354000000000003,
+    0.06595999999999999
+   ],
+   "stock_butt": [
+    0.0,
+    0.03804,
+    -0.33704
+   ],
+   "optic_eye": [
+    0.0,
+    0.17354000000000003,
+    -0.11404
+   ],
+   "foregrip": [
+    0.0,
+    -0.006960000000000004,
+    0.27396000000000004
+   ]
+  },
+  "conventions": "origin = pistol grip (palm centre), +Z = muzzle, +Y up, weapon left side = +X; `<name>_LOD1` node = LOD1",
+  "magazine_node": "magazine (separate mesh, same as ak74m)",
+  "aim_note": "The aim clips are solved for the AK-74M iron-sight line; with the optic the sight line is ~4-5 cm higher (optic_eye empty), i.e. the cheek sits slightly low on the stock - invisible at game distances.",
+  "description": "UA AK-74M upgrade: Picatinny dust-cover rail with an EOTech-style holographic sight, aluminium railed gas-tube cover and lower handguard, vertical foregrip, original side-folding stock"
+ },
+ "grenade_f1": {
+  "file": "grenade_f1.glb",
+  "size_bytes": 79488,
+  "tris": {
+   "grenade_f1_mesh": 2156,
+   "grenade_f1_LOD1": 752
+  },
+  "materials": [
+   "gun_olive_paint",
+   "gun_steel_worn",
+   "rpg22_fibreglass_dark"
+  ],
+  "empties": {
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "centre": [
+    0.013,
+    -0.004,
+    0.0
+   ],
+   "fuze": [
+    0.013,
+    0.068,
+    0.0
+   ],
+   "pin_ring": [
+    0.013,
+    0.052000000000000005,
+    0.03
+   ]
+  },
+  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring"
+ },
+ "grenade_rgd5": {
+  "file": "grenade_rgd5.glb",
+  "size_bytes": 45960,
+  "tris": {
+   "grenade_rgd5_mesh": 1424,
+   "grenade_rgd5_LOD1": 496
+  },
+  "materials": [
+   "gun_olive_paint",
+   "gun_steel_worn"
+  ],
+  "empties": {
+   "grip_R": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "centre": [
+    0.013,
+    -0.006,
+    0.0
+   ],
+   "fuze": [
+    0.013,
+    0.063,
+    0.0
+   ],
+   "pin_ring": [
+    0.013,
+    0.046,
+    0.031
+   ]
+  },
+  "conventions": "origin = grip (palm centre when held in weapon_socket / the right hand), +Y = fuze up, spoon on the palm side (-X), pull ring on +Z; empties centre, fuze, pin_ring"
+ },
  "deviations": [
   "Uniform is part of each body_X SkinnedMesh (head + eyes + uniform); boots are a separate always-on node `boots`; `gloves` is an alternative to `hands`.",
   "Extra nodes beyond the contract: gloves, boots, kneepads, legband_L, pouches_front/side/back split, helmet_B per faction, *_LOD1 for every mesh node.",
   "Extra sockets: weapon_socket_L, mag_socket_L, aim_eye_R. AK-74M magazine is a separate node.",
   "tape_red is not a separate material in the GLB (unused glTF materials are dropped by loaders); recolour `tape` instead (value given above).",
   "throw_grenade needs the rifle moved to weapon_socket_L; wounded/drag/death clips expect the game to drop or sling the rifle.",
-  "Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris."
+  "Full kit (both legbands + kneepads + backpack + pouches_back) slightly exceeds 25k tris; default configuration is listed in default_config_tris.",
+  "Assault presets carry ~28-30k tris (armour + 4 extra pouch groups + headset/balaclava); use their _LOD1 (~8k) beyond close range.",
+  "GLBs use KHR_mesh_quantization (required) for int8 normals; weights are normalized u8, atlas UVs normalized u16 (all native in three.js GLTFLoader)."
  ]
 }
