@@ -747,7 +747,9 @@ function decalTexture(kind) {
   if (kind === 'soot') { // plume rising from a window head: dense at the bottom, feathering up
     for (let i = 0; i < 70; i++) { const px = 64 + (r() - .5) * 70 * (0.4 + i / 70), py = 128 - Math.pow(r(), 0.8) * 120, rr = 10 + r() * 22; const g = x.createRadialGradient(px, py, 0, px, py, rr); const a = 0.10 + 0.25 * (py / 128); g.addColorStop(0, `rgba(14,12,10,${a})`); g.addColorStop(1, 'rgba(14,12,10,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); }
   } else if (kind === 'pocks') { // shrapnel/bullet pocks: dark core, pale chipped rim
-    for (let i = 0; i < 46; i++) { const px = 64 + (r() - .5) * 110 * Math.sqrt(r()), py = 64 + (r() - .5) * 110 * Math.sqrt(r()), rr = 1 + r() * 3.2; x.fillStyle = 'rgba(205,200,190,0.55)'; x.beginPath(); x.arc(px, py, rr * 1.9, 0, 7); x.fill(); x.fillStyle = 'rgba(30,28,25,0.85)'; x.beginPath(); x.arc(px + 0.4, py + 0.4, rr, 0, 7); x.fill(); }
+    for (let i = 0; i < 60; i++) { const px = 64 + (r() - .5) * 116 * Math.sqrt(r()), py = 64 + (r() - .5) * 116 * Math.sqrt(r()), rr = 0.6 + Math.pow(r(), 2) * 2.6;
+      x.fillStyle = `rgba(190,184,172,${0.18 + r() * 0.15})`; x.beginPath(); for (let k = 0; k <= 7; k++) { const a = k / 7 * 6.28, q = rr * (1.3 + r() * 0.6); k ? x.lineTo(px + Math.cos(a) * q, py + Math.sin(a) * q) : x.moveTo(px + Math.cos(a) * q, py + Math.sin(a) * q); } x.fill();
+      x.fillStyle = `rgba(38,35,31,${0.55 + r() * 0.3})`; x.beginPath(); x.arc(px + 0.3, py + 0.3, rr * 0.8, 0, 7); x.fill(); }
   } else if (kind === 'scorch') { // shell strike on a blank wall: blast star + soot
     const g = x.createRadialGradient(64, 64, 0, 64, 64, 62); g.addColorStop(0, 'rgba(10,9,8,0.75)'); g.addColorStop(0.5, 'rgba(25,22,19,0.45)'); g.addColorStop(1, 'rgba(25,22,19,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128);
     for (let i = 0; i < 30; i++) { const a = r() * 6.28; x.strokeStyle = `rgba(15,13,11,${0.2 + r() * 0.3})`; x.lineWidth = 1 + r() * 2.5; x.beginPath(); x.moveTo(64 + Math.cos(a) * 12, 64 + Math.sin(a) * 12); x.lineTo(64 + Math.cos(a) * (35 + r() * 28), 64 + Math.sin(a) * (35 + r() * 28)); x.stroke(); }

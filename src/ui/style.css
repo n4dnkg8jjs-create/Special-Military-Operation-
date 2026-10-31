@@ -98,3 +98,9 @@ button{font:inherit;cursor:pointer}
 
 .banner .pin{display:none;margin-bottom:2px;padding:1px 6px;font-size:11px;font-weight:800;letter-spacing:.18em;color:#fff;background:rgba(200,72,58,.92);animation:pinPulse 1s ease-in-out infinite}
 @keyframes pinPulse{50%{opacity:.55}}
+#menu{overflow-y:auto;align-items:safe center;padding:16px 0}
+#menu .menu-inner{padding:30px 40px}
+#menu h1{font-size:54px;margin:4px 0 6px}
+#menu .brief{font-size:16px}
+#menu .menu-grid{margin:18px 0}
+@media (max-height:780px){#menu .brief{font-size:14.5px;line-height:1.35}#menu h1{font-size:44px}}
