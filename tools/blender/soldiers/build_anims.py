@@ -358,6 +358,11 @@ def build_all(rig, R, only=None):
     import clips_atgm as CA
     if any(want(n) for n in CA.CLIPS):
         out.update(CA.atgm_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, prone))
+    # ---------------- deaths v2 (clips_death.py): direction / stance specific deaths, simulated limp arms; start poses taken from
+    # the stance clips built above in this run (else .cache/clips.pkl)
+    import clips_death as CD
+    if any(want(n) for n in CD.CLIPS):
+        out.update(CD.death_clips(rig, want, built=out))
     return out
 
 

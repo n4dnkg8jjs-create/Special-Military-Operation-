@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}
+.lab{position:absolute;color:#fff;font:bold 12px sans-serif;text-shadow:0 0 3px #000;padding:2px 5px}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{window.__info={error:String(e.message)};window.__done=true});window.addEventListener('unhandledrejection',e=>{window.__info={error:String(e.reason&&e.reason.stack||e.reason)};window.__done=true});</script>
+<script type="module">
+// Death clip + ragdoll filmstrips on synthetic terrain (fast: no game load).  One row per case, `n` frames at times `ts`.
+//   cases=clip:terrain[:opts];...   terrain = flat | trench (behind him) | trenchF (in front) | slope (down behind) | heap | lip
+//   opts: blast=k (impulse as soldier.js for power k*140), at=t (forced hand-off), early (hand off over uneven ground as the game does)
+//   ts=0.2,0.5,...  az=deg (camera bearing relative to his facing, 90 = his left)  r=dist
+// The flow mirrors soldier.js (deathSample / startRagdoll): pose velocity at the hand-off, target = the clip's last frame.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { Ragdoll, samplePose } from '/src/game/ragdoll.js';
+const q = new URLSearchParams(location.search);
+const W = 1400, H = 800;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); scene.add(sun); scene.add(sun.target);
+sun.shadow.camera.left = sun.shadow.camera.bottom = -4; sun.shadow.camera.right = sun.shadow.camera.top = 4;
+scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.7));
+const T = {
+  flat: () => 0,
+  trench: (x, z) => { const d = Math.abs(z + 1.0); return d < 0.4 ? -1.6 : d < 0.75 ? -1.6 + (d - 0.4) / 0.35 * 1.6 : 0; },     // trench 0.6..1.75 m behind, floor -1.6
+  trenchF: (x, z) => { const d = Math.abs(z - 1.1); return d < 0.4 ? -1.6 : d < 0.75 ? -1.6 + (d - 0.4) / 0.35 * 1.6 : 0; },
+  lip: (x, z) => { const d = Math.abs(z + 0.75); return d < 0.4 ? -1.5 : d < 0.55 ? -1.5 + (d - 0.4) / 0.15 * 1.5 : 0; },        // steep-sided trench right behind him
+  slope: (x, z) => -z * 0.5,
+  heap: (x, z) => Math.max(0, 1.6 - Math.hypot(x * 1.2, z + 1.4) * 0.8) + 0.04 * Math.sin(x * 7) * Math.cos(z * 5),
+};
+const gltf = await new GLTFLoader().loadAsync('/assets/soldiers/soldier_ru.glb');
+const anims = (await new GLTFLoader().loadAsync(q.get('anims') || '/assets/soldiers/soldier_anims.glb')).animations;
+const man = await (await fetch('/assets/soldiers/manifest.json')).json();
+const cases = (q.get('cases') || 'death_fall_back:trench:early').split(';').map(c => { const [clip, terr, ...o] = c.split(':'); const opt = {}; for (const kv of o) { const [k, v] = kv.split('='); opt[k] = v == null ? true : +v; } return { clip, terr, opt }; });
+const ts = (q.get('ts') || '0.3,0.6,0.9,1.2,1.6,2.2,3,4').split(',').map(Number), n = ts.length, rows = cases.length, tw = W / n, th = H / rows;
+const cam = new THREE.PerspectiveCamera(34, tw / th, 0.01, 200);
+const az = +(q.get('az') || 90) * Math.PI / 180, el = +(q.get('el') || 14) * Math.PI / 180, r = +(q.get('r') || 4.2);
+renderer.setScissorTest(true); renderer.autoClear = false; renderer.clear();
+const info = [];
+for (let row = 0; row < rows; row++) {
+  const { clip: cn, terr, opt } = cases[row], gh = T[terr];
+  // terrain mesh
+  const geo = new THREE.PlaneGeometry(12, 12, 240, 240); geo.rotateX(-Math.PI / 2); const pa = geo.attributes.position;
+  for (let i = 0; i < pa.count; i++) pa.setY(i, gh(pa.getX(i), pa.getZ(i))); geo.computeVertexNormals();
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 })); ground.receiveShadow = true; scene.add(ground);
+  const grid = new THREE.GridHelper(12, 12, 0x4d4840, 0x5d574d); grid.position.y = 0.003; if (terr === 'flat') scene.add(grid);
+  // soldier
+  const root = new THREE.Group(), m2 = SkeletonUtils.clone(gltf.scene); root.add(m2); scene.add(root);
+  m2.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const nm = o.parent && o.parent.type === 'Group' ? o.parent.name : o.name; o.visible = !(/_LOD1/.test(nm) || /_LOD1/.test(o.name)) && !(o.userData && (o.userData.default_visible === false || (o.parent && o.parent.userData && o.parent.userData.default_visible === false))); } });
+  const y0 = gh(0, 0); root.position.set(0, y0, 0); root.updateMatrixWorld(true);
+  const mixer = new THREE.AnimationMixer(m2), clip = anims.find(c => c.name === cn);
+  const act = mixer.clipAction(clip); act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; act.play();
+  const ev = man.soldier_anims.clips[cn]?.events || {};
+  let at = opt.at ?? (ev.ragdoll >= 0 ? ev.ragdoll : 99); if (opt.blast) at = Math.min(at, 0.12);
+  const hips = m2.getObjectByName('Hips'), dt = 1 / 60;
+  let t = 0, rd = null, last = null, k = 0, handoff = null;
+  const lab = document.createElement('div'); lab.className = 'lab'; lab.style.left = '0px'; lab.style.top = row * th + 'px'; document.body.appendChild(lab);
+  while (k < n) {
+    if (!rd) {
+      mixer.update(dt); t += dt; root.updateMatrixWorld(true);
+      const cur = samplePose(m2);
+      const hp = hips.getWorldPosition(new THREE.Vector3());
+      let go = t >= at;
+      if (!go && opt.early !== undefined && t > 0.3 && Math.abs(gh(hp.x, hp.z) - y0) > 0.25) go = true;
+      if (go && last) {
+        handoff = t;
+        const o = { ground: gh, start: cur, prev: last, prevDt: dt, drive: 0.03 };
+        if (opt.blast) { const kk = Math.min(Math.max(opt.blast, 0.3), 1.2), away = new THREE.Vector3(0, 0, -1), main = cn === 'death_blast';
+          o.impulse = main ? away.clone().multiplyScalar((kk - 0.6) * 2).setY((kk - 0.6) * 0.8) : away.clone().multiplyScalar(1 + 2 * kk).setY(0.4 + kk);
+          o.spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), away).multiplyScalar((main ? 0.8 : 3) * kk); o.drive = 0.015; }
+        else if (opt.push !== undefined) o.push = new THREE.Vector3(0, 0, -0.9);
+        rd = new Ragdoll(m2, o);
+        act.time = clip.duration; mixer.update(0); rd.setTarget(samplePose(m2)); rd.writeBones();
+      }
+      last = cur;
+    } else { rd.update(dt); t += dt; }
+    while (k < n && t >= ts[k] - 1e-6) {
+      root.updateMatrixWorld(true);
+      const hp = hips.getWorldPosition(new THREE.Vector3()), cy = Math.max(gh(hp.x, hp.z), hp.y * 0.6) + 0.35;
+      cam.position.set(hp.x + r * Math.cos(el) * Math.sin(az), cy + r * Math.sin(el), hp.z + r * Math.cos(el) * Math.cos(az)); cam.lookAt(hp.x, cy, hp.z);
+      sun.position.set(hp.x + 4, 10, hp.z + 6); sun.target.position.set(hp.x, 0, hp.z); sun.target.updateMatrixWorld();
+      const x = k * tw, y = (rows - 1 - row) * th;
+      renderer.setViewport(x, y, tw, th); renderer.setScissor(x, y, tw, th); renderer.render(scene, cam);
+      const tl = document.createElement('div'); tl.className = 'lab'; tl.style.left = x + 'px'; tl.style.top = (row * th + th - 18) + 'px'; tl.style.fontWeight = 'normal';
+      tl.textContent = `${ts[k].toFixed(2)} s ${rd ? (rd.asleep ? 'frozen' : 'ragdoll') : 'clip'}`; document.body.appendChild(tl);
+      k++;
+    }
+    if (t > 12) break;
+  }
+  lab.textContent = `${cn} / ${terr}${opt.blast ? ' blast ' + opt.blast : ''} - hand-off ${handoff ? handoff.toFixed(2) : '-'} s, asleep ${rd && rd.asleep ? (handoff + rd.t).toFixed(2) : '-'} s`;
+  info.push([cn, terr, handoff, rd && rd.t, rd && rd.p[0].toArray().map(v => +v.toFixed(2))]);
+  scene.remove(root); scene.remove(ground); scene.remove(grid);
+}
+window.__info = info; window.__done = true;
+</script></body></html>

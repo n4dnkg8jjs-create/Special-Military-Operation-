@@ -5262,7 +5262,7 @@
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 3478232,
+  "size_bytes": 4399768,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and the vehicle exits (hatch_exit*, dismount_*) keep root motion and end on the root",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
@@ -5557,7 +5557,8 @@
     "events": {
      "drop_weapon": 0.3,
      "knees_ground": 0.6,
-     "body_ground": 1.28
+     "body_ground": 1.28,
+     "ragdoll": 1.28
     }
    },
    "death_front": {
@@ -5570,7 +5571,8 @@
     "root_motion": true,
     "notes": "authored: hit, knees give, pitches forward onto the face (no hands), head turned; root motion kept; ends at rest; drop weapon ~0.2 s",
     "events": {
-     "drop_weapon": 0.2
+     "drop_weapon": 0.2,
+     "ragdoll": 1.0
     }
    },
    "death_back": {
@@ -5583,7 +5585,8 @@
     "root_motion": true,
     "notes": "CMU 90_18 0.35-3.2s, root motion kept, ends at rest; game should drop/detach the weapon at start",
     "events": {
-     "drop_weapon": 0.1
+     "drop_weapon": 0.1,
+     "ragdoll": 1.6
     }
    },
    "throw_grenade": {
@@ -10965,6 +10968,273 @@
      "threshold_h": 0.5,
      "threshold_z": -0.55
     }
+   },
+   "death_fall_back": {
+    "duration_s": 2.3,
+    "frames": 70,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "hit from the FRONT: trunk jerks back, right foot staggers back, sits down hard (0.68 s), rolls onto the back (0.98 s), head whips, arms simulated (limp), left knee falls out; ends supine ~0.65 m behind the start",
+    "end_hips_xz": [
+     0.03,
+     -0.63
+    ],
+    "events": {
+     "drop_weapon": 0.16,
+     "body_ground": 0.68,
+     "ragdoll": 0.98
+    }
+   },
+   "death_sit_slump": {
+    "duration_s": 3.0,
+    "frames": 91,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "hit from the FRONT (gut): doubles over, knees go, sits down on the backside (0.84 s) with the feet planted, sits slumped, head drops, then sags over onto the left side (2.2 s)",
+    "end_hips_xz": [
+     0.11,
+     -0.23
+    ],
+    "events": {
+     "drop_weapon": 0.22,
+     "body_ground": 0.84,
+     "ragdoll": 2.16
+    }
+   },
+   "death_fall_forward": {
+    "duration_s": 2.1,
+    "frames": 64,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "hit from BEHIND: thrown forward, half step with the left foot, knees fold, pitches onto the face (0.84 s) without catching himself, head turned; ends prone ~1 m ahead",
+    "end_hips_xz": [
+     0.02,
+     0.98
+    ],
+    "events": {
+     "drop_weapon": 0.14,
+     "body_ground": 0.84,
+     "ragdoll": 0.84
+    }
+   },
+   "death_spin_R": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "hit from the RIGHT side: the right shoulder is knocked back, he spins ~120 deg toward the hit on the left foot, the legs fold and he drops onto the right hip and rolls onto the back",
+    "end_hips_xz": [
+     -0.32,
+     -0.39
+    ],
+    "events": {
+     "drop_weapon": 0.12,
+     "body_ground": 0.74,
+     "ragdoll": 0.92
+    }
+   },
+   "death_spin_L": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "hit from the LEFT side: the left shoulder is knocked back, he spins ~120 deg toward the hit on the right foot, the legs fold and he drops onto the left hip and rolls onto the back (mirror of death_spin_R)",
+    "end_hips_xz": [
+     0.32,
+     -0.39
+    ],
+    "events": {
+     "drop_weapon": 0.12,
+     "body_ground": 0.74,
+     "ragdoll": 0.92
+    }
+   },
+   "death_knees": {
+    "duration_s": 2.8,
+    "frames": 85,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "legs go first: drops onto both knees (0.46 s), kneels slack with the head sagging, then topples forward onto the face / left shoulder (1.54 s)",
+    "end_hips_xz": [
+     0.08,
+     0.65
+    ],
+    "events": {
+     "drop_weapon": 0.18,
+     "body_ground": 1.54,
+     "ragdoll": 1.54
+    }
+   },
+   "death_headshot": {
+    "duration_s": 1.7,
+    "frames": 52,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "HEADSHOT / instant kill: no reaction - head snaps back, every muscle lets go, the knees fold straight down, he drops onto his backside behind the heels (0.38 s) and tips back onto the left shoulder; rifle drops at once",
+    "end_hips_xz": [
+     0.12,
+     -0.41
+    ],
+    "events": {
+     "drop_weapon": 0.06,
+     "body_ground": 0.38,
+     "ragdoll": 0.46
+    }
+   },
+   "death_run": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "shot while RUNNING: lurches, one more stumbling stride (feet planted on their contacts), legs give, momentum carries him onto his chest (0.76 s) and he slides ~0.5 m to a stop; root travels ~2.9 m forward (+Z)",
+    "end_hips_xz": [
+     0.04,
+     2.92
+    ],
+    "events": {
+     "drop_weapon": 0.12,
+     "body_ground": 0.76,
+     "ragdoll": 0.76
+    }
+   },
+   "death_crouch": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "shot while KNEELING (aim_crouch): jerks, sags back onto the right heel, keels over onto the left side (0.82 s), legs stay folded",
+    "end_hips_xz": [
+     0.23,
+     -0.01
+    ],
+    "events": {
+     "drop_weapon": 0.14,
+     "body_ground": 0.82,
+     "ragdoll": 0.82
+    }
+   },
+   "death_prone": {
+    "duration_s": 1.7,
+    "frames": 52,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "shot while PRONE (aim_prone): jolt, the head drops onto the ground turned to the side, arms go slack off the rifle, the left knee draws up; ends prone in place",
+    "end_hips_xz": [
+     0.0,
+     -0.03
+    ],
+    "events": {
+     "drop_weapon": 0.1,
+     "body_ground": 0.0,
+     "ragdoll": 0.4
+    }
+   },
+   "death_window_slump": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BUILDING window, kneeling behind the sill (inner wall face z = 0.6 m ahead of the root, sill 0.86 m): hit, slumps forward against the wall, chest and face on the wall / sill, arms hanging; stays kneeling slumped (no ragdoll)",
+    "end_hips_xz": [
+     0.02,
+     0.02
+    ],
+    "events": {
+     "drop_weapon": 0.12,
+     "ragdoll": -1,
+     "wall_z": 0.6,
+     "sill_y": 0.86
+    }
+   },
+   "death_window_back": {
+    "duration_s": 2.0,
+    "frames": 61,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BUILDING window, kneeling: knocked back into the room, sits back hard (0.5 s) and falls onto the back away from the window (~0.6 m back), head rolls; play on the floor slab (no ragdoll)",
+    "end_hips_xz": [
+     0.02,
+     -0.66
+    ],
+    "events": {
+     "drop_weapon": 0.1,
+     "body_ground": 0.5,
+     "ragdoll": -1
+    }
+   },
+   "death_blast": {
+    "duration_s": 2.3,
+    "frames": 70,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BLAST in FRONT (turn the man to face the explosion): thrown up and back off the feet (peak ~0.25 s), folds round the hips in the air, lands on the backside / back ~2.3 m away (0.62 s), tumbles back over the shoulder and ends face down ~3.1 m behind the start; ragdoll may take over from 0.1 s with the blast impulse",
+    "end_hips_xz": [
+     0.13,
+     -3.11
+    ],
+    "events": {
+     "drop_weapon": 0.05,
+     "body_ground": 0.62,
+     "ragdoll": 0.1
+    }
+   },
+   "death_bleedout": {
+    "duration_s": 2.6,
+    "frames": 79,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "casualty on his back (wounded_ground) bleeds out: breathing stops, hands slide off the wound, the drawn-up knee falls out, the head rolls to the side; in place (no ragdoll)",
+    "end_hips_xz": [
+     0.0,
+     0.0
+    ],
+    "events": {
+     "drop_weapon": 0.25,
+     "body_ground": 0.0,
+     "ragdoll": -1
+    }
    }
   },
   "atgm_fpv": {
@@ -10989,6 +11259,24 @@
    "continuity": "dismount_jump*, dismount_door, dismount_rear end exactly in crouch_walk frame 0 (left foot forward, right heel up) with the hips moving forward at crouch_walk ground speed (0.93 m/s): start crouch_walk at time 0 (not a random phase) with the game root moving, or crossfade into crouch_idle / walk_rifle. hatch_exit* end in a crouch with the PM at a compressed low ready (crossfade into pistol_idle / pistol_walk / pistol_run).",
    "vehicles_checked": "check_anims.py tests the body against the actual vehicle GLBs (voxelised LOD0 meshes, hatch / door openings carved): hatch_exit_tank vs t72av_ua + t72b3, hatch_exit_btr / dismount_jump_btr / dismount_door vs btr82a + btr80_ua, dismount_jump_tank vs t72av_ua + t72b3. Known model obstacles ignored by the check: the AA machine gun on the T-72 cupola (t72av_ua: its barrel lies over the commander hatch; t72b3: outboard of it) and the T-72B3 cope cage (a crewman cannot stand up through it): hide / swing them for the bail-out or accept the clipping. Turret yaw: the tank clip assumes the turret facing forward.",
    "tool": "clips_vehicle.py (choreography + vehicle layouts), vehicle_geo.py (vehicle surfaces / solid), preview_vehicle.html + pvv.sh (filmstrips against the vehicle GLBs: vp / vyaw = clips_vehicle.preview_transform(name))"
+  },
+  "deaths": {
+   "summary": "Direction / stance specific deaths (clips_death.py). Every death clip plays once, keeps root motion (the Hips track carries the body away from the root) and ends at rest on flat ground; events.drop_weapon = rifle leaves the hands; events.body_ground = the trunk lands; events.ragdoll = time from which src/game/ragdoll.js may take the body over (-1 = never: building / casualty clips).",
+   "direction": "hit bearing = angle of (shooter or explosion - soldier) relative to his facing: \"front\" |bearing| < 49 deg, \"back\" > 132 deg, \"left\" / \"right\" = the soldier's own left / right side in between. _R / _L clips name the side the hit came FROM.",
+   "choice": [
+    "was critical / stable (lying casualty) -> death_bleedout (never a standing clip)",
+    "inside a building window slot -> death_window_back (blast: always) / death_window_slump",
+    "rider on a vehicle deck -> death_headshot; squad.updateRiders puts him beside the vehicle, near the camera the ragdoll drops him from deck height (falls off the deck)",
+    "blast in front (< 52 deg) -> death_blast, the soldier is turned to face the explosion (thrown back away from it); blast from behind -> death_fall_forward; from a side -> death_spin_L / _R; blast deaths hand over to the ragdoll by 0.12 s with an impulse away from the explosion (scaled by the damage) and a backward tumble",
+    "prone -> death_prone; kneeling (crouch) -> death_crouch",
+    "headshot -> death_headshot; running (> 2.4 m/s) -> death_run",
+    "standing, hit from the front -> death_fall_back 45 % / death_sit_slump 30 % / death_knees 15 % / death_crumple 10 %",
+    "standing, hit from behind -> death_fall_forward 75 % / death_knees 25 %; from the left -> death_spin_L; from the right -> death_spin_R"
+   ],
+   "arms": "both arms are simulated in the build (verlet elbow + wrist hanging from the animated shoulder: gravity, residual tone fading as he goes down, ground friction, torso / thigh / head capsules, hinge elbows, shoulder limits) and solved back with two-bone IK",
+   "feet": "feet are pinned to their ground spots while they carry weight (leg IK, IK swing between steps); no foot sliding",
+   "window": "building clips: kneeling at the window slot (buildings.js slotPos): inner wall face 0.60 m ahead of the root (+Z), sill 0.86 m",
+   "ragdoll": "game side (src/game/ragdoll.js): position-based dynamics on 19 joint particles, ground = city.groundHeight, max 8 active, only within ~90 m camera distance and never inside buildings / aboard; on level ground (< 8 cm under every joint now and in the clip's last frame) the authored clip ends the death and no ragdoll runs; otherwise it takes over at events.ragdoll, or earlier (after 0.3 s) as soon as the ground under the Hips is > 0.25 m above / below the root (trench edge, slope, rubble: the clip assumes flat ground); a new ragdoll only starts when a slot is free or the oldest body has settled > 1.4 s (never frozen mid-air: otherwise the clip finishes); blasts always ragdoll from 0.12 s with an impulse away from the explosion; asleep once the trunk moves < 1.5 cm in 0.35 s (typically 0.7-1.8 s, at most 3 s), then frozen (no per-frame cost); the soldier's pos moves to where the pelvis rests. Without a ragdoll the clip plays to its end, then the corpse is frozen and pos moves to the end Hips position (root motion)."
   }
  },
  "ak74m": {

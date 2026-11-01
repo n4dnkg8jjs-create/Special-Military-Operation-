@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as Fallback from '../engine/fallback.js';
 import { WEAPONS, TUNING, ARMOR } from '../config.js';
+import { Ragdoll, samplePose, ragdollSlot } from './ragdoll.js';
 
 export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22', pm: 'pm' };
 // a crewman with a pistol uses the pistol clips when they exist, otherwise the rifle ones
@@ -10,6 +11,7 @@ const PISTOL_CLIP = { aim_stand: 'pistol_aim', fire_stand: 'pistol_fire', idle_r
 // One infantryman: visual (skinned MakeHuman mesh + gear + weapon), animation state machine and combat state.
 const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
 let SHARED = null, SHARED_EVENTS = {};
+const _dv = new THREE.Vector3();
 
 export function prepareSoldierAssets(assets) {
   const a = assets.gltf.soldier_anims || assets.gltf.soldier_ua || assets.gltf.soldier_ru;
@@ -221,7 +223,8 @@ export class Soldier {
   dropWeapon() {
     if (this.dropped || !this.weaponObj) return; this.dropped = true; this.showSling(false);
     const w = this.weaponObj; const p = w.getWorldPosition(new THREE.Vector3());
-    this.scene.add(w); w.position.set(p.x + (Math.random() - .5) * 0.6, 0.04, p.z + (Math.random() - .5) * 0.6);
+    const gh = this.squad?.game?.city?.groundHeight, wx = p.x + (Math.random() - .5) * 0.6, wz = p.z + (Math.random() - .5) * 0.6;
+    this.scene.add(w); w.position.set(wx, (this.inBuilding || !gh ? this.pos.y : gh(wx, wz)) + 0.04, wz);
     w.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2 * (Math.random() < .5 ? 1 : -1)); w.updateMatrixWorld(true);
     this.droppedWeapon = w;
   }
@@ -233,6 +236,7 @@ export class Soldier {
     else if (!out && this.mag.parent !== this.magHome.parent) { this.magHome.parent.add(this.mag); this.mag.position.copy(this.magHome.pos); this.mag.quaternion.copy(this.magHome.quat); }
   }
   animate(dt, camDist) {
+    if (this.state === 'dead' && this.deathTick(dt, camDist)) return;
     const sp = this.vel.length();
     const st = this.stance;
     let clip, ts = 1, alt = [];
@@ -277,7 +281,7 @@ export class Soldier {
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
       const every = this.inView === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
-      if (this.animAcc >= every) { this.mixer.update(this.animAcc); this.animAcc = 0; if (camDist < 60) this.magTick(); }
+      if (this.animAcc >= every) { const adv = this.animAcc; this.mixer.update(adv); this.animAcc = 0; if (camDist < 60) this.magTick(); if (this.state === 'dead') this.deathSample(adv); }
       // recoil kick (procedural additive on spine)
       if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
       if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); if (this.wLod) { for (const o of this.wLod[0]) o.visible = !far; for (const o of this.wLod[1]) o.visible = far; } } }
@@ -312,11 +316,152 @@ export class Soldier {
   get bld() { return this.inBuilding ? this.inside.panel.b : null; }
   get aboard() { return this.inside === 'btr' || this.inside === 'ride'; }
   headHeight() { if (this.inside === 'ride') return 1.0; return this.state !== 'ok' && this.state !== 'light' ? 0.3 : this.stance === 'prone' ? (this.ducking ? 0.22 : 0.35) : this.stance === 'crouch' ? (this.ducking ? 0.75 : 1.05) : 1.55; }
-  die(kind) {
+  // ------------------------------------------------------------ death
+  // die(kind, { from, blast, power, head }): from = shooter / explosion position (Vector3), blast = explosion, power = damage dealt,
+  // head = headshot.  The clip follows the hit direction relative to his facing, his stance and speed; the corpse is then handed to
+  // the ragdoll (ragdoll.js) so it settles onto the real terrain (near the camera only): at the clip's 'ragdoll' event, earlier when the
+  // ground under the falling body is uneven, at once (with an impulse) for blasts; on level ground the authored clip ends it instead.
+  die(kind, info = {}) {
+    const wasDown = this.state === 'critical' || this.state === 'stable', speed = this.vel.length();
     this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0);
-    this.deathClip = kind || pick(['death_front', 'death_back', 'death_crumple'], Math.random());
+    // leaning out of a corner: the body is where it was drawn (sync() adds the peek offset to the root) - no jump when it lapses
+    if (this.peekAmt > 0.01 && this.peekVec && !this.aboard) { this.pos.x += this.peekVec[0] * this.peekAmt * 0.45; this.pos.z += this.peekVec[1] * this.peekAmt * 0.45; }
+    this.peek = 0; this.peekAmt = 0; this.peekOut = false;
+    this.deathRide = this.inside === 'ride' ? this.pos.y : null;   // deck height: squad.updateRiders drops him beside the vehicle
+    this.deathInfo = { ...(info || {}), from: info?.from?.clone?.() || null }; this.deathT = 0; this.corpseDone = false; this.ragdoll = null; this._pp0 = this._pp1 = null;
+    this.deathClip = this.pickDeath(kind, this.deathInfo, wasDown, speed);
+    const ev = SHARED_EVENTS[this.deathClip] || {};
+    this.ragdollAt = ev.ragdoll != null && ev.ragdoll >= 0 ? ev.ragdoll : null;
+    if (this.deathInfo.blast && this.ragdollAt != null) this.ragdollAt = Math.min(this.ragdollAt, 0.12);
     if (this.dragging) { this.dragging.dragger = null; this.dragging = null; }
     if (this.dragger) { this.dragger.dragging = null; this.dragger = null; }
+  }
+  pickDeath(kind, info, wasDown, speed) {
+    const has = n => !!SHARED?.clips[n], r = Math.random();
+    if (wasDown && has('death_bleedout')) return 'death_bleedout';         // lying casualty: no standing-up death clip
+    if (!has('death_fall_back')) return kind || pick(['death_front', 'death_back', 'death_crumple'], r);   // old clip set
+    if (kind && kind !== 'death_crumple' && has(kind)) return kind;
+    const f = info.from;
+    let rel = null;      // bearing of the hit relative to his facing: 0 = from the front, +PI/2 = from his left
+    if (f && Math.hypot(f.x - this.pos.x, f.z - this.pos.z) > 0.2) { rel = Math.atan2(f.x - this.pos.x, f.z - this.pos.z) - this.heading; rel = Math.atan2(Math.sin(rel), Math.cos(rel)); }
+    if (this.inBuilding) return info.blast || r < 0.5 ? 'death_window_back' : 'death_window_slump';
+    if (this.inside === 'ride') return 'death_headshot';
+    if (info.blast) {
+      if (rel == null || Math.abs(rel) < 0.9) { if (rel != null) this.heading += rel; return 'death_blast'; }   // turned to face it: thrown back, away from it
+      if (Math.abs(rel) > 2.3) return 'death_fall_forward';
+      return rel > 0 ? 'death_spin_L' : 'death_spin_R';
+    }
+    if (this.stance === 'prone') return 'death_prone';
+    if (this.stance === 'crouch') return 'death_crouch';
+    if (info.head) return 'death_headshot';
+    if (speed > 2.4) return 'death_run';
+    if (rel == null) return pick(['death_fall_back', 'death_sit_slump', 'death_knees', 'death_fall_forward', 'death_crumple'], r);
+    const ar = Math.abs(rel);
+    if (ar < 0.85) return r < 0.45 ? 'death_fall_back' : r < 0.75 ? 'death_sit_slump' : r < 0.9 ? 'death_knees' : 'death_crumple';
+    if (ar > 2.3) return r < 0.75 ? 'death_fall_forward' : 'death_knees';
+    return rel > 0 ? 'death_spin_L' : 'death_spin_R';
+  }
+  // per frame while dead; true = handled (ragdoll running / corpse frozen: the clip is not updated)
+  deathTick(dt, camDist) {
+    if (this.corpseDone) { this.lodTick(camDist); return true; }
+    if (this.ragdoll) { this.ragdoll.update(dt); return true; }
+    if (!this.mixer) return false;
+    this.deathT += dt;
+    const gh = this.squad?.game?.city?.groundHeight;
+    if (this.deathRide != null && this.inside !== 'ride') {
+      // squad.updateRiders has put the dead rider on the ground beside the vehicle (y = 0): real ground there; near the camera he
+      // falls from deck height (the ragdoll drops him), otherwise he simply lies there
+      // it picks a spot within +-1.5 m of the seat: move it out of the hull footprint (to the nearer side) so the body is not inside the vehicle
+      const v = this.squad?.carrier, deck = this.deathRide; this.deathRide = null;
+      if (v?.pos && v.def) {
+        const fx = Math.sin(v.heading), fz = Math.cos(v.heading), dx = this.pos.x - v.pos.x, dz = this.pos.z - v.pos.z;
+        const along = dx * fx + dz * fz; let side = dx * fz - dz * fx; const hw = v.def.width / 2 + 0.4, hl = v.def.length / 2 + 0.3;
+        if (Math.abs(along) < hl && Math.abs(side) < hw) { side = (side >= 0 ? 1 : -1) * (hw + Math.random() * 0.5); this.pos.x = v.pos.x + along * fx + side * fz; this.pos.z = v.pos.z + along * fz - side * fx; }
+      }
+      const y = gh ? gh(this.pos.x, this.pos.z) : 0;
+      this.pos.y = y; this.root.position.copy(this.pos);
+      if (this.canRagdoll(camDist) && deck > y + 0.5 && ragdollSlot()) {
+        this.pos.y = Math.min(deck, y + 1.6); this.root.position.copy(this.pos); this._pp0 = this._pp1 = null;
+        this.deathFromDeck = true; this.startRagdoll(); this.deathFromDeck = false; return true;
+      }
+    }
+    if (this.ragdollAt != null && this._pp1 && this._pp0 && this.canRagdoll(camDist)) {   // two samples: hand-off velocity
+      let go = this.deathT >= this.ragdollAt;
+      // the clip assumes flat ground at the root's height: once the body leans out over a trench edge, a slope or a heap (> 0.25 m
+      // above / below the root) the ragdoll takes over at once and lets it fall onto the real surface
+      let uneven = false;
+      if (!go && this.deathT > 0.3 && gh && !this.inBuilding) {
+        const hips = this.hipsBone ||= this.model.getObjectByName('Hips');
+        if (hips) { const hp = hips.getWorldPosition(_dv); if (Math.abs(gh(hp.x, hp.z) - this.pos.y) > 0.25) go = uneven = true; }
+      }
+      // level ground under the body now and under the clip's rest pose: the authored clip is the better ending - no ragdoll
+      if (go && !uneven && !this.deathInfo.blast && this.levelUnder(gh)) this.ragdollAt = null;
+      else if (go && ragdollSlot()) { this.startRagdoll(); return true; }
+    }
+    if (this.deathT > clipDuration(this.deathClip, 2.5) + 0.25) { this.finalizeCorpse(); return true; }
+    return false;
+  }
+  // is the ground within 8 cm of the root height under every joint of the current pose and of the clip's last frame?
+  levelUnder(gh) {
+    if (!gh || !this.cur || !this._pp1) return false;
+    const y = this.pos.y, ok = P => P.every(p => Math.abs(gh(p.x, p.z) - y) < 0.08);
+    if (!ok(this._pp1)) return false;
+    const a = this.cur, t0 = a.time; a.time = a.getClip().duration; this.mixer.update(0);
+    const end = samplePose(this.model); a.time = t0; this.mixer.update(0);
+    return ok(end);
+  }
+  canRagdoll(camDist) { return camDist < 90 && !this.inBuilding && !this.aboard && !!this.squad?.game?.city?.groundHeight; }
+  // pose after each clip update while a ragdoll hand-off is pending (two frames: velocity at the hand-off)
+  deathSample(dt) {
+    if (this.ragdollAt == null || this.corpseDone || this.ragdoll || this.deathT < Math.min(0.22, this.ragdollAt - 0.2)) return;   // from 0.22 s: early hand-off over uneven ground
+    const t = this._pp0; this._pp0 = this._pp1; this._pp1 = samplePose(this.model, t); this._ppDt = dt;
+  }
+  startRagdoll() {
+    const g = this.squad.game, info = this.deathInfo, cur = samplePose(this.model);
+    const away = new THREE.Vector3();
+    if (info.from) { away.set(this.pos.x - info.from.x, 0, this.pos.z - info.from.z); if (away.lengthSq() > 1e-4) away.normalize(); else away.set(0, 0, 0); }
+    const opt = { ground: g.city.groundHeight, start: cur, prev: this._pp0, prevDt: this._ppDt || 1 / 60, drive: 0.03, onSleep: rd => this.freezeRagdoll(rd) };
+    if (info.blast) {
+      const k = THREE.MathUtils.clamp((info.power || 80) / 140, 0.3, 1.2);
+      // death_blast is itself the launch (the clip's velocity carries on): the damage only adds / takes off a little; the other clips
+      // (blast from a side / behind) barely move at the hand-off: the impulse throws them
+      opt.impulse = this.deathClip === 'death_blast' ? away.clone().multiplyScalar((k - 0.6) * 2).setY((k - 0.6) * 0.8) : away.clone().multiplyScalar(1.0 + 2.0 * k).setY(0.4 + 1.0 * k);
+      opt.spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), away).multiplyScalar((this.deathClip === 'death_blast' ? 0.8 : 3) * k);   // tumble away from it: omega x up = away, the head goes over backwards (death_blast already rotates)
+      opt.drive = 0.015;
+    } else if (info.from) opt.push = away.clone().multiplyScalar(0.9);
+    if (this.deathFromDeck) {   // off the deck, away from the hull
+      const v = this.squad?.carrier, o = v?.pos ? new THREE.Vector3(this.pos.x - v.pos.x, 0, this.pos.z - v.pos.z) : new THREE.Vector3(Math.random() - .5, 0, Math.random() - .5);
+      opt.impulse = (o.lengthSq() > 1e-4 ? o.normalize() : o.set(1, 0, 0)).multiplyScalar(0.8 + Math.random() * 0.6).setY(0.5);
+    }
+    this.ragdoll = new Ragdoll(this.model, opt);
+    // shape target: the clip's authored rest pose (its last frame), then back to the ragdoll pose at once
+    const a = this.cur; if (a) { a.time = a.getClip().duration; this.mixer.update(0); this.ragdoll.setTarget(samplePose(this.model)); }
+    this.ragdoll.writeBones();
+    this._pp0 = this._pp1 = null;
+  }
+  freezeRagdoll(rd) {
+    // the corpse's logical position = where the pelvis came to rest (on the ground under it); bones re-expressed for the new root
+    if (this.ragdoll !== rd) return;
+    rd.pelvisGround(this.pos); this.root.position.copy(this.pos); this.root.updateWorldMatrix(true, true);
+    rd.writeBones(); this.ragdoll = null; this.corpseDone = true;
+  }
+  // no ragdoll (far away, inside a building, ragdolls capped): the clip has ended - stop updating it; the logical position moves
+  // to where the body lies (root motion), the skeleton is re-expressed for it; ground height re-read there (outside buildings)
+  finalizeCorpse() {
+    this.corpseDone = true;
+    const hips = this.model?.getObjectByName?.('Hips');
+    if (!hips || this.inBuilding || this.aboard) return;
+    this.model.updateWorldMatrix(true, true);
+    const hw = hips.getWorldPosition(new THREE.Vector3()), gh = this.squad?.game?.city?.groundHeight;
+    const ny = gh ? gh(hw.x, hw.z) : this.pos.y;
+    hw.y += ny - this.pos.y;
+    this.pos.set(hw.x, ny, hw.z); this.root.position.copy(this.pos); this.root.updateWorldMatrix(true, true);
+    hips.parent.worldToLocal(hw); hips.position.copy(hw);
+  }
+  lodTick(camDist) {
+    if (!this.lods) return; const far = camDist > 70; if (far === this.far) return; this.far = far;
+    for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0);
+    if (this.wLod) { for (const o of this.wLod[0]) o.visible = !far; for (const o of this.wLod[1]) o.visible = far; }
   }
   dispose() { this.scene.remove(this.root); }
 }

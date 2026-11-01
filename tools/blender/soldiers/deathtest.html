@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><base href="/"><title>death / ragdoll test</title>
+<style>html,body{margin:0;background:#111;overflow:hidden} #view{position:absolute;left:0;top:0} #sheet{position:absolute;left:0;top:0;z-index:5}
+.lab{position:absolute;z-index:6;color:#fff;font:bold 13px sans-serif;text-shadow:0 0 3px #000;padding:3px 6px}</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/addons/" } }
+</script></head>
+<body><canvas id="view"></canvas><canvas id="sheet"></canvas>
+<script>window.addEventListener('error', e => { window.__info = { error: String(e.message) }; window.__done = true; }); window.addEventListener('unhandledrejection', e => { window.__info = { error: String(e.reason && e.reason.stack || e.reason) }; window.__done = true; });</script>
+<script type="module">
+// Headless death / ragdoll test harness (not part of the game): loads the game in its deployment phase (nobody fights), takes the
+// men of one player squad, puts them on chosen terrain (flat ground, a trench floor, a trench lip, a rubble heap), kills them with
+// chosen hit directions / blasts and renders a contact sheet of the corpses (or a time sequence of one death).
+//   ?scene=sheet|blast|clips|ride|battle  &map=city  &quality=medium  &noragdoll (clips only, for comparison)  &t=5 (settle time / battle s)
+//   &traj (Hips trajectories in __info)  &exp=1.5 (exposure)  &grass (keep the grass clumps)
+//   battle = perf: a normal battle (real culling / camera distance) for t s, frame times + ragdoll stats; ride = rider killed on a deck
+// run: node tools/preview.mjs "page:/tools/blender/soldiers/deathtest.html?scene=sheet" previews/deaths/corpses_terrain.png
+import * as THREE from 'three';
+import { Game } from '/src/game/game.js';
+import { Soldier } from '/src/game/soldier.js';
+import { ragdollStats } from '/src/game/ragdoll.js';
+import { City } from '/src/world/city.js';
+if (!new URLSearchParams(location.search).has('grass')) City.prototype.grassClumps = function () {};   // grass clumps hide the bodies (&grass keeps them)
+const Q = new URLSearchParams(location.search);
+const W = 1400, H = 800;
+window.__done = false;
+const game = window.game = new Game({ side: 'RU', minutes: 12, quality: Q.get('quality') || 'medium', map: Q.get('map') || 'city' });
+await game.init(() => {});
+game.noRender = true;
+const city = game.city, gh = city.groundHeight;
+// the test drives every man itself: no frustum culling / distance LOD, ragdoll allowed regardless of the camera
+if (Q.get('scene') === 'battle') {
+  // perf: a normal battle for `t` s (default 60) with the real camera distance / culling; the camera jumps to the latest death every 2 s
+  // so the bodies are in ragdoll range.  Compare with &noragdoll.
+  if (Q.has('noragdoll')) Soldier.prototype.canRagdoll = () => false;
+  let deaths = 0, rds = 0, last = null; const od = Soldier.prototype.die, os = Soldier.prototype.startRagdoll;
+  Soldier.prototype.die = function (...a) { deaths++; last = this.pos.clone(); return od.apply(this, a); };
+  Soldier.prototype.startRagdoll = function (...a) { rds++; return os.apply(this, a); };
+  game.startBattle();
+  const total = +(Q.get('t') || 60), dt = 1 / 30; let t = 0, worst = 0, ms = 0, n = 0; const t0 = performance.now();
+  while (t < total && !game.over) {
+    if (last && Math.round(t / dt) % 60 === 0) { game.cam.lookAt(last.x, last.z); game.cam.tDist = 45; }
+    const f0 = performance.now(); game.frame(dt); const f = performance.now() - f0; ms += f; n++; worst = Math.max(worst, f); t += dt;
+  }
+  const corpses = game.squads.reduce((a, q) => a + q.soldiers.filter(s => s.state === 'dead').length, 0);
+  const stuck = game.squads.flatMap(q => q.soldiers).filter(s => s.state === 'dead' && !s.corpseDone && !s.ragdoll && s.deathT > 6).length;
+  window.__info = { scene: 'battle', noragdoll: Q.has('noragdoll'), simS: Math.round(t), frames: n, msPerFrame: +(ms / n).toFixed(2), worstMs: Math.round(worst), wallMs: Math.round(performance.now() - t0), deaths, corpses, ragdollsStarted: rds, ragdoll: ragdollStats(), stuck, stats: [game.stats.player, game.stats.enemy] };
+  window.__done = true; await new Promise(() => {});
+}
+if (Q.get('scene') === 'ride') {
+  // a rider killed on the deck of a carrier (deployment phase: the vehicles stand still): falls off beside it
+  game.cullSoldiers = () => {}; game.camDist = () => 20;
+  const v = game.vehicles.find(v => v.passengers && v.passengers.soldiers.some(s => s.inside === 'ride'));
+  if (!v) { window.__info = { error: 'no riders' }; window.__done = true; await new Promise(() => {}); }
+  const s = v.passengers.soldiers.find(s => s.inside === 'ride'), from = s.pos.clone().add(new THREE.Vector3(Math.sin(v.heading + 1.4) * 30, 0, Math.cos(v.heading + 1.4) * 30));
+  const tr = []; let t = 0; const p0 = s.pos.toArray().map(x => +x.toFixed(2));
+  game.frame(0.05); s.die(null, { from }); game.onDeath(s, null, false);
+  const hips = () => s.model.getObjectByName('Hips').getWorldPosition(new THREE.Vector3());
+  while (t < 4) { game.frame(0.05); t += 0.05; if (Math.round(t / 0.05) % 4 === 0) { const h = hips(); tr.push([+t.toFixed(2), s.ragdoll ? 'R' : s.corpseDone ? 'F' : 'C', +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +gh(h.x, h.z).toFixed(2)]); } }
+  const R = game.renderer; R.r.setSize(W, H); R.camera.aspect = W / H; R.camera.updateProjectionMatrix(); if (Q.has('exp')) R.r.toneMappingExposure = +Q.get('exp');
+  const h = hips(), cam = R.camera; game.cam.focus.set(h.x, h.y, h.z); game.cam.tFocus.copy(game.cam.focus); R.followShadow(game.cam.focus);
+  const ox = h.x - v.pos.x, oz = h.z - v.pos.z, ol = Math.hypot(ox, oz) || 1; cam.position.set(h.x + ox / ol * 4.5, h.y + 3.2, h.z + oz / ol * 4.5); cam.lookAt(h.x, h.y, h.z); cam.updateMatrixWorld(); R.render(0.016, game.time);
+  window.__info = { scene: 'ride', deck: p0, clip: s.deathClip, end: s.pos.toArray().map(x => +x.toFixed(2)), vehicle: v.pos.toArray().map(x => +x.toFixed(2)), tr, ragdoll: ragdollStats() };
+  window.__done = true; await new Promise(() => {});
+}
+game.cullSoldiers = () => {};
+game.camDist = () => 20;
+if (Q.has('noragdoll')) Soldier.prototype.canRagdoll = () => false;
+const DBG = [];
+for (const fn of ['freezeRagdoll', 'finalizeCorpse', 'startRagdoll']) { const o = Soldier.prototype[fn]; Soldier.prototype[fn] = function (...a) { const b = this.pos.toArray().map(v => +v.toFixed(2)); const r = o.apply(this, a); DBG.push([fn, this.idx, b, this.pos.toArray().map(v => +v.toFixed(2)), this.ragdoll ? this.ragdoll.p[0].toArray().map(v => +v.toFixed(2)) : a[0]?.p?.[0]?.toArray().map(v => +v.toFixed(2))]); return r; }; }
+const sq = game.squads.filter(s => s.side === 'player' && !s.support && s.soldiers.length >= 4);
+if (!sq.length) { window.__info = { error: 'no squads', squads: game.squads.map(s => [s.side, s.kind, s.soldiers.length, !!s.mounted, !!s.support]) }; window.__done = true; throw new Error('no squads'); }
+for (const s of sq) { s.mounted = false; for (const m of s.soldiers) { m.inside = null; m.seat = null; m.dmWait = null; m.hatchWait = null; } }   // off the carriers
+const men = sq.flatMap(s => s.soldiers);
+let mi = 0;
+const take = () => { const s = men[mi++]; s.inView = true; s.visible = true; s.inside = null; s.slotRef = null; return s; };
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+// ---- terrain spots
+function flatSpot(x0, z0) {          // nearest place with level ground within 3 m
+  for (let r = 0; r < 90; r += 2) for (let a = 0; a < 6.28; a += 0.5) {
+    const x = x0 + Math.cos(a) * r, z = z0 + Math.sin(a) * r; let ok = true; const h0 = gh(x, z);
+    for (let k = 0; k < 8 && ok; k++) { const b = k / 8 * 6.28; if (Math.abs(gh(x + Math.cos(b) * 3, z + Math.sin(b) * 3) - h0) > 0.05) ok = false; }
+    const vehNear = game.vehicles.some(v => Math.hypot(v.pos.x - x, v.pos.z - z) < 26);
+    if (ok && !vehNear && Math.abs(h0) < 0.05 && game.nav.lineFree?.(x - 6, z, x + 12, z, 1.5) !== false && game.nav.lineFree?.(x, z - 6, x, z + 6, 1.5) !== false) return [x, z];
+  }
+  return [x0, z0];
+}
+const T = (city.trenchSystems || []).find(t => t.slots.length > 3) || null;
+function trenchSpots() {
+  if (!T) return null;
+  const sl = T.slots.find(s => s.kind === 'line') || T.slots[0];
+  const floor = gh(sl.x, sl.z);
+  // rear wall: walk back from the slot until the ground rises to the lip
+  let rx = sl.x, rz = sl.z;
+  for (let d = 0; d < 4; d += 0.05) { rx = sl.x - sl.fx * d; rz = sl.z - sl.fz * d; if (gh(rx, rz) > floor + 0.9) break; }
+  return { slot: sl, floor, lip: [rx - sl.fx * 0.45, rz - sl.fz * 0.45] };
+}
+function rubbleSpot() {
+  let best = null;
+  for (const list of city.rubbleInstances || []) for (const M of list) { const p = V(0, 0, 0).setFromMatrixPosition(M); const h = gh(p.x, p.z); if (!best || h > best[2]) best = [p.x, p.z, h]; }
+  if (!best) return null;
+  // the steepest direction from the top: put the man 1.3 m down the slope, facing up it
+  let bd = null;
+  for (let a = 0; a < 6.28; a += 0.26) { const x = best[0] + Math.cos(a) * 1.6, z = best[1] + Math.sin(a) * 1.6, h = gh(x, z); if (!bd || h < bd[2]) bd = [x, z, h, a]; }
+  return { top: best, x: best[0] + Math.cos(bd[3]) * 1.0, z: best[1] + Math.sin(bd[3]) * 1.0, down: bd[3] };
+}
+
+// ---- a man, posed, killed
+const subjects = [];
+function kill(label, x, z, heading, opt = {}) {
+  const s = take(); if (!s) return null;
+  s.pos.set(x, gh(x, z), z); s.heading = heading; s.stance = opt.stance || 'stand'; s.vel.set(0, 0, 0); s.path = null; s.target = null;
+  s.state = 'ok'; s.hp = 100; s.ducking = false; s.peek = 0; s.supportClip = null; s.hitT = 0;
+  if (opt.run) s.vel.set(Math.sin(heading) * 3.6, 0, Math.cos(heading) * 3.6);
+  // idle / run for a moment so the start pose is a real stance pose
+  s.animate(0.05, 20); s.sync();
+  const bear = opt.bearing ?? 0, d = opt.blast ? 3 : 25;   // bearing of the hit relative to his facing (0 = front, + = his left)
+  const from = V(x + Math.sin(heading + bear) * d, 0, z + Math.cos(heading + bear) * d);
+  s._dbg0 = [s.pos.toArray(), s.root.position.toArray()].map(a => a.map(v => +v.toFixed(2)));
+  subjects.push({ s, label, at: opt.at ?? 0.3, info: { from, blast: !!opt.blast, power: opt.power || 60, head: !!opt.head }, kind: opt.kind || null, x, z });
+  return s;
+}
+const scene = Q.get('scene') || 'sheet';
+const c0 = men[0].pos;
+const [fx, fz] = flatSpot(c0.x, c0.z - 25);
+const tr = trenchSpots(), rb = rubbleSpot();
+const notes = [];
+if (scene === 'sheet') {
+  kill('flat: shot from the front', fx, fz, 0.3, { bearing: 0.1, kind: 'death_fall_back' });
+  kill('flat: shot from the right', fx + 4, fz, 1.2, { bearing: -1.4 });
+  kill('flat: shot running', fx - 5, fz + 3, 0.0, { run: true });
+  kill('flat: blast in front', fx + 9, fz - 2, 2.0, { blast: true, bearing: 0.2, power: 120 });
+  if (tr) {
+    const a = Math.atan2(tr.slot.fx, tr.slot.fz);
+    kill('trench floor: shot from the front (falls against the rear wall)', tr.slot.x, tr.slot.z, a, { bearing: 0.05, kind: 'death_fall_back' });
+    kill('trench lip: shot from the front, falls back into the trench', tr.lip[0], tr.lip[1], a + Math.PI, { bearing: 0.0, kind: 'death_fall_back' });
+  } else notes.push('no trench system on this map');
+  if (rb) {
+    kill('rubble heap: shot from up-slope, falls down it', rb.x, rb.z, Math.atan2(-Math.cos(rb.down), -Math.sin(rb.down)) * 0 + Math.atan2(rb.top[0] - rb.x, rb.top[1] - rb.z), { bearing: 0.0, kind: 'death_fall_back' });
+    kill('rubble heap: shot from behind, pitches down it', rb.x + Math.cos(rb.down + 0.9) * 0.9, rb.z + Math.sin(rb.down + 0.9) * 0.9, Math.atan2(rb.x - rb.top[0], rb.z - rb.top[1]), { bearing: Math.PI, kind: 'death_fall_forward' });
+  } else notes.push('no rubble heap found');
+} else if (scene === 'blast') {
+  kill('blast', fx, fz, 0.0, { blast: true, bearing: 0.15, power: 130, at: 0.2 });
+} else if (scene === 'clips') {        // every new clip side by side on flat ground (clip only)
+  const names = (Q.get('names') || 'death_fall_back,death_sit_slump,death_fall_forward,death_spin_R,death_spin_L,death_knees,death_headshot,death_run').split(',');
+  names.forEach((n, i) => kill(n, fx + (i % 4) * 4, fz + Math.floor(i / 4) * 5, 0, { kind: n, stance: /crouch|window/.test(n) ? 'crouch' : /prone/.test(n) ? 'prone' : 'stand' }));
+}
+
+// ---- simulate
+const settle = +(Q.get('t') || 5);
+const sheet = document.getElementById('sheet'); sheet.width = W; sheet.height = H; const sx = sheet.getContext('2d');
+const R = game.renderer; R.r.setSize(W, H); if (Q.has('exp')) R.r.toneMappingExposure = +Q.get('exp'); R.composer?.setSize(W, H); R.camera.aspect = W / H; R.camera.updateProjectionMatrix();
+function clearYaw(t, dist, pitch, pref) {
+  for (let k = 0; k < 16; k++) {
+    const yaw = pref + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.39, hd = Math.cos(pitch) * dist;
+    let ok = true;
+    for (const f of [0.35, 0.7, 1]) { const x = t.x + Math.sin(yaw) * hd * f, z = t.z + Math.cos(yaw) * hd * f, y = t.y + Math.sin(pitch) * dist * f; if (city.buildingAt(x, z, 0.6) || gh(x, z) > y - 0.3) { ok = false; break; } }
+    if (ok) return yaw;
+  }
+  return pref;
+}
+function shot(i, n, cols, target, dist, yaw, pitch, label, fixed) {
+  const rows = Math.ceil(n / cols), tw = W / cols, th = H / rows;
+  const cam = R.camera; if (!fixed) yaw = clearYaw(target, dist, pitch, yaw);
+  game.cam.focus.set(target.x, target.y, target.z); game.cam.tFocus.copy(game.cam.focus); R.followShadow(game.cam.focus);
+  cam.position.set(target.x + Math.sin(yaw) * Math.cos(pitch) * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
+  cam.lookAt(target.x, target.y, target.z); cam.updateMatrixWorld();
+  R.render(0.016, game.time);
+  sx.drawImage(R.r.domElement, 0, 0, R.r.domElement.width, R.r.domElement.height, (i % cols) * tw, Math.floor(i / cols) * th, tw, th);
+  const L = document.createElement('div'); L.className = 'lab'; L.style.left = (i % cols) * tw + 'px'; L.style.top = Math.floor(i / cols) * th + 'px'; L.textContent = label; document.body.appendChild(L);
+}
+let t = 0; const dt = 0.05, t0 = performance.now();
+const fired = new Set();
+const log = [];
+const tick = () => {
+  for (const sb of subjects) if (!fired.has(sb) && t >= sb.at) { fired.add(sb); sb.s.die(sb.kind, sb.info); game.onDeath(sb.s, null, false); log.push(`${sb.label}: ${sb.s.deathClip} ragdoll@${sb.s.ragdollAt}`); }
+  game.frame(dt); t += dt;
+  if (Q.has('traj') && Math.round(t / dt) % 5 === 0) for (const sb of subjects) if (fired.has(sb)) { const h = sb.s.model.getObjectByName('Hips').getWorldPosition(V()); (sb.traj ||= []).push([+t.toFixed(2), sb.s.ragdoll ? 'R' : sb.s.corpseDone ? 'F' : 'C', +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +gh(h.x, h.z).toFixed(2)]); }
+};
+if (scene === 'blast') {
+  const sb = subjects[0], seq = [0.15, 0.3, 0.45, 0.6, 0.8, 1.1, 1.6, settle];
+  const tgt = V(sb.x, gh(sb.x, sb.z) + 0.6, sb.z);
+  let k = 0, side = null;
+  while (k < seq.length) {
+    tick();
+    if (t >= sb.at + seq[k] - 1e-6) { const c = V(sb.x - Math.sin(sb.s.heading) * 1.4, tgt.y, sb.z - Math.cos(sb.s.heading) * 1.4); if (side == null) { const a = sb.s.heading + Math.PI / 2; side = clearYaw(c, 5.6, 0.2, a) === a ? a : a + Math.PI; } shot(k, seq.length, 4, c, 5.6, side, 0.2, `t = ${seq[k].toFixed(2)} s ${sb.s.ragdoll ? '(ragdoll)' : sb.s.corpseDone ? '(frozen)' : '(clip)'}`, true); k++; }
+  }
+} else {
+  while (t < settle) tick();
+  const n = subjects.length, cols = n > 6 ? 4 : n > 3 ? 3 : n;
+  subjects.forEach((sb, i) => {
+    const p = sb.s.model.getObjectByName('Hips').getWorldPosition(V());
+    const y = Math.max(gh(p.x, p.z), p.y - 0.15);
+    shot(i, n, cols, V(p.x, y + 0.15, p.z), /trench/.test(sb.label) ? 3.6 : 3.8, sb.s.heading + 2.2, /trench/.test(sb.label) ? 1.05 : 0.7, sb.label);
+  });
+}
+const st = ragdollStats();
+window.__info = { traj: subjects.map(sb => [sb.label, sb.traj]), DBG, scene, simMs: Math.round(performance.now() - t0), log, notes, ragdoll: st, frozen: subjects.map(sb => [sb.s.deathClip, sb.s.corpseDone, !!sb.s.ragdoll, sb.s.pos.toArray().map(v => +v.toFixed(2)), sb.s._dbg0, sb.s.root.position.toArray().map(v => +v.toFixed(2)), sb.s.root.parent === game.scene, sb.s.squad.name]),
+  spots: { flat: [fx, fz].map(v => +v.toFixed(1)), trench: tr ? [tr.slot.x, tr.slot.z, tr.floor, ...tr.lip].map(v => +v.toFixed(2)) : null, rubble: rb ? rb.top.map(v => +v.toFixed(2)) : null } };
+R.r.domElement.style.display = 'none';
+window.__done = true;
+</script></body></html>

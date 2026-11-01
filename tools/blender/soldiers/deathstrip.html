@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}
+.lab{position:absolute;color:#fff;font:bold 12px sans-serif;text-shadow:0 0 3px #000;padding:2px 5px}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',()=>{window.__done=true});window.addEventListener('unhandledrejection',()=>{window.__done=true});</script>
+<script type="module">
+// Death clip filmstrips: one row per clip, `n` frames spread over the clip, the camera follows the body (Hips) so root motion stays
+// in frame.  clips=a,b,c  anims=glb  glb=soldier glb  n=8  az=deg (relative to the soldier's facing, 90 = his left side)  r=dist
+//   el=deg  window=1 draws the window wall (inner face z 0.60, sill 0.86) for death_window_* rows
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = 1400, H = +(q.get('h') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); scene.add(sun); scene.add(sun.target);
+scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+sun.shadow.camera.left = sun.shadow.camera.bottom = -3; sun.shadow.camera.right = sun.shadow.camera.top = 3;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const grid = new THREE.GridHelper(40, 40, 0x4d4840, 0x5d574d); grid.position.y = 0.002; scene.add(grid);
+const wall = new THREE.Group(); scene.add(wall); wall.visible = false;
+{ const m = new THREE.MeshStandardMaterial({ color: 0x8c877c, roughness: 0.95 });
+  const sill = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.86, 0.3), m); sill.position.set(0, 0.43, 0.75); wall.add(sill);
+  for (const x of [-1.25, 1.25]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.3, 0.3), m); p.position.set(x, 1.15, 0.75); wall.add(p); }
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.02, 3.5), new THREE.MeshStandardMaterial({ color: 0x6f6a60, roughness: 1 })); fl.position.set(0, 0.0, -1.1); wall.add(fl);
+  wall.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } }); }
+const loader = new GLTFLoader();
+const gltf = await loader.loadAsync(q.get('glb') || '/assets/soldiers/soldier_ru.glb');
+const root = gltf.scene; scene.add(root);
+root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; const nm = o.parent && o.parent.type === 'Group' ? o.parent.name : o.name;
+  o.visible = !(/_LOD1/.test(nm) || /_LOD1/.test(o.name)) && !(o.userData && (o.userData.default_visible === false || (o.parent && o.parent.userData && o.parent.userData.default_visible === false))); } });
+const clips = (await loader.loadAsync(q.get('anims') || '/assets/soldiers/soldier_anims.glb')).animations;
+const names = (q.get('clips') || 'death_fall_back').split(',');
+const n = +(q.get('n') || 8), rows = names.length, tw = W / n, th = H / rows;
+const hips = root.getObjectByName('Hips');
+const mixer = new THREE.AnimationMixer(root);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 32), tw / th, 0.01, 200);
+const az = +(q.get('az') || 90) * Math.PI / 180, el = +(q.get('el') || 14) * Math.PI / 180, r = +(q.get('r') || 3.6);
+renderer.setScissorTest(true); renderer.autoClear = false; renderer.clear();
+const info = {};
+names.forEach((name, row) => {
+  const clip = clips.find(c => c.name === name); if (!clip) { info[name] = 'missing'; return; }
+  mixer.stopAllAction(); const act = mixer.clipAction(clip); act.reset(); act.setLoop(THREE.LoopOnce, 1); act.clampWhenFinished = true; act.play();
+  wall.visible = q.has('window') && /window/.test(name);
+  const lab = document.createElement('div'); lab.className = 'lab'; lab.style.left = '0px'; lab.style.top = row * th + 'px'; lab.textContent = `${name} (${clip.duration.toFixed(2)} s)`; document.body.appendChild(lab);
+  for (let i = 0; i < n; i++) {
+    const t = clip.duration * Math.min(i / (n - 1), 0.9999);
+    mixer.setTime(t); root.updateMatrixWorld(true);
+    const hp = hips.getWorldPosition(new THREE.Vector3());
+    const cy = THREE.MathUtils.clamp(hp.y * 0.75, 0.35, 0.9);
+    cam.position.set(hp.x + r * Math.cos(el) * Math.sin(az), cy + r * Math.sin(el), hp.z + r * Math.cos(el) * Math.cos(az)); cam.lookAt(hp.x, cy, hp.z);
+    sun.position.set(hp.x + 6, 10, hp.z + 5); sun.target.position.set(hp.x, 0, hp.z); sun.target.updateMatrixWorld();
+    const x = i * tw, y = (rows - 1 - row) * th;
+    renderer.setViewport(x, y, tw, th); renderer.setScissor(x, y, tw, th); renderer.render(scene, cam);
+    const tl = document.createElement('div'); tl.className = 'lab'; tl.style.left = x + 'px'; tl.style.top = (row * th + th - 18) + 'px'; tl.textContent = t.toFixed(2) + ' s'; tl.style.fontWeight = 'normal'; document.body.appendChild(tl);
+  }
+  info[name] = clip.duration;
+});
+window.__info = info; window.__done = true;
+</script></body></html>

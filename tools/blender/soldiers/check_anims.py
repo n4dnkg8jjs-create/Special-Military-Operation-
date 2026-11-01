@@ -52,10 +52,14 @@ PARTIAL = {'throw_grenade_window': {'Right': [(0, 9)], 'Left': [(0, 0.5), (0.85,
            }
 LOCO = ['walk_rifle', 'run_rifle', 'crouch_walk', 'limp_walk', 'drag_wounded']
 DEATHS = ['death_crumple', 'death_front', 'death_back']
+import clips_death as _CD                       # deaths v2 (clips_death.py): window clips rest against the wall, not only on the floor
+DEATHS += [n for n in _CD.CLIPS]
+_DEATH_SNAP = _CD.SNAP
 LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone', 'wounded_crawl', 'wounded_ground']   # trunk rests on the ground
 # deliberate fast moves where > 25 deg/frame is allowed (clip -> (t0, t1, limit deg))
 SNAP = {'hit_react': (0.0, 0.15, 40.0), 'throw_grenade_window': [(0.40, 0.70, 30.0), (0.70, 0.95, 45.0)], 'death_front': (0.75, 0.95, 40.0), 'death_back': (0.0, 9, 40.0), 'throw_grenade': (0.0, 9, 40.0),
         'death_crumple': (0.25, 1.4, 35.0)}
+SNAP.update(_DEATH_SNAP)
 NO_GROUND = {'ride_sit_edge', 'ride_sit_deck', 'ride_aim'}   # seat frame, no ground under the root
 # ---- vehicle crew (clips_crew.py): PM pistol set; rebuilt crawls (clips_crawl.py); vehicle exits: clips_vehicle.py (vehicle_checks below)
 PISTOL = ['pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim']
