@@ -260,6 +260,7 @@ export class Game {
           const f = Math.pow(1 - d / range, 1.4) * (moving ? 1.6 : 1) * (fired ? 2.5 : 1) * (tracked ? 2 : 1) * (u.type === 'vehicle' ? 1.5 : 1);
           if (f * 3 <= best) continue;
           if (this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u)) best = Math.max(best, f * 3);
+          else if (fired && this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u, true)) best = Math.max(best, f * 1.5);   // muzzle flashes through the leaves: located roughly
         }
         if (best >= 9) break;
       }

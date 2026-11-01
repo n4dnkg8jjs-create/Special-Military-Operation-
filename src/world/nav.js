@@ -250,7 +250,7 @@ export class NavGrid {
   // Foliage (tree belts, forest): you can see into / out of the edge but not through; the see-through depth is per
   // occluder (o.depth, default 9 m with an end inside, 4.5 m crossing) and accumulates over consecutive belts / cells.
   // Ground relief (trench lips, parapets, rubble mounds) also blocks when this.terrainLOS (returns TERRAIN_OCC).
-  occluded(ax, ay, az, bx, by, bz, ignore, ignore2) {
+  occluded(ax, ay, az, bx, by, bz, ignore, ignore2, noFoliage = false) {
     const C = this.occCell, seen = new Set(); let leaf = 0;
     const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / C) + 1;
     for (let s = 0; s <= steps; s++) {
@@ -261,6 +261,7 @@ export class NavGrid {
         const t = segRect(ax, az, bx, bz, o); if (t === null) continue;
         const y = ay + (by - ay) * t; if (y >= o.h || (o.y0 && y < o.y0 && ay + (by - ay) * segT1 < o.y0)) continue;   // over it, or under a tree crown
         if (o.foliage) {
+          if (noFoliage) continue;
           // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
           const L = Math.hypot(bx - ax, bz - az), inside = (segT1 - t) * L;
           const endIn = t <= 0.0001 || segT1 >= 0.9999;

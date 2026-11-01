@@ -368,6 +368,7 @@ export class Squad {
     // stance from situation
     for (const s of this.effective) {
       if (s.aboard) continue;
+      if (s.rampWalk) { s.stance = 'crouch'; continue; }   // bent double through the low troop compartment and down the ramp
       if (s.inBuilding) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
       const moving = s.path && s.pathI < s.path.length;
       if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';

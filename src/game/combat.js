@@ -13,10 +13,13 @@ export class Combat {
   constructor(game) { this.g = game; this.projectiles = []; }
 
   // ---------------------------------------------------------------- line of sight
-  los(ax, ay, az, bx, by, bz, ignoreA, ignoreB) {
-    const o = this.g.nav.occluded(ax, ay, az, bx, by, bz, ignoreA, ignoreB);
+  los(ax, ay, az, bx, by, bz, ignoreA, ignoreB, noFoliage = false) {
+    const o = this.g.nav.occluded(ax, ay, az, bx, by, bz, ignoreA, ignoreB, noFoliage);
     return !o;
   }
+  // a shooter hidden in foliage gives himself away when he fires: his muzzle flash / report lets the other side put
+  // rounds into the bush he's in (rough fix, poor accuracy) even though they can't actually see him
+  roughFix(t) { const u = t.squad || t; return (u.firedT ?? 99) < 4 || (this.g.time - (t.lastShotT ?? -99)) < 4; }
   soldierEye(s, out = A) { const pv = s.peek ? s.peekVec : null; return out.set(s.pos.x + (pv ? pv[0] : 0), s.pos.y + s.headHeight(), s.pos.z + (pv ? pv[1] : 0)); }
   targetPoint(t, out = B) {
     if (t.type === 'vehicle') return out.set(t.pos.x, 1.5, t.pos.z);
@@ -165,13 +168,19 @@ export class Combat {
     // keep current target if still valid
     if (s.target && cands.some(c => c[0] === s.target)) {
       const tp = this.targetPoint(s.target, B);
-      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(s.target) || s.target)) return;
+      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(s.target) || s.target)) { s.tgtFoliage = false; return; }
+      if (this.roughFix(s.target) && this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(s.target) || s.target, true)) { s.tgtFoliage = true; return; }
     }
-    s.target = null;
+    s.target = null; s.tgtFoliage = false;
     const peeked = s.peek; s.peek = 0; this.soldierEye(s, eye);
     for (let i = 0; i < Math.min(5, cands.length); i++) {
       const t = cands[i][0], tp = this.targetPoint(t, B);
       if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t)) { s.target = t; break; }
+    }
+    // nobody in plain view: return fire into the foliage a shooter just revealed himself in
+    if (!s.target) for (let i = 0; i < Math.min(5, cands.length); i++) {
+      const t = cands[i][0]; if (t.type === 'vehicle' || !this.roughFix(t)) continue; const tp = this.targetPoint(t, B);
+      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t, true)) { s.target = t; s.tgtFoliage = true; break; }
     }
     if (!s.target && this.tryPeek(s, cands, ignA)) { if (!peeked) s.peekT = 0; }
     else if (s.target && s.target.type !== 'vehicle') this.wallLean(s);
@@ -220,6 +229,7 @@ export class Combat {
       if (t.vel.lengthSq() > 4) p *= 0.65;
     }
     if (t.state === 'critical' || t.state === 'stable') p *= 0.6;
+    if (s.tgtFoliage) p *= 0.3;   // firing blind into the leaves at a muzzle flash
     return THREE.MathUtils.clamp(p, 0.004, 0.75);
   }
   windowExposed(t) { return (this.g.time - (t.lastShotT ?? -99)) < 1.5 || t.throwT > 0 || t.launcherT > 0; }
@@ -649,7 +659,7 @@ export class Combat {
         // a vehicle only engages infantry it could plausibly make out itself (or that is shooting at it)
         const d = s.pos.distanceTo(v.pos); if (d > ((u.firedT ?? 99) < 3 ? 420 : v.side === 'enemy' ? 200 : 260)) continue;
         const tp = this.targetPoint(s, B);
-        if (!this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s)) continue;
+        if (!this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s) && !(this.roughFix(s) && this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s, true))) continue;
         if (d < bi) { bi = d; bestInf = s; }
         const sc = 120 - d * 0.25 + (s.inBuilding ? 40 : 0) + (s.inside === 'ride' ? 50 : 0) + (v.focus === u ? 200 : 0) + (s.weaponKey === 'rpg7' ? 60 : 0);
         if (v.kind === 'tank' && v.weapons[0].he <= 0 && !s.inBuilding) continue;
