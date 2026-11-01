@@ -151,7 +151,7 @@ def emr_tile(res=1024, tile_m=0.5, seed=11):
 
 def mm14_tile(res=1024, tile_m=0.5, seed=12):
     rng = np.random.default_rng(seed)
-    n = int(round(tile_m / MM14_PIXEL_M))
+    n = int(round(tile_m / MM14_PIXEL_M)); n += n % 2      # even (the noise field is generated n x n//2*2)
     blob = 0.13 / MM14_PIXEL_M / 2.2
     def fld(s, frac):
         f = ndimage.zoom(pnoise((n, n // 2 * 2), s, rng, 3), 1, order=1)

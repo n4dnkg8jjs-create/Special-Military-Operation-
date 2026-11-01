@@ -183,6 +183,16 @@ HELMETS = {
     '6b47_goggles': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=False, rails=False, goggles=True),
     'fast': dict(rim=(9, 20, -12), scale=(1.06, 1.02, 1.04), off=0.034, cover='fabric', band=False, nvg=True, rails=True, counterweight=True),
     'altyn': dict(rim=(14, -34, -30), scale=(1.09, 1.05, 1.08), off=0.040, cover='fabric', band=False, nvg=False, rails=False),
+    # FAST high-cut: squarer shell (superellipse in plan), flattish crown, rim cut high above the ears with a sharp notch at the
+    # temples, low at the brow and nape; bare ranger-green shell, ARC side rails, NVG shroud, velcro, shock cord, counterweight
+    'fast_hc': dict(rim_pts=((0, -3), (24, -1), (44, 3), (57, 11), (70, 13), (108, 13), (122, 8), (140, -7), (160, -17), (180, -21)),
+                    scale=(1.05, 0.97, 1.06), off=0.030, sq=2.6, cover=None, shell_mat='ranger_gear', band=False, nvg=False,
+                    rails=False, arc=True, shroud=True, velcro=True, cord=True, counterweight=True, naz=64, flare0=0.0),
+    # standard issue (PASGT-type kevlar / TOR-D): deeper bowl covering the ears, visor lip at the brow, flared skirt at the
+    # sides and back; MM-14 cloth cover with an elastic band
+    'pasgt': dict(rim_pts=((0, 2), (30, -2), (55, -14), (80, -30), (110, -34), (145, -33), (180, -30)),
+                  scale=(1.04, 1.0, 1.06), off=0.034, sq=2.1, cover='fabric', shell_mat='mm14_gear', band=True, nvg=False, rails=False,
+                  skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56),
     'mich': dict(rim=(7, -2, -18), scale=(1.09, 1.02, 1.05), off=0.036, cover='fabric', band=False, nvg=False, rails=False, goggles=True),
 }
 
@@ -206,21 +216,31 @@ def rim_el(az, rim):
 
 def helmet(kind, c, r, mats, fac):
     H = HELMETS[kind]
-    m = mats
+    m = dict(mats)
+    if H.get('shell_mat'):
+        m['fabric'] = H['shell_mat']
     out = []
-    naz, nel = 36, 10
+    naz, nel = H.get('naz', 36), 12 if H.get('rim_pts') else 10
     az = np.linspace(-np.pi, np.pi, naz, endpoint=False)
     R = r * H['scale'] + H['off']
+    sq = H.get('sq', 2.0)
+    def per_az(pts, a):                         # symmetric curve given at 0..180 deg (deg -> value), periodic interpolation
+        A = np.array([p[0] for p in pts], float); V = np.array([p[1] for p in pts], float)
+        return np.interp(np.degrees(np.abs((np.asarray(a) + np.pi) % (2 * np.pi) - np.pi)), A, V)
     def surf(az_, el_, extra=0.0):
-        x = np.cos(el_) * np.sin(az_); y = np.sin(el_); z = np.cos(el_) * np.cos(az_)
-        rr = 1.0 / np.sqrt((x / R[0]) ** 2 + (y / R[1]) ** 2 + (z / R[2]) ** 2)
-        # slight flare toward the rim
+        az_ = np.asarray(az_, float); el_ = np.asarray(el_, float)
+        sa, ca = np.sin(az_), np.cos(az_)
+        dh = (np.abs(sa / R[0]) ** sq + np.abs(ca / R[2]) ** sq) ** (-1.0 / sq)     # superellipse plan radius
+        rr = 1.0 / np.sqrt((np.cos(el_) / dh) ** 2 + (np.sin(el_) / R[1]) ** 2)
+        x = np.cos(el_) * sa; y = np.sin(el_); z = np.cos(el_) * ca
         return c[None] + np.stack([x, y, z], -1) * (rr + extra)[..., None]
     t = np.linspace(0, 1, nel)
     AZ, TT = np.meshgrid(az, t)
-    re = rim_el(AZ, H['rim'])
+    re = np.radians(per_az(H['rim_pts'], AZ)) if H.get('rim_pts') else rim_el(AZ, H['rim'])
     EL = re + (np.pi / 2 - re) * (1 - (1 - TT) ** 1.3) * 0.985
-    flare = 0.004 * np.clip(1 - TT * 4, 0, 1)
+    flare = H.get('flare0', 0.004) * np.clip(1 - TT * 4, 0, 1)
+    if H.get('skirt'):                          # flared skirt / visor lip toward the rim
+        flare = flare + per_az(H['skirt'], AZ) * np.clip(1 - TT * 3.2, 0, 1) ** 2
     outer = surf(AZ, EL, flare)
     inner = surf(AZ, EL, flare - 0.009)
     n = naz * nel
@@ -284,6 +304,39 @@ def helmet(kind, c, r, mats, fac):
                 a = a0 + sgn * np.radians(-12 + k * 7)
                 rail_parts.append(PO.local_part(PO.rbox(0.03, 0.022, 0.009, 0.002, 1), frame(a, np.radians(14), 0.0) @ PO.T(0, 0, 0.0045), m['hardware'], 'hard'))
             out += rail_parts
+    rim_fn = (lambda a: np.radians(per_az(H['rim_pts'], a))) if H.get('rim_pts') else (lambda a: rim_el(a, H['rim']))
+    def strip(a0, a1, e_lo, e_hi, h0, h1, mat, n=24):
+        """raised strip on the shell between azimuths a0..a1, elevation band (functions of az or constants), heights h0..h1"""
+        ab = np.linspace(a0, a1, n)
+        lo = e_lo(ab) if callable(e_lo) else np.full(n, e_lo); hi = e_hi(ab) if callable(e_hi) else np.full(n, e_hi)
+        P0, _ = on(ab, lo, h0); P1, _ = on(ab, lo, h1); P2, _ = on(ab, hi, h1); P3, _ = on(ab, hi, h0)
+        bp = np.concatenate([P0, P1, P2, P3])
+        q = G.part(bp, G.grid_tris(n, 4), mat, np.concatenate([np.stack([ab * 0.2, np.full(n, k * 0.01)], 1) for k in range(4)]))
+        return G.orient_open(q, bp - c)
+    if H.get('arc'):
+        # ARC side rails: curved polymer rails following the high cut just above it, with end caps and two screws
+        for sgn in (1, -1):
+            a0, a1 = sgn * np.radians(60), sgn * np.radians(124)
+            lo = lambda a: rim_fn(a) + np.radians(3.0); hi = lambda a: rim_fn(a) + np.radians(10.5)
+            out.append(strip(min(a0, a1), max(a0, a1), lo, hi, 0.0005, 0.0085, m['hardware']))
+            for a in (np.radians(70), np.radians(112)):
+                out.append(PO.local_part(PO.rbox(0.009, 0.009, 0.004, 0.002, 1), frame(sgn * a, rim_fn(sgn * a) + np.radians(6.5), 0.0085), m['hardware'], 'hard'))
+    if H.get('shroud'):
+        # NVG shroud: wide plate at the brow with the mount pocket, bungee hooks either side
+        out.append(PO.local_part(PO.rbox(0.074, 0.046, 0.007, 0.011, 2), frame(0.0, np.radians(22), 0.0) @ PO.T(0, 0, 0.0035), m['hardware'], 'hard'))
+        out.append(PO.local_part(PO.rbox(0.026, 0.022, 0.010, 0.004, 1), frame(0.0, np.radians(20), 0.0) @ PO.T(0, -0.005, 0.010), m['hardware'], 'hard'))
+    if H.get('velcro'):
+        # loop panels: big crown panel, two side panels above the rails, rear panel
+        out.append(strip(np.radians(-34), np.radians(34), np.radians(46), np.radians(70), 0.0006, 0.0024, m['webbing']))
+        for sgn in (1, -1):
+            a0, a1 = sorted((sgn * np.radians(66), sgn * np.radians(116)))
+            out.append(strip(a0, a1, np.radians(46), np.radians(56), 0.0006, 0.0022, m['webbing']))
+        out.append(strip(np.radians(150), np.radians(210), np.radians(20), np.radians(36), 0.0006, 0.0022, m['webbing']))
+    if H.get('cord'):
+        # shock cord running from the shroud along both sides to the back
+        for sgn in (1, -1):
+            a0, a1 = sorted((sgn * np.radians(30), sgn * np.radians(150)))
+            out.append(strip(a0, a1, lambda a: rim_fn(a) * 0.4 + np.radians(26), lambda a: rim_fn(a) * 0.4 + np.radians(27.8), 0.002, 0.0055, m['hardware'], n=30))
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.09, 0.06, 0.03, 0.01, 2), frame(np.pi, np.radians(5), 0.0) @ PO.T(0, 0.0, 0.015), m['fabric']))
     if H.get('goggles'):

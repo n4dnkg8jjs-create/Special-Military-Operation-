@@ -184,7 +184,7 @@ def make_gear(R, fac, env, which=None):
     mm = K.RU_MATS if fac == 'ru' else K.UA_MATS
     parts = K.plate_carrier(env, fac)
     c, r = head_fit(R)
-    hA, hB = ('6b47', '6b47_goggles') if fac == 'ru' else ('fast', 'mich')
+    hA, hB = ('6b47', '6b47_goggles') if fac == 'ru' else ('pasgt', 'fast_hc')     # UA: standard-issue PASGT-type kaska / FAST high-cut
     for kind, nm in ((hA, 'helmet_A'), (hB, 'helmet_B')):
         for q in K.helmet(kind, c, r, mm, fac):
             q['group'] = nm; parts.append(q)
@@ -202,7 +202,7 @@ def make_gear(R, fac, env, which=None):
     parts += AT.assault_pouches(env, fac)
     parts += AT.elbowpads(env, R, fac)
     parts += AT.assault_backpack(env, fac)
-    hA2, hB2 = ('6b47', 'altyn') if fac == 'ru' else ('fast', 'mich')
+    hA2, hB2 = ('6b47', 'altyn') if fac == 'ru' else ('fast_hc', 'mich')
     amm = dict(mm, fabric='altyn_steel', webbing='altyn_steel') if fac == 'ru' else mm
     for kind, nm, ms in ((hA2, 'helmet_assault_A', mm), (hB2, 'helmet_assault_B', amm if fac == 'ru' else mm)):
         for q in K.helmet(kind, c, r, ms, fac):

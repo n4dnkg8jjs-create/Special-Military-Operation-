@@ -167,7 +167,7 @@ export class AtgmTeam {
       return;
     }
     const moving = this.state === 'packed' || this.state === 'packing' ? crew.some(s => (s.path && s.pathI < s.path.length) || s.pathReq) : (gun.path && gun.pathI < gun.path.length) || gun.pathReq || (sq.order?.type === 'move' && sq.order !== this.setOrder);
-    if (moving && (this.state === 'deployed' || this.state === 'setting')) { this.state = 'packing'; this.T = this.t = 3 / eff; this.reloadT = null; }
+    if (moving && (this.state === 'deployed' || this.state === 'setting')) { this.state = 'packing'; this.T = this.t = (this.rec(this.clipName('atgm_pack'))?._dur || 3) / eff; this.reloadT = null; }
     if (this.state === 'packing') {
       this.t -= dt; for (const s of crew) s.aimStopT = Math.max(s.aimStopT || 0, 0.3);
       const clip = this.clipName('atgm_pack'), f = 1 - this.t / this.T;
@@ -181,7 +181,7 @@ export class AtgmTeam {
       return;
     }
     if (!moving && this.state === 'packed') {
-      this.state = 'setting'; this.setOrder = sq.order; this.T = this.t = 6 / eff; this.placeLauncher(gun);
+      this.state = 'setting'; this.setOrder = sq.order; this.T = this.t = (this.rec(this.clipName('atgm_setup'))?._dur || 6) / eff; this.placeLauncher(gun);
       if (!this.rec(this.clipName('atgm_setup'))) { this.launcher.visible = false; if (this.tube) this.tube.visible = false; }
       this.postCrew();
     }
@@ -205,7 +205,7 @@ export class AtgmTeam {
     if (ld !== gun && !ld.path && !ld.pathReq) { const { p, h } = this.loaderSpot(); if (Math.hypot(ld.pos.x - p.x, ld.pos.z - p.z) < 1.2) this.pin(ld, p.x, p.z, h); }
     // reload: the loader lifts the spent TLC off, lays it down, picks up the fresh one and seats it (driven by the clip's props)
     if (!this.loaded && !this.missile && this.ammo > 0) {
-      if (this.reloadT == null) this.reloadT = this.RT = 8 / eff;
+      if (this.reloadT == null) this.reloadT = this.RT = (this.rec(this.clipName('atgm_reload'))?._dur || 8) / eff;
       this.reloadT -= dt; const clip = this.clipName('atgm_reload'), f = 1 - this.reloadT / this.RT;
       if (ld !== gun) {
         ld.supportClip = clip; ld.supportAlt = ['crouch_idle']; ld.noRifle = true; ld.supportTs = eff;

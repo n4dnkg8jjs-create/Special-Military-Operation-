@@ -271,7 +271,7 @@ def hip_z_on_knees(rig, lq1, hip_y, knees, x0=0.0):
 
 
 # ====================================================================== arms / hands
-def reach_clavicle(rig, gq, root, side, palm, lim=24.0, share=0.8):
+def reach_clavicle(rig, gq, root, side, palm, lim=16.0, share=0.65):
     """protract / raise the clavicle toward a far palm target (rifle_overlay style)"""
     I = rig.I; sk = rig.sk; F = len(gq)
     lq_ref = sk.local_from_global(gq)
@@ -487,6 +487,52 @@ def despike(rig, gq, bones=LIMB_BONES, thresh=28.0, half=4, hold=None):
                 w = smooth(np.arange(n + 1) / n)
                 lq[a:c + 1, i] = qslerp(np.broadcast_to(q[a], (n + 1, 4)), np.broadcast_to(q[c], (n + 1, 4)), w)
     return rig.global_from_local(lq)
+
+
+def smooth_arm_swivel(rig, gq, root, sides=('Right', 'Left'), dead=3.0, sigma=2.0):
+    """remove elbow flips / forearm roll pops without moving the hands: (1) the elbow's swivel about the shoulder->wrist line is
+    unwrapped and low-pass filtered and the upper arm + forearm are turned about that line (the wrist lies on it, so it does not
+    move); (2) the forearm's roll about its own axis is filtered the same way (the wrist is on that axis too).  The hand keeps its
+    global rotation in both steps, so palms stay exactly on the props.  Changes under `dead` deg are left alone (authored poses
+    and clip-matching end frames are untouched)."""
+    from scipy.ndimage import gaussian_filter1d, median_filter
+    F = len(gq)
+    if F < 5:
+        return gq
+    gq = gq.copy()
+    def filt(th):
+        th = np.unwrap(th)
+        sm = gaussian_filter1d(median_filter(th, size=5, mode='nearest'), sigma, mode='nearest')
+        d = sm - th
+        d = np.sign(d) * np.maximum(np.abs(d) - np.radians(dead), 0)        # dead band
+        return gaussian_filter1d(d, 1.0, mode='nearest')
+    for side in sides:
+        ia, ie, ih = rig.I[side + 'Arm'], rig.I[side + 'ForeArm'], rig.I[side + 'Hand']
+        gp = fk_global(rig.sk, gq, root)
+        S_, E_, W_ = gp[:, ia], gp[:, ie], gp[:, ih]
+        ax = W_ - S_; ax /= np.linalg.norm(ax, axis=1, keepdims=True)
+        ref = qrot(gq[:, rig.I['Spine1']], bc(np.array([0, -1.0, -0.3]), F))    # chest-relative "elbow down/back"
+        ref -= ax * np.einsum('ij,ij->i', ref, ax)[:, None]; ref /= np.linalg.norm(ref, axis=1, keepdims=True) + 1e-9
+        e = E_ - S_; e -= ax * np.einsum('ij,ij->i', e, ax)[:, None]; e /= np.linalg.norm(e, axis=1, keepdims=True) + 1e-9
+        th = np.arctan2(np.einsum('ij,ij->i', np.cross(ref, e), ax), np.einsum('ij,ij->i', ref, e))
+        d = filt(th)
+        if np.abs(d).max() > 1e-4:
+            qd = qaxis(ax, d)
+            gh = gq[:, ih].copy()
+            gq[:, ia] = qmul(qd, gq[:, ia]); gq[:, ie] = qmul(qd, gq[:, ie]); gq[:, ih] = gh
+        # forearm roll relative to the upper arm, about the forearm axis
+        gp = fk_global(rig.sk, gq, root)
+        fa = gp[:, ih] - gp[:, ie]; fa /= np.linalg.norm(fa, axis=1, keepdims=True)
+        rel = qmul(qinv(gq[:, ia]), gq[:, ie])
+        fa_l = qrot(qinv(gq[:, ia]), fa)
+        rel = rel * np.sign(rel[:, 3:4] + 1e-12)
+        roll = 2 * np.arctan2(np.einsum('ij,ij->i', rel[:, :3], fa_l), rel[:, 3])
+        d = filt(roll)
+        if np.abs(d).max() > 1e-4:
+            gh = gq[:, ih].copy()
+            gq[:, ie] = qmul(qaxis(fa, d), gq[:, ie]); gq[:, ih] = gh
+    # the hand keeps its global rotation: rebuild locals so children (fingers) follow
+    return rig.global_from_local(rig.local(gq))
 
 
 def pose_blend_to(rig, gq, root, lq_t, root_t, t, t0, t1):
@@ -762,6 +808,7 @@ class Script:
         gq = fingers(rig, gq, grips, self.curl)
         gq = despike(rig, gq, hold={sd: tg[sd][2] > 0.5 for sd in tg})
         gq = despike(rig, gq, HEAD_BONES, thresh=12.0, half=5)
+        gq = smooth_arm_swivel(rig, gq, root)
         if self.final is not None:
             lq_t, root_t, t0, t1 = self.final
             gq, root = pose_blend_to(rig, gq, root, lq_t, root_t, t, t0, t1)
@@ -828,9 +875,9 @@ def atgm_setup_kornet(rig, lm, G, dur=6.0):
     aim_lq, aim_root = gunner_aim_frame(rig, G)
     SR = np.array([-0.24, 0.0, 0.13])        # side-step right of the cradle for the TLC (head clear of the overhanging tube)
     S.body = [(0.00, stand_pose(rig)),
-              (0.30, stand_pose(rig, fwd=6, yaw=14, roll=-3, neck=(8, 16, 0), head=(4, 10, 0), shR=(0, 0, -16))),
-              (0.65, stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -18))),
-              (0.95, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -12))),
+              (0.30, stand_pose(rig, fwd=6, yaw=14, roll=-3, neck=(8, 16, 0), head=(4, 10, 0), shR=(0, 0, -5))),
+              (0.65, stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -6))),
+              (0.95, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -4))),
               (1.30, stand_pose(rig, fwd=12, neck=(10, 0, 0), head=(8, 0, 0))),
               (1.75, P(rig, STAND['root'] + [0, -0.06, -0.04], fwd=24, hip_yaw=-6, neck=(10, 0, 0), head=(8, 0, 0))),
               (ev['plant'], P(rig, STAND['root'] + [0, -0.08, -0.05], fwd=30, hip_yaw=-6, neck=(8, 0, 0), head=(6, 0, 0))),
@@ -855,7 +902,8 @@ def atgm_setup_kornet(rig, lm, G, dur=6.0):
     Sx = LY.folded_nat_to_sock(kind); qS = qfrom_mat(Sx[0])
     gR, hR, pR = LY.FOLD_GRAB[kind]['R']; gL = LY.FOLD_GRAB[kind]['L'][0]
     S.objk['fold'] = [(0.0, ('back_nat', qS, Sx[1])), (ev['unsling'], ('back_nat', qS, Sx[1])),
-                      (0.95, ('chest_grab', yawq(270), np.array([-0.52, 1.50, -0.06]), gR)),
+                      (0.80, ('chest_grab', yawq(300), np.array([-0.42, 1.18, -0.20]), gR)),
+                      (0.98, ('chest_grab', yawq(270), np.array([-0.36, 1.08, 0.06]), gR)),
                       (1.30, ('chest_grab', ID, np.array([-0.10, 1.26, 0.40]), gR)),
                       (1.80, ('world',) + nat_from_grab(ID, L0 + gR + [0, 0.07, -0.02], gR)),
                       (ev['plant'], ('world', ID, L0))]
@@ -868,12 +916,10 @@ def atgm_setup_kornet(rig, lm, G, dur=6.0):
     TH = tube_hold(rig, kind, 'gunner')
     hqR = hand_q(rig, 'Right', hR, pR)
     S.handk['Right'] = [(0.0, relaxed(rig, 'Right'), POLE_DN['Right'], 0.2),
-                        (0.12, ('chest', np.array([-0.24, 1.36, 0.30]), hand_q(rig, 'Right', np.array([0, 1.0, -0.2]), np.array([0.3, 0, 1.0]))), POLE_OUT['Right'], 0.3),
-                        (0.22, ('chest', np.array([-0.22, 1.68, 0.18]), qslerp(hand_q(rig, 'Right', np.array([0, 1.0, -0.2]), np.array([0.3, 0, 1.0])),
-                                                                              hand_q(rig, 'Right', np.array([0, 0.1, -1.0]), np.array([0, -1.0, 0.2])), 0.5)), POLE_FU['Right'], 0.4),
-                        (0.30, ('chest', np.array([-0.17, 1.60, -0.10]), hand_q(rig, 'Right', np.array([0, 0.1, -1.0]), np.array([0, -1.0, 0.2]))), POLE_FU['Right'], 0.5),
-                        (ev['unsling'], ('obj', 'fold', gR, hqR), POLE_FU['Right'], 1.0),
-                        (0.95, ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
+                        (0.22, ('chest', np.array([-0.15, 1.40, 0.13]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (0.42, ('chest', np.array([-0.20, 1.38, 0.17]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (ev['unsling'], ('chest', np.array([-0.32, 1.26, 0.22]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (0.98, ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
                         (ev['plant'], ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
                         (ev['tube_pick'], ('obj', 'tube') + TH['Right'], POLE_BK['Right'], 1.0),
                         (ev['tube_on'], ('obj', 'tube') + TH['Right'], POLE_DN['Right'], 1.0),
@@ -892,6 +938,7 @@ def atgm_setup_kornet(rig, lm, G, dur=6.0):
                (dur, ('world', LY.EYE + [0, 0, 1.0]), 0.0)]
     S.final = (aim_lq, aim_root, 5.55, 5.75)
     S.unwind = {'Right': (4.45, 5.35), 'Left': (4.45, 5.35)}
+    S.retime = [(2.90, 2.90), (4.10, 4.30), (5.55, 5.62)]
     S.run()
     nat2node = (qinv(qS), -qrot(qinv(qS), Sx[1]))
     props = [S.prop('folded', 'fold', 'weapon_socket', 'unsling', 'plant', {'attach': 'weapon_socket_back'}, {'attach': 'hidden'}, nat2node=nat2node),
@@ -914,7 +961,7 @@ def _pe(S):
     return {k: round(float(v.max()), 3) for k, v in S.err.items()}
 
 
-def atgm_pack_kornet(rig, lm, G, dur=3.0):
+def atgm_pack_kornet(rig, lm, G, dur=3.5):
     kind = 'kornet'; K_ = LY.KORNET; L0 = K_['L0']
     S = Script(rig, lm, 'atgm_pack', dur)
     ev = S.events = dict(tube_off=0.80, tube_down=1.62, fold=2.00, sling=2.64)
@@ -930,8 +977,8 @@ def atgm_pack_kornet(rig, lm, G, dur=3.0):
               (1.86, P(rig, STAND['root'] + [0, -0.08, -0.05], fwd=30, hip_yaw=-6, neck=(8, 0, 0), head=(6, 0, 0))),
               (ev['fold'], P(rig, STAND['root'] + [0, -0.08, -0.05], fwd=30, hip_yaw=-6, neck=(8, 0, 0), head=(6, 0, 0))),
               (2.22, stand_pose(rig, fwd=12, neck=(10, 0, 0), head=(8, 0, 0))),
-              (2.46, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -12))),
-              (ev['sling'], stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -18))),
+              (2.46, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -4))),
+              (ev['sling'], stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -6))),
               (dur, stand_pose(rig))]
     ks = G.kspec
     sL = ('foot', -0.10, 0.16, -10.0); sR = ('foot', -0.44, -0.02, -32.0)
@@ -942,8 +989,8 @@ def atgm_pack_kornet(rig, lm, G, dur=3.0):
     gR, hR, pR = LY.FOLD_GRAB[kind]['R']; gL = LY.FOLD_GRAB[kind]['L'][0]
     S.objk['fold'] = [(0.0, ('world', ID, L0)), (ev['fold'], ('world', ID, L0)),
                       (2.22, ('chest_grab', ID, np.array([-0.10, 1.26, 0.40]), gR)),
-                      (2.34, ('chest_grab', yawq(315), np.array([-0.46, 1.38, 0.26]), gR)),
-                      (2.46, ('chest_grab', yawq(270), np.array([-0.52, 1.50, -0.06]), gR)),
+                      (2.34, ('chest_grab', yawq(270), np.array([-0.36, 1.08, 0.06]), gR)),
+                      (2.46, ('chest_grab', yawq(300), np.array([-0.42, 1.18, -0.20]), gR)),
                       (ev['sling'], ('back_nat', qS, Sx[1])), (dur, ('back_nat', qS, Sx[1]))]
     ts = LY.TUBE_SETUP_G[kind] + [0, K_['tube_r_end'], 0]
     tm = LY.tube_mount(kind)[0] + L0
@@ -956,8 +1003,9 @@ def atgm_pack_kornet(rig, lm, G, dur=3.0):
     S.handk['Right'] = [G.grip_keys('Right', 0.0), G.grip_keys('Right', 0.20), (ev['tube_off'], ('obj', 'tube') + TH['Right'], POLE_DN['Right'], 1.0),
                         (ev['tube_down'], ('obj', 'tube') + TH['Right'], POLE_BK['Right'], 1.0),
                         (ev['fold'], ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
-                        (2.22, ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
-                        (ev['sling'], ('obj', 'fold', gR, hqR), POLE_FU['Right'], 1.0),
+                        (2.22, ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
+                        (ev['sling'] - 0.14, ('chest', np.array([-0.32, 1.26, 0.22]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (ev['sling'], ('chest', np.array([-0.15, 1.40, 0.13]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
                         (dur, relaxed(rig, 'Right'), POLE_DN['Right'], 0.2)]
     S.handk['Left'] = [G.grip_keys('Left', 0.0), G.grip_keys('Left', 0.20), (0.74, ('obj', 'tube') + TH['Left'], POLE_DN['Left'], 1.0),
                        (ev['tube_down'], ('obj', 'tube') + TH['Left'], POLE_DN['Left'], 1.0),
@@ -968,6 +1016,7 @@ def atgm_pack_kornet(rig, lm, G, dur=3.0):
     S.lookk = [(0.0, ('world', LY.EYE + [0, 0, 1.0]), 0.0), (0.5, ('world', tm), 0.5), (1.0, ('obj', 'tube', np.zeros(3)), 0.6), (1.35, ('obj', 'tube', np.zeros(3)), 0.8),
                (1.7, ('world', L0 + [0, 0.5, 0]), 0.5), (2.15, ('obj', 'fold', gR), 0.4), (2.6, ('chest', np.array([0.0, 1.6, 2.0])), 0.0)]
     S.unwind = {'Right': (2.66, 2.98), 'Left': (2.40, 2.98)}
+    S.retime = [(1.38, 1.55), (1.62, 1.95), (2.00, 2.38), (2.64, 3.05), (2.99, 3.49)]
     S.run()
     nat2node = (qinv(qS), -qrot(qinv(qS), Sx[1]))
     props = [S.prop('kornet_tube', 'tube', 'weapon_socket', 'tube_off', 'tube_down', {'attach': 'launcher'}, {'attach': 'launcher', 'empty': 'tube_setup'},
@@ -990,9 +1039,9 @@ def atgm_setup_stugna(rig, lm, G, dur=6.0):
     ev = S.events = dict(unsling=0.65, plant=2.10, tube_pick=2.85, tube_on=3.80, control_on=5.05, deployed=5.45)
     aim_lq, aim_root = gunner_aim_frame(rig, G)
     S.body = [(0.00, stand_pose(rig)),
-              (0.30, stand_pose(rig, fwd=6, yaw=14, roll=-3, neck=(8, 16, 0), head=(4, 10, 0), shR=(0, 0, -16))),
-              (0.65, stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -18))),
-              (0.95, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -12))),
+              (0.30, stand_pose(rig, fwd=6, yaw=14, roll=-3, neck=(8, 16, 0), head=(4, 10, 0), shR=(0, 0, -5))),
+              (0.65, stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -6))),
+              (0.95, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -4))),
               (1.25, stand_pose(rig, fwd=10, neck=(8, 0, 0), head=(6, 0, 0))),
               (1.60, P(rig, np.array([-0.05, 0.8, 0.4]), fwd=22, hip_yaw=-4, neck=(6, 0, 0), head=(4, 0, 0))),
               (1.90, P(rig, np.array([-0.04, 0.71, 0.46]), fwd=34, yaw=0, neck=(6, 0, 0), head=(4, 0, 0))),
@@ -1018,7 +1067,8 @@ def atgm_setup_stugna(rig, lm, G, dur=6.0):
     Sx = LY.folded_nat_to_sock(kind); qS = qfrom_mat(Sx[0])
     gR, hR, pR = LY.FOLD_GRAB[kind]['R']; gL, hL, pL = LY.FOLD_GRAB[kind]['L']
     S.objk['fold'] = [(0.0, ('back_nat', qS, Sx[1])), (ev['unsling'], ('back_nat', qS, Sx[1])),
-                      (0.95, ('chest_grab', yawq(270), np.array([-0.52, 1.50, -0.06]), gR)),
+                      (0.80, ('chest_grab', yawq(300), np.array([-0.42, 1.18, -0.20]), gR)),
+                      (0.98, ('chest_grab', yawq(270), np.array([-0.36, 1.08, 0.06]), gR)),
                       (1.25, ('chest_grab', ID, np.array([-0.08, 1.30, 0.42]), gR)),
                       (1.75, ('world',) + nat_from_grab(ID, L0 + gR + [0, 0.10, -0.03], gR)),
                       (ev['plant'], ('world', ID, L0))]
@@ -1031,12 +1081,10 @@ def atgm_setup_stugna(rig, lm, G, dur=6.0):
     TH = tube_hold(rig, kind, 'gunner')
     hqR = hand_q(rig, 'Right', hR, pR); hqL = hand_q(rig, 'Left', hL, pL)
     S.handk['Right'] = [(0.0, relaxed(rig, 'Right'), POLE_DN['Right'], 0.2),
-                        (0.12, ('chest', np.array([-0.24, 1.36, 0.30]), hand_q(rig, 'Right', np.array([0, 1.0, -0.2]), np.array([0.3, 0, 1.0]))), POLE_OUT['Right'], 0.3),
-                        (0.22, ('chest', np.array([-0.22, 1.68, 0.18]), qslerp(hand_q(rig, 'Right', np.array([0, 1.0, -0.2]), np.array([0.3, 0, 1.0])),
-                                                                              hand_q(rig, 'Right', np.array([0, 0.1, -1.0]), np.array([0, -1.0, 0.2])), 0.5)), POLE_FU['Right'], 0.4),
-                        (0.30, ('chest', np.array([-0.17, 1.60, -0.10]), hand_q(rig, 'Right', np.array([0, 0.1, -1.0]), np.array([0, -1.0, 0.2]))), POLE_FU['Right'], 0.5),
-                        (ev['unsling'], ('obj', 'fold', gR, hqR), POLE_FU['Right'], 1.0),
-                        (0.95, ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
+                        (0.22, ('chest', np.array([-0.15, 1.40, 0.13]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (0.42, ('chest', np.array([-0.20, 1.38, 0.17]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (ev['unsling'], ('chest', np.array([-0.32, 1.26, 0.22]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (0.98, ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
                         (ev['plant'], ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
                         (ev['tube_pick'], ('obj', 'tube') + TH['Right'], POLE_BK['Right'], 1.0),
                         (ev['tube_on'], ('obj', 'tube') + TH['Right'], POLE_DN['Right'], 1.0),
@@ -1057,6 +1105,7 @@ def atgm_setup_stugna(rig, lm, G, dur=6.0):
                (dur, ('world', LY.EYE + [0, 0, 1.0]), 0.0)]
     S.final = (aim_lq, aim_root, 5.35, 5.55)
     S.unwind = {'Right': (4.10, 5.05), 'Left': (4.10, 5.05)}
+    S.retime = [(2.85, 2.85), (3.80, 4.08), (5.05, 5.15), (5.45, 5.52)]
     S.run()
     nat2node = (qinv(qS), -qrot(qinv(qS), Sx[1]))
     props = [S.prop('folded', 'fold', 'weapon_socket', 'unsling', 'plant', {'attach': 'weapon_socket_back'}, {'attach': 'hidden'}, nat2node=nat2node),
@@ -1074,7 +1123,7 @@ def atgm_setup_stugna(rig, lm, G, dur=6.0):
                    events=ev, extra=dict(props=props, launcher_nodes=lnodes, launcher='stugna'))
 
 
-def atgm_pack_stugna(rig, lm, G, dur=3.0):
+def atgm_pack_stugna(rig, lm, G, dur=3.5):
     kind = 'stugna'; K_ = LY.STUGNA; L0 = K_['L0']
     S = Script(rig, lm, 'atgm_pack_stugna', dur)
     ev = S.events = dict(control_off=0.25, tube_off=0.85, tube_down=1.35, fold=1.65, sling=2.58)
@@ -1088,8 +1137,8 @@ def atgm_pack_stugna(rig, lm, G, dur=3.0):
               (ev['fold'], P(rig, np.array([-0.04, 0.69, 0.48]), fwd=38, yaw=0, neck=(4, 0, 0), head=(2, 0, 0))),
               (2.05, P(rig, np.array([-0.05, 0.8, 0.4]), fwd=20, yaw=0, neck=(6, 0, 0))),
               (2.30, stand_pose(rig, fwd=10, neck=(8, 0, 0), head=(6, 0, 0))),
-              (2.46, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -12))),
-              (ev['sling'], stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -18))),
+              (2.46, stand_pose(rig, fwd=2, yaw=-20, roll=4, neck=(0, -14, 0), head=(0, -10, 0), shR=(0, 0, -4))),
+              (ev['sling'], stand_pose(rig, fwd=4, yaw=12, roll=-3, neck=(6, 14, 0), head=(4, 8, 0), shR=(0, 0, -6))),
               (dur, stand_pose(rig))]
     ks = G.kspec
     lung = ('foot', -0.12, 0.72, -8.0); toe = ('toe', -0.40, 0.05, -25.0, 35.0)
@@ -1102,23 +1151,24 @@ def atgm_pack_stugna(rig, lm, G, dur=3.0):
     S.objk['fold'] = [(0.0, ('world', ID, L0)), (ev['fold'], ('world', ID, L0)),
                       (2.05, ('world',) + nat_from_grab(ID, L0 + gR + [0, 0.12, -0.06], gR)),
                       (2.30, ('chest_grab', ID, np.array([-0.08, 1.30, 0.42]), gR)),
-                      (2.36, ('chest_grab', yawq(315), np.array([-0.46, 1.38, 0.26]), gR)),
-                      (2.46, ('chest_grab', yawq(270), np.array([-0.52, 1.50, -0.06]), gR)),
+                      (2.36, ('chest_grab', yawq(270), np.array([-0.36, 1.08, 0.06]), gR)),
+                      (2.46, ('chest_grab', yawq(300), np.array([-0.42, 1.18, -0.20]), gR)),
                       (ev['sling'], ('back_nat', qS, Sx[1])), (dur, ('back_nat', qS, Sx[1]))]
     ts = LY.TUBE_SETUP_G[kind] + [0, K_['tube_r_end'], 0]
     tm = LY.tube_mount(kind)[0] + L0
     S.objk['tube'] = [(0.0, ('world', ID, tm)), (ev['tube_off'], ('world', ID, tm)),
                       (0.95, ('world', ID, tm + [0.0, 0.18, -0.03])), (1.08, ('world', ID, np.array([-0.44, 1.42, 1.00]))),
                       (1.22, ('world', ID, np.array([-0.76, 1.00, 0.86]))), (ev['tube_down'], ('world', ID, ts))]
-    S.retime = [(0.85, 0.85), (1.35, 1.60), (1.65, 1.94), (2.58, 2.64)]
+    S.retime = [(0.85, 0.85), (1.22, 1.45), (1.35, 1.80), (1.65, 2.20), (2.58, 3.05), (2.99, 3.49)]
     TH = tube_hold(rig, kind, 'gunner_side')
     hqR = hand_q(rig, 'Right', hR, pR); hqL = hand_q(rig, 'Left', hL, pL)
     S.handk['Right'] = [G.grip_keys('Right', 0.0), G.grip_keys('Right', 0.20),
                         (ev['tube_off'], ('obj', 'tube') + TH['Right'], POLE_DN['Right'], 1.0),
                         (ev['tube_down'], ('obj', 'tube') + TH['Right'], POLE_BK['Right'], 1.0),
                         (ev['fold'], ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
-                        (2.30, ('obj', 'fold', gR, hqR), POLE_OUT['Right'], 1.0),
-                        (ev['sling'], ('obj', 'fold', gR, hqR), POLE_FU['Right'], 1.0),
+                        (2.30, ('obj', 'fold', gR, hqR), POLE_DN['Right'], 1.0),
+                        (ev['sling'] - 0.14, ('chest', np.array([-0.32, 1.26, 0.22]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
+                        (ev['sling'], ('chest', np.array([-0.15, 1.40, 0.13]), hand_q(rig, 'Right', np.array([0, 1.0, 0.15]), np.array([0, 0, -1.0]))), POLE_DN['Right'], 0.8),
                         (dur, relaxed(rig, 'Right'), POLE_DN['Right'], 0.2)]
     S.handk['Left'] = [G.grip_keys('Left', 0.0), G.grip_keys('Left', 0.20),
                        (0.78, ('obj', 'tube') + TH['Left'], POLE_DN['Left'], 1.0),
@@ -1245,25 +1295,26 @@ def drone_hold(rig):
 def fpv_launch(rig, lm, dur=2.0, t_rel=1.10):
     S = Script(rig, lm, 'fpv_launch', dur)
     ev = S.events = dict(start=0.0, release=t_rel)
-    S.body = [(0.00, stand_pose(rig, fwd=6, neck=(8, 0, 0), head=(6, 0, 0))),
-              (0.50, stand_pose(rig, fwd=-4, neck=(-14, 0, 0), head=(-14, 0, 0), shL=(0, 0, 14), shR=(0, 0, -14))),
-              (0.80, P(rig, STAND['root'] + [0, -0.05, -0.02], fwd=-10, hip_yaw=-8, neck=(-16, 0, 0), head=(-16, 0, 0), shL=(0, 0, 18), shR=(0, 0, -18))),
-              (t_rel, P(rig, STAND['root'] + [0, 0.01, 0.03], fwd=10, hip_yaw=-8, neck=(-20, 0, 0), head=(-20, 0, 0), shL=(0, 0, 20), shR=(0, 0, -20))),
-              (1.40, stand_pose(rig, fwd=6, neck=(-22, 0, 0), head=(-20, 0, 0), shL=(0, 0, 10), shR=(0, 0, -10))),
+    S.body = [(0.00, stand_pose(rig, fwd=8, neck=(10, 0, 0), head=(6, 0, 0))),
+              (0.45, stand_pose(rig, fwd=2, neck=(-4, 0, 0), head=(-4, 0, 0))),
+              (0.80, P(rig, STAND['root'] + [0, -0.03, -0.05], fwd=-4, hip_yaw=-6, neck=(-6, 0, 0), head=(-6, 0, 0))),
+              (t_rel, P(rig, STAND['root'] + [0, -0.01, 0.07], fwd=14, hip_yaw=-6, neck=(-12, 0, 0), head=(-12, 0, 0))),
+              (1.40, stand_pose(rig, fwd=8, neck=(-16, 0, 0), head=(-14, 0, 0))),
               (dur, stand_pose(rig, neck=(-14, 0, 0), head=(-12, 0, 0)))]
     S.legk = {s_: [(0, STAND['feet'][s_])] for s_ in ('Left', 'Right')}
+    # chest -> raised to face height in front -> drawn back a little -> pushed forward and up out of the hands at shoulder height
     S.objk['drone'] = [(0.0, ('chest', ID, np.array([0.0, 1.14, 0.40]))),
-                       (0.50, ('chest', qeuler(-6, 0, 0, order='YXZ'), np.array([0.0, 1.86, 0.16]))),
-                       (0.80, ('chest', qeuler(-14, 0, 0, order='YXZ'), np.array([0.0, 1.84, 0.04]))),
-                       (t_rel, ('chest', qeuler(-16, 0, 0, order='YXZ'), np.array([0.0, 1.96, 0.42])))]
+                       (0.45, ('chest', qeuler(-4, 0, 0, order='YXZ'), np.array([0.0, 1.46, 0.44]))),
+                       (0.80, ('chest', qeuler(-8, 0, 0, order='YXZ'), np.array([0.0, 1.42, 0.32]))),
+                       (t_rel, ('chest', qeuler(-14, 0, 0, order='YXZ'), np.array([0.0, 1.58, 0.70])))]
     DH = drone_hold(rig)
-    S.handk['Right'] = [(0.0, ('obj', 'drone') + DH['Right'], POLE_DN['Right'], 1.0), (0.50, ('obj', 'drone') + DH['Right'], POLE_OUT['Right'], 1.0),
-                        (t_rel, ('obj', 'drone') + DH['Right'], POLE_OUT['Right'], 1.0),
-                        (1.35, ('chest', np.array([-0.12, 1.85, 0.48]), hand_q(rig, 'Right', np.array([0, 0.5, 1.0]), np.array([0.6, 0.3, 0]))), POLE_OUT['Right'], 0.3),
+    S.handk['Right'] = [(0.0, ('obj', 'drone') + DH['Right'], POLE_DN['Right'], 1.0), (0.50, ('obj', 'drone') + DH['Right'], POLE_DN['Right'], 1.0),
+                        (t_rel, ('obj', 'drone') + DH['Right'], POLE_DN['Right'], 1.0),
+                        (1.35, ('chest', np.array([-0.12, 1.52, 0.62]), hand_q(rig, 'Right', np.array([0, 0.3, 1.0]), np.array([0.6, -0.2, 0]))), POLE_DN['Right'], 0.3),
                         (dur, relaxed(rig, 'Right'), POLE_DN['Right'], 0.2)]
-    S.handk['Left'] = [(0.0, ('obj', 'drone') + DH['Left'], POLE_DN['Left'], 1.0), (0.50, ('obj', 'drone') + DH['Left'], POLE_OUT['Left'], 1.0),
-                       (t_rel, ('obj', 'drone') + DH['Left'], POLE_OUT['Left'], 1.0),
-                       (1.35, ('chest', np.array([0.12, 1.85, 0.48]), hand_q(rig, 'Left', np.array([0, 0.5, 1.0]), np.array([-0.6, 0.3, 0]))), POLE_OUT['Left'], 0.3),
+    S.handk['Left'] = [(0.0, ('obj', 'drone') + DH['Left'], POLE_DN['Left'], 1.0), (0.50, ('obj', 'drone') + DH['Left'], POLE_DN['Left'], 1.0),
+                       (t_rel, ('obj', 'drone') + DH['Left'], POLE_DN['Left'], 1.0),
+                       (1.35, ('chest', np.array([0.12, 1.52, 0.62]), hand_q(rig, 'Left', np.array([0, 0.3, 1.0]), np.array([-0.6, -0.2, 0]))), POLE_DN['Left'], 0.3),
                        (dur, relaxed(rig, 'Left'), POLE_DN['Left'], 0.2)]
     S.lookk = [(0.0, ('obj', 'drone', np.zeros(3)), 0.5), (0.6, ('obj', 'drone', np.zeros(3)), 0.5), (t_rel, ('chest', np.array([0, 3.5, 4.0])), 0.6),
                (dur, ('chest', np.array([0, 4.5, 4.0])), 0.5)]
@@ -1281,7 +1332,7 @@ def fpv_launch(rig, lm, dur=2.0, t_rel=1.10):
                   'weapon_socket with t / q, then it flies from release_pos (clip / soldier frame) with about release_vel_mps')
     return to_clip('fpv_launch', rig, S.gq, S.root, False,
                    notes=(f'FPV assistant launches the drone ({dur:.1f} s, standing, in place): holds it level in both hands in front of the chest (palms on the '
-                          f'sides of the frame / warhead), lifts it overhead, dips and tosses it forward-up; release at {t_rel:.2f} s at '
+                          f'sides of the frame / warhead), raises it to face height, draws it back a little and pushes it forward-up out of both hands at shoulder height; release at {t_rel:.2f} s at '
                           f'{pr["release_pos"]} (soldier frame) moving {pr["release_vel_mps"]} m/s; arms follow through and come down, he watches it climb. '
                           f'Rifle on weapon_socket_back. palm err {_pe(S)}'),
                    events=ev, extra=dict(props=[pr]))
