@@ -344,18 +344,31 @@ def helmet(kind, c, r, mats, fac, trees=None):
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.085, 0.055, 0.028, 0.01, 2), frame(np.pi, np.radians(H.get('cw_el', 5)), 0.0) @ PO.T(0, 0.0, 0.014), m['fabric']))
     if H.get('goggles'):
-        # strap around the helmet + goggle frame and lens resting on the front of the helmet
+        # ballistic goggles pushed up on the helmet front (Revision Desert Locust / ESS Profile style): one continuous curved frame
+        # following the shell, a single wide wrap-around lens with a nose cut-out, and a wide elastic strap round the helmet with clips
         ab = np.linspace(-np.pi, np.pi, naz + 1)
-        e0 = np.radians(12); e1 = np.radians(21)
-        P0, _ = on(ab, np.full_like(ab, e0), 0.001); P1, _ = on(ab, np.full_like(ab, e0), 0.003)
-        P2, _ = on(ab, np.full_like(ab, e1), 0.003); P3, _ = on(ab, np.full_like(ab, e1), 0.001)
+        e0 = np.radians(11); e1 = np.radians(22)
+        P0, _ = on(ab, np.full_like(ab, e0), 0.001); P1, _ = on(ab, np.full_like(ab, e0), 0.0035)
+        P2, _ = on(ab, np.full_like(ab, e1), 0.0035); P3, _ = on(ab, np.full_like(ab, e1), 0.001)
         bp = np.concatenate([P0, P1, P2, P3])
-        strap = G.part(bp, G.grid_tris(naz + 1, 4), m['hardware'])
+        strap = G.part(bp, G.grid_tris(naz + 1, 4), m['webbing'])
         out.append(G.orient_open(strap, bp - c))
-        for sgn in (1, -1):
-            Fm = frame(sgn * np.radians(17), np.radians(16), 0.004)
-            out.append(PO.local_part(PO.rbox(0.072, 0.05, 0.022, 0.012, 2), Fm @ PO.T(0, 0, 0.011), m['hardware'], 'hard'))
-            out.append(PO.local_part(PO.rbox(0.064, 0.042, 0.006, 0.01, 2), Fm @ PO.T(0, 0, 0.022), 'goggle_lens', 'hard'))
+        def gstrip(a0, a1, lo, hi, h0, h1, mat, n=28):
+            ab_ = np.linspace(a0, a1, n)
+            lo_ = lo(ab_); hi_ = hi(ab_)
+            Q0, _ = on(ab_, lo_, h0); Q1, _ = on(ab_, lo_, h1); Q2, _ = on(ab_, hi_, h1); Q3, _ = on(ab_, hi_, h0)
+            V = np.concatenate([Q0, Q1, Q2, Q3]); tri = G.grid_tris(n, 4)
+            ends = [[0, n, 2 * n], [0, 2 * n, 3 * n], [n - 1, 3 * n + n - 1, 2 * n + n - 1], [n - 1, 2 * n + n - 1, n + n - 1]]
+            q = G.part(V, np.concatenate([tri, np.asarray(ends)]), mat, np.concatenate([np.stack([ab_ * 0.3, np.full(n, k * 0.02)], 1) for k in range(4)]))
+            return G.orient_open(q, V - c)
+        A = np.radians(44)
+        nose = lambda a_: np.radians(8.5) + np.radians(7.0) * np.exp(-(a_ / np.radians(9)) ** 2)     # nose cut-out in the lower edge
+        top = lambda a_: np.radians(27.0) - np.radians(3.0) * (a_ / A) ** 2
+        out.append(gstrip(-A, A, nose, top, 0.004, 0.0105, m['hardware'], n=36))                   # frame body (foam behind)
+        lens_lo = lambda a_: nose(a_) + np.radians(2.2); lens_hi = lambda a_: top(a_) - np.radians(2.2)
+        out.append(gstrip(-A + np.radians(4), A - np.radians(4), lens_lo, lens_hi, 0.0106, 0.0122, 'goggle_lens', n=36))   # one wrap lens
+        for sgn in (1, -1):                                                                         # strap clips at the frame ends
+            out.append(PO.local_part(PO.rbox(0.016, 0.022, 0.006, 0.003, 1), frame(sgn * (A + np.radians(3)), np.radians(17), 0.004), m['hardware'], 'hard'))
     if trees is not None:
         out += chin_strap(c, rim_fn, on, m, trees, H)
     for p in out:
