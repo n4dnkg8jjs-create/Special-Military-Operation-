@@ -179,8 +179,22 @@ def plate_carrier(env, fac):
 HELMETS = {
     # rim elevation (deg) as function of azimuth: (front, side, back); extra features
     # scale/off: shell = skull ellipsoid * scale + off (real shells stand 3.5-4 cm off the skull with pads + shell thickness; wider at the sides)
-    '6b47': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=True, rails=False),
-    '6b47_goggles': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=False, rails=False, goggles=True),
+    # cover extras (2026-11, from 2022-24 photos): seams = 4-panel cover seams (crown cross), pucker = cloth gathered under the band,
+    # band_mat = band material (RU: black rubber / inner-tube band over the EMR cover; tape = recolourable ID tape), iff = velcro patch
+    # at the back, goggles = 'ru' (6B34 / black frame, smoke lens) or 'ua' (Desert Locust style, tan frame, clear lens)
+    '6b47': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=True, rails=False,
+                 seams=True, pucker=True, band_mat='helmet_band', iff=True),
+    '6b47_goggles': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=False, rails=False, goggles='ru',
+                         seams=True, pucker=True, band_mat='helmet_band', iff=True),
+    # 6B7-1M (older Ratnik-era / mobilised issue): rounder, deeper bowl than the 6B47, ears covered, slight flare, no brim; EMR cover
+    # with a white identification-tape band (2022-23 photos) -> recolourable `tape`
+    '6b7': dict(rim_pts=((0, 3), (40, -2), (70, -19), (100, -29), (140, -29), (180, -26)), scale=(1.06, 1.03, 1.06), off=0.040, sq=2.0,
+                cover='fabric', band=True, band_mat='tape', band_el=(15, 22), nvg=False, rails=False, seams=True, pucker=True,
+                skirt=((0, 0.004), (60, 0.006), (110, 0.009), (180, 0.008)), naz=48),
+    # SSh-68 (steel, olive paint; mobilised / LDPR troops 2022): steep front, near-vertical lower sides, flared brim all round
+    'ssh68': dict(rim_pts=((0, 9), (45, 3), (80, -17), (110, -23), (150, -24), (180, -22)), scale=(1.05, 0.97, 1.07), off=0.033, sq=2.15,
+                  cover=None, shell_mat='ssh68_paint', band=False, nvg=False, rails=False, thin=True,
+                  skirt=((0, 0.013), (50, 0.011), (100, 0.016), (180, 0.016)), naz=48),
     'fast': dict(rim=(9, 20, -12), scale=(1.06, 1.02, 1.04), off=0.034, cover='fabric', band=False, nvg=True, rails=True, counterweight=True),
     'altyn': dict(rim=(14, -34, -30), scale=(1.09, 1.05, 1.08), off=0.040, cover='fabric', band=False, nvg=False, rails=False),
     # FAST high-cut: squarer shell (superellipse in plan), flattish crown, rim cut high above the ears with a sharp notch at the
@@ -193,8 +207,20 @@ HELMETS = {
     # sides and back; MM-14 cloth cover with an elastic band
     'pasgt': dict(rim_pts=((0, 2), (30, -2), (55, -14), (80, -30), (110, -34), (145, -33), (180, -30)),
                   scale=(1.04, 1.0, 1.06), off=0.034, sq=2.1, cover='fabric', shell_mat='mm14_gear', band=True, nvg=False, rails=False,
-                  skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56),
-    'mich': dict(rim=(7, -2, -18), scale=(1.09, 1.02, 1.05), off=0.036, cover='fabric', band=False, nvg=False, rails=False, goggles=True),
+                  skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56, seams=True, pucker=True),
+    # TOR-D / Kirasa kaska in a MultiCam cover with coyote band and ballistic goggles pushed up (2023-24 photos)
+    'pasgt_mc': dict(rim_pts=((0, 2), (30, -2), (55, -14), (80, -30), (110, -34), (145, -33), (180, -30)),
+                     scale=(1.04, 1.0, 1.06), off=0.034, sq=2.1, cover='fabric', shell_mat='multicam_gear', band=True, nvg=False, rails=False,
+                     skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56, seams=True, pucker=True, goggles='ua',
+                     iff=True),
+    # FAST-type high cut (Ukrainian copies) in a MultiCam cover: rails + shroud through the cover cut-outs, strip of ID tape on the back
+    'fast_mc': dict(rim_pts=((0, -5), (44, -5), (56, -4), (62, 0), (68, 5), (74, 6.5), (106, 6.5), (113, 3), (120, -6), (130, -17),
+                             (150, -27), (180, -31)),
+                    scale=(1.04, 1.02, 1.05), off=0.033, sq=2.5, cover='fabric', shell_mat='multicam_gear', band=False, nvg=False,
+                    rails=False, arc=True, shroud=True, velcro=False, cord=False, counterweight=False, naz=120, flare0=0.0, seams=True,
+                    tape_back=True),
+    'mich': dict(rim=(7, -2, -18), scale=(1.09, 1.02, 1.05), off=0.036, cover='fabric', band=False, nvg=False, rails=False, goggles='ua',
+                 seams=True),
 }
 
 
@@ -242,11 +268,20 @@ def helmet(kind, c, r, mats, fac, trees=None):
     flare = H.get('flare0', 0.004) * np.clip(1 - TT * 4, 0, 1)
     if H.get('skirt'):                          # flared skirt / visor lip toward the rim
         flare = flare + per_az(H['skirt'], AZ) * np.clip(1 - TT * 3.2, 0, 1) ** 2
-    outer = surf(AZ, EL, flare)
-    inner = surf(AZ, EL, flare - 0.009)
+    band_el = np.radians(H.get('band_el', (18, 26)))
+    puck = np.zeros_like(AZ)
+    if H.get('pucker') and H.get('cover') == 'fabric':
+        # cover cloth gathered under the elastic band: irregular folds just above / below it (cloth slack pulled in by the band)
+        rng_ = np.random.default_rng(7)
+        ph = rng_.uniform(0, 2 * np.pi, 3)
+        fold = 0.6 * np.sin(AZ * 11 + ph[0]) + 0.3 * np.sin(AZ * 23 + ph[1]) + 0.25 * np.sin(AZ * 5 + ph[2])
+        em = 0.5 * (band_el[0] + band_el[1])
+        puck = 0.0016 * np.clip(fold, -0.4, 1.0) * np.exp(-((EL - em) / np.radians(11)) ** 2)
+    outer = surf(AZ, EL, flare + puck)
+    inner = surf(AZ, EL, flare - (0.0035 if H.get('thin') else 0.009))
     n = naz * nel
     Tg = G.grid_tris(naz, nel, closed_u=True)
-    pos = np.concatenate([outer.reshape(-1, 3), inner.reshape(-1, 3), [c + [0, R[1] + 0.0, 0], c + [0, R[1] - 0.009, 0]]])
+    pos = np.concatenate([outer.reshape(-1, 3), inner.reshape(-1, 3), [c + [0, R[1] + 0.0, 0], c + [0, R[1] - (0.0035 if H.get('thin') else 0.009), 0]]])
     T = [Tg, Tg[:, ::-1] + n]
     top = [[(nel - 1) * naz + k, (nel - 1) * naz + (k + 1) % naz, 2 * n] for k in range(naz)]
     topi = [[n + (nel - 1) * naz + (k + 1) % naz, n + (nel - 1) * naz + k, 2 * n + 1] for k in range(naz)]
@@ -283,15 +318,40 @@ def helmet(kind, c, r, mats, fac, trees=None):
         up = np.array([0, 1.0, 0]) - nn * nn[1]; up /= np.linalg.norm(up)
         return PO.mat4(p, np.cross(up, nn), up, nn)
     if H.get('band'):
-        # elastic foliage band around the crown (6B47 cover)
-        ab = np.linspace(-np.pi, np.pi, naz + 1)
-        e0 = np.radians(18); e1 = np.radians(26)
-        P0, _ = on(ab, np.full_like(ab, e0), 0.001); P1, _ = on(ab, np.full_like(ab, e0), 0.004)
-        P2, _ = on(ab, np.full_like(ab, e1), 0.004); P3, _ = on(ab, np.full_like(ab, e1), 0.001)
+        # elastic foliage band around the crown (6B47 cover: often a black rubber / inner-tube band; 6B7: ID tape)
+        nb_ = max(naz, 72) + 1
+        ab = np.linspace(-np.pi, np.pi, nb_)
+        e0, e1 = band_el
+        hb = 0.0045 if H.get('band_mat') == 'helmet_band' else 0.0035
+        wob = np.radians(0.8) * np.sin(ab * 3 + 1.0)            # band never sits perfectly level
+        P0, _ = on(ab, e0 + wob, 0.0008); P1, _ = on(ab, e0 + wob, hb)
+        P2, _ = on(ab, e1 + wob, hb); P3, _ = on(ab, e1 + wob, 0.0008)
         bp = np.concatenate([P0, P1, P2, P3])
-        bt = G.grid_tris(naz + 1, 4)
-        band = G.part(bp, bt, m['webbing'], np.concatenate([np.stack([ab * 0.2, np.full(naz + 1, k * 0.01)], 1) for k in range(4)]))
+        bt = G.grid_tris(nb_, 4)
+        band = G.part(bp, bt, H.get('band_mat') or m['webbing'], np.concatenate([np.stack([ab * 0.2, np.full(nb_, k * 0.01)], 1) for k in range(4)]))
         out.append(G.orient_open(band, bp - c))
+    if H.get('seams') and H.get('cover') == 'fabric':
+        # 4-panel cover: raised seams from the crown down the front, back and sides (stop above the rim)
+        rim_f = (lambda a: np.radians(per_az(H['rim_pts'], a))) if H.get('rim_pts') else (lambda a: rim_el(a, H['rim']))
+        for a in (0.0, np.pi / 2, np.pi, -np.pi / 2):
+            el_lo = float(rim_f(np.array(a))) + np.radians(5)
+            ee = np.linspace(el_lo, np.radians(86), 14)
+            Q = []
+            for da, hh in ((-1, 0.0003), (-0.35, 0.0013), (0.35, 0.0013), (1, 0.0003)):
+                dA = da * 0.0035 / (0.125 * np.maximum(np.cos(ee), 0.08))
+                Pq, _ = on(a + dA, ee, hh + (float(np.max(puck)) * 0.6 if hh > 0.001 else 0.0)); Q.append(Pq)
+            sp = np.concatenate(Q)
+            sq_ = G.part(sp, G.grid_tris(14, 4), m['fabric'], np.concatenate([np.stack([ee * 0.2 + k * 0.003, np.full(14, a * 0.1)], 1) for k in range(4)]))
+            out.append(G.orient_open(sq_, sp - c))
+    if H.get('iff'):
+        # velcro IFF / name patch on the back of the cover
+        out.append(PO.local_part(PO.rbox(0.06, 0.04, 0.003, 0.002, 1), frame(np.pi, np.radians(36), 0.0) @ PO.T(0, 0, 0.0015), m['webbing'], 'hard'))
+    if H.get('tape_back'):
+        # strip of identification tape across the back of the cover (recolourable)
+        ab = np.linspace(np.radians(150), np.radians(210), 16)
+        Q = [on(ab, np.full_like(ab, e_), h_)[0] for e_, h_ in ((np.radians(24), 0.0007), (np.radians(24), 0.0017), (np.radians(31), 0.0017), (np.radians(31), 0.0007))]
+        tp = np.concatenate(Q)
+        out.append(G.orient_open(G.part(tp, G.grid_tris(16, 4), 'tape', np.concatenate([np.stack([ab * 0.3, np.full(16, k * 0.01)], 1) for k in range(4)])), tp - c))
     if H.get('nvg'):
         out.append(PO.local_part(PO.rbox(0.07, 0.045, 0.012, 0.004, 1), frame(0.0, np.radians(30), 0.0) @ PO.T(0, 0, 0.006), m['hardware'], 'hard'))
         out.append(PO.local_part(PO.rbox(0.028, 0.03, 0.022, 0.003, 1), frame(0.0, np.radians(27), 0.0) @ PO.T(0, -0.012, 0.018), m['hardware'], 'hard'))
@@ -344,35 +404,102 @@ def helmet(kind, c, r, mats, fac, trees=None):
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.085, 0.055, 0.028, 0.01, 2), frame(np.pi, np.radians(H.get('cw_el', 5)), 0.0) @ PO.T(0, 0.0, 0.014), m['fabric']))
     if H.get('goggles'):
-        # ballistic goggles pushed up on the helmet front (Revision Desert Locust / ESS Profile style): one continuous curved frame
-        # following the shell, a single wide wrap-around lens with a nose cut-out, and a wide elastic strap round the helmet with clips
-        ab = np.linspace(-np.pi, np.pi, naz + 1)
-        e0 = np.radians(11); e1 = np.radians(22)
-        P0, _ = on(ab, np.full_like(ab, e0), 0.001); P1, _ = on(ab, np.full_like(ab, e0), 0.0035)
-        P2, _ = on(ab, np.full_like(ab, e1), 0.0035); P3, _ = on(ab, np.full_like(ab, e1), 0.001)
-        bp = np.concatenate([P0, P1, P2, P3])
-        strap = G.part(bp, G.grid_tris(naz + 1, 4), m['webbing'])
-        out.append(G.orient_open(strap, bp - c))
-        def gstrip(a0, a1, lo, hi, h0, h1, mat, n=28):
-            ab_ = np.linspace(a0, a1, n)
-            lo_ = lo(ab_); hi_ = hi(ab_)
-            Q0, _ = on(ab_, lo_, h0); Q1, _ = on(ab_, lo_, h1); Q2, _ = on(ab_, hi_, h1); Q3, _ = on(ab_, hi_, h0)
-            V = np.concatenate([Q0, Q1, Q2, Q3]); tri = G.grid_tris(n, 4)
-            ends = [[0, n, 2 * n], [0, 2 * n, 3 * n], [n - 1, 3 * n + n - 1, 2 * n + n - 1], [n - 1, 2 * n + n - 1, n + n - 1]]
-            q = G.part(V, np.concatenate([tri, np.asarray(ends)]), mat, np.concatenate([np.stack([ab_ * 0.3, np.full(n, k * 0.02)], 1) for k in range(4)]))
-            return G.orient_open(q, V - c)
-        A = np.radians(44)
-        nose = lambda a_: np.radians(8.5) + np.radians(7.0) * np.exp(-(a_ / np.radians(9)) ** 2)     # nose cut-out in the lower edge
-        top = lambda a_: np.radians(27.0) - np.radians(3.0) * (a_ / A) ** 2
-        out.append(gstrip(-A, A, nose, top, 0.004, 0.0105, m['hardware'], n=36))                   # frame body (foam behind)
-        lens_lo = lambda a_: nose(a_) + np.radians(2.2); lens_hi = lambda a_: top(a_) - np.radians(2.2)
-        out.append(gstrip(-A + np.radians(4), A - np.radians(4), lens_lo, lens_hi, 0.0106, 0.0122, 'goggle_lens', n=36))   # one wrap lens
-        for sgn in (1, -1):                                                                         # strap clips at the frame ends
-            out.append(PO.local_part(PO.rbox(0.016, 0.022, 0.006, 0.003, 1), frame(sgn * (A + np.radians(3)), np.radians(17), 0.004), m['hardware'], 'hard'))
+        out += goggles(on, frame, c, H['goggles'], rim_el0=float((np.radians(per_az(H['rim_pts'], np.array(0.0))) if H.get('rim_pts')
+                                                                   else rim_el(np.array(0.0), H['rim']))))
     if trees is not None:
         out += chin_strap(c, rim_fn, on, m, trees, H)
     for p in out:
         p['group'] = 'helmet'
+    return out
+
+
+GOGGLE_STYLES = {
+    # 6B34 (Ratnik) / ESS Profile copies: black moulded frame, smoke-grey lens, black elastic strap
+    'ru': dict(frame='goggle_frame', lens='goggle_lens', strap='goggle_strap', foam='goggle_foam', A=45, hc=11.5),
+    # Revision Desert Locust: tan frame, clear lens (reads light grey), coyote strap
+    'ua': dict(frame='goggle_frame_tan', lens='goggle_lens_clear', strap='coyote_webbing', foam='goggle_foam', A=46, hc=12.0),
+}
+
+
+def goggles(on, frame, c, style, rim_el0=np.radians(6)):
+    """ballistic goggles pushed up on the front of the helmet (lens facing forward / up, foam against the shell): moulded frame
+    (foam gasket, rounded wall with vent slots, inner lip), one wrap-around lens with a nose notch, strap outriggers + clips at the
+    frame ends, wide elastic strap round the helmet with an adjuster slider at the back.  All in the helmet's (az, el, h) frame."""
+    S = GOGGLE_STYLES[style]
+    A = np.radians(S['A']); hc = np.radians(S['hc'])
+    e_b = rim_el0 + np.radians(9.0)                            # pushed up: bottom edge ~2 cm above the brim
+    out = []
+    n = 60
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    pe = 5.0
+    U = np.sign(np.cos(t)) * np.abs(np.cos(t)) ** (2 / pe)
+    V = np.sign(np.sin(t)) * np.abs(np.sin(t)) ** (2 / pe)
+    def uv2ae(u, v):
+        hh = hc * (1 - 0.25 * u ** 2)
+        el = e_b + hc - np.radians(1.5) * u ** 2 + v * hh
+        el = el + np.radians(6.0) * np.exp(-(u / 0.2) ** 2) * np.clip(-v, 0, 1) ** 3      # nose notch in the lower edge
+        return u * A, el
+    az, el = uv2ae(U, V)
+    base, N = on(az, el, 0.0)
+    Tn = np.roll(base, -1, 0) - np.roll(base, 1, 0); Tn /= np.linalg.norm(Tn, axis=1, keepdims=True)
+    O = np.cross(Tn, N); O /= np.linalg.norm(O, axis=1, keepdims=True)
+    cen, _ = on(0.0, float(e_b + hc), 0.0)
+    if np.sum(O * (base - cen)) < 0:
+        O = -O
+    def ring(prof):
+        return np.stack([base + O * o + N * h for o, h in prof], 0)          # (k, n, 3)
+    def tube(prof, mat):
+        P = ring(prof); k = len(prof)
+        pos = P.reshape(-1, 3)
+        tri = G.grid_tris(n, k, closed_u=True)
+        uv = np.concatenate([np.stack([t * 0.06, np.full(n, j * 0.01)], 1) for j in range(k)])
+        q = G.part(pos, tri, mat, uv)
+        return G.orient_open(q, (P - base[None]).reshape(-1, 3))       # faces point away from the shell / lens interior
+    # foam gasket against the shell, then the moulded frame wall up to the inner lip that holds the lens
+    out.append(tube([(-0.004, 0.0015), (0.006, 0.0015), (0.0068, 0.0075)], S['foam']))
+    out.append(tube([(0.0062, 0.0072), (0.0095, 0.0125), (0.0085, 0.0185), (0.0045, 0.0235), (-0.0005, 0.0248), (-0.0042, 0.0228)], S['frame']))
+    # lens: star-shaped fill of the inner lip outline, slight dome
+    ns = 4
+    Lp = []
+    uc, vc = 0.0, 0.12
+    for s in np.linspace(0, 1, ns + 1)[1:]:
+        u_ = uc + (U * 0.955 - uc) * s; v_ = vc + (V * 0.90 - vc) * s
+        a_, e_ = uv2ae(u_, v_)
+        p_, n_ = on(a_, e_, 0.0)
+        Lp.append(p_ + n_ * (0.0226 + 0.0022 * (1 - s ** 2)))
+    cp, cn = on(*uv2ae(np.array(uc), np.array(vc)), 0.0)
+    pos = np.concatenate([np.asarray(cp).reshape(1, 3) + np.asarray(cn).reshape(1, 3) * 0.0248] + Lp)
+    tri = [[0, 1 + i, 1 + (i + 1) % n] for i in range(n)]
+    for r_ in range(ns - 1):
+        a0 = 1 + r_ * n; a1 = 1 + (r_ + 1) * n
+        for i in range(n):
+            j = (i + 1) % n
+            tri += [[a0 + i, a1 + i, a1 + j], [a0 + i, a1 + j, a0 + j]]
+    lens = G.part(pos, np.array(tri), S['lens'], np.zeros((len(pos), 2)))
+    out.append(G.orient_open(lens, pos - c))
+    # vent slots along the top and bottom walls (dark recessed slots in the frame wall)
+    for i in range(n):
+        u, v = U[i], V[i]
+        if abs(u) > 0.78 or abs(v) < 0.93 or (v < 0 and abs(u) < 0.3) or i % 3:
+            continue
+        M = PO.mat4(base[i] + O[i] * 0.0092 + N[i] * 0.0152, Tn[i], N[i], O[i])
+        out.append(PO.local_part(PO.rbox(0.011, 0.0035, 0.002, 0.0008, 1), M, S['foam'], 'hard'))
+    # strap outriggers + clips at the frame ends
+    for sgn in (1, -1):
+        i = int(np.argmin(np.abs(U - sgn) + np.abs(V)))
+        M = PO.mat4(base[i] + O[i] * 0.011 + N[i] * 0.011, np.cross(N[i], O[i]), N[i], O[i])
+        out.append(PO.local_part(PO.rbox(0.020, 0.012, 0.010, 0.003, 1), M, S['frame'], 'hard'))
+        out.append(PO.local_part(PO.rbox(0.016, 0.006, 0.026, 0.002, 1), frame(sgn * (A + np.radians(9)), float(e_b + hc), 0.0035), S['frame'], 'hard'))
+    # elastic strap (~38 mm) round the rest of the helmet, adjuster slider at the back
+    es = float(e_b + hc) - np.radians(1.0)
+    ab = np.linspace(A + np.radians(5), 2 * np.pi - A - np.radians(5), 64)
+    ew = np.radians(8.0)
+    Q = [on(ab, np.full_like(ab, es + d_), h_)[0] for d_, h_ in ((-ew, 0.0012), (-ew, 0.0034), (ew, 0.0034), (ew, 0.0012))]
+    sp = np.concatenate(Q)
+    out.append(G.orient_open(G.part(sp, G.grid_tris(64, 4), S['strap'], np.concatenate([np.stack([ab * 0.25, np.full(64, k * 0.01)], 1) for k in range(4)])), sp - c))
+    out.append(PO.local_part(PO.rbox(0.028, 0.044, 0.004, 0.0015, 1), frame(np.pi, es, 0.0036), S['frame'], 'hard'))
+    for dx in (-0.009, 0.009):
+        out.append(PO.local_part(PO.rbox(0.003, 0.044, 0.0025, 0.001, 1), frame(np.pi, es, 0.0056) @ PO.T(dx, 0, 0), S['foam'], 'hard'))
     return out
 
 

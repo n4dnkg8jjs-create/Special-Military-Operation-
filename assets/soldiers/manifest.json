@@ -101,7 +101,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 17798244,
+  "size_bytes": 18767316,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -113,8 +113,10 @@
    "pouches_front": 1888,
    "pouches_side": 1036,
    "pouches_back": 508,
-   "helmet_A": 2524,
-   "helmet_B": 3168,
+   "helmet_A": 3096,
+   "helmet_B": 5174,
+   "helmet_C": 3852,
+   "helmet_D": 3108,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -127,29 +129,33 @@
    "pouches_assault": 2416,
    "elbowpads": 568,
    "backpack_assault": 1080,
-   "helmet_assault_A": 2524,
+   "helmet_assault_A": 3096,
    "helmet_assault_B": 2220,
    "headset": 252,
    "balaclava_A": 2607,
    "balaclava_B": 2607,
    "balaclava_C": 2593,
-   "combo_0": 23134,
+   "sling_back": 608,
+   "sling_back_pouch": 608,
+   "sling_back_pack": 608,
+   "sling_back_ruck": 608,
+   "combo_0": 23706,
    "combo_0_tape": 840,
-   "combo_1": 25612,
+   "combo_1": 27618,
    "combo_1_tape": 840,
-   "combo_2": 24358,
-   "combo_2_tape": 1120,
-   "combo_3": 24998,
+   "combo_2": 25254,
+   "combo_2_tape": 1552,
+   "combo_3": 24926,
    "combo_3_tape": 840,
-   "combo_4": 25456,
+   "combo_4": 28106,
    "combo_4_tape": 1120,
-   "combo_5": 24310,
+   "combo_5": 24250,
    "combo_5_tape": 840,
-   "assault_combo_0": 30031,
+   "assault_combo_0": 30603,
    "assault_combo_0_tape": 1120,
    "assault_combo_1": 28036,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 30022,
+   "assault_combo_2": 30594,
    "assault_combo_2_tape": 1120,
    "assault_combo_3": 27539,
    "assault_combo_3_tape": 1120,
@@ -161,9 +167,9 @@
    "crew_combo_2_tape": 840
   },
   "lod1_tris": {
-   "body_A_LOD1": 2939,
-   "body_B_LOD1": 2939,
-   "body_C_LOD1": 2939,
+   "body_A_LOD1": 2938,
+   "body_B_LOD1": 2938,
+   "body_C_LOD1": 2938,
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
    "boots_LOD1": 760,
@@ -171,13 +177,15 @@
    "pouches_front_LOD1": 527,
    "pouches_side_LOD1": 307,
    "pouches_back_LOD1": 172,
-   "helmet_A_LOD1": 706,
-   "helmet_B_LOD1": 884,
+   "helmet_A_LOD1": 864,
+   "helmet_B_LOD1": 1443,
+   "helmet_C_LOD1": 1075,
+   "helmet_D_LOD1": 1208,
    "armband_L_LOD1": 77,
    "kneepads_LOD1": 198,
-   "legband_L_LOD1": 78,
-   "armband_R_LOD1": 78,
-   "legband_R_LOD1": 78,
+   "legband_L_LOD1": 77,
+   "armband_R_LOD1": 77,
+   "legband_R_LOD1": 77,
    "backpack_LOD1": 271,
    "armor_assault_LOD1": 264,
    "armor_groin_LOD1": 136,
@@ -185,37 +193,37 @@
    "pouches_assault_LOD1": 693,
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 333,
-   "helmet_assault_A_LOD1": 706,
+   "helmet_assault_A_LOD1": 864,
    "helmet_assault_B_LOD1": 619,
    "headset_LOD1": 70,
    "balaclava_A_LOD1": 729,
    "balaclava_B_LOD1": 728,
    "balaclava_C_LOD1": 725,
-   "combo_0_LOD1": 6476,
+   "combo_0_LOD1": 6636,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 7171,
+   "combo_1_LOD1": 7733,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6819,
-   "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 6999,
+   "combo_2_LOD1": 7070,
+   "combo_2_tape_LOD1": 619,
+   "combo_3_LOD1": 6978,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 7127,
-   "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 6805,
+   "combo_4_LOD1": 7868,
+   "combo_4_tape_LOD1": 447,
+   "combo_5_LOD1": 6790,
    "combo_5_tape_LOD1": 336,
-   "assault_combo_0_LOD1": 8408,
-   "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7849,
-   "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 8406,
-   "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7710,
-   "assault_combo_3_tape_LOD1": 448,
-   "crew_combo_0_LOD1": 5527,
+   "assault_combo_0_LOD1": 8568,
+   "assault_combo_0_tape_LOD1": 447,
+   "assault_combo_1_LOD1": 7850,
+   "assault_combo_1_tape_LOD1": 447,
+   "assault_combo_2_LOD1": 8566,
+   "assault_combo_2_tape_LOD1": 447,
+   "assault_combo_3_LOD1": 7709,
+   "assault_combo_3_tape_LOD1": 447,
+   "crew_combo_0_LOD1": 5528,
    "crew_combo_0_tape_LOD1": 336,
    "crew_combo_1_LOD1": 6459,
    "crew_combo_1_tape_LOD1": 336,
-   "crew_combo_2_LOD1": 6458,
+   "crew_combo_2_LOD1": 6459,
    "crew_combo_2_tape_LOD1": 336
   },
   "default_visible": [
@@ -230,7 +238,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 25605,
+  "default_config_tris": 26177,
   "materials_by_node": {
    "body_A": [
     "emr_camo",
@@ -278,12 +286,27 @@
    ],
    "helmet_A": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "helmet_band"
    ],
    "helmet_B": [
     "emr_gear",
     "gear_hardware",
-    "goggle_lens"
+    "goggle_foam",
+    "goggle_frame",
+    "goggle_lens",
+    "goggle_strap",
+    "helmet_band"
+   ],
+   "helmet_C": [
+    "emr_gear",
+    "gear_hardware",
+    "tape"
+   ],
+   "helmet_D": [
+    "emr_gear",
+    "gear_hardware",
+    "ssh68_paint"
    ],
    "armband_L": [
     "tape"
@@ -328,7 +351,8 @@
    ],
    "helmet_assault_A": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "helmet_band"
    ],
    "helmet_assault_B": [
     "altyn_steel",
@@ -345,6 +369,22 @@
    ],
    "balaclava_C": [
     "balaclava_ru"
+   ],
+   "sling_back": [
+    "sling_metal",
+    "sling_ru"
+   ],
+   "sling_back_pouch": [
+    "sling_metal",
+    "sling_ru"
+   ],
+   "sling_back_pack": [
+    "sling_metal",
+    "sling_ru"
+   ],
+   "sling_back_ruck": [
+    "sling_metal",
+    "sling_ru"
    ],
    "combo_0": [
     "soldier_atlas_ru"
@@ -470,12 +510,27 @@
    ],
    "helmet_A_LOD1": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "helmet_band"
    ],
    "helmet_B_LOD1": [
     "emr_gear",
     "gear_hardware",
-    "goggle_lens"
+    "goggle_foam",
+    "goggle_frame",
+    "goggle_lens",
+    "goggle_strap",
+    "helmet_band"
+   ],
+   "helmet_C_LOD1": [
+    "emr_gear",
+    "gear_hardware",
+    "tape"
+   ],
+   "helmet_D_LOD1": [
+    "emr_gear",
+    "gear_hardware",
+    "ssh68_paint"
    ],
    "armband_L_LOD1": [
     "tape"
@@ -520,7 +575,8 @@
    ],
    "helmet_assault_A_LOD1": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "helmet_band"
    ],
    "helmet_assault_B_LOD1": [
     "altyn_steel",
@@ -652,6 +708,12 @@
    "helmet_B": {
     "default_visible": false
    },
+   "helmet_C": {
+    "default_visible": false
+   },
+   "helmet_D": {
+    "default_visible": false
+   },
    "armband_L": {
     "default_visible": true
    },
@@ -706,6 +768,30 @@
    "balaclava_C": {
     "default_visible": false
    },
+   "sling_back": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling",
+    "show_when": "rifle parented to weapon_socket_sling (slung on the back)"
+   },
+   "sling_back_pouch": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_pouch",
+    "show_when": "rifle parented to weapon_socket_sling_pouch (slung on the back)"
+   },
+   "sling_back_pack": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_pack",
+    "show_when": "rifle parented to weapon_socket_sling_pack (slung on the back)"
+   },
+   "sling_back_ruck": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_ruck",
+    "show_when": "rifle parented to weapon_socket_sling_ruck (slung on the back)"
+   },
    "combo_0": {
     "combo": true,
     "default_visible": false,
@@ -713,13 +799,16 @@
      "name": "combo_0",
      "body": "body_A",
      "helmet": "helmet_A",
+     "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -746,13 +835,16 @@
      "name": "combo_1",
      "body": "body_B",
      "helmet": "helmet_B",
+     "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
@@ -780,18 +872,21 @@
     "preset": {
      "name": "combo_2",
      "body": "body_C",
-     "helmet": "helmet_A",
+     "helmet": "helmet_C",
+     "helmet_desc": "6B7-1M, EMR cover, white identification-tape band",
      "hands": "gloves",
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -816,18 +911,21 @@
     "preset": {
      "name": "combo_3",
      "body": "body_A",
-     "helmet": "helmet_B",
+     "helmet": "helmet_A",
+     "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
      "hands": "hands",
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -851,18 +949,21 @@
     "preset": {
      "name": "combo_4",
      "body": "body_B",
-     "helmet": "helmet_A",
+     "helmet": "helmet_B",
+     "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_B",
      "gloves",
      "boots",
      "vest",
@@ -888,18 +989,21 @@
     "preset": {
      "name": "combo_5",
      "body": "body_C",
-     "helmet": "helmet_B",
+     "helmet": "helmet_D",
+     "helmet_desc": "SSh-68 steel helmet, olive paint (mobilised)",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_D",
      "hands",
      "boots",
      "vest",
@@ -929,7 +1033,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -971,7 +1077,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_B",
@@ -1011,7 +1119,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_C",
@@ -1053,7 +1163,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -1221,6 +1333,14 @@
     "default_visible": false,
     "lod": 1
    },
+   "helmet_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_D_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
    "armband_L_LOD1": {
     "default_visible": true,
     "lod": 1
@@ -1300,13 +1420,16 @@
      "name": "combo_0",
      "body": "body_A",
      "helmet": "helmet_A",
+     "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -1335,13 +1458,16 @@
      "name": "combo_1",
      "body": "body_B",
      "helmet": "helmet_B",
+     "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
@@ -1371,18 +1497,21 @@
     "preset": {
      "name": "combo_2",
      "body": "body_C",
-     "helmet": "helmet_A",
+     "helmet": "helmet_C",
+     "helmet_desc": "6B7-1M, EMR cover, white identification-tape band",
      "hands": "gloves",
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -1409,18 +1538,21 @@
     "preset": {
      "name": "combo_3",
      "body": "body_A",
-     "helmet": "helmet_B",
+     "helmet": "helmet_A",
+     "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
      "hands": "hands",
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -1446,18 +1578,21 @@
     "preset": {
      "name": "combo_4",
      "body": "body_B",
-     "helmet": "helmet_A",
+     "helmet": "helmet_B",
+     "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_B",
      "gloves",
      "boots",
      "vest",
@@ -1485,18 +1620,21 @@
     "preset": {
      "name": "combo_5",
      "body": "body_C",
-     "helmet": "helmet_B",
+     "helmet": "helmet_D",
+     "helmet_desc": "SSh-68 steel helmet, olive paint (mobilised)",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_D",
      "hands",
      "boots",
      "vest",
@@ -1528,7 +1666,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -1572,7 +1712,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_B",
@@ -1614,7 +1756,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_C",
@@ -1658,7 +1802,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -1785,7 +1931,7 @@
     "lod": 1
    }
   },
-  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. RU vest = 6B45/6B46 (Ratnik) style: front and back sections run from the collar bones / shoulder blades down to the belt line (1.015 m, trouser waist ~1.0 m), soft side sections wrap the waist (to 1.26 m), shooter's cut front / armhole cut back; 6Sh117-style pouches: three double mag pouches low on the front, radio + grenade pouch above, grenade pouches / IFAK on the sides. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
+  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/B/C/D alternatives (see combos[*].helmet_desc). backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. RU vest = 6B45/6B46 (Ratnik) style: front and back sections run from the collar bones / shoulder blades down to the belt line (1.015 m, trouser waist ~1.0 m), soft side sections wrap the waist (to 1.26 m), shooter's cut front / armhole cut back; 6Sh117-style pouches: three double mag pouches low on the front, radio + grenade pouch above, grenade pouches / IFAK on the sides. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
   "uniform_material": "emr_camo (all variants)",
   "gear_materials": [
    "altyn_steel",
@@ -1799,16 +1945,23 @@
    "eye",
    "gear_hardware",
    "gloves",
+   "goggle_foam",
+   "goggle_frame",
    "goggle_lens",
+   "goggle_strap",
    "hands_skin",
+   "helmet_band",
    "kneepad_shell",
    "medic_red",
    "radio_black",
    "skin_A",
    "skin_B",
    "skin_C",
+   "sling_metal",
+   "sling_ru",
    "soldier_atlas_crew_ru",
    "soldier_atlas_ru",
+   "ssh68_paint",
    "tape"
   ],
   "node_list": [
@@ -1856,6 +2009,8 @@
    "pouches_back",
    "helmet_A",
    "helmet_B",
+   "helmet_C",
+   "helmet_D",
    "armband_L",
    "kneepads",
    "legband_L",
@@ -1874,6 +2029,10 @@
    "balaclava_A",
    "balaclava_B",
    "balaclava_C",
+   "sling_back",
+   "sling_back_pouch",
+   "sling_back_pack",
+   "sling_back_ruck",
    "combo_0",
    "combo_0_tape",
    "combo_1",
@@ -1907,6 +2066,10 @@
    "drag_handle",
    "aim",
    "aim_eye_R",
+   "weapon_socket_sling",
+   "weapon_socket_sling_pouch",
+   "weapon_socket_sling_pack",
+   "weapon_socket_sling_ruck",
    "body_A_LOD1",
    "body_B_LOD1",
    "body_C_LOD1",
@@ -1919,6 +2082,8 @@
    "pouches_back_LOD1",
    "helmet_A_LOD1",
    "helmet_B_LOD1",
+   "helmet_C_LOD1",
+   "helmet_D_LOD1",
    "armband_L_LOD1",
    "kneepads_LOD1",
    "legband_L_LOD1",
@@ -1969,6 +2134,7 @@
     "name": "combo_0",
     "body": "body_A",
     "helmet": "helmet_A",
+    "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
     "hands": "hands",
     "backpack": false,
     "kneepads": false,
@@ -1988,7 +2154,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23134,
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
+    "tris": 23706,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -2003,6 +2171,7 @@
     "name": "combo_1",
     "body": "body_B",
     "helmet": "helmet_B",
+    "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
     "hands": "gloves",
     "backpack": true,
     "kneepads": false,
@@ -2024,7 +2193,9 @@
      "legband_R",
      "armor_arms"
     ],
-    "tris": 25612,
+    "sling_node": "sling_back_ruck",
+    "sling_socket": "weapon_socket_sling_ruck",
+    "tris": 27618,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -2038,7 +2209,8 @@
    {
     "name": "combo_2",
     "body": "body_C",
-    "helmet": "helmet_A",
+    "helmet": "helmet_C",
+    "helmet_desc": "6B7-1M, EMR cover, white identification-tape band",
     "hands": "gloves",
     "backpack": false,
     "kneepads": true,
@@ -2048,7 +2220,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -2061,8 +2233,10 @@
      "legband_L",
      "armor_groin"
     ],
-    "tris": 24358,
-    "tape_tris": 1120,
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
+    "tris": 25254,
+    "tape_tris": 1552,
     "nodes": [
      "combo_2",
      "combo_2_tape"
@@ -2075,7 +2249,8 @@
    {
     "name": "combo_3",
     "body": "body_A",
-    "helmet": "helmet_B",
+    "helmet": "helmet_A",
+    "helmet_desc": "6B47 Ratnik, EMR cover, black rubber band, NVG mount",
     "hands": "hands",
     "backpack": false,
     "kneepads": true,
@@ -2085,7 +2260,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -2097,7 +2272,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 24998,
+    "sling_node": "sling_back_pouch",
+    "sling_socket": "weapon_socket_sling_pouch",
+    "tris": 24926,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -2111,7 +2288,8 @@
    {
     "name": "combo_4",
     "body": "body_B",
-    "helmet": "helmet_A",
+    "helmet": "helmet_B",
+    "helmet_desc": "6B47 Ratnik, EMR cover, band, 6B34-style goggles pushed up",
     "hands": "gloves",
     "backpack": true,
     "kneepads": false,
@@ -2121,7 +2299,7 @@
     "shoulder_protectors": true,
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_B",
      "gloves",
      "boots",
      "vest",
@@ -2135,7 +2313,9 @@
      "armor_groin",
      "armor_arms"
     ],
-    "tris": 25456,
+    "sling_node": "sling_back_ruck",
+    "sling_socket": "weapon_socket_sling_ruck",
+    "tris": 28106,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -2149,7 +2329,8 @@
    {
     "name": "combo_5",
     "body": "body_C",
-    "helmet": "helmet_B",
+    "helmet": "helmet_D",
+    "helmet_desc": "SSh-68 steel helmet, olive paint (mobilised)",
     "hands": "hands",
     "backpack": false,
     "kneepads": false,
@@ -2159,7 +2340,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_D",
      "hands",
      "boots",
      "vest",
@@ -2170,7 +2351,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 24310,
+    "sling_node": "sling_back_pouch",
+    "sling_socket": "weapon_socket_sling_pouch",
+    "tris": 24250,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -2215,7 +2398,9 @@
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 30031,
+    "sling_node": "sling_back_pack",
+    "sling_socket": "weapon_socket_sling_pack",
+    "tris": 30603,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -2256,6 +2441,8 @@
      "armor_arms",
      "headset"
     ],
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
     "tris": 28036,
     "tape_tris": 1120,
     "nodes": [
@@ -2299,7 +2486,9 @@
      "balaclava_C",
      "backpack_assault"
     ],
-    "tris": 30022,
+    "sling_node": "sling_back_pack",
+    "sling_socket": "weapon_socket_sling_pack",
+    "tris": 30594,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -2339,6 +2528,8 @@
      "armor_groin",
      "balaclava_A"
     ],
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
     "tris": 27539,
     "tape_tris": 1120,
     "nodes": [
@@ -2467,11 +2658,13 @@
   ],
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ru: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (RU: olive-khaki or EMR) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
-  "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable"
+  "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable",
+  "sling_notes": "Rifle slung on the back: parent the rifle (identity transform) to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, chosen by the back gear of that preset) and show the node extras.preset.sling_node (sling_back / sling_back_pouch / sling_back_pack / sling_back_ruck: skinned 32 mm webbing sling, hidden by default, no LOD) for exactly as long as the rifle is there; hide it otherwise. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel (AK-74M / AK-12 / AK-74M+optic swivel positions). weapon_socket_back is unchanged (ATGM tubes / folded launchers / side weapons are authored in its frame).",
+  "head_shading_notes": "Helmet / headset occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's headgear): brow, eyes, temples and ears darken under the brim."
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 19153456,
+  "size_bytes": 20431068,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -2483,8 +2676,10 @@
    "pouches_front": 1092,
    "pouches_side": 952,
    "pouches_back": 232,
-   "helmet_A": 3844,
+   "helmet_A": 4252,
    "helmet_B": 8628,
+   "helmet_C": 6462,
+   "helmet_D": 7974,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -2498,30 +2693,34 @@
    "elbowpads": 568,
    "backpack_assault": 1080,
    "helmet_assault_A": 8628,
-   "helmet_assault_B": 2952,
+   "helmet_assault_B": 4698,
    "headset": 252,
    "balaclava_A": 2607,
    "balaclava_B": 2607,
    "balaclava_C": 2593,
-   "combo_0": 23293,
+   "sling_back": 608,
+   "sling_back_pouch": 608,
+   "sling_back_pack": 608,
+   "sling_back_ruck": 608,
+   "combo_0": 23702,
    "combo_0_tape": 840,
    "combo_1": 29061,
    "combo_1_tape": 840,
-   "combo_2": 24597,
+   "combo_2": 27213,
    "combo_2_tape": 1120,
-   "combo_3": 29021,
+   "combo_3": 24646,
    "combo_3_tape": 840,
-   "combo_4": 25621,
-   "combo_4_tape": 1120,
-   "combo_5": 28413,
+   "combo_4": 29661,
+   "combo_4_tape": 1210,
+   "combo_5": 26245,
    "combo_5_tape": 840,
-   "assault_combo_0": 33973,
+   "assault_combo_0": 33974,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 26974,
+   "assault_combo_1": 28720,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 34077,
+   "assault_combo_2": 34075,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 28910,
+   "assault_combo_3": 30657,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 19743,
    "crew_combo_0_tape": 840,
@@ -2531,23 +2730,25 @@
    "crew_combo_2_tape": 840
   },
   "lod1_tris": {
-   "body_A_LOD1": 2939,
-   "body_B_LOD1": 2939,
-   "body_C_LOD1": 2939,
+   "body_A_LOD1": 2938,
+   "body_B_LOD1": 2938,
+   "body_C_LOD1": 2938,
    "hands_LOD1": 468,
    "gloves_LOD1": 468,
    "boots_LOD1": 760,
-   "vest_LOD1": 1160,
+   "vest_LOD1": 1161,
    "pouches_front_LOD1": 384,
    "pouches_side_LOD1": 313,
    "pouches_back_LOD1": 96,
-   "helmet_A_LOD1": 1324,
+   "helmet_A_LOD1": 1408,
    "helmet_B_LOD1": 2600,
+   "helmet_C_LOD1": 1906,
+   "helmet_D_LOD1": 2570,
    "armband_L_LOD1": 77,
    "kneepads_LOD1": 198,
-   "legband_L_LOD1": 78,
-   "armband_R_LOD1": 78,
-   "legband_R_LOD1": 78,
+   "legband_L_LOD1": 77,
+   "armband_R_LOD1": 77,
+   "legband_R_LOD1": 77,
    "backpack_LOD1": 271,
    "armor_assault_LOD1": 178,
    "armor_groin_LOD1": 134,
@@ -2556,32 +2757,32 @@
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 332,
    "helmet_assault_A_LOD1": 2600,
-   "helmet_assault_B_LOD1": 1103,
+   "helmet_assault_B_LOD1": 1543,
    "headset_LOD1": 70,
    "balaclava_A_LOD1": 729,
    "balaclava_B_LOD1": 728,
    "balaclava_C_LOD1": 725,
-   "combo_0_LOD1": 6522,
+   "combo_0_LOD1": 6636,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 8137,
+   "combo_1_LOD1": 8136,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6886,
-   "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 8124,
+   "combo_2_LOD1": 7618,
+   "combo_2_tape_LOD1": 447,
+   "combo_3_LOD1": 6900,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 7172,
-   "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 7955,
+   "combo_4_LOD1": 8305,
+   "combo_4_tape_LOD1": 484,
+   "combo_5_LOD1": 7348,
    "combo_5_tape_LOD1": 336,
    "assault_combo_0_LOD1": 9511,
-   "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7552,
-   "assault_combo_1_tape_LOD1": 448,
+   "assault_combo_0_tape_LOD1": 447,
+   "assault_combo_1_LOD1": 8040,
+   "assault_combo_1_tape_LOD1": 447,
    "assault_combo_2_LOD1": 9541,
-   "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 8094,
-   "assault_combo_3_tape_LOD1": 448,
-   "crew_combo_0_LOD1": 5527,
+   "assault_combo_2_tape_LOD1": 447,
+   "assault_combo_3_LOD1": 8583,
+   "assault_combo_3_tape_LOD1": 447,
+   "crew_combo_0_LOD1": 5528,
    "crew_combo_0_tape_LOD1": 336,
    "crew_combo_1_LOD1": 6459,
    "crew_combo_1_tape_LOD1": 336,
@@ -2600,7 +2801,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 25425,
+  "default_config_tris": 25833,
   "materials_by_node": {
    "body_A": [
     "eye",
@@ -2663,6 +2864,20 @@
     "gear_hardware",
     "ranger_gear"
    ],
+   "helmet_C": [
+    "coyote_webbing",
+    "gear_hardware",
+    "goggle_foam",
+    "goggle_frame_tan",
+    "goggle_lens_clear",
+    "multicam_gear"
+   ],
+   "helmet_D": [
+    "coyote_webbing",
+    "gear_hardware",
+    "multicam_gear",
+    "tape"
+   ],
    "armband_L": [
     "tape"
    ],
@@ -2717,7 +2932,9 @@
    "helmet_assault_B": [
     "coyote_webbing",
     "gear_hardware",
-    "goggle_lens",
+    "goggle_foam",
+    "goggle_frame_tan",
+    "goggle_lens_clear",
     "multicam_gear"
    ],
    "headset": [
@@ -2731,6 +2948,22 @@
    ],
    "balaclava_C": [
     "balaclava_ua"
+   ],
+   "sling_back": [
+    "sling_metal",
+    "sling_ua"
+   ],
+   "sling_back_pouch": [
+    "sling_metal",
+    "sling_ua"
+   ],
+   "sling_back_pack": [
+    "sling_metal",
+    "sling_ua"
+   ],
+   "sling_back_ruck": [
+    "sling_metal",
+    "sling_ua"
    ],
    "combo_0": [
     "soldier_atlas_ua"
@@ -2871,6 +3104,20 @@
     "gear_hardware",
     "ranger_gear"
    ],
+   "helmet_C_LOD1": [
+    "coyote_webbing",
+    "gear_hardware",
+    "goggle_foam",
+    "goggle_frame_tan",
+    "goggle_lens_clear",
+    "multicam_gear"
+   ],
+   "helmet_D_LOD1": [
+    "coyote_webbing",
+    "gear_hardware",
+    "multicam_gear",
+    "tape"
+   ],
    "armband_L_LOD1": [
     "tape"
    ],
@@ -2925,7 +3172,9 @@
    "helmet_assault_B_LOD1": [
     "coyote_webbing",
     "gear_hardware",
-    "goggle_lens",
+    "goggle_foam",
+    "goggle_frame_tan",
+    "goggle_lens_clear",
     "multicam_gear"
    ],
    "headset_LOD1": [
@@ -3054,6 +3303,12 @@
    "helmet_B": {
     "default_visible": false
    },
+   "helmet_C": {
+    "default_visible": false
+   },
+   "helmet_D": {
+    "default_visible": false
+   },
    "armband_L": {
     "default_visible": true
    },
@@ -3108,6 +3363,30 @@
    "balaclava_C": {
     "default_visible": false
    },
+   "sling_back": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling",
+    "show_when": "rifle parented to weapon_socket_sling (slung on the back)"
+   },
+   "sling_back_pouch": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_pouch",
+    "show_when": "rifle parented to weapon_socket_sling_pouch (slung on the back)"
+   },
+   "sling_back_pack": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_pack",
+    "show_when": "rifle parented to weapon_socket_sling_pack (slung on the back)"
+   },
+   "sling_back_ruck": {
+    "default_visible": false,
+    "sling": true,
+    "socket": "weapon_socket_sling_ruck",
+    "show_when": "rifle parented to weapon_socket_sling_ruck (slung on the back)"
+   },
    "combo_0": {
     "combo": true,
     "default_visible": false,
@@ -3115,13 +3394,16 @@
      "name": "combo_0",
      "body": "body_A",
      "helmet": "helmet_A",
+     "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -3148,13 +3430,16 @@
      "name": "combo_1",
      "body": "body_B",
      "helmet": "helmet_B",
+     "helmet_desc": "FAST-type high cut, bare ranger green, ARC rails, NVG shroud",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
@@ -3181,18 +3466,21 @@
     "preset": {
      "name": "combo_2",
      "body": "body_C",
-     "helmet": "helmet_A",
+     "helmet": "helmet_C",
+     "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
      "hands": "gloves",
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -3217,18 +3505,21 @@
     "preset": {
      "name": "combo_3",
      "body": "body_A",
-     "helmet": "helmet_B",
+     "helmet": "helmet_A",
+     "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
      "hands": "hands",
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -3252,18 +3543,21 @@
     "preset": {
      "name": "combo_4",
      "body": "body_B",
-     "helmet": "helmet_A",
+     "helmet": "helmet_D",
+     "helmet_desc": "FAST-type high cut in MultiCam cover, ID-tape strip on the back",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_D",
      "gloves",
      "boots",
      "vest",
@@ -3289,18 +3583,21 @@
     "preset": {
      "name": "combo_5",
      "body": "body_C",
-     "helmet": "helmet_B",
+     "helmet": "helmet_C",
+     "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_C",
      "hands",
      "boots",
      "vest",
@@ -3330,7 +3627,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -3371,7 +3670,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_B",
@@ -3411,7 +3712,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_C",
@@ -3452,7 +3755,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -3623,6 +3928,14 @@
     "default_visible": false,
     "lod": 1
    },
+   "helmet_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "helmet_D_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
    "armband_L_LOD1": {
     "default_visible": true,
     "lod": 1
@@ -3702,13 +4015,16 @@
      "name": "combo_0",
      "body": "body_A",
      "helmet": "helmet_A",
+     "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_A",
@@ -3737,13 +4053,16 @@
      "name": "combo_1",
      "body": "body_B",
      "helmet": "helmet_B",
+     "helmet_desc": "FAST-type high cut, bare ranger green, ARC rails, NVG shroud",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
@@ -3772,18 +4091,21 @@
     "preset": {
      "name": "combo_2",
      "body": "body_C",
-     "helmet": "helmet_A",
+     "helmet": "helmet_C",
+     "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
      "hands": "gloves",
      "backpack": false,
      "kneepads": true,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -3810,18 +4132,21 @@
     "preset": {
      "name": "combo_3",
      "body": "body_A",
-     "helmet": "helmet_B",
+     "helmet": "helmet_A",
+     "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
      "hands": "hands",
      "backpack": false,
      "kneepads": true,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -3847,18 +4172,21 @@
     "preset": {
      "name": "combo_4",
      "body": "body_B",
-     "helmet": "helmet_A",
+     "helmet": "helmet_D",
+     "helmet_desc": "FAST-type high cut in MultiCam cover, ID-tape strip on the back",
      "hands": "gloves",
      "backpack": true,
      "kneepads": false,
      "pouches_back": false,
      "legband_L": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_ruck",
+     "sling_socket": "weapon_socket_sling_ruck"
     },
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_D",
      "gloves",
      "boots",
      "vest",
@@ -3886,18 +4214,21 @@
     "preset": {
      "name": "combo_5",
      "body": "body_C",
-     "helmet": "helmet_B",
+     "helmet": "helmet_C",
+     "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
      "hands": "hands",
      "backpack": false,
      "kneepads": false,
      "pouches_back": true,
      "legband_L": false,
      "groin_protector": false,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back_pouch",
+     "sling_socket": "weapon_socket_sling_pouch"
     },
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_C",
      "hands",
      "boots",
      "vest",
@@ -3929,7 +4260,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -3972,7 +4305,9 @@
      "backpack_assault": false,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": false
+     "shoulder_protectors": false,
+     "sling_node": "sling_back",
+     "sling_socket": "weapon_socket_sling"
     },
     "parts": [
      "body_B",
@@ -4014,7 +4349,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_C",
@@ -4057,7 +4394,9 @@
      "backpack_assault": true,
      "gloves": true,
      "groin_protector": true,
-     "shoulder_protectors": true
+     "shoulder_protectors": true,
+     "sling_node": "sling_back_pack",
+     "sling_socket": "weapon_socket_sling_pack"
     },
     "parts": [
      "body_A",
@@ -4187,7 +4526,7 @@
     "lod": 1
    }
   },
-  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. UA vest = JPC-style plate carrier (plate bags ~280 x 316 mm, cummerbund), open-top triple mag shingle, admin pouch + flag, tourniquet. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
+  "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/B/C/D alternatives (see combos[*].helmet_desc). backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. UA vest = JPC-style plate carrier (plate bags ~280 x 316 mm, cummerbund), open-top triple mag shingle, admin pouch + flag, tourniquet. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
   "uniform_material": "mm14_camo (A,B), mm14_multicam_camo (C: MultiCam top, MM-14 trousers)",
   "gear_materials": [
    "ak_mag_polymer",
@@ -4202,7 +4541,9 @@
    "flag_yellow",
    "gear_hardware",
    "gloves",
-   "goggle_lens",
+   "goggle_foam",
+   "goggle_frame_tan",
+   "goggle_lens_clear",
    "hands_skin",
    "kneepad_shell",
    "medic_red",
@@ -4215,6 +4556,8 @@
    "skin_A",
    "skin_B",
    "skin_C",
+   "sling_metal",
+   "sling_ua",
    "soldier_atlas_crew_ua",
    "soldier_atlas_ua",
    "tape"
@@ -4264,6 +4607,8 @@
    "pouches_back",
    "helmet_A",
    "helmet_B",
+   "helmet_C",
+   "helmet_D",
    "armband_L",
    "kneepads",
    "legband_L",
@@ -4282,6 +4627,10 @@
    "balaclava_A",
    "balaclava_B",
    "balaclava_C",
+   "sling_back",
+   "sling_back_pouch",
+   "sling_back_pack",
+   "sling_back_ruck",
    "combo_0",
    "combo_0_tape",
    "combo_1",
@@ -4315,6 +4664,10 @@
    "drag_handle",
    "aim",
    "aim_eye_R",
+   "weapon_socket_sling",
+   "weapon_socket_sling_pouch",
+   "weapon_socket_sling_pack",
+   "weapon_socket_sling_ruck",
    "body_A_LOD1",
    "body_B_LOD1",
    "body_C_LOD1",
@@ -4327,6 +4680,8 @@
    "pouches_back_LOD1",
    "helmet_A_LOD1",
    "helmet_B_LOD1",
+   "helmet_C_LOD1",
+   "helmet_D_LOD1",
    "armband_L_LOD1",
    "kneepads_LOD1",
    "legband_L_LOD1",
@@ -4377,6 +4732,7 @@
     "name": "combo_0",
     "body": "body_A",
     "helmet": "helmet_A",
+    "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
     "hands": "hands",
     "backpack": false,
     "kneepads": false,
@@ -4396,7 +4752,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23293,
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
+    "tris": 23702,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -4411,6 +4769,7 @@
     "name": "combo_1",
     "body": "body_B",
     "helmet": "helmet_B",
+    "helmet_desc": "FAST-type high cut, bare ranger green, ARC rails, NVG shroud",
     "hands": "gloves",
     "backpack": true,
     "kneepads": false,
@@ -4431,6 +4790,8 @@
      "armband_R",
      "legband_R"
     ],
+    "sling_node": "sling_back_ruck",
+    "sling_socket": "weapon_socket_sling_ruck",
     "tris": 29061,
     "tape_tris": 840,
     "nodes": [
@@ -4445,7 +4806,8 @@
    {
     "name": "combo_2",
     "body": "body_C",
-    "helmet": "helmet_A",
+    "helmet": "helmet_C",
+    "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
     "hands": "gloves",
     "backpack": false,
     "kneepads": true,
@@ -4455,7 +4817,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_C",
-     "helmet_A",
+     "helmet_C",
      "gloves",
      "boots",
      "vest",
@@ -4468,7 +4830,9 @@
      "legband_L",
      "armor_groin"
     ],
-    "tris": 24597,
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
+    "tris": 27213,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -4482,7 +4846,8 @@
    {
     "name": "combo_3",
     "body": "body_A",
-    "helmet": "helmet_B",
+    "helmet": "helmet_A",
+    "helmet_desc": "PASGT-type kaska, MM-14 cover, coyote band",
     "hands": "hands",
     "backpack": false,
     "kneepads": true,
@@ -4492,7 +4857,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_A",
-     "helmet_B",
+     "helmet_A",
      "hands",
      "boots",
      "vest",
@@ -4504,7 +4869,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 29021,
+    "sling_node": "sling_back_pouch",
+    "sling_socket": "weapon_socket_sling_pouch",
+    "tris": 24646,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -4518,7 +4885,8 @@
    {
     "name": "combo_4",
     "body": "body_B",
-    "helmet": "helmet_A",
+    "helmet": "helmet_D",
+    "helmet_desc": "FAST-type high cut in MultiCam cover, ID-tape strip on the back",
     "hands": "gloves",
     "backpack": true,
     "kneepads": false,
@@ -4528,7 +4896,7 @@
     "shoulder_protectors": true,
     "parts": [
      "body_B",
-     "helmet_A",
+     "helmet_D",
      "gloves",
      "boots",
      "vest",
@@ -4542,8 +4910,10 @@
      "armor_groin",
      "armor_arms"
     ],
-    "tris": 25621,
-    "tape_tris": 1120,
+    "sling_node": "sling_back_ruck",
+    "sling_socket": "weapon_socket_sling_ruck",
+    "tris": 29661,
+    "tape_tris": 1210,
     "nodes": [
      "combo_4",
      "combo_4_tape"
@@ -4556,7 +4926,8 @@
    {
     "name": "combo_5",
     "body": "body_C",
-    "helmet": "helmet_B",
+    "helmet": "helmet_C",
+    "helmet_desc": "TOR-D type kaska, MultiCam cover, coyote band, Desert Locust style goggles",
     "hands": "hands",
     "backpack": false,
     "kneepads": false,
@@ -4566,7 +4937,7 @@
     "shoulder_protectors": false,
     "parts": [
      "body_C",
-     "helmet_B",
+     "helmet_C",
      "hands",
      "boots",
      "vest",
@@ -4577,7 +4948,9 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 28413,
+    "sling_node": "sling_back_pouch",
+    "sling_socket": "weapon_socket_sling_pouch",
+    "tris": 26245,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -4621,7 +4994,9 @@
      "headset",
      "backpack_assault"
     ],
-    "tris": 33973,
+    "sling_node": "sling_back_pack",
+    "sling_socket": "weapon_socket_sling_pack",
+    "tris": 33974,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -4662,7 +5037,9 @@
      "headset",
      "balaclava_B"
     ],
-    "tris": 26974,
+    "sling_node": "sling_back",
+    "sling_socket": "weapon_socket_sling",
+    "tris": 28720,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -4704,7 +5081,9 @@
      "headset",
      "backpack_assault"
     ],
-    "tris": 34077,
+    "sling_node": "sling_back_pack",
+    "sling_socket": "weapon_socket_sling_pack",
+    "tris": 34075,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -4747,7 +5126,9 @@
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 28910,
+    "sling_node": "sling_back_pack",
+    "sling_socket": "weapon_socket_sling_pack",
+    "tris": 30657,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -4875,7 +5256,9 @@
   ],
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ua: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (UA: MM-14 or olive) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
-  "tape_alt_material": "tape (yellow #e8c31c)"
+  "tape_alt_material": "tape (yellow #e8c31c)",
+  "sling_notes": "Rifle slung on the back: parent the rifle (identity transform) to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, chosen by the back gear of that preset) and show the node extras.preset.sling_node (sling_back / sling_back_pouch / sling_back_pack / sling_back_ruck: skinned 32 mm webbing sling, hidden by default, no LOD) for exactly as long as the rifle is there; hide it otherwise. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel (AK-74M / AK-12 / AK-74M+optic swivel positions). weapon_socket_back is unchanged (ATGM tubes / folded launchers / side weapons are authored in its frame).",
+  "head_shading_notes": "Helmet / headset occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's headgear): brow, eyes, temples and ears darken under the brim."
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",

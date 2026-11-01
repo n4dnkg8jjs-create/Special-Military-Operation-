@@ -284,7 +284,64 @@ def _tbn(P, UV):
     return T, -B, N
 
 
-def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None, log=print):
+_FIB = None
+_HEAD_AO_CACHE = {}
+HEAD_AO_STRENGTH = 1.1
+
+
+def _fib_dirs(n=192):
+    global _FIB
+    if _FIB is None or len(_FIB) != n:
+        i = np.arange(n) + 0.5
+        phi = np.arccos(1 - 2 * i / n); th = np.pi * (1 + 5 ** 0.5) * i
+        _FIB = np.stack([np.cos(th) * np.sin(phi), np.cos(phi), np.sin(th) * np.sin(phi)], 1)
+    return _FIB
+
+
+def headgear_ao(P, N, occ_prims, dist=0.28):
+    """per-vertex ambient-occlusion multiplier (0.3..1) of head / face / balaclava / eye vertices under the preset's helmet and
+    headset: sky-weighted cosine hemisphere (the overcast sky above dominates the ambient light; the ground bounce below is weak)
+    ray cast against the headgear only, so the face under the brim, the brow, temples and ears darken; the chin stays lit"""
+    from mathutils.bvhtree import BVHTree
+    from mathutils import Vector
+    OP = np.concatenate([p['pos'] for p in occ_prims]); OT = []
+    off = 0
+    for p in occ_prims:
+        OT.append(np.asarray(p['idx']).reshape(-1, 3) + off); off += len(p['pos'])
+    OT = np.concatenate(OT)
+    tree = BVHTree.FromPolygons([tuple(v) for v in OP], [tuple(map(int, t)) for t in OT], all_triangles=True)
+    D = _fib_dirs()
+    sky = np.where(D[:, 1] > 0, 0.25 + 0.75 * D[:, 1] ** 1.2, 0.15)       # radiance weight per direction (zenith brightest)
+    lo, hi = OP.min(0) - dist, OP.max(0) + dist
+    out = np.ones(len(P))
+    for i in range(len(P)):
+        v = P[i]
+        if np.any(v < lo) or np.any(v > hi):
+            continue
+        n = N[i] / max(np.linalg.norm(N[i]), 1e-9)
+        cs = D @ n
+        sel = cs > 0.02
+        w = cs[sel] * sky[sel]
+        o = Vector(v + n * 0.0015)
+        hit = np.zeros(int(sel.sum()))
+        for k, d in enumerate(D[sel]):
+            h = tree.ray_cast(o, Vector(d), dist)
+            if h[0] is not None:
+                hit[k] = 1.0 - 0.35 * (h[3] / dist)
+        occ = float((w * hit).sum() / max(w.sum(), 1e-9))
+        out[i] = 1.0 - HEAD_AO_STRENGTH * occ
+    return np.clip(out, 0.28, 1.0)
+
+
+def _is_headgear(n):
+    return n.startswith('helmet') or n == 'headset'
+
+
+def _ao_receiver(m):
+    return m.startswith('skin_') or m.startswith('balaclava') or m == 'eye'
+
+
+def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None, log=print, head_ao=True):
     """presets: list of dict(name=..., parts=[node names], **descr).  Returns manifest list.
     bal_masks / vest_masks: per body variant, True = keep triangle (head under a balaclava / uniform under the plate carrier)"""
     g = W.g
@@ -495,13 +552,22 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
         Pt, Nt_, Ut_, It, Wt, Ct = [], [], [], [], [], []
         o1 = 0; o2 = 0
         bal = [n for n in parts if n.startswith('balaclava_')]
+        occ_nodes = tuple(n for n in parts if _is_headgear(n))
+        occ_prims = [p for n in occ_nodes for p in rec.nodes[n]] if head_ao else []
         for n in parts:
-            for p in rec.nodes[n]:
+            for pi_, p in enumerate(rec.nodes[n]):
                 m = rec.mat_name(p['mat'])
                 if m in TILE_MATS:
                     continue
                 pos, idx = p['pos'], p['idx']
                 col = p['color'] if p.get('color') is not None else np.ones((len(pos), 3))
+                if occ_prims and _ao_receiver(m):
+                    # helmet occlusion baked into this preset's vertex colours (helmets differ per preset)
+                    ck = (fac, occ_nodes, n, pi_, len(pos))
+                    if ck not in _HEAD_AO_CACHE:
+                        _HEAD_AO_CACHE[ck] = headgear_ao(pos, p['nrm'], occ_prims)
+                        log(f'head AO {pr["name"]} {n}/{m}: min {_HEAD_AO_CACHE[ck].min():.2f} mean {_HEAD_AO_CACHE[ck].mean():.2f}')
+                    col = col * _HEAD_AO_CACHE[ck][:, None]
                 if m == tape_mat:
                     Pt.append(pos); Nt_.append(p['nrm']); Ut_.append(p['uv']); It.append(idx + o2); Wt.append(p['W']); Ct.append(col); o2 += len(pos)
                     tm = p['mat']

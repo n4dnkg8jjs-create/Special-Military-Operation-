@@ -81,6 +81,16 @@ ARMOUR_NOTES = ('Armour add-on nodes: armor_groin = soft groin protector flap hu
                 'shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).')
 
 
+SLING_NOTES = ('Rifle slung on the back: parent the rifle (identity transform) to the socket named in the visible preset\'s '
+               'extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, chosen by the back gear of that '
+               'preset) and show the node extras.preset.sling_node (sling_back / sling_back_pouch / sling_back_pack / sling_back_ruck: '
+               'skinned 32 mm webbing sling, hidden by default, no LOD) for exactly as long as the rifle is there; hide it otherwise. '
+               'The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the '
+               'sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel '
+               '(AK-74M / AK-12 / AK-74M+optic swivel positions). weapon_socket_back is unchanged (ATGM tubes / folded launchers / side '
+               'weapons are authored in its frame).')
+
+
 def soldier_entry(WM, old, fac):
     g, tris, mats = WM.read_glb(f'{ASSETS}/soldier_{fac}.glb')
     nodes = [n['name'] for n in g['nodes']]
@@ -93,11 +103,14 @@ def soldier_entry(WM, old, fac):
              default_config_tris=int(sum(lod0[k] for k in default)), materials_by_node=mats, node_extras=extras,
              gear_materials=sorted({m for k, ms in mats.items() for m in ms}), node_list=nodes)
     e['notes'] = ('body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. '
-                  'helmet_A/helmet_B alternatives. backpack, legband_L, kneepads, pouches_back off by default. '
+                  'helmet_A/B/C/D alternatives (see combos[*].helmet_desc). backpack, legband_L, kneepads, pouches_back off by default. '
                   'Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top '
                   'corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches '
                   'rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use '
                   'colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. ' + VEST_NOTES[fac] + ' ' + ARMOUR_NOTES)
+    e['sling_notes'] = SLING_NOTES
+    e['head_shading_notes'] = ('Helmet / headset occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava '
+                               '(sky-weighted hemisphere AO against that preset\'s headgear): brow, eyes, temples and ears darken under the brim.')
     cb = json.load(open(os.path.join(CACHE, f'combos_{fac}.json')))
     e['combos'] = cb['combos']; e['assault_combos'] = cb['assault_combos']; e['crew_combos'] = cb.get('crew_combos', [])
     cn = old.get('combo_notes', '')

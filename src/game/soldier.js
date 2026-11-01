@@ -91,6 +91,11 @@ export class Soldier {
         if (o.userData.lod !== -1) this.lods.push(o);
       }
       if (!this.lods.length) this.lods = null;
+      // rifle sling for this preset (rifle on the back hangs from sling_socket; sling_node shown while it is there)
+      const pr = combo ? m.getObjectByName(combo)?.userData?.preset : null;
+      this.slingSock = (pr?.sling_socket && m.getObjectByName(pr.sling_socket)) || m.getObjectByName('weapon_socket_sling') || null;
+      this.slingNode = (pr?.sling_node && m.getObjectByName(pr.sling_node)) || (this.slingSock ? m.getObjectByName('sling_back') : null);
+      if (this.slingNode) this.slingNode.traverse(o => { if (o.isMesh) o.visible = false; });
       this.mixer = new THREE.AnimationMixer(m);
       this.actions = {}; this.cur = null;
       this.spine = m.getObjectByName('Spine1') || m.getObjectByName('Spine') || m.getObjectByName('spine_02');
@@ -185,7 +190,7 @@ export class Soldier {
     if (this.weaponObj && !this.dropped) {
       if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000));
       else if (name === 'fpv_pilot' && SHARED_EVENTS.fpv_pilot?.rifle_ground?.t && this.weaponObj) {
-        const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground';
+        const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground'; this.showSling(false);
       }
       else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
     }
@@ -206,10 +211,15 @@ export class Soldier {
   }
   weaponTo(k) {
     if (this.wSock === k || !this.sockets[k]) return;
-    this.sockets[k].add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.wSock = k;
+    // slung on the back: the rifle hangs on its sling (preset-specific socket over whatever gear is on the back) and the sling shows
+    let sock = this.sockets[k];
+    if (k === 'back' && this.slingSock) sock = this.slingSock;
+    sock.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.wSock = k;
+    this.showSling(k === 'back' && !!this.slingSock);
   }
+  showSling(on) { if (this.slingNode && this.slingOn !== on) { this.slingOn = on; this.slingNode.traverse(o => { if (o.isMesh) o.visible = on; }); } }
   dropWeapon() {
-    if (this.dropped || !this.weaponObj) return; this.dropped = true;
+    if (this.dropped || !this.weaponObj) return; this.dropped = true; this.showSling(false);
     const w = this.weaponObj; const p = w.getWorldPosition(new THREE.Vector3());
     this.scene.add(w); w.position.set(p.x + (Math.random() - .5) * 0.6, 0.04, p.z + (Math.random() - .5) * 0.6);
     w.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2 * (Math.random() < .5 ? 1 : -1)); w.updateMatrixWorld(true);

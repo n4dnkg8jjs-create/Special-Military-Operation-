@@ -54,9 +54,13 @@ def main():
                                          'grenade pouches, IFAK, hydration and dump pouch.'),
         'ua_plate_carrier': dict(notes='JPC-style: slimmer plate bags (280 x 316 mm), integrated open-top triple mag shingle with visible AK mag bases, admin pouch with UA flag patch, '
                                        'CAT tourniquet, radio on the cummerbund, IFAK, grenade pouch; MultiCam + coyote webbing.'),
-        'helmets': {'RU helmet_A': '6B47 with EMR cover, elastic foliage band, NVG shroud', 'RU helmet_B': '6B47 with EMR cover, band and goggles on the brow',
-                    'UA helmet_A': 'FAST-style high cut (ear cut-outs high) with MultiCam cover, ARC side rails, NVG shroud, counterweight pouch',
-                    'UA helmet_B': 'MICH/ACH-style mid cut with MultiCam cover and goggles'},
+        'helmets': {'RU helmet_A': '6B47 Ratnik, EMR cover (4-panel seams, cloth gathered under a black rubber band), NVG mount, IFF patch',
+                    'RU helmet_B': '6B47, EMR cover, band, 6B34-style ballistic goggles pushed up (black moulded frame with vents, foam, smoke lens, strap + slider)',
+                    'RU helmet_C': '6B7-1M, EMR cover with a white identification-tape band (recolourable tape)', 'RU helmet_D': 'SSh-68 steel helmet, olive paint (mobilised)',
+                    'UA helmet_A': 'PASGT-type kaska, MM-14 cover, coyote band', 'UA helmet_B': 'FAST-type high cut, bare ranger green, ARC rails, NVG shroud',
+                    'UA helmet_C': 'TOR-D type kaska, MultiCam cover, Desert Locust style goggles (tan frame, clear lens)',
+                    'UA helmet_D': 'FAST-type high cut in a MultiCam cover, ID-tape strip on the back',
+                    'assault': 'RU: 6B47 + NVG mount + headset / Altyn-style; UA: FAST high cut + shroud + counterweight + headset / MICH + goggles + headset'},
         'tape_bands': 'Identification tape wrapped twice around the upper arms (~50 mm wide, ~120 mm below the shoulder joint) and around the thighs; '
                       'RU white (alt red), UA yellow. Separate meshes using material `tape` (extras.recolourable) so the game can recolour them.',
         'assault_kit': {'RU': '6B45 in assault configuration: shoulder/upper-arm protectors, groin protector, side plates, neck collar; 6B47 with NVG mount + '
@@ -86,7 +90,8 @@ def main():
         'sockets': {
             'weapon_socket': 'child of RightHand: parent a weapon GLB (origin = pistol grip, +Z muzzle) with identity transform; matches all rifle-hold clips',
             'weapon_socket_L': 'child of LeftHand: rifle carried by the handguard (grip_L in the palm) - use during throw_grenade',
-            'weapon_socket_back': 'child of Spine1: slung rifle diagonally on the back, muzzle up over the right shoulder (RPG gunner, drag_wounded, wounded clips)',
+            'weapon_socket_back': 'child of Spine1: slung rifle diagonally on the back, muzzle up over the right shoulder (RPG gunner, drag_wounded, wounded clips); ATGM tubes / folded launchers are authored in this frame',
+            'weapon_socket_sling': 'child of Spine1 (+ _pouch / _pack / _ruck variants per back gear, see combos[*].sling_socket): rifle on its left side on the back, hanging on the sling node combos[*].sling_node (show it while the rifle is there)',
             'mag_socket_L': 'child of LeftHand: attach ak74m `magazine` node during reloads',
             'aim': 'child of Head at the eye midpoint (eye height)', 'aim_eye_R': 'child of Head at the right eye (sighting eye)',
             'drag_handle': 'child of Spine1 at the vest drag handle (top of the back plate): contact point of being_dragged / drag_wounded'},

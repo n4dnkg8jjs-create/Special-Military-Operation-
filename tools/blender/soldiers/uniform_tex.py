@@ -25,9 +25,27 @@ def rect_sdf(x, y, cx, cy, hw, hh, rad=0.01):
 
 
 def seam_profile(sd, width=0.004):
-    """height contribution of a stitched seam along an SDF zero line (metres)"""
-    g = -0.0007 * np.exp(-(sd / (width * 0.35)) ** 2)  # groove
+    """height contribution of a stitched seam along an SDF zero line (metres): sunk seam line with a raised welt (the folded seam
+    allowance under the cloth) beside it -> the cloth reads as thick twill, not paint"""
+    g = -0.0008 * np.exp(-(sd / (width * 0.32)) ** 2)  # groove
+    g += 0.00055 * np.exp(-((sd - width * 0.95) / (width * 0.55)) ** 2) + 0.00030 * np.exp(-((sd + width * 0.85) / (width * 0.45)) ** 2)
     return g
+
+
+def crease(x, sharp=0.75):
+    """cloth fold profile along a phase x (period 1): sharp creases (troughs) between rounded ridges, zero-mean-ish"""
+    return np.abs(np.sin(np.pi * x)) ** sharp - 0.6
+
+
+def radial_folds(P, c, plane, n_folds, reach, seed, warp=1.6):
+    """folds radiating from a point c (crotch, armpit, inner elbow): phase from the angle around c in the plane spanned by the two
+    axes `plane` (indices), amplitude falling off with distance (0 at c, peak ~reach/3, gone at ~reach)"""
+    rel = P - c
+    a = np.arctan2(rel[..., plane[1]], rel[..., plane[0]])
+    r = np.linalg.norm(rel, axis=-1)
+    ph = a * n_folds / (2 * np.pi) + TX.noise3(P, 0.09, seed, 2) * warp * 0.35 + r * 6
+    env = (1 - np.exp(-(r / (reach * 0.18)) ** 2)) * np.exp(-(r / reach) ** 2)
+    return crease(ph) * env
 
 
 def stitches(sd, along, off=0.003, pitch=0.004):
@@ -52,6 +70,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     uv_per_m = np.sqrt(a2 / a3)
     texel_m = 1.0 / (uv_per_m * res_n)
     H = np.zeros((res_n, res_n), np.float32)
+    FOLD = np.zeros((res_n, res_n), np.float32)        # fold field (unitless, ridges > 0) -> albedo shading / AO of the folds
     shade = np.ones((res_n, res_n), np.float32)
     patch = np.zeros((res_n, res_n, 4), np.float32)  # rgba overlay
     def labmask(prefix):
@@ -64,7 +83,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     shade *= 1 - 0.18 * np.exp(-((dist_in - 0.002) / 0.0015) ** 2)
     # ---- folds / drape (low-frequency noise stretched along limbs) and joint creases
     drape = TX.noise3(P * [3.0, 0.6, 3.0], 1.0, seed + 11, 3)
-    H += drape * 0.0012
+    H += drape * 0.0016
     for side, sx in (('Left', 1), ('Right', -1)):
         sh, el, wr = J(side + 'Arm'), J(side + 'ForeArm'), J(side + 'Hand')
         m = labmask('sleeve_' + side[0]) | labmask('cuff_' + side[0])
@@ -77,8 +96,17 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         # elbow creases: ripples across the arm near the elbow, strongest on the inside (front)
         de = s - Lu
         front = 0.5 + 0.5 * np.cos(th - (-np.pi / 2 * sx))
-        crease = np.sin(de / 0.018 * 2 * np.pi + TX.noise3(P, 0.08, seed + 3, 1) * 3) * np.exp(-(de / 0.07) ** 2)
-        H += m * crease * 0.0009 * (0.3 + 0.7 * front) * (0.6 + 0.4 * TX.noise3(P, 0.05, seed + 31, 2))
+        crook = 0.5 + 0.5 * np.cos(th - np.pi / 2 * sx)      # crook of the elbow (faces +Z in the bind pose)
+        cr_ = crease(de / 0.019 + 0.45 * np.sin(th * 1.3) + TX.noise3(P, 0.08, seed + 3, 1) * 0.5) * np.exp(-(de / 0.075) ** 2)
+        H += m * cr_ * 0.0021 * (0.25 + 0.75 * crook ** 1.5) * (0.7 + 0.3 * TX.noise3(P, 0.05, seed + 31, 2))
+        FOLD[...] += m * cr_ * (0.25 + 0.75 * crook ** 1.5)
+        # inner-elbow fan: diagonal folds converging on the crook of the arm
+        ie = el + (np.array([0, 0, 1.0]) * 0.035)
+        rf = radial_folds(P, ie, (0, 1), 7, 0.11, seed + 40 + sx)
+        H += m * rf * 0.0016 * crook; FOLD[...] += m * rf * crook
+        # sleeve drape: long soft folds running down the upper arm and forearm, twisting slightly
+        dr = crease(th * 5 / (2 * np.pi) + s * 1.5 + TX.noise3(P, 0.15, seed + 50 + sx, 2) * 0.6, 0.9)
+        H += m * dr * 0.0009 * (1 - np.exp(-(de / 0.05) ** 2)); FOLD[...] += m * dr * 0.4
         # sleeve gather near cuff
         dc = s - (Lu + np.linalg.norm(wr - el) - 0.04)
         H += m * np.sin(th * 7 + s * 40) * np.exp(-(dc / 0.05) ** 2) * 0.0012
@@ -120,7 +148,15 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         fw = np.pi / 2 * sx  # angle of the front (+z) direction
         # knee creases (back of knee + front ripple)
         dk = s - Lu
-        H += m * np.sin(dk / 0.024 * 2 * np.pi + TX.noise3(P, 0.06, seed + 5, 2) * 5 + th * 1.5) * np.exp(-(dk / 0.07) ** 2) * 0.0008 * (0.5 + 0.5 * np.cos(th + fw))
+        frontk = 0.5 + 0.5 * np.cos(th - fw); backk = 1 - frontk
+        # back of the knee: stacked horizontal folds (the cloth compresses when the knee bends); front: two broad bagging folds
+        kb = crease(dk / 0.021 + 0.35 * np.sin(th * 2) + TX.noise3(P, 0.06, seed + 5, 2) * 0.6) * np.exp(-(dk / 0.075) ** 2)
+        H += m * kb * 0.0022 * backk ** 1.3; FOLD[...] += m * kb * backk ** 1.3
+        kf = crease(dk / 0.045 + TX.noise3(P, 0.08, seed + 6, 2) * 0.5, 1.0) * np.exp(-((dk + 0.02) / 0.09) ** 2)
+        H += m * (kf * 0.0012 + 0.0012 * np.exp(-((dk + 0.01) / 0.05) ** 2)) * frontk; FOLD[...] += m * kf * frontk * 0.7
+        # trouser drape: long vertical folds down the leg, a little twisted
+        ld = crease(th * 4 / (2 * np.pi) + TX.noise3(P, 0.2, seed + 60 + sx, 2) * 0.5 + s * 0.6, 0.9)
+        H += m * ld * 0.0010 * (1 - np.exp(-(dk / 0.06) ** 2)); FOLD[...] += m * ld * 0.4
         # blousing above boots
         db = P[..., 1] - 0.24
         H += m * np.sin(th * 9 + P[..., 1] * 90) * np.exp(-(db / 0.05) ** 2) * 0.0035 * (db > -0.03)
@@ -141,10 +177,29 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         ksd = rect_sdf((th - fw) * 0.06, s, 0, Lu + 0.01, 0.065, 0.10, 0.03)
         H += np.where(m, seam_profile(ksd) + stitches(ksd, s + th * 0.06, 0.003) + np.where(ksd < 0, 0.0006, 0), 0)
         # seat / back pocket hint
+    # crotch: folds radiating from the crotch over the fronts / insides of the thighs and the seat (front stronger)
+    lg = labmask('leg') | labmask('torso')
+    cro = np.array([0.0, J('LeftUpLeg')[1] - 0.075, J('Hips')[2] + 0.01])
+    rc = radial_folds(P, cro, (0, 1), 9, 0.17, seed + 70)
+    fr = np.clip((P[..., 2] - cro[2] + 0.05) / 0.08, 0, 1)
+    H += lg * rc * 0.0018 * (0.45 + 0.55 * fr); FOLD += lg * rc * (0.45 + 0.55 * fr)
+    # armpits / shoulders: folds fanning from the armpit across the chest and the shoulder blade, and over the top of the shoulder
+    tor = labmask('torso')
+    for side, sx in (('Left', 1), ('Right', -1)):
+        ap = J(side + 'Arm') + np.array([-sx * 0.035, -0.07, 0.0])
+        ra = radial_folds(P, ap, (2, 1), 8, 0.16, seed + 80 + sx)
+        H += tor * ra * 0.0015; FOLD += tor * ra
+        sh_ = J(side + 'Arm') + np.array([-sx * 0.05, 0.03, 0.0])
+        rs = radial_folds(P, sh_, (2, 0), 6, 0.10, seed + 90 + sx)
+        H += tor * rs * 0.0008; FOLD += tor * rs * 0.5
     # torso: jacket hem, front placket, back yoke
     t = labmask('torso')
     hipy = J('Hips')[1]
     hem = hipy - 0.065
+    # waist: cloth gathered by the belt / trouser waistband - short vertical folds round the waist just above the hem
+    aw = np.arctan2(P[..., 0], P[..., 2] - J('Hips')[2])
+    wg = crease(aw * 30 / (2 * np.pi) + TX.noise3(P, 0.07, seed + 95, 2) * 0.6) * np.exp(-((P[..., 1] - hem - 0.045) / 0.035) ** 2)
+    H += t * wg * 0.0014; FOLD += t * wg
     dh = P[..., 1] - hem
     H += np.where(t, np.where(dh > 0, 0.0015, 0) - 0.0012 * np.exp(-(dh / 0.004) ** 2), 0)
     shade *= np.where(t, 1 - 0.35 * np.exp(-((dh + 0.004) / 0.006) ** 2) * (dh < 0.003), 1)
@@ -162,10 +217,15 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     H += rip * 0.00012 + rng.standard_normal(H.shape).astype(np.float32) * 0.00004
     H = TX.dilate(H, mask, 6)
     H = ndimage.gaussian_filter(H, 0.6)
-    normal = TX.height_to_normal(H / texel_m, 1.0)
-    # cavity shading from height (ambient-occlusion-like)
+    normal = TX.height_to_normal(H / texel_m, 1.25)
+    # cavity shading from height (ambient-occlusion-like): fine (seams, stitching) + coarse (folds / creases: troughs darker, ridges
+    # catch a little more light)
     blur = ndimage.gaussian_filter(H, 3)
     cav = np.clip(1 + (H - blur) * 260, 0.65, 1.12)
+    blur2 = ndimage.gaussian_filter(H, 12)
+    cav *= np.clip(1 + (H - blur2) * 210, 0.68, 1.12)
+    FOLD = ndimage.gaussian_filter(TX.dilate(FOLD, mask, 6), 1.0)
+    cav *= np.clip(1 + 0.30 * FOLD, 0.70, 1.16)
     # ---- dirt / wear masks (in 3D)
     y = P[..., 1]
     dirt = np.clip((0.55 - y) / 0.4, 0, 1) ** 1.5 * 0.55
