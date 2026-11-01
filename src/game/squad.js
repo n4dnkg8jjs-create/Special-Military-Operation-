@@ -275,7 +275,7 @@ export class Squad {
     else if (this.pinned && supp < 32 && heavy <= Math.floor(e.length * 0.3)) this.pinned = false;
     if (this.mounted) this.pinned = false;
     if (this.underFireT > 6) {
-      let r = TUNING.moraleRegen * (this.leader?.role.leader ? 1.4 : 1);
+      let r = TUNING.moraleRegen * (this.leader?.role.leader ? 1.4 : 1) * (1 + (this.game.mods?.[this.side]?.morale || 0)) * (1 + (this.vet || 0) * 0.1);
       if (this.building) r += 0.5;
       const c = this.center();
       for (const u of this.game.unitsOf(this.side)) if (u.type === 'vehicle' && !u.destroyed && u.pos.distanceTo(c) < 30) { r += 0.6; break; }

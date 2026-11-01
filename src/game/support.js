@@ -371,7 +371,7 @@ export class FpvTeam {
       const tc = tgt.type === 'vehicle' ? tgt.pos : (d.man?.effective ? d.man.pos : tgt.center());
       const hd = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z);
       // terminal attack: a steep dive (roof / engine deck), only once the drone can see down onto the target
-      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); d.miss = Math.random() < (tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? 0.2 : 0.08) : 0.12); if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
+      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < (tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? 0.2 : 0.08) : 0.12) / (1 + (M[sd]?.fpvHit || 0)) || Math.random() < (M[od]?.ewJam || 0); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
       if (d.phase === 'climb') { want = tmpA.set(0, 9, 0); if (d.pos.y > Math.min(d.alt, 16)) d.phase = 'cruise'; }
       else if (d.phase === 'cruise') { // fly level at altitude; climb over anything tall in the way
         const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1, vy = THREE.MathUtils.clamp((d.alt - d.pos.y) * 1.2, -5, 9);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { vegetationLOS } from '../world/vegetation.js';
+import { deployCampaign } from './campaignBattle.js';
 import { Renderer } from '../engine/renderer.js';
 import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
@@ -20,6 +21,7 @@ const Q = new URLSearchParams(location.search);
 export class Game {
   constructor(opts) {
     this.opts = opts; // {side:'UA'|'RU', minutes, quality}
+    this.campaign = opts.campaign || null;
     this.playerFaction = FACTIONS[opts.side]; this.enemyFaction = FACTIONS[opts.side === 'UA' ? 'RU' : 'UA'];
     this.squads = []; this.vehicles = []; this.pathQueue = [];
     this.time = 0; this.roundLen = opts.minutes * 60; this.paused = false; this.over = false; this.timeScale = +(Q.get('speed') || 1);
@@ -68,9 +70,9 @@ export class Game {
     progress(1, 'Ready');
   }
   // ---------------------------------------------------------------- forces
-  makeSquad(side, x, z, facing, n, kind = 'mech') {
+  makeSquad(side, x, z, facing, n, kind = 'mech', roles = null) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
-    const sq = new Squad(this, side, f, `${n}`, kind); sq.placeAt(x, z, facing); this.squads.push(sq); return sq;
+    const sq = new Squad(this, side, f, `${n}`, kind, roles); sq.placeAt(x, z, facing); this.squads.push(sq); return sq;
   }
   makeVehicle(side, kind, x, z, h) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
@@ -85,6 +87,7 @@ export class Game {
   deploy() {
     const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
     const pf = this.playerFaction, B = this.city.buildings;
+    if (this.campaign) return deployCampaign(this);   // the brigade's persistent task group
     // --- player: motorized rifle company riding on armour at the southern edge
     const lineup = MAP.lineup;
     this.playerUnits = [];
@@ -134,6 +137,8 @@ export class Game {
   startBattle() {
     if (this.phase !== 'deploy') return;
     this.phase = 'capture'; this.time = 0;
+    // recon drone overflight before the attack (campaign upgrade): enemy positions known at the start
+    if (this.mods?.player?.reconDrone) for (const u of this.unitsOf('enemy')) { (u.detect ||= {}).player = 1.6; (u.seenBy ||= {}).player = 0; u.spotted = true; }
     for (const m of this.zoneMeshes) m.visible = false;
     this.commander.begin();
     this.hud?.battleStarted();
@@ -239,8 +244,9 @@ export class Game {
   spotFor(side) {
     const other = side === 'player' ? 'enemy' : 'player', spotters = [];
     for (const u of this.unitsOf(side)) {
-      if (u.type === 'vehicle') spotters.push([u.pos.x, (u.pos.y || 0) + 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1), u]); // buttoned-up crews see little
-      else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside === 'ride' ? 220 : 280, u.building]);
+      const sm = 1 + (this.mods?.[side]?.spotRange || 0) + (this.mods?.[side]?.thermals || 0) * 0.5;   // optics / thermal sights ordered in the campaign
+      if (u.type === 'vehicle') spotters.push([u.pos.x, (u.pos.y || 0) + 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1) * sm, u]); // buttoned-up crews see little
+      else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, (s.inside === 'ride' ? 220 : 280) * sm, u.building]);
     }
     for (const u of this.unitsOf(other)) {
       const ca = this.city.concealAt;

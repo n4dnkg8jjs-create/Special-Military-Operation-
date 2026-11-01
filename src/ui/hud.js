@@ -282,6 +282,7 @@ export class HUD {
       Time: <b>${Math.floor(g.time / 60)}:${String(Math.floor(g.time % 60)).padStart(2, '0')}</b><br>
       Your losses: <b>${P.kia}</b> killed · <b>${P.wia}</b> wounded (${P.evac} evacuated) · <b>${P.vehLost}</b> vehicles<br>
       Enemy losses: <b>${E.kia}</b> killed · <b>${E.wia}</b> wounded · <b>${E.vehLost}</b> vehicles`;
+    if (g.campaign) { const b = document.querySelector('#endscreen button.big'); if (b) { b.textContent = 'RETURN TO BRIGADE HQ'; b.onclick = () => window.__campaignReturn?.(); } }
     setTimeout(() => document.getElementById('endscreen').classList.remove('hidden'), 1800);
   }
   update(dt) {

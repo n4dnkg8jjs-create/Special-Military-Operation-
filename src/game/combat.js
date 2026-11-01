@@ -230,6 +230,7 @@ export class Combat {
     }
     if (t.state === 'critical' || t.state === 'stable') p *= 0.6;
     if (s.tgtFoliage) p *= 0.3;   // firing blind into the leaves at a muzzle flash
+    const sd = s.squad?.side; if (sd) p *= (1 + (s.squad.vet || 0) * 0.1) * (1 + (this.g.mods?.[sd]?.accuracy || 0));   // veterancy, training / optics upgrades
     return THREE.MathUtils.clamp(p, 0.004, 0.75);
   }
   windowExposed(t) { return (this.g.time - (t.lastShotT ?? -99)) < 1.5 || t.throwT > 0 || t.launcherT > 0; }
@@ -326,7 +327,7 @@ export class Combat {
       // survivability: most non-head hits leave a man badly wounded (savable by a medic/evac) rather than dead
       if (head || t.hp < -95 || (blast && Math.random() < 0.25)) { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
       else if (t.state !== 'critical' && t.state !== 'stable') {
-        t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut); t.target = null; t.path = null;
+        t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut) * (1 + (g.mods?.[sq.side]?.medevac || 0)); t.target = null; t.path = null;
         if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
         if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; if (t.inBuilding) { t.inside = null; } }
         sq.onCasualty(t, false); g.stats[sq.side].wia++;

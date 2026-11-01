@@ -4,6 +4,8 @@ import { Game } from './game/game.js';
 import { HUD } from './ui/hud.js';
 import { Input } from './ui/input.js';
 import { MAPS } from './world/maps.js';
+import { Campaign } from './campaign/state.js';
+import { collectResult } from './game/campaignBattle.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -15,6 +17,14 @@ async function start(opts) {
     await game.init((f, msg) => { $('loadBar').style.width = `${Math.round(f * 100)}%`; $('loadText').textContent = msg; });
   } catch (e) { console.error(e); $('loadText').textContent = 'Failed to start: ' + e.message; throw e; }
   const hud = new HUD(game); new Input(game, hud);
+  if (opts.campaign) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
+    const C = opts.campaign, b = document.createElement('button');
+    b.textContent = 'WITHDRAW'; b.title = 'Pull the task group out: the battle counts as lost, survivors are saved';
+    Object.assign(b.style, { position: 'fixed', right: '14px', top: '34px', zIndex: 20, background: '#3a2a22', color: '#e6d2c0', border: '1px solid #7a4a3a', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', letterSpacing: '1px' });
+    b.onclick = () => { if (game.over || !confirm('Withdraw the task group from the battle?')) return; game.over = true; game.result = { win: false, title: 'WITHDRAWN', why: `The task group pulled back from ${C.sectorName}.` }; hud.showEnd(game.result); };
+    document.body.appendChild(b);
+    setTimeout(() => hud.alert(`${C.mode === 'attack' ? 'Attack' : 'Defend'}: ${C.sectorName} — ${C.mode === 'attack' ? 'take the objectives from the dug-in enemy' : 'hold the objectives against the enemy attack'}`, 'good'), 1500);
+  }
   $('loading').classList.add('hidden');
   if (game.assets.missing.length) console.info('Procedural stand-ins used for:', game.assets.missing.join(', '));
   const names = game.objectives.map(o => o.name); hud.alert(`${game.playerFaction.name}: take ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}, then hold them for ${opts.minutes} minutes`, 'good');
@@ -74,7 +84,7 @@ async function start(opts) {
     window.__info = { renderMs: Math.round(renderMs), calls: Math.round(ri.render.calls / 3), tris: Math.round(ri.render.triangles / 3), programs: ri.programs?.length, simMs: Math.round(performance.now() - t0), time: Math.round(game.time), over: game.over, result: game.result?.title,
       objectives: game.objectives.map(o => `${o.id}:${o.owner}:${Math.round(o.control)}`),
       player: game.stats.player, enemy: game.stats.enemy, squads: game.squads.map(s => `${s.side[0]}${s.effective.length}/${Math.round(s.morale)}${s.routing ? 'R' : ''}${s.mounted ? 'M' : ''}`).join(' '),
-      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), placed: Q.has('placed') ? Object.entries(PLACED.reduce((a, p) => { const k = p.template.name || p.template.type; a[k] = (a[k] || 0) + p.matrices.length; return a; }, {})).map(([k, v]) => k + ':' + v).join(' ') : undefined, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
+      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), placed: Q.has('placed') ? Object.entries(PLACED.reduce((a, p) => { const k = p.template.name || p.template.type; a[k] = (a[k] || 0) + p.matrices.length; return a; }, {})).map(([k, v]) => k + ':' + v).join(' ') : undefined, camp: game.campaign ? collectResult(game) : undefined, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
     window.__done = true; return;
   }
   let last = performance.now();
@@ -90,8 +100,26 @@ async function start(opts) {
 $('startBtn').addEventListener('click', () => {
   const side = document.querySelector('input[name=side]:checked').value;
   const rl = $('roundLen').value; const minutes = rl === 'rand' ? 10 + Math.floor(Math.random() * 7) : +rl;
+  try { localStorage.setItem('smo_quality', $('quality').value); } catch { }
   start({ side, minutes, quality: $('quality').value, map: selMap });
 });
+// ---------------------------------------------------------------- campaign
+const launchCampaignBattle = () => { location.href = `${location.pathname}?cbattle=1`; };
+$('campaignBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle)); });
+if (Q.has('campaign')) import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle));
+if (Q.has('ctest')) {   // headless test of a campaign battle without a stored campaign
+  const side = Q.get('side') || 'UA', mode = Q.get('ctest') || 'attack';
+  const force = [{ uid: 1, key: 'mech_btr', name: '1st Platoon', kind: 'mech', men: 6, menMax: 8, veh: { kind: 'btr', hp: 0.7 }, xp: 3 }, { uid: 2, key: 'mech_ifv', name: '2nd Platoon', kind: 'imech', men: 8, menMax: 8, veh: { kind: 'ifv', hp: 1 }, xp: 6 },
+    { uid: 3, key: 'tank', name: 'Tank 1', kind: 'tank', men: 0, veh: { kind: 'tank', hp: 1 }, xp: 0 }, { uid: 4, key: 'assault', name: 'Assault group', kind: 'assault', men: 5, menMax: 6, xp: 9 }, { uid: 5, key: 'fpv', name: 'Drone team', kind: 'fpv', men: 2, menMax: 2, xp: 2 }];
+  start({ side, minutes: 12, quality: Q.get('quality') || 'low', map: Q.get('map') || 'farmland', campaign: { sector: 's1', sectorName: 'Test sector', map: Q.get('map') || 'farmland', mode, fort: 2, strength: 2, force, enemy: [{ kind: 'mech' }, { kind: 'foot' }, { kind: 'tank' }, { kind: 'atgm' }], mods: { armorPlate: 0.1, fpvDrones: 2, accuracy: 0.1, reconDrone: true }, side } });
+}
+if (Q.has('cbattle')) {
+  const setup = Campaign.pendingBattle();
+  if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: setup.map, campaign: setup });
+  else import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle));
+}
+// end of a campaign battle: report back to the brigade and return to the sector map
+window.__campaignReturn = () => { const g = window.game; if (g?.campaign) Campaign.storeResult(collectResult(g)); location.href = `${location.pathname}?campaign=1`; };
 
 // ---------------------------------------------------------------- map picker (size badge on each card + in the header)
 let selMap = localStorage.getItem('smo_map') || 'city'; if (!MAPS[selMap]) selMap = 'city';

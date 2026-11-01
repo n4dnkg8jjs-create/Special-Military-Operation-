@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { trenchNear, trenchMen } from './trench.js';
+import { campaignArmy, campaignDefenders } from './campaignBattle.js';
 import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
 
 // Enemy commander. Phase 1: dug-in defenders hold both objectives. Phase 2 (after the player takes an
@@ -28,7 +29,16 @@ export class Commander {
   deployArmy() {
     const g = this.g, N = 0; // facing south (+Z)
     this.army = [];
-    const lay = MAP.ai.army;
+    const lay = g.campaign ? campaignArmy(g) : MAP.ai.army;
+    // campaign attack missions: the enemy holds the objectives with dug-in defenders (trenches first, else buildings)
+    if (g.campaign) for (const obj of campaignDefenders(g)) {
+      const o = g.objectives.find(q => q.id === obj); if (!o) continue;
+      const s = g.makeSquad('enemy', o.x, o.z - 12, N, 'Enemy defenders', 'mech');
+      const T = this.freeTrench(o.x, o.z, 70, s), bld = !T && this.nearBuilding(new THREE.Vector3(o.x, 0, o.z), 45, s);
+      if (T) { s.orderTrench(T); for (const m of s.soldiers) if (m.trenchSlot) { m.pos.set(m.trenchSlot.x, 0, m.trenchSlot.z); m.path = null; m.pathReq = null; m.sync(); } }
+      else if (bld) g.garrison(s, bld);
+      this.army.push({ kind: 'defend', sq: s, obj, state: 'hold', t: 3 });
+    }
     for (const [x, z, kind, obj] of lay) {
       if (kind === 'spg') { const v = g.makeVehicle('enemy', 'spg', x, z, N); v.name = `Enemy ${g.enemyFaction.spgName}`; this.army.push({ kind: 'spg', v, obj, state: 'emplaced', t: 3 }); this.spg = v; continue; }
       if (kind === 'tank') { const v = g.makeVehicle('enemy', 'tank', x, z, N); this.army.push({ kind: 'tank', v, obj, state: 'move', t: 2, home: OVERWATCH[obj][0] }); continue; }
