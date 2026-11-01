@@ -96,7 +96,7 @@ class CampaignUI {
       if (s.id === C.def.start.hq) add('text', { y: 4, 'text-anchor': 'middle', fill: '#fff', 'font-size': 10, 'font-weight': 700 }, g).textContent = 'HQ';
       add('text', { y: r + 18, 'text-anchor': 'middle', fill: '#e6e2d3', 'font-size': 12, 'paint-order': 'stroke', stroke: '#1d1f19', 'stroke-width': 3 }, g).textContent = s.name;
     }
-    add('text', { x: 12, y: M.h - 12, fill: '#8a877a', 'font-size': 12 }).textContent = `Enemy rear: ${M.enemyEdge || ''} · blue = ${C.side === 'UA' ? 'Ukrainian' : 'Russian'} control · dashed ring = directive objective · red pips = enemy strength`;
+    add('text', { x: 12, y: M.h - 12, fill: '#8a877a', 'font-size': 12 }).textContent = `Enemy rear: ${M.enemyEdge || ''} · ${C.side === 'UA' ? 'blue = Ukrainian control' : 'red = Russian control'} · dashed ring = directive objective · red pips = enemy strength`;
     return svg;
   }
   // ------------------------------------------------------------------ panels

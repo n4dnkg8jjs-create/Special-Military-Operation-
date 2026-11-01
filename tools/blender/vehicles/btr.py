@@ -41,6 +41,9 @@ REAR_TOP = -3.30                   # roof rear edge
 REAR_LOW = (-3.84, 1.34)           # upper rear plate lower edge
 TY = 0.95                          # turret ring centre (y)
 DOOR_Y = -0.2                      # side door centre
+HATCH_FRONT = (0.56, 0.52)         # driver / commander roof hatch (w, l)
+HATCH_TROOP = (0.52, 0.62)         # troop roof hatches behind the turret
+GUNNER_HATCH = (0.12, -0.28, 0.58, 0.26)   # BPPU turret roof hatch (turret local x, y, z, lid radius)
 RECESS = (1.20, 1.80)              # forward firing-port recess (y range)
 
 def x_upper(z):  # upper side plate x at height z
@@ -537,9 +540,8 @@ def turret_bppu():
     s2.add(box(0.11, 0.01, 0.06, c=(0.32, 0.335, 0.73), mat='glass'))
     t.add(s2)
     # gunner's hatch + periscopes
-    t.add(lathe([(0, 0.05), (0.22, 0.045), (0.25, 0.02), (0.26, 0.0)], 24, 'z', c=(0.12, -0.28, 0.58)))
-    t.add(rail([(0.02, -0.28, 0.63), (0.02, -0.28, 0.67), (0.22, -0.28, 0.67), (0.22, -0.28, 0.63)], r=0.01, rad=0.025))
-    t.add(cyl(0.035, 0.14, 8, 'x', c=(0.12, -0.54, 0.6)))
+    gx, gy, gz, gr = GUNNER_HATCH
+    t.add(L.round_coaming(gr, hinge=(0, -1)).move(gx, gy, gz))       # lid: hatch_lid_gunner (rear hinge)
     for (px, py, ang) in ((-0.5, -0.1, 90), (0.52, 0.0, -90)):
         t.add(periscope_block(0.14, 0.08, 0.06), Matrix.Translation((px, py, 0.575)) @ Matrix.Rotation(math.radians(ang), 4, 'Z'))
     # wind sensor mast + antenna base at the rear
@@ -593,6 +595,29 @@ SEAT_SPECS = (
     [dict(x=s * 0.56, y=y, face=(s, 0), type='edge') for y in (-0.45, -1.25, -1.95) for s in (1, -1)] +
     [dict(x=s * 0.30, y=-2.85, face=(0, 1), type='deck') for s in (1, -1)])
 
+def btr_lids(variant, hullE, turE, tz):
+    """Openable lids: driver / commander (front hinge, stand up ahead of the crew), troop hatches (rear hinge), BTR-82A
+    gunner (BPPU roof, rear hinge).  The BPU-1 (BTR-80) turret has no roof hatch: its gunner leaves through the right
+    troop hatch (hatch_lid_gunner / hatch_gunner there)."""
+    is82 = variant == 'btr82a'
+    lids = []
+    for s, role in ((1, 'commander'), (-1, 'driver')):
+        p, piv, ax = L.rect_lid(*HATCH_FRONT, hinge='y+')
+        lids.append(VB.hatch_lid(role, p, piv, ax, hullE, Matrix.Translation((s * 0.45, 1.98, ROOF)), open_deg=92))
+        L.node_empty('hatch_' + role, hullE, (s * 0.45, 1.98, ROOF + 0.05), 0.12)
+    for s, tag in ((1, 'R'), (-1, 'L')):
+        role = 'gunner' if (not is82 and s > 0) else 'cargo_' + tag
+        p, piv, ax = L.rect_lid(*HATCH_TROOP, hinge='y-')
+        lids.append(VB.hatch_lid(role, p, piv, ax, hullE, Matrix.Translation((s * 0.45, -0.40, ROOF)), open_deg=100,
+                                 role_tag=role, note='right troop hatch (BPU-1 turret has no roof hatch)' if role == 'gunner' else ''))
+        L.node_empty('hatch_' + role, hullE, (s * 0.45, -0.40, ROOF + 0.05), 0.12)
+    if is82:
+        gx, gy, gz, gr = GUNNER_HATCH
+        p, piv, ax = L.round_lid(gr, 0.05, hinge=(0, -1))
+        lids.append(VB.hatch_lid('gunner', p, piv, ax, turE, Matrix.Translation((gx, TY + gy, tz + gz)), open_deg=100))
+        L.node_empty('hatch_gunner', turE, (gx, TY + gy, tz + gz + 0.05), 0.12)
+    return lids
+
 def build(variant):
     t0 = time.time()
     L.reset()
@@ -645,9 +670,9 @@ def build(variant):
     H.add(box(1.0, 0.012, 0.36, c=(0, 3.435, 0.75), bev=0.004, segs=1).rot('X', -(90 - lb_ang), (0, 3.435, 0.75)))
     for x in (-0.3, 0.3):
         H.add(lathe([(0.03, -0.015), (0.055, -0.015), (0.055, 0.015), (0.03, 0.015)], 12, 'x', cap=False, c=(x, 3.6, 0.88)))
-    # ---- roof front: driver (left) + commander (right) hatches, periscopes in front of them
+    # ---- roof front: driver (left) + commander (right) hatches (lids = openable nodes, see btr_lids), periscopes ahead
     for s in (1, -1):
-        H.add(hatch_rect(0.56, 0.52, c=(s * 0.45, 1.98, ROOF), hinge='y-'))
+        H.add(L.rect_coaming(*HATCH_FRONT).move(s * 0.45, 1.98, ROOF))
         for i in range(2):
             M = Matrix.Translation((s * (0.28 + i * 0.3), WS_TOP[0] - 0.04, ROOF - 0.02)) @ Matrix.Rotation(math.radians(s * -14 * i), 4, 'Z')
             H.add(periscope_block(0.17, 0.1, 0.07), M)
@@ -655,9 +680,9 @@ def build(variant):
         H.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((s * (RF_X - 0.1), 2.12, ROOF - 0.015)) @ Matrix.Rotation(-s * 0.9, 4, 'Z'))
     # turret ring collar
     H.add(lathe([(0.80, 0), (0.85, 0), (0.85, 0.03), (0.78, 0.045)], 40, 'z', c=(0, TY, ROOF)))
-    # troop hatches behind the turret
+    # troop hatches behind the turret (lids = openable nodes)
     for s in (1, -1):
-        H.add(hatch_rect(0.52, 0.62, c=(s * 0.45, -0.40, ROOF), hinge='y-'))
+        H.add(L.rect_coaming(*HATCH_TROOP).move(s * 0.45, -0.40, ROOF))
     # engine deck: two louvred grilles, central access hatch, filler caps, antennas
     for s in (1, -1):
         H.add(louvre_panel(0.56, 1.15, 11), Matrix.Translation((s * 0.52, -2.36, ROOF)))
@@ -810,6 +835,8 @@ def build(variant):
     L.node_empty('dismount_L', hullE, (-1.95, DOOR_Y, 0.0))
     L.node_empty('dismount_R', hullE, (1.95, DOOR_Y, 0.0))
     L.node_empty('commander_hatch', hullE, (0.45, 1.98, ROOF + 0.05))
+    lids = btr_lids(variant, hullE, turE, tz)
+    lid_objs = [l_['mesh'] for l_ in lids]
     seats = S.place_seats(hullE, SEAT_SPECS, full_bvh)
     blen = math.hypot(mz[1], mz[2])
     clr = S.clearance(seats, (0, TY, tz), [tur_mesh], tp, blen, elev)
@@ -817,10 +844,12 @@ def build(variant):
     print('  clearance', clr)
 
     print('  geometry done %.1fs' % (time.time() - t0))
-    lod0 = [hull_mesh, tur_mesh, gun_mesh] + wheel_objs
+    lod0 = [hull_mesh, tur_mesh, gun_mesh] + lid_objs + wheel_objs
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh,
-                atlas=[hull_mesh, tur_mesh, gun_mesh, wheel_objs[0], wheel_objs[4]],
-                tp=tp, TY=TY, tz=tz, seats=seats, clearance=clr)
+                atlas=[hull_mesh, tur_mesh, gun_mesh] + lid_objs + [wheel_objs[0], wheel_objs[4]],
+                tp=tp, TY=TY, tz=tz, seats=seats, clearance=clr, lids=lids,
+                hull_lids=[l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'hull'],
+                tur_lids=[l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'turret'])
 
 def decals_ua(P, N):
     """White crosses (common Ukrainian field ID marks).  Positions in authoring frame -> export frame."""
@@ -841,14 +870,16 @@ def wreck_btr(d):
     """Burnt-out hull sitting on its rims (tyres burnt away) + separate burnt turret with drooped gun."""
     root = d['root']
     drop = WZ - 0.25
-    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o.name.startswith(('hull_geo', 'wheel_'))], root,
+    VB.set_lids(d['lids'], 1.0)          # wrecks show the hatches open (crew bailed out)
+    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o.name.startswith(('hull_geo', 'wheel_'))] + d['hull_lids'], root,
                         (0, 0, 0), drop_slots=('tyre', 'glass', 'light'), drop_z=drop)
     g = d['gun_obj']
     g.rotation_euler = (math.radians(6), 0, 0)
     bpy.context.view_layer.update()
     tp = d['turret'].matrix_world.translation.copy()
-    tw = VB.join_copies('turret_wreck', [d['tur_obj'], g], root, tuple(tp), drop_slots=('glass', 'light'))
+    tw = VB.join_copies('turret_wreck', [d['tur_obj'], g] + d['tur_lids'], root, tuple(tp), drop_slots=('glass', 'light'))
     g.rotation_euler = (0, 0, 0)
+    VB.set_lids(d['lids'], 0.0)
     tw.location.z -= drop
     bpy.context.view_layer.update()
     return [hw, tw]
@@ -865,10 +896,26 @@ def main(variant):
     info = VB.finalize(d, variant, scheme, dec, wreck_btr)
     info['ride_seats'] = S.manifest_entries(d['seats'])
     info['ride_clearance'] = d['clearance']
+    info['hatch_lids'], anim = VB.lid_manifest(d['lids'])
+    anim.update({'turret': 'yaw about local Y', 'gun_pivot': 'pitch about local X; elevate = rotation.x NEGATIVE',
+                 'wheel_*': 'spin about local X (hub)'})
+    info['animated_nodes'] = anim
+    roles = sorted(n[len('hatch_lid_'):] for n in info['hatch_lids'])
+    info['empties'] = {'muzzle': 'main gun', 'coax_muzzle': 'coax MG', 'smoke_launchers': 'turret',
+                       'hatch_commander / commander_hatch': 'commander roof hatch rim centre (hull, front right)',
+                       'hatch_driver': 'driver roof hatch rim centre (hull, front left)',
+                       'hatch_gunner': ('BPPU turret roof hatch rim centre (turret)' if variant == 'btr82a'
+                                        else 'right troop roof hatch rim centre (hull) - the BPU-1 turret has no roof hatch'),
+                       'hatch_cargo_*': 'troop roof hatch rim centres behind the turret (hull)',
+                       'exhaust': 'left silencer outlet', 'dismount_L / dismount_R': 'side door ground points',
+                       'ride_seat_1..8': 'desant seats'}
     with open(os.path.join(VB.CACHE, variant + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
-    print(json.dumps({k: v for k, v in info.items() if k not in ('nodes', 'hierarchy', 'node_bboxes')}))
+    if '--no-manifest' not in sys.argv:
+        import build_all
+        build_all.merge_manifest([variant])
+    print(json.dumps({k: v for k, v in info.items() if k not in ('nodes', 'hierarchy', 'node_bboxes')})[:3000])
     return info
 
 if __name__ == '__main__':
-    main(sys.argv[-1])
+    main([a for a in sys.argv[1:] if not a.startswith('--')][-1])

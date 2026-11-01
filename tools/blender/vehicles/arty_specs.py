@@ -121,7 +121,7 @@ ANIMATION = {
         'travel_pose': {'travel_lock.rotation.x': 0, 'gun_pivot.rotation.x': 3.5, 'turret.rotation.y': 0},
         'running_gear': 'roadwheel_*, sprocket_*, idler_* spin about local X; track_L/track_R scroll U (see track_link_pitch_m)',
         'empties': ['muzzle', 'mg_muzzle', 'smoke_launchers', 'commander_hatch', 'hatch_commander', 'hatch_gunner',
-                    'hatch_loader_roof_L', 'hatch_loader_roof_R', 'hatch_side_R', 'hatch_ammo_rear', 'ammo_feed', 'hatch_driver',
+                    'hatch_loader_roof_L', 'hatch_loader_roof_R', 'hatch_loader', 'hatch_side_R', 'hatch_ammo_rear', 'ammo_feed', 'hatch_driver',
                     'exhaust', 'dismount_L', 'dismount_R'],
     },
     'bohdana': {
@@ -133,6 +133,7 @@ ANIMATION = {
         'travel_pose': {'spade_L.rotation.x': 0, 'spade_R.rotation.x': 0, 'gun_pivot.rotation.x': 0, 'turret.rotation.y': 0},
         'wheels': 'wheel_L1..L3 / wheel_R1..R3 spin about local X (hub); front axle (wheel_*1) steers: rotate about local Y with rotation.order = "YXZ"',
         'empties': ['muzzle', 'breech', 'gunner_station', 'cab_door_FL', 'cab_door_FR', 'cab_door_RL', 'cab_door_RR', 'commander_hatch',
+                    'hatch_commander', 'hatch_driver', 'hatch_gunner', 'hatch_loader',
                     'gun_crew_1', 'gun_crew_2', 'gun_crew_3', 'gun_crew_4', 'exhaust', 'dismount_L', 'dismount_R'],
     },
 }
@@ -259,7 +260,12 @@ def entry(n, info):
             v[k] = info[k]
     v['armor_file'] = f'assets/vehicles/{n}_armor.json'
     v['game'] = GAME[n]
-    v['animation'] = ANIMATION[n]
+    v['animation'] = dict(ANIMATION[n])
+    if 'hatch_lids' in info:                        # openable crew hatch lids (vbuild.hatch_lid)
+        v['hatch_lids'] = info['hatch_lids']
+        v['animation'].update(info.get('lid_animation', {}))
+        v['animated_nodes'] = dict(info.get('lid_animation', {}))
+        v['animation']['empties'] = list(dict.fromkeys(v['animation']['empties'] + [e['rim'] for e in info['hatch_lids'].values()]))
     v['sources'] = SOURCES[n]
     v['hierarchy'] = info['hierarchy']
     return v

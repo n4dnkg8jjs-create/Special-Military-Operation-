@@ -39,6 +39,10 @@ FEN_X = 1.74
 NOSE = (3.38, 0.98)              # y, z of the glacis nose edge
 GL_TOP = (2.06, DECK)
 TUR_Y = 0.30                     # turret ring centre
+DRV_Y, DRV_R = 1.86, 0.28        # driver's hatch centre (deck) / lid radius
+GUN_HX, GUN_HY, GUN_HR = -0.5, -0.12, 0.31     # gunner's hatch (turret local) / lid radius
+CMD_HX, CMD_HY, CMD_HR, CMD_HZ = 0.5, -0.12, 0.32, 0.74   # commander's cupola lid (turret local, base height)
+HATCH_Z = {}                     # turret-local roof height under the gunner's hatch (set by turret_b3 / turret_av)
 GUN_Z = DECK + 0.37
 
 # ================================================================================================ helpers
@@ -356,8 +360,8 @@ def hull_details(variant, H):
     is_b3 = variant == 't72b3'
     M = glacis_frame()
     # driver's hatch + periscope at top centre of glacis / deck
-    H.add(lathe([(0, 0.05), (0.24, 0.045), (0.27, 0.02), (0.28, 0.0)], 24, 'z', c=(0, 1.86, DECK)))
-    H.add(periscope_block(0.22, 0.1, 0.08), Matrix.Translation((0, 2.08, DECK - 0.02)))
+    H.add(L.round_coaming(DRV_R, hinge=(1, 0)).move(0, DRV_Y, DECK))        # lid: hatch_lid_driver (lift-and-swing)
+    H.add(periscope_block(0.22, 0.1, 0.08), Matrix.Translation((0, 2.175, DECK - 0.04)))
     if is_b3:
         H.add(glacis_era_k5())
     else:
@@ -512,6 +516,37 @@ def turret_shell(variant):
     t.subsurf(1)
     return t
 
+def _hatch_z(bv):
+    """Roof height (turret local) for the gunner's hatch: highest point of the cast dome under the ring."""
+    zs = []
+    for k in range(13):
+        rr = 0.0 if k == 12 else GUN_HR * 1.12
+        a = math.tau * k / 12
+        loc, _ = L.drop_on(bv, GUN_HX + rr * math.cos(a), GUN_HY + rr * math.sin(a))
+        if loc is not None:
+            zs.append(loc.z)
+    HATCH_Z['gunner'] = max(zs) + 0.003            # opening plate sits above the dome everywhere inside the ring
+    HATCH_Z['depth'] = max(zs) - min(zs) + 0.02    # ring reaches down to the lowest point of the dome under it
+    return HATCH_Z['gunner']
+
+def t72_lids(hullE, turE, tz):
+    """Openable lids: commander (cupola, front hinge, swings forward), gunner (front hinge), driver (swings 180 deg to
+    the right about a vertical pivot on its right edge, staying flat on the deck)."""
+    lids = []
+    p, piv, ax = L.round_lid(CMD_HR, 0.05, hinge=(0, 1))
+    lids.append(VB.hatch_lid('commander', p, piv, ax, turE, Matrix.Translation((CMD_HX, TUR_Y + CMD_HY, tz + CMD_HZ)), open_deg=95))
+    gz = HATCH_Z['gunner']
+    p, piv, ax = L.round_lid(GUN_HR, 0.05, hinge=(0, 1))
+    lids.append(VB.hatch_lid('gunner', p, piv, ax, turE, Matrix.Translation((GUN_HX, TUR_Y + GUN_HY, tz + gz)), open_deg=95))
+    p, piv, ax = L.round_lid(DRV_R, 0.05, hinge=(1, 0))
+    piv = V((DRV_R + 0.014, 0.0, 0.0))
+    lids.append(VB.hatch_lid('driver', p, piv, (0, 0, 1), hullE, Matrix.Translation((0, DRV_Y, DECK)), open_deg=180, sign=-1,
+                             note='swing hatch: pivots about a vertical axis on its right edge and ends up lying on the deck to the right of the opening (passes forward while swinging)'))
+    L.node_empty('hatch_commander', turE, (CMD_HX, TUR_Y + CMD_HY, tz + CMD_HZ + 0.06), 0.12)
+    L.node_empty('hatch_gunner', turE, (GUN_HX, TUR_Y + GUN_HY, tz + gz + 0.05), 0.12)
+    L.node_empty('hatch_driver', hullE, (0, DRV_Y, DECK + 0.05), 0.12)
+    return lids
+
 def turret_b3():
     T_ = turret_shell('b3')
     bv = bvh_of(T_)
@@ -556,22 +591,24 @@ def turret_b3():
     # 1A40 day sight head + gunner hatch
     T_.add(box(0.2, 0.2, 0.22, c=(-0.3, 0.42, 0.7), bev=0.02, segs=2))
     T_.add(box(0.14, 0.012, 0.08, c=(-0.3, 0.525, 0.74), mat='glass'))
-    T_.add(lathe([(0, 0.05), (0.26, 0.045), (0.3, 0.02), (0.31, 0.0)], 24, 'z', c=(-0.5, -0.12, 0.6)))
-    T_.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((-0.5, 0.2, 0.6)))
+    gz = _hatch_z(bv)
+    T_.add(L.round_coaming(GUN_HR, depth=HATCH_Z['depth']).move(GUN_HX, GUN_HY, gz))   # lid: hatch_lid_gunner
+    T_.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((-0.5, 0.27, gz)))
     # --- commander's cupola (right) with Kord 12.7 mm
     cu = lathe([(0, 0.0), (0.42, 0.0), (0.42, 0.06), (0.38, 0.14), (0.34, 0.16), (0.0, 0.16)], 32, 'z', c=(0.5, -0.12, 0.58))
-    cu.add(lathe([(0, 0.05), (0.27, 0.045), (0.31, 0.02), (0.32, 0.0)], 24, 'z', c=(0.5, -0.12, 0.74)))
+    cu.add(L.round_coaming(CMD_HR, segs=24).move(CMD_HX, CMD_HY, CMD_HZ))      # lid: hatch_lid_commander
     for ang in (60, 90, 120):
         a = math.radians(ang)
         cu.add(periscope_block(0.14, 0.08, 0.06), Matrix.Translation((0.5 + 0.36 * math.cos(a), -0.12 + 0.36 * math.sin(a), 0.68)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
-    cu.add(box(0.26, 0.2, 0.2, c=(0.5, 0.2, 0.78), bev=0.02, segs=2))      # TKN-3 / PK-PAN head
-    cu.add(box(0.18, 0.012, 0.08, c=(0.5, 0.305, 0.8), mat='glass'))
-    # Kord on pintle
-    cu.add(cyl(0.03, 0.25, 8, 'z', c=(0.78, -0.3, 0.86), mat='gunmetal'))
-    cu.add(box(0.1, 0.5, 0.12, c=(0.78, -0.2, 1.0), mat='gunmetal', bev=0.01, segs=1))
-    cu.add(cyl(0.022, 0.9, 8, 'y', c=(0.78, 0.45, 1.02), mat='gunmetal'))
-    cu.add(cyl(0.032, 0.12, 8, 'y', c=(0.78, 0.92, 1.02), mat='gunmetal'))
-    cu.add(box(0.12, 0.2, 0.16, c=(0.9, -0.2, 0.96), bev=0.01, segs=1))
+    cu.add(box(0.26, 0.16, 0.2, c=(0.5, 0.37, 0.76), bev=0.02, segs=2))     # TKN-3 / PK-PAN head (ahead of the lid's swing)
+    cu.add(box(0.18, 0.012, 0.08, c=(0.5, 0.455, 0.78), mat='glass'))
+    cu.add(box(0.2, 0.14, 0.1, c=(0.5, 0.33, 0.62)))
+    # Kord on pintle (rear right of the cupola, outboard of the open lid)
+    cu.add(cyl(0.03, 0.25, 8, 'z', c=(0.86, -0.3, 0.86), mat='gunmetal'))
+    cu.add(box(0.1, 0.5, 0.12, c=(0.86, -0.2, 1.0), mat='gunmetal', bev=0.01, segs=1))
+    cu.add(cyl(0.022, 0.9, 8, 'y', c=(0.86, 0.45, 1.02), mat='gunmetal'))
+    cu.add(cyl(0.032, 0.12, 8, 'y', c=(0.86, 0.92, 1.02), mat='gunmetal'))
+    cu.add(box(0.12, 0.2, 0.16, c=(0.98, -0.2, 0.96), bev=0.01, segs=1))
     T_.add(cu)
     # --- 902G smoke launchers (4 per side) on the turret front sides behind the wedges
     for s in (1, -1):
@@ -615,11 +652,26 @@ def cope_cage():
         a, b_ = fr[i], fr[(i + 1) % 4]
         C.add(tube([(a[0], a[1], top), (b_[0], b_[1], top)], 0.02, 4, 'cage'))
     # slats across + 2 longitudinal stringers
+    # openings over the commander's and gunner's hatches (x 0.1..0.92 each side, y -0.55..0.48) so the lids can
+    # stand open and the crew can get out
+    oy0, oy1, ox0, ox1 = -0.55, 0.48, 0.1, 0.92
     for y in np.arange(-1.5, 1.6, 0.3):
         hw = 1.32 + (1.42 - 1.32) * (1.65 - y) / 3.3
-        C.add(box(2 * hw, 0.012, 0.05, c=(0, y, top + 0.03), mat='cage'))
-    for x in (-0.7, 0.0, 0.7):
-        C.add(box(0.03, 3.3, 0.03, c=(x, 0, top + 0.005), mat='cage'))
+        if oy0 < y < oy1:
+            C.add(box(2 * ox0, 0.012, 0.05, c=(0, y, top + 0.03), mat='cage'))
+            for sx in (1, -1):
+                C.add(box(hw - ox1, 0.012, 0.05, c=(sx * (ox1 + hw) / 2, y, top + 0.03), mat='cage'))
+        else:
+            C.add(box(2 * hw, 0.012, 0.05, c=(0, y, top + 0.03), mat='cage'))
+    C.add(box(0.03, 3.3, 0.03, c=(0, 0, top + 0.005), mat='cage'))
+    for x in (-0.7, 0.7):
+        C.add(box(0.03, 1.65 - oy1, 0.03, c=(x, (1.65 + oy1) / 2, top + 0.005), mat='cage'))
+        C.add(box(0.03, oy0 + 1.65, 0.03, c=(x, (oy0 - 1.65) / 2, top + 0.005), mat='cage'))
+    for sx in (1, -1):                       # opening frame
+        for yy in (oy0, oy1):
+            C.add(box(ox1 - ox0, 0.03, 0.03, c=(sx * (ox0 + ox1) / 2, yy, top + 0.005), mat='cage'))
+        for xx in (ox0, ox1):
+            C.add(box(0.03, oy1 - oy0, 0.03, c=(sx * xx, (oy0 + oy1) / 2, top + 0.005), mat='cage'))
     # front drop panel over the gun mantlet area (hangs forward)
     for x in np.arange(-1.2, 1.25, 0.24):
         C.add(tube([(x, 1.65, top), (x, 1.9, top - 0.22)], 0.01, 4, 'cage'))
@@ -673,19 +725,21 @@ def turret_av():
     T_.add(box(0.18, 0.012, 0.08, c=(-0.48, 0.635, 0.7), mat='glass'))
     T_.add(box(0.2, 0.18, 0.18, c=(-0.75, 0.3, 0.65), bev=0.02, segs=2))   # TPN-3 night sight
     T_.add(cyl(0.05, 0.02, 12, 'y', c=(-0.75, 0.395, 0.66), mat='glass'))
-    T_.add(lathe([(0, 0.05), (0.26, 0.045), (0.3, 0.02), (0.31, 0.0)], 24, 'z', c=(-0.5, -0.15, 0.6)))
+    gz = _hatch_z(bv)
+    T_.add(L.round_coaming(GUN_HR, depth=HATCH_Z['depth']).move(GUN_HX, GUN_HY, gz))   # lid: hatch_lid_gunner
     # commander cupola + NSVT
     cu = lathe([(0, 0.0), (0.42, 0.0), (0.42, 0.06), (0.38, 0.14), (0.34, 0.16), (0.0, 0.16)], 32, 'z', c=(0.5, -0.12, 0.58))
-    cu.add(lathe([(0, 0.05), (0.27, 0.045), (0.31, 0.02), (0.32, 0.0)], 24, 'z', c=(0.5, -0.12, 0.74)))
+    cu.add(L.round_coaming(CMD_HR, segs=24).move(CMD_HX, CMD_HY, CMD_HZ))      # lid: hatch_lid_commander
     for ang in (60, 90, 120):
         a = math.radians(ang)
         cu.add(periscope_block(0.14, 0.08, 0.06), Matrix.Translation((0.5 + 0.36 * math.cos(a), -0.12 + 0.36 * math.sin(a), 0.68)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
-    cu.add(box(0.2, 0.18, 0.16, c=(0.5, 0.2, 0.76), bev=0.02, segs=2))
-    cu.add(cyl(0.03, 0.25, 8, 'z', c=(0.5, -0.45, 0.86), mat='gunmetal'))
-    cu.add(box(0.1, 0.55, 0.13, c=(0.5, -0.32, 1.0), mat='gunmetal', bev=0.01, segs=1))
-    cu.add(cyl(0.022, 1.0, 8, 'y', c=(0.5, 0.4, 1.02), mat='gunmetal'))
-    cu.add(lathe([(0, 0), (0.04, 0), (0.035, 0.12), (0, 0.12)], 8, 'y', mat='gunmetal', c=(0.5, 0.9, 1.02)))
-    cu.add(box(0.12, 0.22, 0.16, c=(0.62, -0.3, 0.96), bev=0.01, segs=1))
+    cu.add(box(0.2, 0.15, 0.16, c=(0.5, 0.36, 0.75), bev=0.02, segs=2))     # TKN-3 (ahead of the lid's swing)
+    cu.add(box(0.16, 0.12, 0.08, c=(0.5, 0.33, 0.64)))
+    cu.add(cyl(0.03, 0.25, 8, 'z', c=(0.86, -0.45, 0.86), mat='gunmetal'))
+    cu.add(box(0.1, 0.55, 0.13, c=(0.86, -0.32, 1.0), mat='gunmetal', bev=0.01, segs=1))
+    cu.add(cyl(0.022, 1.0, 8, 'y', c=(0.86, 0.4, 1.02), mat='gunmetal'))
+    cu.add(lathe([(0, 0), (0.04, 0), (0.035, 0.12), (0, 0.12)], 8, 'y', mat='gunmetal', c=(0.86, 0.9, 1.02)))
+    cu.add(box(0.12, 0.22, 0.16, c=(0.98, -0.3, 0.96), bev=0.01, segs=1))
     T_.add(cu)
     # 902B launchers: 6 per side around the front quarters
     for s in (1, -1):
@@ -870,6 +924,8 @@ def build(variant):
     L.node_empty('coax_muzzle', gunE, (trun[0] + cx[0], trun[1] + cx[1], trun[2] + cx[2]), 0.1)
     L.node_empty('smoke_launchers', turE, (0, TUR_Y + 0.75, tz + 0.42))
     L.node_empty('commander_hatch', turE, (0.5, TUR_Y - 0.12, tz + 0.8))
+    lids = t72_lids(hullE, turE, tz)
+    lid_objs = [l_['mesh'] for l_ in lids]
     # ---- running gear
     RWm = road_wheel()
     parts = {'road': RWm, 'spr': sprocket(), 'idl': idler()}
@@ -914,25 +970,30 @@ def build(variant):
     print('  clearance', clr)
     print('  geometry done %.1fs' % (time.time() - t0))
     extra = [cage_mesh] if cage_mesh else []
-    lod0 = [hull_mesh, tur_mesh, gun_mesh] + extra + rg_objs + tracks
+    lod0 = [hull_mesh, tur_mesh, gun_mesh] + extra + lid_objs + rg_objs + tracks
     uniq = []
     seen = set()
-    for o in [hull_mesh, tur_mesh, gun_mesh] + extra + rg_objs:
+    for o in [hull_mesh, tur_mesh, gun_mesh] + extra + lid_objs + rg_objs:
         if o.data.name not in seen:
             uniq.append(o); seen.add(o.data.name)
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh,
-                cage_obj=cage_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot, seats=seats, clearance=clr)
+                cage_obj=cage_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot, seats=seats, clearance=clr,
+                lids=lids, tur_lids=[l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'turret'])
 
 def wreck_t72(d):
     root = d['root']
-    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o not in (d['tur_obj'], d['gun_obj'], d['cage_obj'])], root,
+    VB.set_lids(d['lids'], 1.0)          # wrecks show the hatches open (crew bailed out)
+    turret_side = (d['tur_obj'], d['gun_obj'], d['cage_obj']) + tuple(d['tur_lids'])
+    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o not in turret_side], root,
                         (0, 0, 0), drop_slots=('glass', 'light'), drop_z=0.04)
     g = d['gun_obj']
     g.rotation_euler = (math.radians(4), 0, 0)
     bpy.context.view_layer.update()
     tp = d['turret'].matrix_world.translation.copy()
-    tw = VB.join_copies('turret_wreck', [o for o in (d['tur_obj'], g, d['cage_obj']) if o], root, tuple(tp), drop_slots=('glass', 'light'))
+    tw = VB.join_copies('turret_wreck', [o for o in (d['tur_obj'], g, d['cage_obj']) if o] + d['tur_lids'], root, tuple(tp),
+                        drop_slots=('glass', 'light'))
     g.rotation_euler = (0, 0, 0)
+    VB.set_lids(d['lids'], 0.0)
     tw.location.z -= 0.04
     bpy.context.view_layer.update()
     return [hw, tw]
@@ -960,10 +1021,20 @@ def main(variant):
     info['track_links'] = 97
     info['ride_seats'] = S.manifest_entries(d['seats'])
     info['ride_clearance'] = d['clearance']
+    info['hatch_lids'], anim = VB.lid_manifest(d['lids'])
+    anim.update({'turret': 'yaw about local Y', 'gun_pivot': 'pitch about local X; elevate = rotation.x NEGATIVE'})
+    info['animated_nodes'] = anim
+    info['empties'] = {'muzzle': '125 mm', 'coax_muzzle': 'PKT coax', 'smoke_launchers': 'turret',
+                       'hatch_commander / commander_hatch': 'commander cupola rim centre (turret)', 'hatch_gunner': 'gunner hatch rim centre (turret)',
+                       'hatch_driver': 'driver hatch rim centre (hull)', 'exhaust': 'left fender exhaust',
+                       'dismount_L / dismount_R': 'crew bail-out ground points beside the hull', 'ride_seat_1..6': 'desant seats'}
     with open(os.path.join(VB.CACHE, variant + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
-    print(json.dumps({k: v for k, v in info.items() if k != 'nodes'}))
+    if '--no-manifest' not in sys.argv:
+        import build_all
+        build_all.merge_manifest([variant])
+    print(json.dumps({k: v for k, v in info.items() if k not in ('nodes', 'hierarchy', 'node_bboxes')})[:3000])
     return info
 
 if __name__ == '__main__':
-    main(sys.argv[-1])
+    main([a for a in sys.argv[1:] if not a.startswith('--')][-1])

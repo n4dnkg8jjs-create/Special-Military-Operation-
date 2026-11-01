@@ -54,6 +54,15 @@ STATIC = {
                      markings='white crosses on turret side bins, side skirts, turret rear; green/black/brown camo'),
 }
 
+def vbuild_hatch_convention():
+    # kept in sync with vbuild.HATCH_CONVENTION (vbuild needs bpy, so the text is duplicated here)
+    return ('Openable crew hatches: every crew hatch lid is a mesh hatch_lid_<role>_geo (+ _LOD1) under a hinge EMPTY '
+            'hatch_lid_<role> whose origin lies on the hinge axis, parented to turret (turret hatches) or hull (hull hatches). '
+            'Closed = rotation 0 (identity). vehicles.<name>.hatch_lids.<node> = {role, axis, open, parent, rim}: set '
+            'node.rotation[axis] = open (radians, three.js local axes of the hinge empty) to open it; interpolate from 0. '
+            'rim = the hatch_<role> rim-centre empty (bail-out start point; it does not move). '
+            'Wrecks (hull_wreck / turret_wreck) carry the lids baked in the OPEN pose (crew bailed out).')
+
 CONVENTIONS = {
     'frame': 'metres, glTF Y-up, forward +Z, vehicle right = -X, origin on the ground at the footprint centre',
     'hierarchy': ('Transform nodes from the spec (root, hull, turret, gun_pivot, wheel_*, roadwheel_*, sprocket_*, idler_*) are EMPTIES; '
@@ -68,7 +77,9 @@ CONVENTIONS = {
     'materials': '<vehicle>_paint: one 2048 atlas (albedo JPEG 2048, ORM PNG 1024 [R=1, G=roughness, B=metalness], normal PNG 1024) for all painted steel, rubber tyres, wood, canvas, MG metal; glass; light_lens; track (alphaMode MASK) ; <vehicle>_wreck + track_wreck for the burnt variants.',
     'track_uv': 'track_L/track_R: U = link index along the loop (1.0 per link, 97 links -> U 0..97), V across the profile. Scroll the track material map/normalMap/roughnessMap offset.x by distance_travelled / track_link_pitch_m (sign by direction; L and R share the material, so clone it per side for skid steering). Guide horns and the gaps between links are alpha-tested, so they scroll with the texture.',
     'cope_cage': 't72b3 only: separate mesh node turret/cope_cage (+LOD1) so the game can toggle it.',
-    'empties': 'muzzle, coax_muzzle under gun_pivot; smoke_launchers and (tanks) commander_hatch under turret; exhaust, dismount_L, dismount_R and (BTR) commander_hatch under hull. Tank dismount_L/R mark crew bail-out points beside the hull.',
+    'empties': ('muzzle, coax_muzzle under gun_pivot; smoke_launchers and (tanks) commander_hatch under turret; exhaust, dismount_L, dismount_R and (BTR) commander_hatch under hull. Tank dismount_L/R mark crew bail-out points beside the hull. '
+                'hatch_<role> (commander, gunner, driver, + cargo_* / bow_*): crew hatch rim centres (bail-out start points), under turret or hull.'),
+    'hatch_lids': vbuild_hatch_convention(),
     'ride_seats': ('Desant riding positions: empties ride_seat_1..N under hull (BTR: 8, T-72: 6), listed per vehicle in ride_seats. '
                    'Origin = point under the rider pelvis on the sitting surface; local +Z = direction the rider faces, +Y = up. '
                    'extras.seat_type: "edge" = sitting on a deck edge / fender bin with the legs hanging over the side '
@@ -95,6 +106,52 @@ import arty_specs
 SCRIPTS.update(arty_specs.SCRIPTS)
 STATIC.update(arty_specs.STATIC)
 
+def vehicle_entry(n, info):
+    v = dict(STATIC[n])
+    v['file'] = f'assets/vehicles/{n}.glb'
+    v['file_mb'] = info['file_mb']
+    v['tris'] = dict(lod0=info['lod0_tris'], lod1=info['lod1_tris'], **info['wreck_tris'])
+    v['model_bbox_m'] = dict(min=info['bbox_lod0'][0], max=info['bbox_lod0'][1],
+                             size=[round(b - a, 3) for a, b in zip(*info['bbox_lod0'])])
+    v['materials'] = info['materials']
+    for k in ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance', 'hatch_lids') + ifv_data.INFO_KEYS:
+        if k in info:
+            v[k] = info[k]
+    v['hierarchy'] = info['hierarchy']
+    if n in arty_specs.SCRIPTS:
+        v = arty_specs.entry(n, info)
+        arty_specs.write_armor(n)
+    return v
+
+def merge_manifest(names):
+    """Locked read-modify-write of assets/vehicles/manifest.json (same lock file as ifv.py / arty_specs.py): replaces only
+    vehicles.<n> for the given names that have a cached build info, refreshes conventions / sources."""
+    import fcntl
+    man_path = os.path.join(REPO, 'assets', 'vehicles', 'manifest.json')
+    with open(man_path + '.lock', 'w') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        man = {'generator': 'tools/blender/vehicles/build_all.py', 'conventions': dict(CONVENTIONS), 'sources': dict(SOURCES), 'vehicles': {}}
+        if os.path.exists(man_path):
+            try:
+                old = json.load(open(man_path))
+                man['vehicles'].update(old.get('vehicles', {}))
+                man['sources'] = {**old.get('sources', {}), **SOURCES}
+                man['conventions'] = {**old.get('conventions', {}), **CONVENTIONS}
+            except Exception:
+                pass
+        done = []
+        for n in names:
+            p = os.path.join(CACHE, n + '_info.json')
+            if n not in SCRIPTS or n in ifv_data.STATIC or not os.path.exists(p):    # ifv.py merges its own (richer) entry
+                continue
+            man['vehicles'][n] = vehicle_entry(n, json.load(open(p)))
+            done.append(n)
+        tmp = man_path + '.tmp_build_all'
+        with open(tmp, 'w') as f:
+            json.dump(man, f, indent=1)
+        os.replace(tmp, man_path)
+    print('wrote', man_path, done)
+
 def main(names):
     os.makedirs(CACHE, exist_ok=True)
     for n in names:
@@ -107,37 +164,7 @@ def main(names):
         if r.returncode:
             print(r.stderr[-3000:])
             sys.exit(1)
-    man_path = os.path.join(REPO, 'assets', 'vehicles', 'manifest.json')
-    man = {'generator': 'tools/blender/vehicles/build_all.py', 'conventions': CONVENTIONS, 'sources': SOURCES, 'vehicles': {}}
-    if os.path.exists(man_path):
-        try:
-            old = json.load(open(man_path))
-            man['vehicles'].update(old.get('vehicles', {}))
-        except Exception:
-            pass
-    for n in SCRIPTS:
-        p = os.path.join(CACHE, n + '_info.json')
-        if not os.path.exists(p):
-            continue
-        info = json.load(open(p))
-        v = dict(STATIC[n])
-        v['file'] = f'assets/vehicles/{n}.glb'
-        v['file_mb'] = info['file_mb']
-        v['tris'] = dict(lod0=info['lod0_tris'], lod1=info['lod1_tris'], **info['wreck_tris'])
-        v['model_bbox_m'] = dict(min=info['bbox_lod0'][0], max=info['bbox_lod0'][1],
-                                 size=[round(b - a, 3) for a, b in zip(*info['bbox_lod0'])])
-        v['materials'] = info['materials']
-        for k in ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance') + ifv_data.INFO_KEYS:
-            if k in info:
-                v[k] = info[k]
-        v['hierarchy'] = info['hierarchy']
-        if n in arty_specs.SCRIPTS:
-            v = arty_specs.entry(n, info)
-            arty_specs.write_armor(n)
-        man['vehicles'][n] = v
-    with open(man_path, 'w') as f:
-        json.dump(man, f, indent=1)
-    print('wrote', man_path)
+    merge_manifest(names)
 
 if __name__ == '__main__':
     main(sys.argv[1:] or list(SCRIPTS))

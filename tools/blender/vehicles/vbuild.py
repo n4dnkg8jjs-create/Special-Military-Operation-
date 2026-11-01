@@ -157,6 +157,11 @@ def compose_paint(d, scheme, decals=None, seed=1):
     if canvas.any():
         Pc = P[canvas]
         height[canvas] += T.fbm(Pc, 7, 3, seed + 26) * 0.005 + T.fbm(Pc, 120, 1, seed + 27) * 0.0003
+    # dark interior visible through open hatches (kind 'decal'): no paint, dust or wear
+    hole = km['decal']
+    if hole.any():
+        col[hole] = T.srgb2lin((17, 16, 15)) * (0.8 + 0.4 * T.fbm(P[hole], 4, 2, seed + 70))[:, None]
+        rough[hole] = 0.9; metal[hole] = 0.0; height[hole] = 0.0
     col *= (0.62 + 0.38 * ao)[..., None]
     print('  compose paint %.1fs' % (time.time() - t0))
     return col.astype(np.float32), np.clip(rough, 0.05, 1), np.clip(metal, 0, 1), height
@@ -322,7 +327,11 @@ def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_m
     glass, light = simple_materials()
     T.atlas_unwrap(d['atlas'])
     print('  unwrap done %.1fs' % (time.time() - t0))
+    if d.get('lids'):
+        set_lids(d['lids'], 1.0)          # bake AO with the hatches open (lid undersides / openings get real occlusion)
     data = T.bake_inputs(d['atlas'], 2048, 1024)
+    if d.get('lids'):
+        set_lids(d['lids'], 0.0)
     print('  bakes done %.1fs' % (time.time() - t0))
     imgs = atlas_textures(name, data, scheme, decals)
     print('  textures done %.1fs' % (time.time() - t0))
@@ -369,7 +378,7 @@ def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_m
         return [np.round(a.min(0), 3).tolist(), np.round(a.max(0), 3).tolist()]
     bboxes = {o.name: bbox([o]) for o in d['lod0']}
     bb_all = bbox(d['lod0'])
-    out = out or os.path.join(OUT, name + '.glb')
+    out = out or os.path.join(os.environ.get('VEH_OUT') or OUT, name + '.glb')     # VEH_OUT: scratch dir for test builds
     export(root, out)
     st = stats(root)
     lod0 = sum(L.tri_count(o) for o in d['lod0'])
@@ -394,3 +403,65 @@ def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_m
     with open(os.path.join(CACHE, name + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
     return info
+
+# --------------------------------------------------------------------------------------------- openable hatch lids
+HATCH_CONVENTION = ('Openable crew hatches: every crew hatch lid is a mesh hatch_lid_<role>_geo (+ _LOD1) under a hinge EMPTY '
+                    'hatch_lid_<role> whose origin lies on the hinge axis, parented to turret (turret hatches) or hull (hull hatches). '
+                    'Closed = rotation 0 (identity). vehicles.<name>.hatch_lids.<node> = {role, axis, open, parent}: set '
+                    'node.rotation[axis] = open (radians, three.js local axes of the hinge empty) to open it; interpolate from 0. '
+                    'The rim-centre empties hatch_<role> (bail-out start points) are siblings under the same parent and do not move. '
+                    'Wrecks (hull_wreck / turret_wreck) carry the lids baked in the OPEN pose (crew bailed out).')
+
+def _gltf_dir(v):
+    """authoring-frame direction -> glTF frame (x = vehicle left, y = up, z = forward)."""
+    return Vector((-v[0], v[2], v[1]))
+
+def hatch_lid(role, part, pivot, axis, parent, M=None, open_deg=95.0, sign=None, axis_world=None, note='', role_tag=None):
+    """Openable lid.  part / pivot / axis are in lid-local coords (vlib.round_lid / rect_lid); M maps them into the
+    authoring world (default identity); axis_world overrides the hinge direction (authoring) when the lid is tilted.
+    Creates empty hatch_lid_<role> (child of parent, identity rotation = closed) + mesh hatch_lid_<role>_geo.
+    Returns dict(empty, mesh, entry) with the manifest entry {role, axis, open, parent, note}."""
+    M = M if M is not None else Matrix.Identity(4)
+    pw = M @ Vector(pivot)
+    aw = Vector(axis_world).normalized() if axis_world is not None else (M.to_3x3() @ Vector(axis)).normalized()
+    ag = _gltf_dir(aw)
+    k = max(range(3), key=lambda i: abs(ag[i]))
+    if abs(ag[k]) < 0.999:
+        raise ValueError(f'hatch_lid_{role}: hinge axis {tuple(aw)} is not a principal axis')
+    ax = 'xyz'[k]
+    part.xf(M)
+    cw = sum((v.co for v in part.bm.verts), Vector()) / max(1, len(part.bm.verts))
+    d = _gltf_dir(cw - pw)
+    if sign is None:
+        if ax == 'x':
+            sign = 1 if d.z < 0 else -1          # rotation about +x lifts a lid lying toward -z (rearward)
+        elif ax == 'z':
+            sign = 1 if d.x > 0 else -1          # rotation about +z lifts a lid lying toward +x (vehicle left)
+        else:
+            raise ValueError('vertical-axis (swing) lids need an explicit sign')
+    open_rad = round(sign * math.radians(open_deg), 3)
+    name = 'hatch_lid_' + role
+    e = L.node_empty(name, parent, tuple(pw), 0.1)
+    o = L.node_mesh(name + '_geo', part, e, tuple(pw))
+    e['open_axis'] = ax
+    e['open_rad'] = open_rad
+    ent = dict(role=role_tag or role, axis=ax, open=open_rad, parent=parent.name if parent else None, rim='hatch_' + role)
+    if note:
+        ent['note'] = note
+    return dict(empty=e, mesh=o, entry=ent, name=name)
+
+def set_lids(lids, f=1.0):
+    """Pose lids in Blender (f = 0 closed .. 1 open) - glTF axis -> Blender axis: x -> x, y -> z, z -> -y."""
+    for l_ in lids:
+        e, ent = l_['empty'], l_['entry']
+        a = ent['open'] * f
+        e.rotation_euler = {'x': (a, 0, 0), 'y': (0, 0, a), 'z': (0, -a, 0)}[ent['axis']]
+    bpy.context.view_layer.update()
+
+def lid_manifest(lids):
+    out = {l_['name']: l_['entry'] for l_ in lids}
+    anim = {}
+    for n, e in out.items():
+        anim[n] = (f"{e['role']} hatch lid, hinge empty under {e['parent']}; open = rotation.{e['axis']} "
+                   f"{'POSITIVE' if e['open'] > 0 else 'NEGATIVE'} (0 .. {e['open']:+.3f} rad)" + (f"; {e['note']}" if e.get('note') else ''))
+    return out, anim

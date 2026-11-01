@@ -246,7 +246,7 @@ def bonnet_cab():
         # cab marker lights
         C.add(box(0.08, 0.05, 0.04, c=(s * (rx - 0.1), cy1 - 0.4, cz1 + 0.02), mat='light'))
     # roof: hatch, antenna mounts, IR camera boxes, travel lock for the barrel at the cab rear
-    C.add(hatch_rect(0.6, 0.6, t=0.03, c=(0.35, 1.95, cz1), hinge='y-', rad=0.05))
+    C.add(L.rect_coaming(0.6, 0.6, rad=0.05).move(0.35, 1.95, cz1))        # lid: hatch_lid_commander (outer-edge hinge)
     for s in (1, -1):
         C.add(antenna_base(), Matrix.Translation((s * 0.95, 1.1, cz1)))
     C.add(box(0.14, 0.12, 0.1, c=(-0.5, cy1 - 0.4, cz1 + 0.05), bev=0.01, segs=1))      # front IR camera
@@ -552,21 +552,32 @@ def build():
         L.node_empty(f'cab_door_R{tag}', hullE, (s * (CAB_X[0] + 0.05), (cy0 + 0.08 + cy1 - 1.0) / 2, CAB_Z[0] + 0.8))
         L.node_empty(f'dismount_{tag}', hullE, (s * 2.0, cy1 - 0.9, 0.0))
     L.node_empty('commander_hatch', hullE, (0.35, 1.95, CAB_Z[1] + 0.05))
+    L.node_empty('hatch_commander', hullE, (0.35, 1.95, CAB_Z[1] + 0.05))
+    # crew roles without a roof hatch leave through the cab doors: bail-out start points just inboard of each door, under the roof
+    L.node_empty('hatch_driver', hullE, (-0.55, cy1 - 0.52, CAB_Z[1] - 0.1))                       # front left door (driver)
+    L.node_empty('hatch_gunner', hullE, (-0.55, (cy0 + 0.08 + cy1 - 1.0) / 2, CAB_Z[1] - 0.1))     # rear left door
+    L.node_empty('hatch_loader', hullE, (0.55, (cy0 + 0.08 + cy1 - 1.0) / 2, CAB_Z[1] - 0.1))      # rear right door
+    # cab roof hatch lid (the other crew use the four cab doors: cab_door_* empties)
+    p, piv, ax = L.rect_lid(0.6, 0.6, t=0.03, hinge='x+', rad=0.05)
+    lids = [VB.hatch_lid('commander', p, piv, ax, hullE, Matrix.Translation((0.35, 1.95, CAB_Z[1])), open_deg=100,
+                         note='cab roof hatch, hinged on its outer (right) edge so the open lid stands clear of the barrel in the travel lock')]
     # deployed gun-crew working positions (ground / spade platform), hull frame
     L.node_empty('gun_crew_1', hullE, (-0.25, REAR_Y - 0.75, 0.77))      # loader on the spade platform behind the breech
     L.node_empty('gun_crew_2', hullE, (0.55, REAR_Y - 0.6, 0.82))        # charge loader
     L.node_empty('gun_crew_3', hullE, (1.9, -1.0, 0.0))                # ammo handler at the right containers (ground)
     L.node_empty('gun_crew_4', hullE, (-1.9, 0.0, 0.0))                # charges / rear control panel
     print('  geometry done %.1fs' % (time.time() - t0))
-    lod0 = [hull_mesh, tur_mesh, gun_mesh] + spades + wheel_objs
+    lid_objs = [l_['mesh'] for l_ in lids]
+    lod0 = [hull_mesh, tur_mesh, gun_mesh] + spades + lid_objs + wheel_objs
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh, spades=spades,
-                atlas=[hull_mesh, tur_mesh, gun_mesh, spades[0], spades[1], wheel_objs[0], wheel_objs[3]])
+                atlas=[hull_mesh, tur_mesh, gun_mesh, spades[0], spades[1]] + lid_objs + [wheel_objs[0], wheel_objs[3]], lids=lids)
 
 def wreck(d):
     """Burnt truck on its rims (tyres gone, chassis dropped) + burnt gun mount with drooped barrel."""
     root = d['root']
     drop = WZ - 0.37
-    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o.name.startswith(('hull_geo', 'wheel_', 'spade_'))], root,
+    VB.set_lids(d['lids'], 1.0)          # wreck shows the roof hatch open
+    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o.name.startswith(('hull_geo', 'wheel_', 'spade_', 'hatch_lid_'))], root,
                         (0, 0, 0), drop_slots=('tyre', 'glass', 'light'), drop_z=drop)
     g = d['gun_obj']
     g.rotation_euler = (math.radians(4), 0, 0)
@@ -575,7 +586,7 @@ def wreck(d):
     tw = VB.join_copies('turret_wreck', [d['tur_obj'], g], root, tuple(tp), drop_slots=('glass', 'light'))
     g.rotation_euler = (0, 0, 0)
     tw.location.z -= drop
-    bpy.context.view_layer.update()
+    VB.set_lids(d['lids'], 0.0)
     return [hw, tw]
 
 def decals(P, N):
@@ -603,7 +614,10 @@ def main(argv):
         return
     VB.SOOT[:] = [((-1.0, 0.0, 2.7), 0.35)]
     out = os.path.join(VB.REPO, 'previews', 'vehicles_arty', '_dev_' + NAME + '.glb') if dev else None
+    if dev and os.environ.get('VEH_OUT'):
+        out = os.path.join(os.environ['VEH_OUT'], NAME + '.glb')
     info = VB.finalize(d, NAME, 'ua_bohdana', decals, wreck, out=out)
+    info['hatch_lids'], info['lid_animation'] = VB.lid_manifest(d['lids'])
     with open(os.path.join(VB.CACHE, NAME + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
     print(json.dumps({k: v for k, v in info.items() if k not in ('hierarchy', 'node_bboxes')}))

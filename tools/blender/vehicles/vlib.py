@@ -30,6 +30,7 @@ def link(ob):
 # Atlas "kinds": every painted / rubber / wooden part shares one baked atlas material per vehicle.
 # During baking each kind gets its own temporary material so the procedural texture composer can
 # tell them apart; afterwards they are merged into one glTF material.
+# 'decal' is used for the dark interior seen through open hatches (vbuild.compose_paint paints it near-black)
 KINDS = ['rolled', 'cast', 'skirt', 'gunmetal', 'rim', 'tyre', 'wood', 'canvas', 'era', 'bare',
          'cage', 'decal']
 SLOTS = KINDS + ['glass', 'light', 'track']
@@ -441,3 +442,95 @@ def drop_on(bvh, x, y, ztop=5.0):
 # --------------------------------------------------------------------------------------------- misc
 def rng(seed):
     return random.Random(seed)
+
+# --------------------------------------------------------------------------------------------- hatch lids
+# Openable crew hatches: the lid is its own mesh under a hinge empty (see vbuild.hatch_lid); the fixed body keeps
+# a coaming ring + a dark opening plate (visible only while the lid is open) + the hinge brackets.
+def round_lid(r, h=0.045, hinge=(0, 1), segs=24, handle=True, mat='rolled'):
+    """Domed round lid lying on z=0 (closed), centred on the origin.  hinge = 2D direction (local xy) from the centre
+    to the hinge edge.  Returns (part, pivot, axis): pivot = point on the hinge axis, axis = hinge line direction."""
+    b = lathe([(0, h), (r * 0.86, h * 0.89), (r * 0.96, h * 0.44), (r, 0)], segs, 'z', mat=mat)
+    # underside stiffener ring + rubber seal step (seen when the lid stands open)
+    b.add(lathe([(r * 0.72, -0.001), (r * 0.72, -0.022), (r * 0.64, -0.022), (r * 0.64, -0.001)], segs, 'z', mat=mat, cap=False))
+    hd = V((hinge[0], hinge[1], 0)).normalized()
+    t = V((-hd.y, hd.x, 0))
+    piv = hd * (r + 0.014) + V((0, 0, 0.022))
+    for s in (-1, 1):
+        c = hd * (r + 0.014) + t * (s * r * 0.38) + V((0, 0, 0.022))
+        kn = cyl(0.023, 0.1, 10, 'x', mat=mat)
+        kn.xf(Matrix((hd.cross(V((0, 0, 1))), hd, V((0, 0, 1)))).transposed().to_4x4())
+        b.add(kn.move(*c))
+        # strap from the knuckle onto the lid
+        a0 = hd * (r + 0.005) + t * (s * r * 0.38)
+        a1 = hd * (r * 0.62) + t * (s * r * 0.38)
+        b.add(hull([a0 + t * 0.03 + V((0, 0, 0.0)), a0 - t * 0.03, a0 + t * 0.03 + V((0, 0, 0.03)), a0 - t * 0.03 + V((0, 0, 0.03)),
+                    a1 + t * 0.03 + V((0, 0, h * 0.86)), a1 - t * 0.03 + V((0, 0, h * 0.86)),
+                    a1 + t * 0.03 + V((0, 0, h * 0.86 + 0.012)), a1 - t * 0.03 + V((0, 0, h * 0.86 + 0.012))], mat=mat))
+    if handle:
+        p = -hd * (r * 0.42)
+        b.add(rail([p - t * 0.1 + V((0, 0, h * 0.8)), p - t * 0.1 + V((0, 0, h * 0.8 + 0.045)),
+                    p + t * 0.1 + V((0, 0, h * 0.8 + 0.045)), p + t * 0.1 + V((0, 0, h * 0.8))], r=0.009, rad=0.02, mat=mat))
+    b.add(cyl(0.028, 0.02, 10, c=(0, 0, h + 0.004), mat=mat))      # lock boss
+    return b, piv, t
+
+def round_coaming(r, hinge=(0, 1), segs=24, h=0.022, mat='rolled', depth=0.01):
+    """Fixed hatch ring for round_lid(r): raised ring outside the lid edge, dark opening plate inside, hinge brackets.
+    depth = how far the ring reaches below z=0 (use more on curved cast roofs so it meets the surface all round)."""
+    b = lathe([(r * 1.005, -depth), (r * 1.12, -depth), (r * 1.12, h * 0.6), (r * 1.07, h), (r * 1.005, h)], segs, 'z', mat=mat, cap=False)
+    b.add(cyl(r * 1.0, 0.006, segs, c=(0, 0, 0.001), mat='decal'))       # 'decal' kind = dark hatch interior
+    hd = V((hinge[0], hinge[1], 0)).normalized()
+    t = V((-hd.y, hd.x, 0))
+    for s in (-1, 1):
+        c = hd * (r + 0.02) + t * (s * (r * 0.38 + 0.072)) + V((0, 0, 0.014))
+        br = box(0.035, 0.055, 0.052, mat=mat)
+        br.xf(Matrix((hd.cross(V((0, 0, 1))), hd, V((0, 0, 1)))).transposed().to_4x4())
+        b.add(br.move(*c))
+    return b
+
+def rect_lid(w, l, t=0.035, hinge='y-', rad=0.06, mat='rolled'):
+    """Rectangular roof hatch lid (same look as btr.hatch_rect without its ring), lying on z=0 closed, centred on the
+    origin; hinge edge 'y-' (rear) / 'y+' (front) / 'x-' / 'x+'.  Returns (part, pivot, axis)."""
+    hw, hl = w / 2, l / 2
+    poly = []
+    for (cx, cy, a0) in ((hw - rad, hl - rad, 0), (-hw + rad, hl - rad, 90), (-hw + rad, -hl + rad, 180), (hw - rad, -hl + rad, 270)):
+        for k in range(4):
+            a = math.radians(a0 + k * 30)
+            poly.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    b = prism(poly, t, 'z', bev=0.008, segs=1, c=t / 2, mat=mat)
+    b.add(prism([(x * 0.86, y * 0.86) for x, y in poly], 0.02, 'z', c=-0.011, mat=mat))       # underside pan / seal step
+    ax = hinge[0]
+    sg = 1 if hinge[1] == '+' else -1
+    # build for a y-edge hinge, rotate for x-edge hinges
+    if ax == 'x':
+        hw, hl = hl, hw
+    hy = sg * hl
+    for sx in (-0.6, 0.6):
+        kn = cyl(0.026, 0.12, 10, 'x', c=(sx * hw, hy + sg * 0.02, 0.026), mat=mat)
+        st = box(0.09, hl * 0.55, 0.012, c=(sx * hw, hy - sg * hl * 0.25, t + 0.006), mat=mat)
+        if ax == 'x':
+            kn.rot('Z', -90 * 1); st.rot('Z', -90)
+        b.add(kn); b.add(st)
+    ry = -sg * hl * 0.55
+    hd_rail = rail([(-0.12, ry, t), (-0.12, ry, t + 0.06), (0.12, ry, t + 0.06), (0.12, ry, t)], r=0.01, rad=0.03, mat=mat)
+    if ax == 'x':
+        hd_rail.rot('Z', -90)
+    b.add(hd_rail)
+    b.add(cyl(0.03, 0.02, 10, c=(0, 0, t + 0.01), mat=mat))
+    piv = V((0, hy + sg * 0.02, 0.026))
+    axis = V((1, 0, 0))
+    if ax == 'x':
+        piv = Matrix.Rotation(math.radians(-90), 3, 'Z') @ piv
+        axis = V((0, 1, 0))
+    return b, piv, axis
+
+def rect_coaming(w, l, rad=0.06, mat='rolled'):
+    """Fixed ring around rect_lid(w, l): raised frame + dark opening plate."""
+    hw, hl = w / 2, l / 2
+    poly = []
+    for (cx, cy, a0) in ((hw - rad, hl - rad, 0), (-hw + rad, hl - rad, 90), (-hw + rad, -hl + rad, 180), (hw - rad, -hl + rad, 270)):
+        for k in range(4):
+            a = math.radians(a0 + k * 30)
+            poly.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    b = prism([(x * 1.08 + math.copysign(0.012, x), y * 1.08 + math.copysign(0.012, y)) for x, y in poly], 0.022, 'z', c=0.001, mat=mat)
+    b.add(prism([(x * 0.99, y * 0.99) for x, y in poly], 0.004, 'z', c=0.0135, mat='decal'))
+    return b

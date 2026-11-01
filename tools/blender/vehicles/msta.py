@@ -45,6 +45,7 @@ NOSE = (3.50, 0.98)
 GL_TOP = (2.30, DECK)
 REAR_Y = -3.42
 TUR_Y = -0.40                   # turret ring centre
+CMD_LID = (0.64, -0.25, 0.23)    # commander's cupola lid centre (x, y) + radius: kept clear of the remote MG pedestal
 TZ = DECK + 0.02                # turret base
 ROOF = 2.99                     # turret roof
 TRUN = (0.0, 0.95, 2.50)        # gun trunnion (authoring world)
@@ -241,7 +242,7 @@ def side_skirts():
 
 def hull_details(H):
     # driver's hatch + 3 periscopes, splash board, headlights, dozer blade, tow hooks
-    H.add(lathe([(0, 0.05), (0.25, 0.045), (0.28, 0.02), (0.29, 0.0)], 24, 'z', c=(0, 1.98, DECK)))
+    H.add(L.round_coaming(0.29, hinge=(1, 0)).move(0, 1.98, DECK))          # lid: hatch_lid_driver (swings right)
     H.add(rail([(-0.1, 1.85, DECK + 0.05), (-0.1, 1.85, DECK + 0.1), (0.1, 1.85, DECK + 0.1), (0.1, 1.85, DECK + 0.05)], r=0.01, rad=0.025))
     for a in (-25, 0, 25):
         H.add(periscope_block(0.16, 0.09, 0.07), Matrix.Translation((math.sin(math.radians(a)) * 0.3, 2.26 + 0.0 * a, DECK - 0.02)) @ Matrix.Rotation(math.radians(-a), 4, 'Z'))
@@ -369,13 +370,12 @@ def turret_details(T_):
     T_.add(box(0.22, 0.3, 0.24, c=(-0.5, 0.92, ROOF + 0.02), bev=0.02, segs=2))     # 1P23 head on the roof front
     T_.add(box(0.15, 0.012, 0.08, c=(-0.5, 1.075, ROOF + 0.06), mat='glass'))
     # gunner hatch + periscopes
-    T_.add(lathe([(0, 0.05), (0.27, 0.045), (0.3, 0.02), (0.31, 0.0)], 24, 'z', c=(-0.8, -0.32, ROOF)))
-    T_.add(rail([(-0.92, -0.32, ROOF + 0.05), (-0.92, -0.32, ROOF + 0.1), (-0.68, -0.32, ROOF + 0.1), (-0.68, -0.32, ROOF + 0.05)], r=0.01, rad=0.025))
+    T_.add(L.round_coaming(0.31).move(-0.8, -0.32, ROOF))                     # lid: hatch_lid_gunner (front hinge)
     T_.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation((-1.08, -0.3, ROOF - 0.01)) @ Matrix.Rotation(math.pi / 2, 4, 'Z'))
     # ---- commander's cupola (right) with the remote 12.7 mm mount
     cx, cy = 0.8, -0.25
     cu = lathe([(0, 0.0), (0.44, 0.0), (0.44, 0.07), (0.4, 0.15), (0.36, 0.17), (0.0, 0.17)], 32, 'z', c=(cx, cy, ROOF))
-    cu.add(lathe([(0, 0.05), (0.27, 0.045), (0.31, 0.02), (0.32, 0.0)], 24, 'z', c=(cx - 0.05, cy - 0.05, ROOF + 0.17)))
+    cu.add(L.round_coaming(CMD_LID[2], hinge=(-1, 0)).move(CMD_LID[0], CMD_LID[1], ROOF + 0.17))   # lid: hatch_lid_commander (left hinge, clear of the MG mount)
     for ang in (30, 70, 110, 150, 200):
         a = math.radians(ang)
         cu.add(periscope_block(0.13, 0.08, 0.06), Matrix.Translation((cx + 0.38 * math.cos(a), cy + 0.38 * math.sin(a), ROOF + 0.1)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
@@ -393,8 +393,8 @@ def turret_details(T_):
     cu.add(cyl(0.04, 0.01, 12, 'y', c=(mx + 0.07, my + 0.255, mz + 0.27), mat='glass'))
     T_.add(cu)
     # ---- loaders' roof hatch, ventilators, antennas, GLONASS mushroom, wind sensor
-    T_.add(hatch_rect(0.55, 0.6, t=0.03, c=(0.55, -1.45, ROOF), hinge='y-', rad=0.04))
-    T_.add(hatch_rect(0.55, 0.6, t=0.03, c=(-0.55, -1.6, ROOF), hinge='y-', rad=0.04))
+    T_.add(L.rect_coaming(0.55, 0.6, rad=0.04).move(0.55, -1.45, ROOF))     # lids: hatch_lid_loader_roof_R / _L
+    T_.add(L.rect_coaming(0.55, 0.6, rad=0.04).move(-0.55, -1.6, ROOF))
     for (x, y) in ((0.0, -0.8), (-0.25, -2.35)):
         T_.add(lathe([(0, 0.09), (0.1, 0.085), (0.14, 0.05), (0.14, 0.0)], 16, 'z', c=(x, y, ROOF)))
     for s in (1, -1):
@@ -547,6 +547,24 @@ def travel_lock():
     return TL, hinge
 
 # ================================================================================================ build
+def msta_lids(hullE, turE):
+    """Openable crew lids (all coords world/authoring like the rest of this script)."""
+    lids = []
+    p, piv, ax = L.round_lid(CMD_LID[2], 0.045, hinge=(-1, 0))
+    lids.append(VB.hatch_lid('commander', p, piv, ax, turE, Matrix.Translation((CMD_LID[0], CMD_LID[1], ROOF + 0.17)), open_deg=100,
+                             note='cupola lid hinged on its left edge (the remote 12.7 mm mount sits on the right of the cupola)'))
+    p, piv, ax = L.round_lid(0.31, 0.05, hinge=(0, 1))
+    lids.append(VB.hatch_lid('gunner', p, piv, ax, turE, Matrix.Translation((-0.8, -0.32, ROOF)), open_deg=95))
+    for tag, (x, y) in (('R', (0.55, -1.45)), ('L', (-0.55, -1.6))):
+        p, piv, ax = L.rect_lid(0.55, 0.6, t=0.03, hinge='y-', rad=0.04)
+        lids.append(VB.hatch_lid('loader_roof_' + tag, p, piv, ax, turE, Matrix.Translation((x, y, ROOF)), open_deg=100,
+                                 role_tag='loader'))
+    p, piv, ax = L.round_lid(0.29, 0.05, hinge=(1, 0))
+    piv = V((0.29 + 0.014, 0.0, 0.0))
+    lids.append(VB.hatch_lid('driver', p, piv, (0, 0, 1), hullE, Matrix.Translation((0, 1.98, DECK)), open_deg=180, sign=-1,
+                             note='swing hatch: pivots about a vertical axis on its right edge and ends up lying on the deck to the right of the opening'))
+    return lids
+
 def build():
     t0 = time.time()
     L.reset()
@@ -580,6 +598,7 @@ def build():
     L.node_empty('hatch_gunner', turE, (-0.8, -0.32, ROOF + 0.05))
     L.node_empty('hatch_loader_roof_R', turE, (0.55, -1.45, ROOF + 0.05))
     L.node_empty('hatch_loader_roof_L', turE, (-0.55, -1.6, ROOF + 0.05))
+    L.node_empty('hatch_loader', turE, (0.55, -1.45, ROOF + 0.05))        # crew role 'loader' -> right loader roof hatch (game looks up hatch_<role>)
     L.node_empty('hatch_side_R', turE, (side_x(tz + 0.52) + 0.04, -1.45, tz + 0.52))
     L.node_empty('hatch_ammo_rear', turE, (0.25, REAR_T - 0.04, tz + 0.68))
     L.node_empty('ammo_feed', turE, (-0.62, REAR_T - 0.3, tz + 0.2))
@@ -616,27 +635,31 @@ def build():
     L.node_empty('hatch_driver', hullE, (0, 1.98, DECK + 0.05))
     L.node_empty('dismount_L', hullE, (-2.2, 0.5, 0.0))
     L.node_empty('dismount_R', hullE, (2.2, -1.45, 0.0))
+    lids = msta_lids(hullE, turE)
+    lid_objs = [l_['mesh'] for l_ in lids]
     print('  geometry done %.1fs' % (time.time() - t0))
-    lod0 = [hull_mesh, tl_mesh, tur_mesh, cage_mesh, gun_mesh] + rg_objs + tracks
+    lod0 = [hull_mesh, tl_mesh, tur_mesh, cage_mesh, gun_mesh] + lid_objs + rg_objs + tracks
     uniq, seen = [], set()
-    for o in [hull_mesh, tl_mesh, tur_mesh, cage_mesh, gun_mesh] + rg_objs:
+    for o in [hull_mesh, tl_mesh, tur_mesh, cage_mesh, gun_mesh] + lid_objs + rg_objs:
         if o.data.name not in seen:
             uniq.append(o); seen.add(o.data.name)
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, gun_obj=gun_mesh, tur_obj=tur_mesh,
-                cage_obj=cage_mesh, tl_obj=tl_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot, links=links)
+                cage_obj=cage_mesh, tl_obj=tl_mesh, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Ltot, links=links,
+                lids=lids, tur_lids=[l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'turret'])
 
 def wreck(d):
     root = d['root']
-    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o not in (d['tur_obj'], d['gun_obj'], d['cage_obj'])], root,
+    VB.set_lids(d['lids'], 1.0)          # wrecks show the hatches open (crew bailed out)
+    hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o not in (d['tur_obj'], d['gun_obj'], d['cage_obj']) + tuple(d['tur_lids'])], root,
                         (0, 0, 0), drop_slots=('glass', 'light'), drop_z=0.04)
     g = d['gun_obj']
     g.rotation_euler = (math.radians(3), 0, 0)
     bpy.context.view_layer.update()
     tp = d['turret'].matrix_world.translation.copy()
-    tw = VB.join_copies('turret_wreck', [d['tur_obj'], g], root, tuple(tp), drop_slots=('glass', 'light'))
+    tw = VB.join_copies('turret_wreck', [d['tur_obj'], g] + d['tur_lids'], root, tuple(tp), drop_slots=('glass', 'light'))
     g.rotation_euler = (0, 0, 0)
     tw.location.z -= 0.04
-    bpy.context.view_layer.update()
+    VB.set_lids(d['lids'], 0.0)
     return [hw, tw]
 
 def z_shape(w, h, t):
@@ -697,10 +720,13 @@ def main(argv):
     tm = t72.track_textures(NAME)
     VB.SOOT[:] = [((-1.5, -2.6, FEN_Z + 0.12), 0.5)]
     out = os.path.join(VB.REPO, 'previews', 'vehicles_arty', '_dev_' + NAME + '.glb') if dev else None
+    if dev and os.environ.get('VEH_OUT'):
+        out = os.path.join(os.environ['VEH_OUT'], NAME + '.glb')
     info = VB.finalize(d, NAME, 'ru_green', decals, wreck, track_mats=tm, out=out)
     info['track_link_pitch_m'] = round(d['pitch'], 4)
     info['track_length_m'] = round(d['track_len'], 3)
     info['track_links'] = d['links']
+    info['hatch_lids'], info['lid_animation'] = VB.lid_manifest(d['lids'])
     with open(os.path.join(VB.CACHE, NAME + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
     print(json.dumps({k: v for k, v in info.items() if k not in ('hierarchy', 'node_bboxes')}))

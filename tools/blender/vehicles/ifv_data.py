@@ -115,7 +115,7 @@ STATIC = {
 
 # keys copied from <name>_info.json into the manifest entry (in addition to the ones build_all.py already copies)
 INFO_KEYS = ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance', 'running_gear_radii_m',
-             'empties', 'animated_nodes', 'toggle_nodes', 'gun_limits_deg')
+             'empties', 'animated_nodes', 'toggle_nodes', 'gun_limits_deg', 'hatch_lids')
 
 # ---------------------------------------------------------------------------------------------- armour tables
 def _Z(name, x0, x1, y0, y1, z0, z1, faces, note=None):

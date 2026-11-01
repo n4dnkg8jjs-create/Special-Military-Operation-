@@ -395,6 +395,8 @@ G3 = dict(trk_x=1.33, trk_w=0.38, band=0.05, horn=(0.04, 0.07), rw_r=0.29, rw_hw
           rw_y=[1.66, 0.88, 0.06, -0.74, -1.52, -2.30], idl=(2.62, 0.66, 0.23), spr=(-3.02, 0.66, 0.25, 15), spr_gap=0.06,
           rr_y=[1.25, -0.32, -1.90], rr_z=0.835, rr_r=0.085, sag=0.025, pitch=0.137)
 
+B3_HULL_HATCH = dict(driver=0.28, bow=0.26)      # glacis hatch lid radii (centres at plate t = 0.9)
+
 def b3_x_side(z):
     """Upper hull side plate x at height z (6 deg tumblehome)."""
     c = B3
@@ -461,16 +463,16 @@ def bmp3_glacis(H):
         H.add(cyl(0.017, 0.05, 8, 'y', c=(s * 1.08, p.y + 0.46, p.z + 0.08), mat='gunmetal'))
         mg_pts[s] = (s * 1.08, p.y + 0.49, p.z + 0.08)
         # periscope over the bow gunner position
-        H.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation(tuple(plate_pt(NOSE, GL, s * 0.86, 0.78, 0.0))))
+        H.add(periscope_block(0.15, 0.09, 0.06), Matrix.Translation(tuple(plate_pt(NOSE, GL, s * 0.86, 0.655, 0.0))))
         # headlights on the outer front corners + tow hooks at the nose
         H.add(headlight_cluster(s), L.place(Matrix.Identity(4), plate_pt(NOSE, GL, s * 1.33, 0.1, 0.0) + V((0, 0, 0.01))))
         H.add(tow_hook().rot('X', -25), Matrix.Translation((s * 0.68, NOSE[0] - 0.05, NOSE[1] - 0.12)))
-        # bow gunner hatches (round, top of the glacis corners)
-        H.add(lathe([(0, 0.04), (0.22, 0.036), (0.25, 0.016), (0.26, 0.0)], 24, 'z').xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, s * 0.88, 0.9, 0.0))))
-    # driver: hatch in the centre at the top of the glacis + 3 periscopes ahead
-    H.add(lathe([(0, 0.045), (0.24, 0.04), (0.27, 0.018), (0.28, 0.0)], 24, 'z').xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, 0, 0.9, 0.0))))
+        # bow gunner hatches (round, top of the glacis corners): coaming here, lids = hatch_lid_bow_L/R (front hinge)
+        H.add(L.round_coaming(B3_HULL_HATCH['bow'], hinge=(0, -1)).xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, s * 0.88, 0.9, 0.0))))
+    # driver: hatch in the centre at the top of the glacis (lid = hatch_lid_driver, side hinge on its left) + 3 periscopes ahead
+    H.add(L.round_coaming(B3_HULL_HATCH['driver'], hinge=(1, 0)).xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, 0, 0.9, 0.0))))
     for i, x in enumerate((-0.2, 0.0, 0.2)):
-        Mp = Matrix.Translation(tuple(plate_pt(NOSE, GL, x, 0.74, 0.0))) @ Matrix.Rotation(math.radians(-x * 60), 4, 'Z')
+        Mp = Matrix.Translation(tuple(plate_pt(NOSE, GL, x, 0.645, 0.0))) @ Matrix.Rotation(math.radians(-x * 60), 4, 'Z')
         H.add(periscope_block(0.16, 0.09, 0.065), Mp)
     # splash board ahead of the periscopes
     H.add(box(1.0, 0.03, 0.09, bev=0.006, segs=1), L.place(M3, plate_pt(NOSE, GL, 0, 0.6, 0.045)))
@@ -650,103 +652,208 @@ def bmp3_side_screens():
                 Sc.add(box(0.05, 0.06, 0.32, c=(s * (b3_x_side(zc) + 0.02), yy, zc)))
     return Sc
 
+# BMP-3 turret hatches (turret local x, y, base z, lid radius); rim empties keep their pre-rebuild positions
+B3T = dict(GUN_H=(-0.42, -0.20, 0.56, 0.27), CMD_H=(0.46, -0.12, 0.67, 0.30), CUPOLA_R=0.36)
+
 def bmp3_turret():
-    """Low wide welded turret, origin = ring centre on the roof."""
+    """Low, wide welded 2K23 turret; origin = ring centre on the roof (turret-local, +Y forward).
+    Shape from photos: steep-sided low box whose front plate is laid back ~45 deg, a raised armoured nose around the
+    gun cradle, the gunner's 1K13-2 sight head with its OU-5 IR projector on the left front, the commander's raised
+    cupola + 1PZ-10 drum sight + OU-3GA2 light on the right, a 3-tube 902V Tucha bank on each front corner pointing
+    forward-up, two antennas and the wind-sensor mast at the rear, stowage box across the rear."""
     T_ = B()
-    bot = [(-0.55, 1.15), (0.55, 1.15), (1.02, 0.6), (1.05, -0.45), (0.8, -0.85), (-0.8, -0.85), (-1.05, -0.45), (-1.02, 0.6)]
-    top = [(-0.42, 0.9), (0.42, 0.9), (0.86, 0.42), (0.88, -0.42), (0.66, -0.74), (-0.66, -0.74), (-0.88, -0.42), (-0.86, 0.42)]
+    bot = [(-0.66, 1.14), (0.66, 1.14), (1.04, 0.80), (1.10, -0.42), (0.92, -0.86), (-0.92, -0.86), (-1.10, -0.42), (-1.04, 0.80)]
+    top = [(-0.52, 0.60), (0.52, 0.60), (0.86, 0.42), (0.90, -0.46), (0.74, -0.76), (-0.74, -0.76), (-0.90, -0.46), (-0.86, 0.42)]
     T_.add(hull([(x, y, 0.0) for x, y in bot] + [(x, y, 0.56) for x, y in top], mat='rolled', bev=0.022, segs=2, angle=20))
-    tb = L.bvh_of(T_)
-    # mantlet slot frame
-    T_.add(box(0.92, 0.1, 0.44, c=(0, 1.04, 0.21), bev=0.02, segs=2))
-    # weld seams along the turret edges + roof plate bolts
+    # raised armoured nose around the gun cradle (fixed part of the mantlet), cheek plates either side
+    T_.add(hull([(-0.47, 0.70, 0.0), (0.50, 0.70, 0.0), (-0.47, 1.20, 0.0), (0.50, 1.20, 0.0),
+                 (-0.44, 1.18, 0.30), (0.47, 1.18, 0.30), (-0.44, 0.74, 0.44), (0.47, 0.74, 0.44)], bev=0.02, segs=2))
+    T_.add(box(0.80, 0.03, 0.27, c=(0.02, 1.205, 0.15), mat='gunmetal'))                   # dark gun slot behind the mantlet
+    for s in (1, -1):
+        T_.add(hull([(s * 0.50, 0.86, 0.02), (s * 0.78, 0.86, 0.02), (s * 0.50, 1.10, 0.02), (s * 0.70, 1.0, 0.02),
+                     (s * 0.50, 0.80, 0.30), (s * 0.72, 0.74, 0.28)], bev=0.012, segs=1))     # front cheek wedges
+    # weld seams along the roof edges, roof bolts, fan cover
     for i in range(len(top)):
         a, b_ = top[i], top[(i + 1) % len(top)]
         T_.add(tube([(a[0], a[1], 0.562), (b_[0], b_[1], 0.562)], 0.007, 5))
-    for x in np.linspace(-0.5, 0.5, 5):
-        T_.add(bolt(0.012, 0.009), Matrix.Translation((x, -0.6, 0.56)))
-    # gunner's 1K13-2 sight (left front) in an armoured hood with a shutter
-    gx = -0.52
-    s1 = box(0.3, 0.38, 0.28, c=(gx, 0.42, 0.7), bev=0.022, segs=2)
-    s1.add(box(0.22, 0.012, 0.13, c=(gx, 0.612, 0.72), mat='glass'))
-    s1.add(box(0.32, 0.16, 0.018, c=(gx, 0.64, 0.86)).rot('X', -20, (gx, 0.6, 0.85)))
-    for x in (gx - 0.16, gx + 0.16):
-        s1.add(box(0.02, 0.1, 0.22, c=(x, 0.6, 0.72)))
-    s1.add(box(0.24, 0.26, 0.06, c=(gx, 0.4, 0.58)))
+    for x in np.linspace(-0.55, 0.55, 6):
+        T_.add(bolt(0.012, 0.009), Matrix.Translation((x, -0.66, 0.56)))
+    T_.add(lathe([(0, 0.06), (0.1, 0.055), (0.13, 0.025), (0.13, 0.0)], 16, 'z', c=(0.02, -0.52, 0.56)))
+    # --- gunner (left): hatch coaming, 1K13-2 sight head + OU-5 IR projector, PPB-1 day sight beside the gun
+    gx, gy, gz, gr = B3T['GUN_H']
+    T_.add(L.round_coaming(gr).move(gx, gy, gz))                                          # lid: hatch_lid_gunner
+    sx = -0.50
+    s1 = box(0.30, 0.10, 0.07, c=(sx, 0.42, 0.59))
+    s1.add(hull([(sx - 0.15, 0.28, 0.6), (sx + 0.15, 0.28, 0.6), (sx - 0.15, 0.6, 0.6), (sx + 0.15, 0.6, 0.6),
+                 (sx - 0.14, 0.29, 0.83), (sx + 0.14, 0.29, 0.83), (sx - 0.14, 0.57, 0.82), (sx + 0.14, 0.57, 0.82)], bev=0.03, segs=2))
+    s1.add(lathe([(0.0, 0.0), (0.085, 0.0), (0.085, 0.03), (0.0, 0.03)], 18, 'y', c=(sx + 0.03, 0.585, 0.72)))
+    s1.add(cyl(0.068, 0.008, 18, 'y', c=(sx + 0.03, 0.618, 0.72), mat='glass'))
+    s1.add(box(0.33, 0.22, 0.02, c=(sx, 0.62, 0.88)).rot('X', -28, (sx, 0.56, 0.86)))   # armoured flap raised (rain brow)
+    for x in (sx - 0.16, sx + 0.16):
+        s1.add(box(0.02, 0.16, 0.18, c=(x, 0.6, 0.76)))
+    lamp = lathe([(0.0, -0.1), (0.06, -0.1), (0.085, -0.04), (0.088, 0.08), (0.08, 0.1), (0.0, 0.1)], 18, 'y', c=(sx - 0.25, 0.43, 0.71))
+    lamp.add(cyl(0.075, 0.008, 18, 'y', c=(sx - 0.25, 0.532, 0.71), mat='light'))
+    lamp.add(box(0.08, 0.16, 0.1, c=(sx - 0.25, 0.42, 0.61)))
+    s1.add(lamp)
     T_.add(s1)
-    # PPB day sight head beside it
-    T_.add(box(0.12, 0.14, 0.12, c=(-0.24, 0.55, 0.62), bev=0.012, segs=1))
-    T_.add(box(0.09, 0.01, 0.05, c=(-0.24, 0.622, 0.63), mat='glass'))
-    # commander's cupola (right) with TKN sight + periscopes, gunner's hatch (left)
-    cx, cy = 0.46, -0.12
-    cu = lathe([(0, 0.0), (0.36, 0.0), (0.36, 0.05), (0.33, 0.11), (0.0, 0.11)], 28, 'z', c=(cx, cy, 0.56))
-    cu.add(lathe([(0, 0.05), (0.26, 0.045), (0.29, 0.02), (0.30, 0.0)], 24, 'z', c=(cx, cy, 0.67)))
-    cu.add(rail([(cx - 0.1, cy - 0.05, 0.72), (cx - 0.1, cy - 0.05, 0.76), (cx + 0.1, cy - 0.05, 0.76), (cx + 0.1, cy - 0.05, 0.72)], r=0.01, rad=0.025))
-    for ang in (40, 140, 200, 340):
+    T_.add(box(0.17, 0.2, 0.13, c=(-0.17, 0.52, 0.62), bev=0.014, segs=1))                # PPB-1 / 1D16 head
+    T_.add(box(0.12, 0.01, 0.055, c=(-0.17, 0.622, 0.64), mat='glass'))
+    T_.add(periscope_block(0.13, 0.08, 0.055), Matrix.Translation((-0.76, -0.12, 0.555)) @ Matrix.Rotation(math.radians(70), 4, 'Z'))
+    # --- commander (right): raised cupola with 4 vision blocks, 1PZ-10 drum sight ahead of it, OU-3GA2 light
+    cx, cy, cz, cr = B3T['CMD_H']
+    cu = lathe([(0, 0.0), (B3T['CUPOLA_R'], 0.0), (B3T['CUPOLA_R'], 0.05), (0.33, 0.11), (0.0, 0.11)], 28, 'z', c=(cx, cy, 0.56))
+    cu.add(L.round_coaming(cr).move(cx, cy, cz))                                         # lid: hatch_lid_commander
+    for ang in (35, 145, 215, 325):
         a = math.radians(ang)
-        cu.add(periscope_block(0.12, 0.07, 0.05), Matrix.Translation((cx + 0.31 * math.cos(a), cy + 0.31 * math.sin(a), 0.63)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
-    cu.add(box(0.22, 0.2, 0.2, c=(cx, cy + 0.36, 0.72), bev=0.02, segs=2))
-    cu.add(box(0.16, 0.012, 0.08, c=(cx, cy + 0.462, 0.75), mat='glass'))
-    cu.add(box(0.26, 0.1, 0.016, c=(cx, cy + 0.46, 0.83)))
+        cu.add(periscope_block(0.12, 0.07, 0.05), Matrix.Translation((cx + 0.33 * math.cos(a), cy + 0.33 * math.sin(a), 0.62)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
+    cu.add(box(0.2, 0.16, 0.1, c=(cx, 0.40, 0.61)))
+    cu.add(cyl(0.11, 0.26, 18, 'x', c=(cx, 0.40, 0.72), bev=0.01))                         # 1PZ-10 drum
+    cu.add(cyl(0.05, 0.008, 14, 'y', c=(cx, 0.512, 0.73), mat='glass'))
+    cu.add(box(0.28, 0.16, 0.016, c=(cx, 0.45, 0.835)).rot('X', -12, (cx, 0.40, 0.83)))
+    ou = lathe([(0.0, -0.07), (0.05, -0.07), (0.062, 0.05), (0.0, 0.05)], 14, 'y', c=(cx + 0.30, 0.30, 0.74))
+    ou.add(cyl(0.055, 0.006, 14, 'y', c=(cx + 0.30, 0.352, 0.74), mat='light'))
+    ou.add(box(0.05, 0.05, 0.12, c=(cx + 0.30, 0.29, 0.66)))
+    cu.add(ou)
     T_.add(cu)
-    T_.add(lathe([(0, 0.045), (0.23, 0.04), (0.26, 0.018), (0.27, 0.0)], 24, 'z', c=(-0.42, -0.2, 0.56)))
-    T_.add(rail([(-0.52, -0.2, 0.6), (-0.52, -0.2, 0.64), (-0.32, -0.2, 0.64), (-0.32, -0.2, 0.6)], r=0.01, rad=0.025))
-    T_.add(periscope_block(0.13, 0.08, 0.055), Matrix.Translation((-0.75, -0.05, 0.555)) @ Matrix.Rotation(math.radians(70), 4, 'Z'))
-    # 902V Tucha: 3 per side on the front corners, firing forward-up-outward
+    # --- 902V Tucha: 3 tubes per front corner on a bracket, firing forward-up-outward
     for s in (1, -1):
-        c0 = V((s * 0.9, 0.62, 0.36))
-        br = box(0.1, 0.42, 0.12, bev=0.006, segs=1)
-        T_.add(br, Matrix.Translation(c0) @ Matrix.Rotation(math.radians(s * -48), 4, 'Z'))
+        T_.add(box(0.40, 0.12, 0.05, c=(s * 0.73, 0.56, 0.54), bev=0.008, segs=1).rot('Z', s * -24, (s * 0.73, 0.56, 0.54)))
         for i in range(3):
-            p = c0 + V((s * 0.06, 0.0, 0.07)) + V((math.sin(math.radians(s * 48)), math.cos(math.radians(48)), 0)) * ((i - 1) * 0.12)
-            d = V((s * (0.35 + 0.1 * i), 1.0, 0.7))
-            T_.add(tucha_tube(), Matrix.Translation(p) @ align_y(d))
-    # laser warning sensors, wind sensor, antenna, lifting eyes, handrails
+            x = s * (0.60 + 0.12 * i)
+            y = 0.62 - 0.12 * i * 0.45
+            T_.add(tucha_tube(), Matrix.Translation((x, y, 0.62)) @ align_y(V((s * 0.18, 1.0, 0.5))))
+    # laser warning sensors, lifting eyes, side handrails, side stowage boxes
     for s in (1, -1):
-        T_.add(box(0.08, 0.08, 0.06, c=(s * 0.72, 0.5, 0.59), bev=0.01, segs=1))
-        T_.add(lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False), Matrix.Translation((s * 0.8, -0.3, 0.6)))
-        T_.add(rail([(s * 0.92, 0.1, 0.32), (s * 0.95, 0.1, 0.32), (s * 0.95, -0.4, 0.3), (s * 0.92, -0.4, 0.3)], r=0.011, rad=0.03))
-    T_.add(cyl(0.012, 0.32, 6, 'z', c=(-0.5, -0.55, 0.72), mat='gunmetal'))
-    T_.add(cyl(0.03, 0.05, 8, 'z', c=(-0.5, -0.55, 0.9)))
-    T_.add(antenna_base(), Matrix.Translation((0.55, -0.6, 0.56)))
-    # rear stowage box + side boxes
-    T_.add(box(1.2, 0.26, 0.3, c=(0, -0.94, 0.3), bev=0.015, segs=2))
-    T_.add(box(1.22, 0.28, 0.025, c=(0, -0.94, 0.46), bev=0.005, segs=1))
-    for x in (-0.4, 0.4):
-        T_.add(rail([(x, -1.06, 0.38), (x, -1.11, 0.38), (x, -1.11, 0.25), (x, -1.06, 0.25)], r=0.008, rad=0.02))
+        T_.add(box(0.07, 0.07, 0.05, c=(s * 0.74, -0.62, 0.585), bev=0.01, segs=1))
+        T_.add(lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False), Matrix.Translation((s * 0.84, -0.25, 0.58)))
+        T_.add(rail([(s * 0.99, 0.15, 0.3), (s * 1.03, 0.15, 0.3), (s * 1.04, -0.38, 0.28), (s * 1.0, -0.38, 0.28)], r=0.011, rad=0.03))
+        T_.add(box(0.14, 0.46, 0.22, c=(s * 1.05, -0.62, 0.2), bev=0.015, segs=2).rot('Z', s * 14, (s * 1.05, -0.62, 0.2)))
+    # wind sensor mast (rear centre) + two antennas on the rear corners
+    T_.add(cyl(0.012, 0.5, 6, 'z', c=(0.0, -0.64, 0.81), mat='gunmetal'))
+    T_.add(cyl(0.03, 0.06, 8, 'z', c=(0.0, -0.64, 1.07)))
+    T_.add(cyl(0.035, 0.04, 10, 'z', c=(0.0, -0.64, 0.58)))
     for s in (1, -1):
-        T_.add(box(0.14, 0.5, 0.24, c=(s * 1.02, -0.3, 0.2), bev=0.015, segs=2).rot('Z', s * 8, (s * 1.02, -0.3, 0.2)))
+        T_.add(antenna_base(), Matrix.Translation((s * 0.6, -0.66, 0.56)))
+    # rear stowage box with lid and handles
+    T_.add(box(1.3, 0.26, 0.3, c=(0, -0.98, 0.3), bev=0.015, segs=2))
+    T_.add(box(1.32, 0.28, 0.025, c=(0, -0.98, 0.46), bev=0.005, segs=1))
+    for x in (-0.45, 0.45):
+        T_.add(rail([(x, -1.11, 0.38), (x, -1.15, 0.38), (x, -1.15, 0.25), (x, -1.11, 0.25)], r=0.008, rad=0.02))
     return T_
 
+def bmp3_cope_cage():
+    """Anti-drone screen often welded over BMP-3 turrets in 2023-25 (toggle node cope_cage): square-tube posts on the
+    turret sides, a slatted roof over the front (sights) and rear, open over the two hatches so the lids can stand up
+    and the crew get out; front edge kept behind the barrel's sweep at max elevation."""
+    C = B(mat='cage')
+    top = 1.14
+    X, YF, YB = 1.14, 1.24, -1.0
+    o0, o1 = -0.62, 0.40                       # open band over the hatches
+    for (x, y, z0) in ((0.98, 0.72, 0.28), (1.06, -0.38, 0.4), (0.82, -0.88, 0.36)):
+        for s in (1, -1):
+            C.add(tube([(s * x, y, z0), (s * X, y, top)], 0.022, 4, 'cage'))
+            C.add(box(0.1, 0.1, 0.012, c=(s * x, y, z0), mat='cage'))
+    for s in (1, -1):
+        C.add(tube([(s * X, YB, top), (s * X, YF, top)], 0.02, 4, 'cage'))
+    for y in (YB, YF, o0, o1):
+        C.add(tube([(-X, y, top), (X, y, top)], 0.02, 4, 'cage'))
+    for (ya, yb) in ((o1, YF), (YB, o0)):
+        n = max(2, int(round((yb - ya) / 0.22)))
+        for y in np.linspace(ya, yb, n + 1)[1:-1]:
+            C.add(box(2 * X, 0.012, 0.05, c=(0, y, top + 0.03), mat='cage'))
+        for x in (-0.42, 0.42):
+            C.add(box(0.03, yb - ya, 0.03, c=(x, (ya + yb) / 2, top + 0.005), mat='cage'))
+    C.add(box(0.03, YF - YB, 0.03, c=(0, (YF + YB) / 2, top + 0.005), mat='cage'))
+    for s in (1, -1):                          # side bars hanging from the roof edge
+        for y in np.arange(YB + 0.1, YF, 0.24):
+            C.add(tube([(s * X, y, top), (s * X, y, top - 0.34)], 0.008, 4, 'cage'))
+        C.add(tube([(s * X, YB + 0.05, top - 0.34), (s * X, YF - 0.05, top - 0.34)], 0.012, 4, 'cage'))
+    return C
+
+def bmp3_turret_screens():
+    """2022-25 field add-on (toggle node turret_screens): welded slat / grille screens standing off the turret sides
+    and across the rear stowage box against RPG / FPV hits, on square-tube posts bracketed to the turret; plus a rolled
+    tarp strapped on the rear box.  Turret-local, same frame as bmp3_turret()."""
+    C = B(mat='cage')
+    z0, z1 = 0.10, 0.46
+    def panel(p0, p1):
+        p0, p1 = V(p0), V(p1)
+        d = p1 - p0
+        n = max(2, int(round(d.length / 0.42)))
+        for t in np.linspace(0, 1, n + 1):                                   # posts + stand-off brackets
+            p = p0 + d * t
+            C.add(box(0.035, 0.035, z1 - z0 + 0.04, c=(p.x, p.y, (z0 + z1) / 2), mat='cage'))
+            inw = V((-p.x, -p.y, 0)).normalized() * 0.16
+            C.add(tube([(p.x, p.y, z1 - 0.04), (p.x + inw.x, p.y + inw.y, z1 - 0.08)], 0.012, 4, 'cage'))
+            C.add(tube([(p.x, p.y, z0 + 0.04), (p.x + inw.x, p.y + inw.y, z0 + 0.08)], 0.012, 4, 'cage'))
+        ang = math.degrees(math.atan2(d.y, d.x))
+        mid = (p0 + p1) / 2
+        for z in np.arange(z0 + 0.03, z1, 0.085):                           # horizontal slats (flat bar on edge)
+            C.add(box(d.length, 0.012, 0.055, c=(mid.x, mid.y, z), mat='cage').rot('Z', ang, (mid.x, mid.y, z)))
+    for s in (1, -1):
+        panel((s * 1.22, 0.70), (s * 1.26, -0.30))
+        panel((s * 1.26, -0.30), (s * 1.12, -1.02))
+    panel((-1.12, -1.24), (1.12, -1.24))
+    for s in (1, -1):                                                        # rear corners tie the side screens to the rear one
+        C.add(tube([(s * 1.12, -1.02, z1 - 0.04), (s * 1.12, -1.24, z1 - 0.04)], 0.014, 4, 'cage'))
+        C.add(tube([(s * 1.12, -1.02, z0 + 0.04), (s * 1.12, -1.24, z0 + 0.04)], 0.014, 4, 'cage'))
+    tarp = cyl(0.11, 1.12, 14, 'x', c=(0.0, -0.96, 0.585), mat='canvas')
+    for x in (-0.38, 0.38):
+        tarp.add(cyl(0.116, 0.035, 14, 'x', c=(x, -0.96, 0.585), mat='canvas'))     # straps
+    C.add(tarp)
+    return C
+
 def bmp3_gun():
-    """2A70 100 mm + 2A72 30 mm (right) + PKT (left) on a common cradle behind a big mantlet. Origin = trunnion."""
+    """2A70 100 mm with the 2A72 30 mm coaxial on its right (slightly lower, clamped to the 100 mm barrel) and the
+    PKT on its left, on a common cradle behind a boxy mantlet.  Origin = trunnion, +Y = bore axis."""
     g = B()
-    g.add(hull([(-0.40, -0.05, -0.17), (0.42, -0.05, -0.17), (-0.40, -0.05, 0.22), (0.42, -0.05, 0.22),
-                (-0.35, 0.50, -0.13), (0.37, 0.50, -0.13), (-0.35, 0.44, 0.18), (0.37, 0.44, 0.18)], bev=0.025, segs=2))
-    g.add(box(0.86, 0.16, 0.06, c=(0.01, 0.12, 0.25), bev=0.012, segs=1))                 # top deflector lip
-    for x in (-0.3, 0.32):
-        for z in (-0.09, 0.12):
-            g.add(bolt(0.014, 0.01).rot('X', -90), Matrix.Translation((x, 0.5 if z < 0 else 0.45, z)))
-    # 100 mm: recoil sleeve, barrel, muzzle swell
-    g.add(lathe([(0, 0.45), (0.12, 0.45), (0.12, 0.6), (0.1, 0.64), (0.1, 0.95), (0.088, 1.0), (0.081, 2.52), (0.091, 2.56),
-                 (0.091, 2.65), (0.052, 2.65), (0.052, 2.6), (0.0, 2.6)], 22, 'y'))
-    for y in (0.74, 0.88):
-        g.add(cyl(0.104, 0.025, 22, 'y', c=(0, y, 0)))
-    # 30 mm 2A72 (right): jacket + long thin barrel + muzzle brake
-    ax = 0.25
-    g.add(lathe([(0, 0.45), (0.06, 0.45), (0.06, 0.84), (0.045, 0.88), (0, 0.88)], 14, 'y', c=(ax, 0, 0)))
+    g.add(hull([(-0.42, 0.12, -0.19), (0.45, 0.12, -0.19), (-0.42, 0.12, 0.22), (0.45, 0.12, 0.22),
+                (-0.36, 0.50, -0.15), (0.40, 0.50, -0.15), (-0.36, 0.44, 0.16), (0.40, 0.44, 0.16)], bev=0.025, segs=2))
+    g.add(box(0.84, 0.12, 0.05, c=(0.015, 0.22, 0.235), bev=0.012, segs=1))               # top deflector lip
+    for x in (-0.3, 0.34):
+        for z in (-0.09, 0.1):
+            g.add(bolt(0.014, 0.01).rot('X', -90), Matrix.Translation((x, 0.5 if z < 0 else 0.455, z)))
+    # 2A70: cradle sleeve, recoil / thermal section, clamp collar, tapering barrel, plain muzzle ring
+    g.add(lathe([(0, 0.44), (0.125, 0.44), (0.125, 0.62), (0.105, 0.66), (0.103, 1.02), (0.112, 1.03), (0.112, 1.1),
+                 (0.092, 1.12), (0.082, 2.52), (0.09, 2.55), (0.09, 2.66), (0.052, 2.66), (0.052, 2.6), (0.0, 2.6)], 22, 'y'))
+    g.add(cyl(0.108, 0.025, 22, 'y', c=(0, 0.8, 0)))
+    # 2A72: recoil jacket with three rings, long thin barrel, muzzle brake; clamp to the 100 mm barrel
+    ax, az = 0.20, -0.085           # photos: 30 mm sits right of AND clearly below the 100 mm bore, close to it
+    g.add(lathe([(0, 0.44), (0.058, 0.44), (0.058, 0.92), (0.044, 0.96), (0, 0.96)], 14, 'y', c=(ax, 0, az)))
     for i in range(3):
-        g.add(cyl(0.064, 0.022, 14, 'y', c=(ax, 0.55 + i * 0.12, 0)))
-    g.add(cyl(0.022, 1.36, 12, 'y', c=(ax, 1.54, 0), mat='gunmetal'))
-    g.add(lathe([(0.0, 0), (0.034, 0), (0.038, 0.02), (0.038, 0.15), (0.032, 0.17), (0, 0.17)], 12, 'y', mat='gunmetal', c=(ax, 2.21, 0)))
+        g.add(cyl(0.064, 0.022, 14, 'y', c=(ax, 0.56 + i * 0.12, az)))
+    g.add(cyl(0.024, 1.32, 12, 'y', c=(ax, 1.6, az), mat='gunmetal'))
+    g.add(lathe([(0.0, 0), (0.035, 0), (0.039, 0.02), (0.039, 0.15), (0.033, 0.17), (0, 0.17)], 12, 'y', mat='gunmetal', c=(ax, 2.25, az)))
     for i in range(3):
-        g.add(box(0.085, 0.02, 0.012, c=(ax, 2.26 + i * 0.04, 0), mat='gunmetal'))
-    # PKT coax (left)
+        g.add(box(0.088, 0.02, 0.012, c=(ax, 2.3 + i * 0.04, az), mat='gunmetal'))
+    g.add(cyl(0.04, 0.06, 12, 'y', c=(ax, 1.065, az)))
+    g.add(box(math.hypot(ax, az), 0.06, 0.035, c=(ax / 2, 1.065, az / 2)).rot('Y', math.degrees(math.atan2(-az, ax)), (ax / 2, 1.065, az / 2)))
+    # PKT coax (left of the 100 mm)
     px = -0.26
     g.add(cyl(0.03, 0.1, 10, 'y', c=(px, 0.53, -0.03), mat='gunmetal'))
-    g.add(cyl(0.012, 0.18, 8, 'y', c=(px, 0.66, -0.03), mat='gunmetal'))
-    g.add(cyl(0.016, 0.04, 8, 'y', c=(px, 0.76, -0.03), mat='gunmetal'))
-    return g, (0, 2.65, 0), (ax, 2.38, 0), (px, 0.78, -0.03)
+    g.add(cyl(0.012, 0.2, 8, 'y', c=(px, 0.68, -0.03), mat='gunmetal'))
+    g.add(cyl(0.016, 0.04, 8, 'y', c=(px, 0.79, -0.03), mat='gunmetal'))
+    return g, (0, 2.66, 0), (ax, 2.42, az), (px, 0.81, -0.03)
+
+def bmp3_lids(hullE, turE, tz):
+    c = B3
+    lids = []
+    # turret: commander (cupola) + gunner, both hinged at the front edge, standing up ahead of the crew when open
+    for role, key in (('commander', 'CMD_H'), ('gunner', 'GUN_H')):
+        x, y, z, r = B3T[key]
+        p, piv, ax = L.round_lid(r, 0.045, hinge=(0, 1))
+        lids.append(VB.hatch_lid(role, p, piv, ax, turE, Matrix.Translation((x, c['TY'] + y, tz + z)), open_deg=95))
+    # hull: glacis hatches (plate frame: local x = -X, local +y = up the slope / rearward)
+    M, gn, gd = slope_frame(c['NOSE'], c['GL'])
+    M3 = M.to_3x3().to_4x4()
+    for s, tag in ((1, 'R'), (-1, 'L')):
+        p, piv, ax = L.round_lid(B3_HULL_HATCH['bow'], 0.04, hinge=(0, -1))
+        lids.append(VB.hatch_lid('bow_' + tag, p, piv, ax, hullE, L.place(M3, plate_pt(c['NOSE'], c['GL'], s * 0.88, 0.9, 0.0)),
+                                 open_deg=80, note='bow MG gunner hatch, hinged at its front (lower) edge; the glacis already tilts it 16 deg'))
+    p, piv, ax = L.round_lid(B3_HULL_HATCH['driver'], 0.045, hinge=(1, 0))
+    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, L.place(M3, plate_pt(c['NOSE'], c['GL'], 0, 0.9, 0.0)), open_deg=120,
+                             axis_world=(0, 1, 0), note='side-hinged on its left edge (clear of the 100 mm barrel above it); swings up and over to the left'))
+    return lids
 
 def build_bmp3():
     t0 = time.time()
@@ -780,6 +887,8 @@ def build_bmp3():
     turE = L.node_empty('turret', hullE, (0, c['TY'], tz))
     turE['traverse_deg_s'] = D.STATIC['bmp3']['mobility']['turret_traverse_deg_s']
     tur_mesh = L.node_mesh('turret_geo', TU, turE, (0, c['TY'], tz))
+    cage_mesh = L.node_mesh('cope_cage', bmp3_cope_cage().move(0, c['TY'], tz), turE, (0, c['TY'], tz))
+    tscr_mesh = L.node_mesh('turret_screens', bmp3_turret_screens().move(0, c['TY'], tz), turE, (0, c['TY'], tz))
     trun = (0, c['TY'] + 0.85, tz + 0.17)
     gunE = L.node_empty('gun_pivot', turE, trun)
     gunE['elev_min_deg'], gunE['elev_max_deg'] = -5, 60
@@ -794,6 +903,9 @@ def build_bmp3():
     L.node_empty('hatch_commander', turE, (0.46, c['TY'] - 0.12, tz + 0.72), 0.12, )
     L.node_empty('commander_hatch', turE, (0.46, c['TY'] - 0.12, tz + 0.72), 0.12)
     L.node_empty('hatch_gunner', turE, (-0.42, c['TY'] - 0.2, tz + 0.62), 0.12)
+    lids = bmp3_lids(hullE, turE, tz)
+    lid_objs = [l_['mesh'] for l_ in lids]
+    tur_lids = [l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'turret']
     # running gear
     rg, tracks, pitch, Lt, links = add_running_gear(G3, hullE, 'bmp3')
     # empties
@@ -811,18 +923,19 @@ def build_bmp3():
              [dict(x=x, y=-3.0, face=(0, 1), type='deck') for x in (-0.62, 0.0, 0.62)])
     seats = S.place_seats(hullE, specs, full_bvh)
     blen = math.hypot(mz[1], mz[2])
-    clr = S.clearance(seats, (0, c['TY'], tz), [tur_mesh], trun, blen, 60)
+    clr = S.clearance(seats, (0, c['TY'], tz), [tur_mesh, cage_mesh, tscr_mesh], trun, blen, 60)
     print('  seats', [(s_['name'], round(s_['z'], 3)) for s_ in seats])
     print('  clearance', clr)
     VB.SOOT[:] = [((-1.25, -3.25, c['ROOF'] + 0.08), 0.5)]
-    lod0 = [hull_mesh, scr_mesh, tur_mesh, gun_mesh] + anim + rg + tracks
+    lod0 = [hull_mesh, scr_mesh, tur_mesh, cage_mesh, tscr_mesh, gun_mesh] + anim + lid_objs + rg + tracks
     seen, uniq = set(), []
-    for o in [hull_mesh, scr_mesh, tur_mesh, gun_mesh] + anim + rg:
+    for o in [hull_mesh, scr_mesh, tur_mesh, cage_mesh, tscr_mesh, gun_mesh] + anim + lid_objs + rg:
         if o.data.name not in seen:
             uniq.append(o); seen.add(o.data.name)
     print('  geometry done %.1fs' % (time.time() - t0))
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Lt,
-                links=links, seats=seats, clearance=clr, tur_objs=[tur_mesh, gun_mesh], gun_obj=gun_mesh,
+                links=links, seats=seats, clearance=clr, tur_objs=[tur_mesh, cage_mesh, tscr_mesh, gun_mesh] + tur_lids, gun_obj=gun_mesh,
+                lids=lids,
                 extra=dict(
                     animated_nodes={
                         'door_rear_L': 'left rear door, hinge on its outer vertical edge; open = rotation.y NEGATIVE (0 .. -1.75 rad)',
@@ -831,12 +944,16 @@ def build_bmp3():
                         'roof_door_R': 'right roof hatch over the troop passage; open = rotation.x POSITIVE (0 .. +1.65 rad)',
                         'turret': 'yaw about local Y', 'gun_pivot': 'pitch about local X; elevate = rotation.x NEGATIVE (preview.html uses -deg)'},
                     toggle_nodes={'side_screens': 'hull/side_screens (+LOD1): 2022-24 bolted add-on side armour; armour JSON hull.side '
-                                                  'assumes fitted (25/40), use 15/25 without'},
+                                                  'assumes fitted (25/40), use 15/25 without',
+                                  'cope_cage': 'turret/cope_cage (+LOD1): 2023-25 anti-drone screen welded over the turret, open over the '
+                                               'two hatches; visible by default, set visible=false to remove',
+                                  'turret_screens': 'turret/turret_screens (+LOD1): 2022-25 welded slat screens on stand-off posts round '
+                                                    'the turret sides and rear + tarp roll on the rear box; visible by default'},
                     empties={
                         'muzzle': '100 mm 2A70 / 9M117 ATGM launch point', 'muzzle_30': '30 mm 2A72', 'coax_muzzle': 'PKT coax',
                         'bow_mg_L / bow_mg_R': 'bow PKT ball-mount muzzles (hull), +Z = fire direction, extras.traverse_deg',
                         'smoke_launchers': 'turret', 'hatch_commander / commander_hatch / hatch_gunner': 'turret hatch rims',
-                        'hatch_driver / hatch_bow_L / hatch_bow_R': 'hull hatch rims on the top of the glacis',
+                        'hatch_driver / hatch_bow_L / hatch_bow_R': 'hull hatch rims on the top of the glacis (lids: hatch_lid_driver / hatch_lid_bow_L / hatch_lid_bow_R)',
                         'exit_rear': 'ground point 1 m behind the rear doors, +Z faces away from the vehicle (dismount spawn)',
                         'dismount_L / dismount_R': 'crew bail-out ground points beside the hull, +Z facing out',
                         'exhaust': 'left rear deck exhaust louvre', 'ride_seat_1..7': 'desant seats (see ride_seats)'},
@@ -846,6 +963,7 @@ def build_bmp3():
 
 def wreck_generic(d):
     root = d['root']
+    VB.set_lids(d.get('lids', []), 1.0)          # wrecks show the hatches open (crew bailed out)
     hw = VB.join_copies('hull_wreck', [o for o in d['lod0'] if o not in d['tur_objs']], root, (0, 0, 0),
                         drop_slots=('glass', 'light'), drop_z=0.04)
     g = d['gun_obj']
@@ -855,7 +973,7 @@ def wreck_generic(d):
     tw = VB.join_copies('turret_wreck', d['tur_objs'], root, tuple(tp), drop_slots=('glass', 'light'))
     g.rotation_euler = (0, 0, 0)
     tw.location.z -= 0.04
-    bpy.context.view_layer.update()
+    VB.set_lids(d.get('lids', []), 0.0)
     return [hw, tw]
 
 # ================================================================================================ Bradley
@@ -864,6 +982,8 @@ BR = dict(BELLY=0.46, ROOF=1.98, SPON=1.20, LOW_X=0.92, UP_X=1.50, ROOF_X=1.48, 
 GB = dict(trk_x=1.22, trk_w=0.533, band=0.065, horn=(0.05, 0.075), rw_r=0.305, rw_hw=0.2, rw_z=0.37,
           rw_y=[1.85, 1.12, 0.39, -0.34, -1.07, -1.80], spr=(2.78, 0.78, 0.30, 11), spr_gap=0.075, idl=(-2.70, 0.52, 0.27),
           rr_y=[1.42, -0.05, -1.5], rr_z=0.93, rr_r=0.09, sag=0.03, pitch=0.152)
+
+BR_HATCH = dict(driver=(-0.78, 1.36, 0.30), commander=(0.45, -0.38, 0.31, 0.74), gunner=(-0.45, -0.45, 0.28, 0.60))
 
 def br_rear_y(z):
     c = BR
@@ -911,8 +1031,7 @@ def bradley_front(H):
     H.add(louvre_panel(0.85, 0.5, 8).xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, 0.78, 0.8, 0.0))))
     H.add(box(0.75, 0.4, 0.02, bev=0.005, segs=1).xf(M3), Matrix.Translation(tuple(plate_pt(NOSE, GL, 0.85, 0.6, 0.012))))
     # driver: hatch on the roof front left + periscopes in an arc ahead + ODS-SA DVE thermal box
-    H.add(lathe([(0, 0.045), (0.26, 0.04), (0.29, 0.018), (0.3, 0.0)], 24, 'z', c=(-0.78, 1.36, c['ROOF'])))
-    H.add(rail([(-0.88, 1.2, c['ROOF'] + 0.05), (-0.88, 1.2, c['ROOF'] + 0.09), (-0.68, 1.2, c['ROOF'] + 0.09), (-0.68, 1.2, c['ROOF'] + 0.05)], r=0.01, rad=0.025))
+    H.add(L.round_coaming(BR_HATCH['driver'][2], hinge=(0, -1)).move(-0.78, 1.36, c['ROOF']))     # lid: hatch_lid_driver
     for ang in (-40, -15, 15, 40):
         a = math.radians(ang)
         p = (-0.78 + 0.36 * math.sin(a), 1.36 + 0.36 * math.cos(a), c['ROOF'] - 0.01)
@@ -976,7 +1095,7 @@ def bradley_roof_rear(H):
     R = c['ROOF']
     turret_ring_collar(H, c['TY'], R, 1.0)
     # big troop cargo hatch behind the turret (hinged at the rear) + roof periscopes along the edges
-    H.add(hatch_rect(1.0, 0.9, t=0.035, c=(0, -2.25, R), hinge='y-', rad=0.07))
+    H.add(L.rect_coaming(1.0, 0.9, rad=0.07).move(0, -2.25, R))          # lid: hatch_lid_cargo (rear hinge)
     for s in (1, -1):
         for y in (-1.45, -2.0, -2.6):
             H.add(periscope_block(0.15, 0.085, 0.06), Matrix.Translation((s * (c['ROOF_X'] - 0.12), y, R - 0.01)) @ Matrix.Rotation(-s * math.pi / 2, 4, 'Z'))
@@ -1105,14 +1224,13 @@ def bradley_turret():
     # commander's hatch (right rear) in a raised ring of 6 vision blocks; gunner's hatch (left rear)
     cx, cy = 0.45, -0.38
     cu = lathe([(0, 0.0), (0.38, 0.0), (0.38, 0.1), (0.34, 0.14), (0.0, 0.14)], 28, 'z', c=(cx, cy, 0.6))
-    cu.add(lathe([(0, 0.05), (0.27, 0.045), (0.3, 0.02), (0.31, 0.0)], 24, 'z', c=(cx, cy, 0.74)))
+    cu.add(L.round_coaming(0.31, hinge=(0, -1)).move(cx, cy, 0.74))                 # lid: hatch_lid_commander
     for k in range(6):
         a = math.radians(30 + k * 60)
         cu.add(periscope_block(0.12, 0.075, 0.05), Matrix.Translation((cx + 0.33 * math.cos(a), cy + 0.33 * math.sin(a), 0.68)) @ Matrix.Rotation(a - math.pi / 2, 4, 'Z'))
-    cu.add(rail([(cx - 0.1, cy, 0.79), (cx - 0.1, cy, 0.83), (cx + 0.1, cy, 0.83), (cx + 0.1, cy, 0.79)], r=0.01, rad=0.025))
     T_.add(cu)
-    T_.add(lathe([(0, 0.045), (0.24, 0.04), (0.27, 0.018), (0.28, 0.0)], 24, 'z', c=(-0.45, -0.45, 0.6)))
-    T_.add(periscope_block(0.13, 0.08, 0.055), Matrix.Translation((-0.45, -0.12, 0.598)))
+    T_.add(L.round_coaming(0.28, hinge=(0, -1)).move(-0.45, -0.45, 0.6))           # lid: hatch_lid_gunner
+    T_.add(periscope_block(0.13, 0.08, 0.055), Matrix.Translation((-0.45, -0.1, 0.598)))
     # ODS missile countermeasure device + GPS antenna on the roof
     T_.add(box(0.2, 0.16, 0.12, c=(0.38, 0.45, 0.66), bev=0.015, segs=1))
     T_.add(cyl(0.05, 0.03, 12, 'z', c=(0.0, -0.75, 0.615)))
@@ -1202,6 +1320,23 @@ def bradley_gun():
     g.add(cyl(0.017, 0.04, 8, 'y', c=(px, 0.54, -0.02), mat='gunmetal'))
     return g, (0, 2.35, 0), (px, 0.56, -0.02)
 
+def bradley_lids(hullE, turE, tz):
+    """Commander / gunner / driver / cargo lids, all hinged at their rear edge (open rearward, lid standing behind the
+    crewman as on the real vehicle)."""
+    c = BR
+    lids = []
+    for role in ('commander', 'gunner'):
+        x, y, r, z = BR_HATCH[role]
+        p, piv, ax = L.round_lid(r, 0.045, hinge=(0, -1))
+        lids.append(VB.hatch_lid(role, p, piv, ax, turE, Matrix.Translation((x, c['TY'] + y, tz + z)), open_deg=100))
+    x, y, r = BR_HATCH['driver']
+    p, piv, ax = L.round_lid(r, 0.045, hinge=(0, -1))
+    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, Matrix.Translation((x, y, c['ROOF'])), open_deg=100))
+    p, piv, ax = L.rect_lid(1.0, 0.9, t=0.035, hinge='y-', rad=0.07)
+    lids.append(VB.hatch_lid('cargo', p, piv, ax, hullE, Matrix.Translation((0, -2.25, c['ROOF'])), open_deg=100,
+                             note='troop roof hatch; when open it stands where the rear deck riders (ride_seat_5/6) sit'))
+    return lids
+
 def build_bradley():
     t0 = time.time()
     L.reset()
@@ -1250,6 +1385,9 @@ def build_bradley():
     rg, tracks, pitch, Lt, links = add_running_gear(GB, hullE, 'bradley')
     L.node_empty('hatch_driver', hullE, (-0.78, 1.36, c['ROOF'] + 0.06), 0.12)
     L.node_empty('hatch_cargo', hullE, (0, -2.25, c['ROOF'] + 0.05), 0.12)
+    lids = bradley_lids(hullE, turE, tz)
+    lid_objs = [l_['mesh'] for l_ in lids]
+    tur_lids = [l_['mesh'] for l_ in lids if l_['entry']['parent'] == 'turret']
     L.node_empty('exhaust', hullE, (c['UP_X'] + 0.12, 2.25, 1.62))
     exit_y = hinge[1] - lip_dx - 0.6
     facing_empty('exit_rear', hullE, (0, exit_y, 0.0), (0, -1), 0.25)
@@ -1263,14 +1401,15 @@ def build_bradley():
     print('  seats', [(s_['name'], round(s_['z'], 3)) for s_ in seats])
     print('  clearance', clr)
     VB.SOOT[:] = [((c['UP_X'] + 0.1, 2.0, 1.6), 0.45)]
-    lod0 = [hull_mesh, era_h, ramp_mesh, tur_mesh, era_t, tow_mesh, gun_mesh] + rg + tracks
+    lod0 = [hull_mesh, era_h, ramp_mesh, tur_mesh, era_t, tow_mesh, gun_mesh] + lid_objs + rg + tracks
     seen, uniq = set(), []
-    for o in [hull_mesh, era_h, ramp_mesh, tur_mesh, era_t, tow_mesh, gun_mesh] + rg:
+    for o in [hull_mesh, era_h, ramp_mesh, tur_mesh, era_t, tow_mesh, gun_mesh] + lid_objs + rg:
         if o.data.name not in seen:
             uniq.append(o); seen.add(o.data.name)
     print('  geometry done %.1fs' % (time.time() - t0))
     return dict(root=root, hull=hullE, turret=turE, gun=gunE, lod0=lod0, atlas=uniq, tracks=tracks, pitch=pitch, track_len=Lt,
-                links=links, seats=seats, clearance=clr, tur_objs=[tur_mesh, era_t, tow_mesh, gun_mesh], gun_obj=gun_mesh,
+                links=links, seats=seats, clearance=clr, tur_objs=[tur_mesh, era_t, tow_mesh, gun_mesh] + tur_lids, gun_obj=gun_mesh,
+                lids=lids,
                 extra=dict(
                     animated_nodes={
                         'ramp': f'rear ramp, hinge at its bottom edge; open = rotation.x NEGATIVE, 0 .. {-ramp_open:.3f} rad (lip on the ground)',
@@ -1282,6 +1421,7 @@ def build_bradley():
                         'muzzle': '25 mm M242', 'coax_muzzle': 'M240C', 'atgm_muzzle_1 / atgm_muzzle_2': 'TOW tube mouths (under tow_launcher), +Z = launch direction',
                         'smoke_launchers': 'turret', 'hatch_commander / commander_hatch / hatch_gunner': 'turret hatch rims',
                         'hatch_driver': 'hull, front left', 'hatch_cargo': 'roof troop hatch behind the turret',
+                        'hatch_lid_<role>': 'hinge empties of the openable lids (see hatch_lids)',
                         'exit_rear': 'ground point at the foot of the lowered ramp, +Z faces away from the vehicle (dismount spawn)',
                         'dismount_L / dismount_R': 'crew bail-out ground points beside the hull, +Z facing out',
                         'exhaust': 'right front side outlet', 'ride_seat_1..6': 'desant seats (see ride_seats)'},
@@ -1372,6 +1512,8 @@ def main(name):
     info['ride_seats'] = S.manifest_entries(d['seats'])
     info['ride_clearance'] = d['clearance']
     info.update(d['extra'])
+    info['hatch_lids'], lid_anim = VB.lid_manifest(d['lids'])
+    info['animated_nodes'] = {**lid_anim, **info['animated_nodes']}
     with open(os.path.join(VB.CACHE, name + '_info.json'), 'w') as f:
         json.dump(info, f, indent=1)
     write_armor(name)
