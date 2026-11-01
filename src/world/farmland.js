@@ -3,12 +3,13 @@ import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, mulberry, catenary } from '
 import { BLOCK } from './nav.js';
 import { instance, trs } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
 // two villages strung along their roads, a kolkhoz farm, cratered everywhere.
 // Field grid: boundaries follow the windbreaks and tracks in maps.js.
 const XS = [-702, -640, -559.5, -395, -359.5, -124.5, -20, 10, 103.5, 180, 224.5, 359.5, 390, 559, 702];
-const ZS = [-702, -560, -509.5, -335, -294.5, -175, -143.5, -22, 63.5, 190, 305.5, 335, 401, 545, 702];
+const ZS = [-702, -560, -547.5, -335, -294.5, -175, -143.5, -22, 63.5, 190, 323.5, 335, 401, 545, 702];
 const T_PLOW = 0, T_STUB = 1, T_FALLOW = 2, T_SUN = 3, T_CORN = 4;
 
 export class Farmland extends City {
@@ -23,6 +24,7 @@ export class Farmland extends City {
   }
   build() {
     const times = this.buildTimes = {}, step = (k, f) => { const t = performance.now(); f(); times[k] = Math.round(performance.now() - t); };
+    weatherEnv(this.assets);
     step('fields', () => this.layoutFields());
     step('ground', () => { this.ground(); this.roads(); });
     step('buildings', () => this.placeBuildings());
@@ -32,6 +34,7 @@ export class Farmland extends City {
     step('treelines', () => this.treelines());
     step('rubble', () => this.rubbleAndDebris());
     step('props', () => { this.poles(); this.props(); this.defences(); });
+    step('war', () => this.warDressing());   // knocked-out armour, mine-cleared lanes, churned vehicle trails
     step('crops', () => this.crops());
     step('flush', () => this.flush());
     step('craters', () => this.craters());
@@ -83,6 +86,17 @@ export class Farmland extends City {
     if (!t) t = fallbackTpl(name);
     if (t) { t.userData.bb = new THREE.Box3().setFromObject(t); }
     return (this._tpl[name] = t);
+  }
+  // burnt-out, roofless shell of a template (wear.js burntHouse), registered as '<name>_burnt'; null if unavailable
+  burntTpl(name) {
+    const k = name + '_burnt'; this._tpl ||= {};
+    if (!(k in this._tpl)) {
+      let g = null; const base = this.hasReal(name) || this.assets.gltf.city?.scene.getObjectByName(name) ? this.tpl(name) : null;
+      try { g = base ? burntHouse(base) : null; } catch (e) { console.warn('burntHouse', name, e); g = null; }
+      if (g) g.userData.bb = new THREE.Box3().setFromObject(g);
+      this._tpl[k] = g;
+    }
+    return this._tpl[k] ? k : null;
   }
   // overlap with the placed village houses only (fences, yard props): City.solidHit restricted to kind 'house'
   houseHit(x, z, hx, hz, ry = 0, pad = 0.3) { return this.solidHit(x, z, hx, hz, ry, pad, k => k !== 'house'); }
@@ -147,19 +161,79 @@ export class Farmland extends City {
     set(-250, -240, T_STUB); set(280, -240, T_FALLOW); set(-60, 120, T_FALLOW); set(160, 120, T_SUN); set(-250, 400, T_FALLOW); set(-250, -400, T_FALLOW);
     set(-250, 470, T_SUN); set(40, 470, T_CORN); set(300, 470, T_STUB); set(470, 470, T_SUN); set(-250, 620, T_STUB); set(60, 620, T_FALLOW); set(300, 620, T_STUB);
     set(470, 250, T_CORN); set(470, -80, T_SUN); set(-500, -80, T_STUB); set(-500, -250, T_SUN); set(470, -420, T_STUB); set(-60, -420, T_PLOW); set(-480, 620, T_FALLOW);
-    // pre-roll crater positions (artillery-churned belts along the windbreaks, scatter in the open)
+    this.warLayout();
+    // pre-roll crater positions. Heaviest on and around the held positions and the lines, in the no-man's-land bands
+    // in front of them and along the tree belts (where the positions are); lighter scatter elsewhere; the staging
+    // grounds in the far rear stay mostly clean.
     this.craterList = [];
-    const tl = MAP.treelines;
-    for (let i = 0; i < 1250; i++) {
-      let x, z;
-      if (R() < 0.55) { const [a, b, c, d] = tl[Math.floor(R() * tl.length)]; const f = R(); const off = (R() - .5) * 60; x = a + (c - a) * f + (b === d ? 0 : off); z = b + (d - b) * f + (b === d ? off : 0); }
-      else { x = (R() - .5) * (MAP_SIZE - 30); z = (R() - .5) * (MAP_SIZE - 30); }
-      if (Math.abs(z) > 600 && R() < 0.85) continue; // staging grounds mostly clean
-      if (onRoad(x, z, 2)) continue;
-      const big = R() < 0.12;
-      this.craterList.push([x, z, big ? 5 + R() * 4 : 1.6 + R() * 3]);
+    const tl = MAP.treelines, hot = this.hotspots;
+    const push = (x, z, bigP = 0.12) => {
+      if (Math.abs(x) > MAP_SIZE / 2 - 12 || Math.abs(z) > MAP_SIZE / 2 - 12) return;
+      if (Math.abs(z) > 600 && R() < 0.85) return;
+      if (onRoad(x, z, 2) && (R() < 0.85 || ROADS.some(r => r.type === 'track' && x > r.x0 - 3 && x < r.x1 + 3 && z > r.z0 - 3 && z < r.z1 + 3))) return;    // a few land on the asphalt (fresh scars), none on the tracks
+      const big = R() < bigP * 0.6;
+      this.craterList.push([x, z, big ? 4.6 + R() * 3 : 1.3 + R() * 2.8]);
+    };
+    const gauss = () => (R() + R() + R() - 1.5) / 1.5;
+    // tree belts, weighted towards the belts that carry positions / are burnt
+    for (let i = 0; i < 700; i++) {
+      const [a, b, c, d] = tl[Math.floor(R() * tl.length)]; const f = R(); const px = a + (c - a) * f, pz = b + (d - b) * f;
+      if (!this.nearBurntBelt(px, pz, 4) && R() < 0.45) continue;
+      const off = gauss() * 45; push(px + (b === d ? 0 : off), pz + (b === d ? off : 0));
     }
+    // strongpoints: a dense cluster on every fire position (the 'line' ones heavier)
+    for (const [x, z, k] of hot) { const n = Math.round(26 * k); for (let i = 0; i < n; i++) { const a = R() * 6.28, r = 12 + Math.abs(gauss()) * 70; push(x + Math.cos(a) * r, z + Math.sin(a) * r * 0.8, 0.16); } }
+    // no-man's land in front of the northern line and in front of the C / D positions
+    for (let i = 0; i < 260; i++) push((R() - .5) * (MAP_SIZE - 40), -300 + (R() - 0.35) * 180);
+    for (let i = 0; i < 200; i++) push(-560 + R() * 820, 470 + (R() - .5) * 120);
+    // open scatter
+    for (let i = 0; i < 420; i++) push((R() - .5) * (MAP_SIZE - 30), (R() - .5) * (MAP_SIZE - 30), 0.1);
   }
+  // ---------------------------------------------------------------- war layout (before anything is placed)
+  // Trails: churned tracks of the assault columns from both staging grounds through the fields and the belts (gaps
+  // driven through the windbreaks), and worn shortcuts across the fields between the tracks. Lanes: two mine-cleared
+  // lanes (ploughed, staked) in front of C and D where the earlier assaults were stopped. Burns: field fires.
+  warLayout() {
+    this.trails = [
+      // assault columns from the south
+      { w: 4.4, mud: 0.85, pts: [[-232, 606], [-227, 560], [-213, 500], [-196, 440], [-178, 372], [-152, 300]] },
+      { w: 4.4, mud: 0.85, pts: [[-330, 606], [-342, 552], [-366, 505], [-412, 474]] },
+      { w: 4.2, mud: 0.8, pts: [[268, 606], [272, 560], [266, 505], [258, 470]] },
+      { w: 4.2, mud: 0.75, pts: [[-28, 606], [-22, 556], [-4, 500], [14, 456]] },
+      // the enemy's supply / assault tracks from the north down to the line
+      { w: 4.4, mud: 0.85, pts: [[-205, -606], [-214, -560], [-208, -500], [-196, -440], [-204, -412]] },
+      { w: 4.4, mud: 0.85, pts: [[262, -606], [256, -556], [241, -482], [251, -412]] },
+      { w: 4.0, mud: 0.7, pts: [[30, -606], [41, -540], [58, -470], [84, -410], [96, -372]] },
+      // worn shortcuts across the fields
+      { w: 3.2, mud: 0.45, pts: [[-121, 252], [-60, 263], [0, 281], [58, 300], [99, 310]] },
+      { w: 3.0, mud: 0.4, pts: [[228, -98], [262, -108], [300, -126], [340, -140]] },
+      { w: 3.2, mud: 0.45, pts: [[-356, -196], [-300, -228], [-240, -260], [-182, -290]] },
+      { w: 3.0, mud: 0.4, pts: [[-556, -120], [-520, -86], [-470, -60], [-420, -48]] },
+      { w: 3.0, mud: 0.4, pts: [[-357, 230], [-300, 250], [-250, 268], [-180, 300]] },
+    ];
+    this.lanes = [
+      { w: 4.6, pts: [[165, 531], [163, 490], [160, 450]] },
+      { w: 4.6, pts: [[-452, 532], [-454, 500], [-456, 472]] },
+    ];
+    // field fires (shelling sets the dry stubble / dead sunflowers alight): scorched patches, crops thinned
+    this.burns = [[-250, -250, 55], [60, -262, 42], [280, -238, 46], [-470, -252, 36], [-250, -82, 40], [282, -84, 36], [-80, -92, 30],
+      [-252, 402, 44], [40, 472, 40], [300, 470, 36], [-300, 478, 30], [-60, 252, 34], [160, 252, 30], [470, -80, 34], [-500, -250, 30], [470, 250, 26]];
+    // shell-stripped, burnt stretches of the tree belts (the belts that carry positions)
+    this.burntBelts = [[-340, -335, -60, -335], [150, -335, 340, -335], [-60, 335, 260, 335], [230, 404, 230, 540], [-395, 470, -395, 560],
+      [-340, -22, -30, -22], [180, -22, 290, -22], [-398, 190, -120, 190], [-200, -560, 260, -560]];
+    // fire positions (strongpoint centres) for the crater clusters, weight by kind
+    const kind = {}; for (const f of MAP.fortifications || []) if (f.type === 'sp') kind[f.id] = f.kind || 'sp';
+    this.hotspots = [];
+    for (const f of MAP.fortifications || []) if (f.type === 'fire') { const n = f.base.length; let x = 0, z = 0; for (const p of f.base) { x += p[0]; z += p[1]; } const k = kind[f.sp]; this.hotspots.push([x / n, z / n, k === 'line' ? 2.6 : k === 'outpost' ? 1.2 : 1.6]); }
+  }
+  segDist(x, z, a, b) { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / L2)); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); }
+  nearTrail(x, z, pad = 0) {
+    for (const T of [...this.trails, ...this.lanes]) for (let i = 1; i < T.pts.length; i++) { const a = T.pts[i - 1], b = T.pts[i]; if (x < Math.min(a[0], b[0]) - 40 || x > Math.max(a[0], b[0]) + 40 || z < Math.min(a[1], b[1]) - 40 || z > Math.max(a[1], b[1]) + 40) continue; if (this.segDist(x, z, a, b) < T.w / 2 + pad) return true; }
+    return false;
+  }
+  nearBurntBelt(x, z, pad = 0) { for (const [a, b, c, d] of this.burntBelts || []) if (this.segDist(x, z, [a, b], [c, d]) < 8 + pad) return true; return false; }
+  inBurn(x, z) { for (const [bx, bz, r] of this.burns || []) { const d = Math.hypot(x - bx, z - bz); if (d < r * (0.75 + 0.5 * this.noise2(x / 15, z / 15, 41))) return true; } return false; }
+  onTrail(x, z) { const M = this.trailM; if (!M) return false; const i = Math.floor((x + MAP_SIZE / 2) / this.CS), j = Math.floor((z + MAP_SIZE / 2) / this.CS); return i >= 0 && j >= 0 && i < this.CN && j < this.CN && M[j * this.CN + i] > 0; }
   nearCrater(x, z, pad = 0.6) { for (const [cx, cz, s] of this.craterList) if (Math.abs(cx - x) < s && Math.abs(cz - z) < s && Math.hypot(cx - x, cz - z) < s * pad) return true; return false; }
   // ---------------------------------------------------------------- ground
   ground() {
@@ -175,7 +249,7 @@ export class Farmland extends City {
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, normalMap: nrm, normalScale: new THREE.Vector2(0.7, 0.7) });
     m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'farm_terrain' : 'farm_ground';
     const has = { PLOW: !!tex('plowed'), STUB: !!tex('stubble'), FALLOW: !!tex('fallow') };
-    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tPlow: { value: tex('plowed') || tex('dirt') }, tStub: { value: tex('stubble') || tex('dirt') }, tFallow: { value: tex('fallow') || tex('grass') || tex('dirt') }, tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() } };
+    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tPlow: { value: tex('plowed') || tex('dirt') }, tStub: { value: tex('stubble') || tex('dirt') }, tFallow: { value: tex('fallow') || tex('grass') || tex('dirt') }, tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() }, tWar: { value: warBlack() } };
     m.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -184,6 +258,7 @@ export class Farmland extends City {
         ${has.STUB ? '#define HAS_STUB' : ''}
         ${has.FALLOW ? '#define HAS_FALLOW' : ''}
         varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tPlow, tStub, tFallow, tSplat, tRows, tHole; uniform float splatSize;
+        ${WAR_GROUND_DECL}
         float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
         vec3 tile(sampler2D t, vec2 p){
@@ -207,12 +282,20 @@ export class Farmland extends City {
           float fn = vn(floor(wp / 140.0) * 1.37);
           vec4 farSp = fn < 0.4 ? vec4(0.9, 0.0, 0.0, 0.0) : fn < 0.7 ? vec4(0.1, 0.0, 1.0, 0.0) : vec4(0.05, 1.0, 0.0, 0.0);
           sp = mix(sp, farSp, outside);
-          float rowsX = texture2D(tRows, clamp(wp / splatSize + 0.5, 0.001, 0.999)).r;
+          vec4 rowT = texture2D(tRows, clamp((wp + wob * 0.6) / splatSize + 0.5, 0.001, 0.999));
+          float rowsX = rowT.r;
+          // headlands: the outer ~10 m of every field is worked across the rows (tractor turning strip)
+          float head = 1.0 - smoothstep(0.42, 0.55, rowT.g + (vn(wp * 0.11) - 0.5) * 0.2);
+          if (head > 0.5) rowsX = 1.0 - rowsX;
           vec2 fp = rowsX > 0.5 ? wp.yx : wp;
           vec3 dirt = tile(tDirt, wp / 6.0);
           vec3 grass = tile(tGrass, wp / 3.5);
           float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
           grass = mix(vec3(gl), grass, 0.75) * vec3(1.0, 1.0, 0.84) * clamp(dl / max(gl, 0.02), 1.0, 1.45);
+          // late-summer / autumn steppe: dry straw, ochre weeds and grey wormwood instead of green
+          float dryN = vn(wp * 0.018) * 0.6 + vn(wp * 0.07) * 0.4;
+          vec3 straw = vec3(gl) * vec3(1.16, 1.02, 0.7), wormwood = vec3(gl) * vec3(0.98, 1.0, 0.92);
+          grass = mix(grass, mix(straw, wormwood, smoothstep(0.55, 0.8, vn(wp * 0.045 + 7.0))), 0.42 + 0.3 * dryN);
           #ifdef HAS_FALLOW
             vec3 fallow = mix(tile(tFallow, wp / 4.0), grass, 0.38 * smoothstep(0.3, 0.7, vn(wp * 0.09)) + 0.12);
           #else
@@ -236,18 +319,27 @@ export class Farmland extends City {
           col = mix(col, fallow, smoothstep(0.0, 1.0, clamp(sp.r * 1.6 - 0.3 + (fine - 0.5) * 0.4, 0.0, 1.0)));
           col = mix(col, plow, smoothstep(0.0, 1.0, clamp(sp.g * 1.6 - 0.3 + (fine - 0.5) * 0.3, 0.0, 1.0)));
           col = mix(col, stub, smoothstep(0.0, 1.0, clamp(sp.b * 1.6 - 0.3 + (fine - 0.5) * 0.3, 0.0, 1.0)));
-          col = mix(col, dirt * vec3(1.1, 1.05, 0.96), sp.a * 0.9);   // packed tracks, yards, verges
-          col *= 0.88 + 0.24 * (vn(wp * 0.012) * 0.6 + vn(wp * 0.05) * 0.4);
+          // packed tracks, yards, verges: dusty grey-beige compacted soil, gravel speckle
+          vec3 packed = mix(dirt * vec3(1.1, 1.05, 0.96), vec3(dl) * vec3(1.35, 1.28, 1.12), 0.35) * (0.9 + 0.2 * vn(wp * 4.3));
+          col = mix(col, packed, sp.a * 0.9);
+          // macro variation: damp darker hollows / dry light loess rises, per-field tone, fine mottling
+          float mac = vn(wp * 0.006) * 0.55 + vn(wp * 0.021) * 0.3 + vn(wp * 0.08) * 0.15;
+          col *= 0.84 + 0.3 * mac;
+          col = mix(col, col * vec3(1.08, 1.03, 0.9), smoothstep(0.6, 0.85, vn(wp * 0.009 + 3.0)) * 0.5);
+          col *= 0.94 + 0.12 * vn(floor(wp / 40.0) * 1.7 + rowT.r);
           #ifdef TERRAIN_MESH
             float tdep = smoothstep(0.05, 0.55, -vWPos.y);
             col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
           #endif
+          ${warGroundGLSL(false)}
           diffuseColor.rgb *= col;`);
+      sh.fragmentShader = warGroundHooks(sh.fragmentShader);
     };
     return m;
   }
   // splat: R fallow/grass, G ploughed soil, B stubble, A packed dirt; rows texture: field row direction
   paintGround() {
+    this.paintFarmWar();
     const N = 1792, k = N / MAP_SIZE, o = MAP_SIZE / 2, out = new Uint8Array(N * N * 4), R = this.rng, pa = performance.now();
     const TM = this.terrain.maskData, TN = this.terrain.maskN;
     const ttrack = ROADS.filter(r => r.type === 'track'), paved = ROADS.filter(r => r.type !== 'track');
@@ -303,8 +395,8 @@ export class Farmland extends City {
     this.groundUniforms.tSplat.value = t; this.splatData = out; this.splatN = N;
     // row direction (nearest-sampled)
     const RN = 512, rows = new Uint8Array(RN * RN * 4), rk = RN / MAP_SIZE;
-    for (let j = 0; j < RN; j++) for (let i = 0; i < RN; i++) { const f = this.fields[this.fieldIndex(i / rk - o, j / rk - o)]; rows[(j * RN + i) * 4] = f.rowsX ? 255 : 0; }
-    const rt = new THREE.DataTexture(rows, RN, RN, THREE.RGBAFormat); rt.flipY = false; rt.magFilter = rt.minFilter = THREE.NearestFilter; rt.needsUpdate = true;
+    for (let j = 0; j < RN; j++) for (let i = 0; i < RN; i++) { const x = (i + 0.5) / rk - o, z = (j + 0.5) / rk - o, f = this.fields[this.fieldIndex(x, z)]; const p = (j * RN + i) * 4; rows[p] = f.rowsX ? 255 : 0; rows[p + 1] = Math.min(255, Math.min(x - f.x0, f.x1 - x, z - f.z0, f.z1 - z) / 22 * 255); }
+    const rt = new THREE.DataTexture(rows, RN, RN, THREE.RGBAFormat); rt.flipY = false; rt.magFilter = rt.minFilter = THREE.NearestFilter; rt.needsUpdate = true;   // (G is read with a wobble: nearest is fine)
     this.groundUniforms.tRows.value = rt;
     pt.rows = Math.round(performance.now() - p0);
     this.grassClumps();
@@ -312,13 +404,16 @@ export class Farmland extends City {
   }
   // ---------------------------------------------------------------- roads & tracks
   roads() {
-    const asphalt = this.mat('asphalt', 1, { color: 0xc9c5bc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    // regional roads: old, sun-bleached asphalt, crumbling ragged edges on a gravel shoulder, potholes, patches, shell
+    // scars and mud tracked in from the fields (wear.js roadWear reads the war map)
+    const asphalt = roadWear(this.mat('asphalt', 1, { color: 0xc4c0b6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), this.groundUniforms, { rural: true, damage: 1 });
     const T = this.assets.tex, trackTex = T.track?.map || T.dirt?.map;
     const a = document.createElement('canvas'); a.width = 64; a.height = 4; { const x = a.getContext('2d'), gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.18, '#fff'); gr.addColorStop(0.82, '#fff'); gr.addColorStop(1, '#000'); x.fillStyle = gr; x.fillRect(0, 0, 64, 4); }
     const alpha = new THREE.CanvasTexture(a); alpha.wrapT = THREE.RepeatWrapping;
     const trackMat = new THREE.MeshStandardMaterial({ map: trackTex ? trackTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color: T.track ? 0xffffff : 0xb0a28a, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     if (trackMat.map) { trackMat.map.wrapS = trackMat.map.wrapT = THREE.RepeatWrapping; trackMat.map.needsUpdate = true; }
     if (T.track?.normalMap) { trackMat.normalMap = T.track.normalMap.clone(); trackMat.normalMap.wrapS = trackMat.normalMap.wrapT = THREE.RepeatWrapping; trackMat.normalMap.needsUpdate = true; trackMat.normalScale = new THREE.Vector2(0.9, 0.9); }
+    trackWear(trackMat, this.groundUniforms); this.trackMat = trackMat;   // muddy ruts with standing water
     const strip = (w, len, texW) => { const g = new THREE.PlaneGeometry(w, len); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), uv.getY(i) * len / texW); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0 - (r.type === 'track' ? 0.6 : 0), r.z0 - (r.type === 'track' ? 0.6 : 0), r.x1 + (r.type === 'track' ? 0.6 : 0), r.z1 + (r.type === 'track' ? 0.6 : 0), r.type === 'track' ? 1 : 2);
     for (const r of ROADS) {
@@ -327,10 +422,11 @@ export class Farmland extends City {
       if (r.type === 'track') {
         const m = new THREE.Mesh(strip(wid + 1.2, len, 4.5), trackMat); m.position.set(cx, 0.035, cz); if (horiz) m.rotation.y = Math.PI / 2; m.receiveShadow = true; m.renderOrder = 1; this.scene.add(m);
       } else {
-        const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 7, uv.getY(i) * d / 7);
+        const g = new THREE.PlaneGeometry(w, d, horiz ? Math.ceil(w / 60) : 1, horiz ? 1 : Math.ceil(d / 60)); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 7, uv.getY(i) * d / 7);
+        roadFrame(g, wid / 2, horiz);
         const m = new THREE.Mesh(g, asphalt); m.position.set(cx, 0.05, cz); m.receiveShadow = true; this.scene.add(m);
-        const dash = new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.9, transparent: true, opacity: 0.5, polygonOffset: true, polygonOffsetFactor: -3 });
-        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.35) mats.push(horiz ? trs(cx + t, 0.06, cz, 0) : trs(cx, 0.06, cz + t, Math.PI / 2));
+        const dash = new THREE.MeshStandardMaterial({ color: 0xa9a598, roughness: 0.9, transparent: true, opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -3 });   // faded paint
+        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.55) mats.push(horiz ? trs(cx + t, 0.06, cz, 0) : trs(cx, 0.06, cz + t, Math.PI / 2));
         const dg = new THREE.PlaneGeometry(3, 0.12); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, dash), mats, { shadows: false });
       }
     }
@@ -339,7 +435,8 @@ export class Farmland extends City {
   farm() {
     const { x: fx, z: fz } = MAP.farm, R = this.rng;
     const big = { inst: { lodDist: 520 } };
-    this.put('barn_kolkhoz', fx, fz - 27, 0, { occ: true, ...big });
+    this.put(this.burntTpl('barn_kolkhoz') || 'barn_kolkhoz', fx, fz - 27, 0, { occ: true, ...big });   // burnt out, roof gone
+    (this.burntSpots ||= []).push([fx - 12, fz - 27, 22], [fx + 14, fz - 25, 16], [fx - 18, fz + 4, 6], [fx + 50, fz + 30, 7]);
     this.put('barn_kolkhoz_damaged', fx, fz + 28, 0, { occ: true, ...big });
     this.put('machine_shed', fx + 72, fz, Math.PI / 2, { cost: 6, navScale: 0.35 });
     this.put('grain_silo', fx - 68, fz - 4, 0, { occ: true });
@@ -365,6 +462,7 @@ export class Farmland extends City {
     this.put('shed_wood', fx - 34, fz - 2, Math.PI / 2); this.put('shed_wood', fx + 36, fz - 4, -Math.PI / 2); this.put('outhouse', fx - 34, fz - 14, Math.PI / 2);
     this.put('well_village', fx + 2, fz + 10, 0); this.put('woodpile', fx - 12, fz + 4, 0.1, { cost: 7, low: true });
     this.put('tractor_mtz80_burnt', fx + 12, fz + 2, 2.4, { cost: BLOCK, low: true }); this.put('trailer_farm', fx - 4, fz + 1, 1.5, { cost: 6, low: true });
+    (this.burntSpots ||= []).push([fx + 12, fz + 2, 6]);
     this.put('haystack', fx + 33, fz - 22, 1, { circle: 2.6, cost: BLOCK }); this.put('haystack', fx - 30, fz - 24, 2, { circle: 2.6, cost: BLOCK });
     for (let i = 0; i < 5; i++) this.put(R() < 0.4 ? 'haybale_round_burnt' : 'haybale_round', fx + 18 + i * 2.3, fz - 3 + (R() - .5), R() * 0.3, { cost: 7, low: true });
     for (const [x, z] of [[fx - 6, fz + 20], [fx + 38, fz + 8], [fx - 38, fz + 12]]) this.put('tree_walnut_leafy', x, z, R() * 6, { s: 0.9 + R() * 0.2, circle: 0.5, lod: this.tpl('tree_walnut_leafy_lod1') ? 'tree_walnut_leafy_lod1' : null, inst: { lodDist: 200, cullDist: 900 } });
@@ -443,8 +541,12 @@ export class Farmland extends City {
         const [hx, hz] = W(t + (R() - .5) * 3, 8.5 + R() * 2.5);
         if (this.overlapsBuilding(hx, hz, 12, 12, 0)) continue;
         if (onRoad(hx, hz, 5) || this.terrain.cutSDF(hx, hz) < 9) continue;
-        const destroyed = R() < 0.18;
-        if (!destroyed) { if (!this.put(houseNames[Math.floor(R() * houseNames.length)], hx, hz, face + (R() - .5) * 0.08, { occ: 3.2 })) continue; }
+        // Kurylivka (nearest the enemy line) and the hamlet at the crossroads are the worst hit
+        const dP = v.name === 'Kurylivka' ? 0.44 : v.name === 'Novomykolaivka' ? 0.3 : 0.4;
+        const destroyed = R() < dP, burnt = destroyed && R() < 0.55;
+        const hn = houseNames[Math.floor(R() * houseNames.length)], bn = burnt ? this.burntTpl(hn) : null;
+        if (!destroyed) { if (!this.put(hn, hx, hz, face + (R() - .5) * 0.08, { occ: 3.2 })) continue; }
+        else if (bn) { if (!this.put(bn, hx, hz, face + (R() - .5) * 0.1, { occ: 2.4 })) continue; (this.burntSpots ||= []).push([hx, hz, 9]); }
         else { const pool = this.rubblePool('house'); (this._houseRubble ||= []).push([pool[Math.floor(R() * pool.length)], trs(hx, 0, hz, R() * 6, 1.15 + R() * 0.35)]); this.nav.circle(hx, hz, 4.5, 6, true); this.solidAdd(hx, hz, 5.6, 5.6, 0, 'house'); }
         this.houseSpots.push([hx, hz, destroyed]);
         // street fence with a gate, side fences around the front yard
@@ -484,17 +586,20 @@ export class Farmland extends City {
         const cx = x0 + ux * t, cz = z0 + uz * t;
         if (Math.abs(cx) > MAP_SIZE / 2 - 3 || Math.abs(cz) > MAP_SIZE / 2 - 3) { close(); continue; }
         if (onRoad(cx, cz, 7) || this.inVillage(cx, cz, 2) || this.inFarm(cx, cz, 4) || this.inFarmstead(cx, cz, 3) || this.inForest(cx, cz, 4)) { close(); continue; }
+        if (this.nearTrail(cx, cz, 5)) { close(); continue; }   // gap driven through the belt
+        const burntB = this.nearBurntBelt(cx, cz);
         if (gap > 0) { gap -= 5; close(); continue; }
         if (R() < 0.03) { gap = 6 + R() * 16; close(); continue; }
         if (!run) run = [t, t]; run[1] = t + 3;
         for (const off of [-3.4, 0.2, 3.6]) {
           const o2 = off + (R() - .5) * 1.4, px = cx + nx * o2 + ux * (R() - .5) * 2, pz = cz + nz * o2 + uz * (R() - .5) * 2;
           if (this.terrain.cutSDF(px, pz) < 1.6 || this.teethNear(px, pz) || this.solidHit(px, pz, 0.45, 0.45, 0, 0.3)) continue;
-          if (off === 0.2 || R() < 0.12) { if (R() < 0.75) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 90, cullDist: 700, lodShadows: false } }); } continue; }
-          const n = pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 210, cullDist: 1500 } })) continue;
+          if (off === 0.2 || R() < 0.12) { if (R() < (burntB ? 0.3 : 0.75)) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 90, cullDist: 700, lodShadows: false } }); } continue; }
+          if (burntB && R() < 0.22) continue;                                   // trees felled by the shelling
+          const n = burntB && R() < 0.72 ? 'tree_acacia_shelled' : pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 210, cullDist: 1500 } })) continue;
         }
         // undergrowth litter & fallen limbs
-        if (R() < 0.05) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false, trench: true, inst: { cullDist: 420 } });
+        if (R() < (burntB ? 0.16 : 0.05)) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false, trench: true, inst: { cullDist: 420 } });
         this.concealRect(cx - 6.5 - Math.abs(ux) * 3, cz - 6.5 - Math.abs(uz) * 3, cx + 6.5 + Math.abs(ux) * 3, cz + 6.5 + Math.abs(uz) * 3, 105);
       }
       close();
@@ -516,6 +621,7 @@ export class Farmland extends City {
         const pn = this.noise2(x / 26, z / 26, 11);
         if (pn < (f.type === T_FALLOW ? 0.45 : 0.22) || (pn < 0.35 && R() < 0.5)) continue; // trampled / burnt patches
         if (onRoad(x, z, 2.5) || this.inVillage(x, z) || this.inFarm(x, z) || this.inFarmstead(x, z) || this.inForest(x, z, 3) || this.nearCrater(x, z, 0.9)) continue;
+        if (this.onTrail(x, z) || (this.inBurn(x, z) && R() < 0.8)) continue;   // driven flat / burnt off
         if (this.terrain.cutSDF(x, z) < 1.4) continue;
         const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] !== 1) continue;
         this.put(name, x, z, R() * 6.28, { s: 0.8 + R() * 0.45, cost: 0, check: false, trench: false, inst, rx: (R() - .5) * 0.12, rz: (R() - .5) * 0.12 });
@@ -577,17 +683,141 @@ export class Farmland extends City {
   }
   putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; if (this.terrain.cutSDF(x, z) < 1.5) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, this.terrain.heightAt(x, z), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
   putSandbag(x, z, r) { this.putProp('sandbag', x, z, r, 7); const i = this.nav.idx(x, z); if (i >= 0) this.nav.low[i] = 1; }
+  // ---------------------------------------------------------------- war dressing
+  // Knocked-out armour from earlier assaults (static, charred wrecks built from the vehicles' own *_wreck nodes), the
+  // churned trails / worn shortcuts and two mine-cleared lanes (ribbons with ruts; trails also become dirt-track cells
+  // for vehicle routing), marker stakes and the anti-tank mines the plough threw aside.
+  warDressing() {
+    const R = this.rng, H = (x, z) => this.terrain.heightAt(x, z);
+    // ---- ribbons (one merged mesh, track material)
+    this.trailM = new Uint8Array(this.CN * this.CN);
+    const pos = [], uv = [], idx = [], samples = this.trailSamples = [];
+    const ribbon = (T, lane) => {
+      const curve = new THREE.CatmullRomCurve3(T.pts.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal');
+      const L = curve.getLength(), n = Math.max(2, Math.ceil(L / 2.5)), pts = [];
+      let prev = -1, along = 0, last = null;
+      for (let i = 0; i <= n; i++) {
+        const p = curve.getPointAt(i / n), t = curve.getTangentAt(i / n), nx = -t.z, nz = t.x;
+        if (last) along += p.distanceTo(last); last = p;
+        const w = T.w * (1 + 0.14 * Math.sin(along * 0.07 + T.pts[0][0]) + (lane ? 0 : 0.08 * (R() - 0.5)));
+        const ok = Math.abs(p.x) < MAP_SIZE / 2 - 2 && Math.abs(p.z) < MAP_SIZE / 2 - 2 && this.terrain.cutSDF(p.x, p.z) > w * 0.5 + 1.4 && !this.terrain.relief(p.x, p.z, false) && !onRoad(p.x, p.z, 1) && !this.overlapsBuilding(p.x, p.z, w / 2, w / 2, 0.5);
+        if (!ok) { prev = -1; continue; }
+        pts.push([p.x, p.z]);
+        const a = pos.length / 3;
+        for (const sd of [-1, 1]) { const x = p.x + nx * sd * w / 2, z = p.z + nz * sd * w / 2; pos.push(x, H(x, z) + 0.045, z); uv.push(sd < 0 ? 0 : 1, along / 4.5); }
+        if (prev >= 0) idx.push(prev, prev + 1, a, prev + 1, a + 1, a);
+        prev = a;
+        // vehicles follow the beaten track (dirt-track cells); crops are driven flat
+        for (let o = -w / 2; o <= w / 2; o += 0.8) { const x = p.x + nx * o, z = p.z + nz * o, ci = this.nav.idx(x, z); if (ci >= 0 && this.nav.cost[ci] !== BLOCK && !lane) this.nav.road[ci] = Math.max(this.nav.road[ci], 1); const i2 = Math.floor((x + MAP_SIZE / 2) / this.CS), j2 = Math.floor((z + MAP_SIZE / 2) / this.CS); if (i2 >= 0 && j2 >= 0 && i2 < this.CN && j2 < this.CN) this.trailM[j2 * this.CN + i2] = 1; }
+      }
+      samples.push({ pts, w: T.w, mud: T.mud ?? 0.9, lane });
+    };
+    for (const T of this.trails) ribbon(T, false);
+    for (const T of this.lanes) ribbon(T, true);
+    if (idx.length && this.trackMat) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+      const nr = g.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setXYZ(i, 0, 1, 0);
+      const tm = this.trackMat.clone(); tm.color.multiplyScalar(0.78); tm.onBeforeCompile = this.trackMat.onBeforeCompile; tm.customProgramCacheKey = this.trackMat.customProgramCacheKey;   // fresh-churned: darker than the old tracks (same program)
+      const m = new THREE.Mesh(g, tm); m.receiveShadow = true; m.renderOrder = 1; m.name = 'trails'; this.scene.add(m);
+    }
+    // ---- mine-cleared lanes: marker stakes with tape both sides, TM-62 mines thrown aside by the plough
+    {
+      const stakes = [], mines = [], tape = [];
+      const stakeG = new THREE.BoxGeometry(0.05, 1.1, 0.05); stakeG.translate(0, 0.55, 0);
+      const tapeG = new THREE.PlaneGeometry(0.06, 0.32); tapeG.translate(0.03, 0.85, 0);
+      const mineG = new THREE.CylinderGeometry(0.16, 0.16, 0.1, 10); mineG.translate(0, 0.03, 0);
+      for (const S of samples) if (S.lane) for (let i = 0; i < S.pts.length; i += 3) {
+        const [x, z] = S.pts[i], [x2, z2] = S.pts[Math.min(S.pts.length - 1, i + 1)], a = Math.atan2(x2 - x, z2 - z), nx = Math.cos(a), nz = -Math.sin(a);
+        for (const sd of [-1, 1]) {
+          const sx = x + nx * sd * (S.w / 2 + 0.6), sz = z + nz * sd * (S.w / 2 + 0.6);
+          if (i % 6 === 0) { const M = trs(sx, H(sx, sz), sz, R() * 6, 1, (R() - .5) * 0.25, (R() - .5) * 0.25); stakes.push(M); tape.push(M); }
+          if (R() < 0.55) { const o = S.w / 2 + 1.4 + R() * 2.5, mx = x + nx * sd * o + (R() - .5) * 2, mz = z + nz * sd * o + (R() - .5) * 2; if (this.terrain.cutSDF(mx, mz) > 1) mines.push(trs(mx, H(mx, mz), mz, R() * 6, 1, (R() - .5) * 0.5, (R() - .5) * 0.5)); }
+        }
+      }
+      const merge = (geo, list, mat, name) => { if (!list.length) return; const g = mergeGeometries(list.map(M => geo.clone().applyMatrix4(M))); const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; m.name = name; this.scene.add(m); };
+      merge(stakeG, stakes, new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.95 }), 'lane_stakes');
+      merge(tapeG, tape, new THREE.MeshStandardMaterial({ color: 0x9a2a20, roughness: 0.8, side: THREE.DoubleSide }), 'lane_tape');
+      merge(mineG, mines, new THREE.MeshStandardMaterial({ color: 0x3c4430, roughness: 0.75, metalness: 0.2 }), 'tm62');
+    }
+    // ---- knocked-out armour
+    const WT = wreckTemplates(this.assets, ['t72b3', 't72av_ua', 'bmp3', 'btr82a', 'btr80_ua', 'bradley_ua']);
+    const W = [
+      // the failed assaults on D and C, stopped in the minefields in front of the positions
+      [150, 474, 0.25, 'bradley_ua', 0], [177, 496, -0.35, 'btr80_ua', 0], [62, 471, 0.4, 't72av_ua', 1],
+      [-471, 497, 0.15, 't72av_ua', 1], [-506, 516, -0.55, 'btr80_ua', 0],
+      // a column caught on the regional road south of the crossroads
+      [96, 262, 0.1, 'btr80_ua', 0], [111, 486, 3.0, 'bradley_ua', 0],
+      // the enemy's counter-attacks on A and B, stopped north of the villages
+      [-232, -79, 3.0, 'bmp3', 0], [-95, -88, 3.35, 't72b3', 1], [-300, -45, 2.75, 'btr82a', 0],
+      [232, -83, 3.25, 'bmp3', 0], [292, -36, 2.9, 'btr82a', 0],
+      // in front of the northern line
+      [-150, -280, 2.9, 'bradley_ua', 0], [210, -268, 3.4, 't72av_ua', 1],
+    ];
+    const by = new Map(), add = (key, grp, M) => { (by.get(key) || by.set(key, { grp, m: [] }).get(key)).m.push(M); };
+    this.wreckSpots = [];
+    for (const [x, z, ry, k, off] of W) {
+      const t = WT[k]; if (!t) continue;
+      if (this.terrain.cutSDF(x, z) < 7 || onRoad(x, z, 1.8) || this.overlapsBuilding(x, z, 2, 4, 1) || this.solidHit(x, z, 1.8, 3.8, ry, 0.3) || this.teethNear(x, z, 6)) continue;
+      const y = H(x, z), M = trs(x, y, z, ry, 1, (R() - .5) * 0.06, (R() - .5) * 0.08);
+      add(k + '_h', t.hull, M);
+      if (t.turret) {
+        if (!off) add(k + '_t', t.turret, M.clone().multiply(new THREE.Matrix4().makeRotationY((R() - .5) * 1.2)));
+        else {   // turret blown off: lying upside down / on its side a few metres away
+          const tc = t.turretC ||= (() => { const b = new THREE.Box3().setFromObject(t.turret), c = b.getCenter(new THREE.Vector3()); const g = new THREE.Group(); const inner = t.turret.clone(); inner.position.set(-c.x, -c.y, -c.z); g.add(inner); g.userData.h = (b.max.y - b.min.y) / 2; return g; })();
+          const a = R() * 6.28, d = 4 + R() * 5, tx = x + Math.cos(a) * d, tz = z + Math.sin(a) * d, flip = R() < 0.5;
+          if (this.terrain.cutSDF(tx, tz) > 3 && !onRoad(tx, tz, 1)) { add(k + '_to', tc, trs(tx, H(tx, tz) + tc.userData.h * (flip ? 0.9 : 0.75), tz, R() * 6, 1, flip ? Math.PI : (R() - .5) * 0.5, flip ? 0 : 1.2 + R() * 0.4)); this.nav.circle(tx, tz, 1.6, BLOCK); }
+        }
+      }
+      this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck');
+      this.nav.addOccluder(x, z, 1.6, 3.4, ry, 2.2, null);
+      this.wreckSpots.push([x, z]);
+    }
+    for (const [, v] of by) instance(this.scene, v.grp, v.m, { cullDist: 470 });
+  }
+  // war map (wear.js): scorch / churn / wet / mud painted from the finished layout
+  paintFarmWar() {
+    const R = this.rng;
+    this.groundUniforms.tWar.value = paintWar(this, MAP_SIZE, { N: 1024, craterWet: 0.3, extra: ({ L, P, k, blob, line }) => {
+      // scorch: field fires, burnt belts, burnt houses / farm, wrecks, smouldering spots
+      // field fires run with the wind (here from the south-east): elongated, ragged, fingers and unburnt islands
+      for (const [x, z, r] of this.burns) { const a = -0.9 + (R() - .5) * 0.6, ux = Math.cos(a), uz = Math.sin(a); for (let i = 0; i < 9; i++) { const t = (R() - .5) * 2.2 * r, o = (R() - .5) * r * 0.7; blob(L.r, x + ux * t - uz * o, z + uz * t + ux * o, r * (0.18 + R() * 0.26), 0.7, 0.85); } }
+      for (const [a, b, c, d] of this.burntBelts) { line(L.r, [[a, b], [c, d]], 14, 0.45); for (let i = 0; i < 10; i++) { const f = R(); blob(L.r, a + (c - a) * f + (R() - .5) * 8, b + (d - b) * f + (R() - .5) * 8, 6 + R() * 10, 0.55); } }
+      for (const [x, z, r] of this.burntSpots || []) { blob(L.r, x, z, r, 0.85); blob(L.a, x, z, r * 0.8, 0.4); }
+      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 7 + R() * 3, 0.9); blob(L.g, x, z, 9, 0.5); blob(L.a, x, z, 10, 0.6); }
+      for (const [x, z, sc] of MAP.smoulder || []) blob(L.r, x, z, 14 * sc, 0.6);
+      // mud: tracks (wheel-churned, worst at the junctions and the field entrances), trails, lanes, yards
+      const tracks = ROADS.filter(r => r.type === 'track'), paved = ROADS.filter(r => r.type !== 'track');
+      for (const r of tracks) {
+        const horiz = (r.x1 - r.x0) > (r.z1 - r.z0), cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, len = horiz ? r.x1 - r.x0 : r.z1 - r.z0;
+        line(L.a, horiz ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], 5.5, 0.28);
+        for (let i = 0; i < len / 26; i++) { const t = R(); const x = horiz ? r.x0 + t * len : cx, z = horiz ? cz : r.z0 + t * len; blob(L.a, x, z, 3 + R() * 6, 0.45 + R() * 0.35); if (R() < 0.35) blob(L.b, x, z, 1.5 + R() * 3, 0.85, 0.6); }
+        // field entrances: short churned spurs off the track into the field
+        for (let i = 0; i < len / 140; i++) { const t = R(), sd = R() < 0.5 ? -1 : 1, x = horiz ? r.x0 + t * len : cx, z = horiz ? cz : r.z0 + t * len, L2 = 14 + R() * 18; line(L.a, [[x, z], [x + (horiz ? (R() - .5) * 8 : sd * L2), z + (horiz ? sd * L2 : (R() - .5) * 8)]], 4, 0.6); }
+      }
+      for (const a of ROADS) for (const b of ROADS) if (a !== b && a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1) { const x = (Math.max(a.x0, b.x0) + Math.min(a.x1, b.x1)) / 2, z = (Math.max(a.z0, b.z0) + Math.min(a.z1, b.z1)) / 2; if (Math.abs(x) > MAP_SIZE / 2 || Math.abs(z) > MAP_SIZE / 2) continue; blob(L.a, x, z, 9 + R() * 6, 0.85); blob(L.b, x + (R() - .5) * 6, z + (R() - .5) * 6, 3 + R() * 3, 0.8, 0.5); }
+      for (const r of paved) { const horiz = (r.x1 - r.x0) > (r.z1 - r.z0); for (let i = 0; i < 18; i++) { const t = R(); const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (R() < 0.5 ? r.x0 - 1.5 : r.x1 + 1.5), z = horiz ? (R() < 0.5 ? r.z0 - 1.5 : r.z1 + 1.5) : r.z0 + t * (r.z1 - r.z0); blob(L.b, x, z, 1.5 + R() * 2.5, 0.8, 0.6); } }
+      for (const S of this.trailSamples || []) { if (S.pts.length < 2) continue; line(L.a, S.pts, S.w + 3, S.lane ? 0.85 : S.mud * 0.75); line(L.g, S.pts, S.w + (S.lane ? 6 : 2), S.lane ? 0.65 : 0.18); for (let i = 0; i < S.pts.length; i += 6) if (R() < 0.4) blob(L.b, S.pts[i][0], S.pts[i][1], 1.5 + R() * 2.5, 0.85, 0.6); }
+      for (const y of this.yardRects || []) { L.a.globalAlpha = 0.4; L.a.fillRect(...P(y[0], y[1]), (y[2] - y[0]) * k, (y[3] - y[1]) * k); }
+      // staging grounds: vehicle parks churned to mud behind the berms
+      for (const zz of [-600, 604]) for (let i = 0; i < 45; i++) { const x = (R() - .5) * (MAP_SIZE - 80), z = zz + (R() - .5) * 26; blob(L.a, x, z, 4 + R() * 7, 0.35); blob(L.a, x + (R() - .5) * 14, z + (R() - .5) * 6, 3 + R() * 4, 0.3); }
+      // churn: no-man's land bands (old, overlapping shelling)
+      for (let i = 0; i < 90; i++) blob(L.g, (R() - .5) * (MAP_SIZE - 40), -300 + (R() - 0.35) * 150, 12 + R() * 20, 0.16);
+      for (let i = 0; i < 60; i++) blob(L.g, -560 + R() * 820, 470 + (R() - .5) * 100, 12 + R() * 18, 0.16);
+      // wet: low spots in the fields, wet field corners under the belts
+      for (let i = 0; i < 60; i++) blob(L.b, (R() - .5) * (MAP_SIZE - 40), (R() - .5) * (MAP_SIZE - 40), 2 + R() * 5, 0.45 + R() * 0.35, 0.7);
+    } });
+  }
   // ---------------------------------------------------------------- craters (pre-rolled in layoutFields)
   craters() {
-    const mat = new THREE.MeshStandardMaterial({ roughness: 1, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
-    mat.map = craterTex(); const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
-    this.craterList = this.craterList.filter(([x, z, s]) => this.terrain.cutSDF(x, z) > s + 3 && !this.terrain.relief(x, z, false) && !this.teethNear(x, z, s + 2) && !this.inFarmstead(x, z));
-    this.craterCap = 2800; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
+    this.craterList = this.craterList.filter(([x, z, s]) => this.terrain.cutSDF(x, z) > s + 3 && !this.terrain.relief(x, z, false) && !this.teethNear(x, z, s + 2) && !this.inFarmstead(x, z) && !this.overlapsBuilding(x, z, s, s, 0.5) && !this.solidHit(x, z, s * 0.4, s * 0.4, 0, 0));
+    this.craterCap = 3800; this.craterMesh = craterMesh(this.scene, this.assets.tex.crater, craterTex(), this.craterCap);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     const T = this.propT?.crater, big = [];
-    for (const [x, z, s] of this.craterList) {
-      this.addCrater(x, z, s * 2.1);
-      if (s > 4.5 && T) { big.push(trs(x, 0, z, this.rng() * 6, s / 4.5)); this.nav.circle(x, z, s * 0.8, 3, true); }
+    let nBig = 0;
+    for (let [x, z, s] of this.craterList) {
+      const rd = onRoad(x, z, 1); if (rd) s = Math.min(s, 2.4);   // on the asphalt: shallow scars only
+      this.addCrater(x, z, s * 2.1, rd ? 2 : null);
+      if (s > 4.5 && T && nBig++ < 170) { big.push(trs(x, 0, z, this.rng() * 6, s / 4.5)); this.nav.circle(x, z, s * 0.8, 3, true); }
       else if (s > 2.5) this.nav.circle(x, z, s * 0.5, 2, true);
     }
     if (T && big.length) instance(this.scene, T[0], big, { cullDist: 750 });

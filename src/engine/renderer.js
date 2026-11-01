@@ -7,18 +7,64 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 
-// Colour grade + vignette + grain, applied before OutputPass (linear HDR in, so keep it gentle).
+// Legacy grade (?grade=0): gentle saturation + vignette in linear HDR before OutputPass (the pre-v2 look, for A/B).
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, time: { value: 0 }, sat: { value: 0.93 }, warm: { value: 0.0 }, vig: { value: 0.2 }, grain: { value: 0.0 }, flash: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float time,sat,warm,vig,grain,flash; varying vec2 vUv;
-    float h(vec2 p){ return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453); }
     void main(){ vec4 c=texture2D(tDiffuse,vUv); float l=dot(c.rgb,vec3(.2126,.7152,.0722));
       c.rgb=mix(vec3(l),c.rgb,sat); c.rgb*=vec3(1.+warm,1.,1.-warm*1.4);
       vec2 d=vUv-.5; c.rgb*=1.-vig*dot(d,d)*1.6;
       c.rgb+= flash*vec3(1.,.85,.6);
       gl_FragColor=c; }`,
 };
+// War-film grade (default): runs LAST, on the display-referred image (after tone mapping + sRGB, after SMAA), so the
+// curve behaves like a LUT: desaturation (stronger in the highlights, keeps a little earth colour in the mids), cool
+// green-grey shadows / warm-grey highlights (split tone), slightly crushed blacks + soft filmic S-curve, a faint warm
+// dust veil, vignette and animated luminance-weighted film grain. HTML UI is untouched (it is not in the canvas).
+const WarGradeShader = {
+  uniforms: {
+    tDiffuse: { value: null }, time: { value: 0 }, flash: { value: 0 }, res: { value: new THREE.Vector2(1, 1) },
+    sat: { value: 0.74 }, satHi: { value: 0.64 }, contrast: { value: 0.28 }, black: { value: 0.022 }, gamma: { value: 1.0 },
+    shadowTint: { value: new THREE.Vector3(0.9, 0.99, 1.02) }, highTint: { value: new THREE.Vector3(1.05, 1.0, 0.9) },
+    veil: { value: new THREE.Vector3(0.62, 0.6, 0.55) }, veilAmt: { value: 0.045 },
+    vig: { value: 0.36 }, grain: { value: 0.045 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float time, flash, sat, satHi, contrast, black, gamma, veilAmt, vig, grain;
+    uniform vec2 res; uniform vec3 shadowTint, highTint, veil; varying vec2 vUv;
+    float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+    void main(){
+      vec3 c = clamp(texture2D(tDiffuse, vUv).rgb, 0.0, 1.0);
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      // desaturate (highlights bleach harder), but keep the warm earth / olive hue family in the mids
+      c = mix(vec3(l), c, mix(sat, satHi, smoothstep(0.45, 0.9, l)));
+      // split tone
+      float sh = 1.0 - smoothstep(0.0, 0.42, l), hi = smoothstep(0.5, 0.95, l);
+      c *= mix(vec3(1.0), shadowTint, sh * 0.85);
+      c *= mix(vec3(1.0), highTint, hi * 0.7);
+      // crushed blacks + filmic S-curve around mid grey
+      c = max(c - black, 0.0) / (1.0 - black);
+      c = pow(c, vec3(gamma));
+      vec3 s = c * c * (3.0 - 2.0 * c);
+      c = mix(c, s, contrast);
+      // airborne dust: a faint warm veil, strongest in the upper (sky / far) part of the frame
+      c = mix(c, veil, veilAmt * (0.55 + 0.45 * smoothstep(0.25, 0.85, vUv.y)));
+      // vignette (oval, soft)
+      vec2 d = (vUv - 0.5) * vec2(1.0, 0.82); c *= 1.0 - vig * smoothstep(0.08, 0.62, dot(d, d) * 2.2);
+      // muzzle / blast flash
+      c += flash * vec3(1.0, 0.85, 0.6);
+      // film grain: per pixel, re-rolled ~24 fps, strongest in the mid tones
+      float g = h12(floor(vUv * res) + floor(time * 24.0) * vec2(37.0, 17.0)) + h12(floor(vUv * res) * 1.7 + 11.0 + floor(time * 24.0)) - 1.0;
+      float lw = 4.0 * l * (1.0 - l) * 0.75 + 0.25;
+      c += g * grain * lw;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+};
+// ?grade=0 restores the pre-v2 look (legacy grade, fog and sky colours) for comparison; localStorage smo_grade=0 too.
+export function gradeEnabled() {
+  try { const q = new URLSearchParams(location.search).get('grade'); if (q != null) return q !== '0'; return localStorage.getItem('smo_grade') !== '0'; } catch { return true; }
+}
 
 export class Renderer {
   constructor(canvas, quality) {
@@ -34,15 +80,17 @@ export class Renderer {
     this.r.outputColorSpace = THREE.SRGBColorSpace;
 
     const scene = this.scene = new THREE.Scene();
-    // Overcast, smoky late-autumn afternoon.
-    scene.fog = new THREE.FogExp2(0xb3b7b6, 0.0021);
+    const graded = this.graded = gradeEnabled();
+    if (graded) this.r.toneMappingExposure = 1.1;    // the grade crushes the blacks a little: lift the mids back
+    // Overcast, smoky late-autumn afternoon (graded: dustier, warmer grey air).
+    scene.fog = new THREE.FogExp2(graded ? 0xaeaba2 : 0xb3b7b6, 0.0021);
     this.camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.5, 2500);
 
     // Overcast smoky sky dome (custom so brightness stays controllable) + matching image-based light.
     const sunDir = this.sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(215));
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { sunDir: { value: sunDir }, zen: { value: new THREE.Color(0x7d91a6) }, hor: { value: new THREE.Color(0xbfc3c3) }, gnd: { value: new THREE.Color(0x6a665d) }, sunCol: { value: new THREE.Color(0xfff1dc) }, k: { value: 1.0 } },
+      uniforms: { sunDir: { value: sunDir }, zen: { value: new THREE.Color(graded ? 0x7f8b97 : 0x7d91a6) }, hor: { value: new THREE.Color(graded ? 0xbab8b1 : 0xbfc3c3) }, gnd: { value: new THREE.Color(0x6a665d) }, sunCol: { value: new THREE.Color(0xfff1dc) }, k: { value: 1.0 } },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*p; gl_Position.z = gl_Position.w; }`,
       fragmentShader: `uniform vec3 sunDir,zen,hor,gnd,sunCol; uniform float k; varying vec3 vDir;
         float h(vec3 p){ return fract(sin(dot(p,vec3(12.9898,78.233,37.719)))*43758.5453); }
@@ -89,17 +137,30 @@ export class Renderer {
     }
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.5, 0.92);
     comp.addPass(this.bloom);
-    this.grade = new ShaderPass(GradeShader);
-    comp.addPass(this.grade);
-    comp.addPass(new OutputPass());
-    if (!lo) comp.addPass(new SMAAPass());
+    if (graded) {
+      comp.addPass(new OutputPass());
+      if (!lo) comp.addPass(new SMAAPass());
+      this.grade = new ShaderPass(WarGradeShader);
+      const u = this.grade.uniforms;
+      // low: same curve, lighter grain / vignette (it is one cheap full-screen pass either way)
+      if (lo) { u.grain.value = 0.03; u.vig.value = 0.36; }
+      if (hi) u.grain.value = 0.05;
+      comp.addPass(this.grade);
+    } else {
+      this.grade = new ShaderPass(GradeShader);
+      comp.addPass(this.grade);
+      comp.addPass(new OutputPass());
+      if (!lo) comp.addPass(new SMAAPass());
+    }
+    this.sizeGrade();
 
     addEventListener('resize', () => this.resize());
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
-    this.r.setSize(innerWidth, innerHeight); this.composer.setSize(innerWidth, innerHeight);
+    this.r.setSize(innerWidth, innerHeight); this.composer.setSize(innerWidth, innerHeight); this.sizeGrade();
   }
+  sizeGrade() { const r = this.grade?.uniforms.res; if (r) r.value.set(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio()); }
   // Keep the shadow frustum centred on what the camera looks at.
   followShadow(focus) {
     const s = this.sun;

@@ -6,6 +6,7 @@ import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { MAPS } from './maps.js';
+import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 
 // Active map: live bindings, set by setMap() before the world is built.
 export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
@@ -67,11 +68,12 @@ export class City {
   }
   build() {
     this.lots = (MAP.yards?.lots || []).map(l => [...l]);
+    weatherEnv(this.assets);
     this.ground(); this.roads();
-    this.placeBuildings();
+    this.placeBuildings(); this.facadeDecals();
     this.fortifications();
     this.rubbleAndDebris();
-    this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences();
+    this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences(); this.cityWrecks();
     this.craters(); this.paintGround(); this.skyline();
     this.nav.finalize();
   }
@@ -96,12 +98,13 @@ export class City {
     const nrm = this._gNrm ||= (T.dirt?.normalMap ? (() => { const n = T.dirt.normalMap.clone(); n.needsUpdate = true; n.repeat.set(S / 6, S / 6); return n; })() : null);
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, normalMap: nrm, normalScale: new THREE.Vector2(0.8, 0.8) });
     m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'city_terrain' : 'city_ground';
-    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() } };
+    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() }, tWar: { value: warBlack() } };
     m.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
         varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tSplat, tHole; uniform float splatSize;
+        ${WAR_GROUND_DECL}
         float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
         vec3 tile(sampler2D t, vec2 p){ // anti-tiling: second sample rotated/offset, blended by low-frequency noise
@@ -122,6 +125,7 @@ export class City {
           // dry, sun-bleached grass: match the dirt's brightness, desaturate toward straw, let dirt show through
           float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
           grass = mix(vec3(gl), grass, 0.7) * vec3(1.0, 1.0, 0.84);
+          grass = mix(grass, vec3(gl) * vec3(1.1, 1.0, 0.74), 0.32 + 0.25 * vn(wp * 0.05));   // late-summer: dry, straw-grey
           grass *= clamp(dl / max(gl, 0.02), 1.0, 1.45);
           grass = mix(grass, dirt * vec3(1.0, 0.98, 0.88), smoothstep(0.45, 0.75, vn(wp * 0.35)) * 0.4);
           // height blending: each layer's own luminance acts as height so transitions follow the texture
@@ -140,7 +144,9 @@ export class City {
             float tdep = smoothstep(0.05, 0.55, -vWPos.y);
             col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
           #endif
+          ${warGroundGLSL(true)}
           diffuseColor.rgb *= col;`);
+      sh.fragmentShader = warGroundHooks(sh.fragmentShader);
     };
     return m;
   }
@@ -452,7 +458,32 @@ export class City {
   // value-noise helper for painting
   noise2(x, z, s) { const h = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + s * 17.3) * 43758.5453; return t - Math.floor(t); }; const i = Math.floor(x), j = Math.floor(z), f = x - i, g = z - j, u = f * f * (3 - 2 * f), v = g * g * (3 - 2 * g); return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v; }
   // paint the splat map from the finished layout (call after buildings, rubble and craters exist)
+  // war map (wear.js): craters + positions + town damage: brick dust along wrecked blocks, scorch at burnt-out blocks,
+  // cars and smouldering spots, standing water in low spots of the courtyards and along the kerbs
+  paintCityWar() {
+    const R = this.rng;
+    this.groundUniforms.tWar.value = paintWar(this, MAP_SIZE, { N: 1024, extra: ({ L, P, k, blob }) => {
+      for (const b of this.buildings) {
+        const dmg = b.panels.filter(p => p.state >= 2 || p.gone).length / Math.max(1, b.panels.length);
+        L.a.save(); L.a.translate(...P(b.x, b.z)); L.a.rotate(-b.rot); L.a.globalAlpha = Math.min(0.75, 0.12 + dmg * 1.6); const pad = 2 + dmg * 9; L.a.fillRect((-b.L / 2 - pad) * k, (-b.D / 2 - pad) * k, (b.L + pad * 2) * k, (b.D + pad * 2) * k); L.a.restore();
+        if (dmg > 0.18) for (let i = 0; i < 3; i++) { const w = b.toWorld((R() - 0.5) * b.L, 0, (R() < 0.5 ? -1 : 1) * (b.D / 2 + 3 + R() * 5)); blob(L.r, w.x, w.z, 3 + R() * 5, 0.35 + dmg); }
+      }
+      const v = new THREE.Vector3();
+      for (const list of this.rubbleInstances || []) for (const M of list) { v.setFromMatrixPosition(M); blob(L.a, v.x, v.z, 4 + R() * 3, 0.55); if (R() < 0.3) blob(L.r, v.x, v.z, 2.5 + R() * 2, 0.4); }
+      for (const [x, z, s] of MAP.smoulder || []) blob(L.r, x, z, 10 * s, 0.6);
+      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 4 + R() * 1.5, 0.7); blob(L.a, x, z, 6, 0.35); }
+      for (const pl of Object.values(this._pl || {})) if (/burnt/.test(pl.t.name || '')) for (const M of pl.m) { v.setFromMatrixPosition(M); blob(L.r, v.x, v.z, 3.5, 0.8); }
+      for (const r of ROADS) { // water along the kerbs and in the low spots
+        const horiz = (r.x1 - r.x0) > (r.z1 - r.z0), n = Math.round(Math.max(r.x1 - r.x0, r.z1 - r.z0) / 30);
+        for (let i = 0; i < n; i++) { const t = R(), sd = R() < 0.5 ? 0 : 1; const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd ? r.x1 - 0.8 : r.x0 + 0.8), z = horiz ? (sd ? r.z1 - 0.8 : r.z0 + 0.8) : r.z0 + t * (r.z1 - r.z0); blob(L.b, x, z, 1.2 + R() * 2, 0.85, 0.6); }
+      }
+      for (let i = 0; i < 25; i++) blob(L.b, (R() - 0.5) * MAP_SIZE, (R() - 0.5) * MAP_SIZE, 2 + R() * 2.5, 0.5, 0.7);
+      // scorched verges and burnt lawn patches (grass fires from shelling)
+      for (let i = 0; i < 10; i++) { const x = (R() - 0.5) * (MAP_SIZE - 40), z = (R() - 0.5) * (MAP_SIZE - 40); if (onRoad(x, z, 2)) continue; blob(L.r, x, z, 3 + R() * 4, 0.3 + R() * 0.2, 0.8); }
+    } });
+  }
   paintGround() {
+    this.paintCityWar();
     const N = 1024, k = N / MAP_SIZE, o = MAP_SIZE / 2, layer = () => { const c = document.createElement('canvas'); c.width = c.height = N; return c; };
     const toPx = (x, z) => [(x + o) * k, (z + o) * k];
     const R = this.rng;
@@ -547,6 +578,7 @@ export class City {
       const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
       if (gw < 0.35 || this.rng() > gw) continue;
+      if (this.warData && (warAt(this, MAP_SIZE, px, pz, 0) > 0.55 || warAt(this, MAP_SIZE, px, pz, 1) > 0.7 || warAt(this, MAP_SIZE, px, pz, 2) > 0.75)) continue;
       if (onRoad(px, pz, SIDEWALK + 0.4) || (this.lots || []).some(l => px > l[0] && px < l[2] && pz > l[1] && pz < l[3])) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
       if (this.terrain.cutSDF(px, pz) < 0.9) continue;
       const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, this.terrain.heightAt(px, pz) - 0.03, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
@@ -567,18 +599,18 @@ export class City {
     instance(this.scene, tpl, mats, { shadows: false, colors: cols, cullDist: this.grassCull || 340 });
   }
   roads() {
-    const asphalt = this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    const walk = this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const asphalt = roadWear(this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), this.groundUniforms, { damage: 0.8 });
+    const walk = roadWear(this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), this.groundUniforms, { damage: 0 });
     const curbMat = this.assets.tex.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
     const uvPlane = (w, d, scale) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / scale, uv.getY(i) * d / scale); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0, r.z0, r.x1, r.z1, 2);
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      const sw = r.type === 'drive' ? 1.3 : SIDEWALK, s = new THREE.Mesh(uvPlane(w + sw * 2, d + sw * 2, 4), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
+      const sw = r.type === 'drive' ? 1.3 : SIDEWALK, s = new THREE.Mesh(roadFrame(uvPlane(w + sw * 2, d + sw * 2, 4), (Math.min(w, d) + sw * 2) / 2, w > d), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
     }
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      const a = new THREE.Mesh(uvPlane(w, d, 7), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a);
+      const a = new THREE.Mesh(roadFrame(uvPlane(w, d, 7), Math.min(w, d) / 2, w > d), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a);
       // lane markings (worn) — not on the single-lane courtyard driveways
       if (r.type === 'drive') continue;
       const horiz = w > d; const len = horiz ? w : d;
@@ -1107,21 +1139,43 @@ export class City {
     const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; const x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
     // (no concertina wire in the district)
   }
+  // knocked-out armour pushed onto the verges / courtyard edges (static, charred; never on the carriageway, so the
+  // street network stays open for vehicles)
+  cityWrecks() {
+    const WT = wreckTemplates(this.assets, ['t72b3', 'bmp3', 'btr82a', 'btr80_ua', 't72av_ua']), keys = Object.keys(WT); if (!keys.length) return;
+    const R = this.rng, by = new Map(), roads = ROADS.filter(r => r.type !== 'drive'); this.wreckSpots = [];
+    const free = (x, z, ry) => { const c = Math.cos(ry), s = Math.sin(ry); for (const [a, b] of [[0, 0], [1.9, 3.9], [-1.9, 3.9], [1.9, -3.9], [-1.9, -3.9], [0, 4.5], [0, -4.5]]) { const px = x + a * c + b * s, pz = z - a * s + b * c, i = this.nav.idx(px, pz); if (i < 0 || this.nav.cost[i] !== 1 || onRoad(px, pz, 0.6)) return false; } return true; };
+    for (let n = 0, tries = 0; n < 6 && tries < 400; tries++) {
+      const r = roads[Math.floor(R() * roads.length)], horiz = (r.x1 - r.x0) > (r.z1 - r.z0), t = 0.1 + R() * 0.8, sd = R() < 0.5 ? -1 : 1, off = SIDEWALK + 3.2 + R() * 3;
+      const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd < 0 ? r.x0 - off : r.x1 + off), z = horiz ? (sd < 0 ? r.z0 - off : r.z1 + off) : r.z0 + t * (r.z1 - r.z0);
+      const ry = (horiz ? Math.PI / 2 : 0) + (R() - .5) * 0.7 + (R() < 0.5 ? Math.PI : 0);
+      if (Math.abs(x) > MAP_SIZE / 2 - 20 || Math.abs(z) > MAP_SIZE / 2 - 20 || this.buildingAt(x, z, 5) || this.terrain.cutSDF(x, z) < 7 || this.solidHit(x, z, 1.9, 3.9, ry, 0.4) || !free(x, z, ry)) continue;
+      if (this.wreckSpots.some(([a, b]) => Math.hypot(a - x, b - z) < 60) || OBJECTIVES.some(o => Math.hypot(o.x - x, o.z - z) < 12)) continue;
+      const k = keys[n % keys.length], M = trs(x, this.terrain.heightAt(x, z), z, ry);
+      (by.get(k + 'h') || by.set(k + 'h', { g: WT[k].hull, m: [] }).get(k + 'h')).m.push(M);
+      if (WT[k].turret) (by.get(k + 't') || by.set(k + 't', { g: WT[k].turret, m: [] }).get(k + 't')).m.push(M.clone().multiply(new THREE.Matrix4().makeRotationY((R() - .5) * 2)));
+      this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck'); this.nav.addOccluder(x, z, 1.6, 3.4, ry, 2.2, null);
+      this.wreckSpots.push([x, z]); n++;
+    }
+    for (const [, v] of by) instance(this.scene, v.g, v.m, { cullDist: 420 });
+  }
   craters() {
     const T = this.propT?.crater;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x2c2722, roughness: 1, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
-    const tex = craterTexture(); mat.map = tex; mat.color.set(0xffffff);
-    const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
-    this.craterCap = MAP.kind === 'rural' ? 1400 : 400; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
+    this.craterCap = MAP.kind === 'rural' ? 1400 : 400; this.craterMesh = craterMesh(this.scene, this.assets.tex.crater, craterTexture(), this.craterCap, 0xc2b8a8);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40), sz = 2 + this.rng() * 4; if (this.terrain.cutSDF(x, z) < sz + 2) continue; this.addCrater(x, z, sz); }
     if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
   }
-  addCrater(x, z, size) {
-    if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size]); return; }
+  addCrater(x, z, size, cell = null) {
+    if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size, cell]); return; }
     if (this.terrain && this.terrain.cutSDF(x, z) < size * 0.5) return; // decal would float over a trench
     const c = this.craterMesh; if (c.count >= this.craterCap) return;
-    c.setMatrixAt(c.count++, trs(x, 0.07 + c.count * 0.0004, z, Math.random() * 6.28, size)); c.instanceMatrix.needsUpdate = true;
+    // atlas cell: 0 fresh big, 1 old (water), 2 small / mortar splash, 3 field crater (rural)
+    const r = Math.random(), rural = MAP.kind === 'rural';
+    if (cell == null) cell = size < 3.2 ? (r < 0.75 ? 2 : rural ? 3 : 0) : size > 7 ? (r < 0.45 ? 0 : rural ? 3 : 1) : (r < 0.3 ? 0 : r < 0.6 ? 1 : rural ? 3 : 2);
+    const i = c.count++;
+    c.setMatrixAt(i, trs(x, 0.06 + (i % 64) * 0.0005, z, Math.random() * 6.28, size * (c.userData.atlas ? 1.25 : 1))); c.instanceMatrix.needsUpdate = true;
+    const ac = c.geometry.attributes.aCell; ac.setX(i, cell); ac.needsUpdate = true;
   }
   // distant city silhouette beyond the playable area
   // The city carries on past the playable area: more microdistricts as cheap facade-shaded blocks (panel joints,

@@ -101,13 +101,13 @@ export const MAPS = {
       { x0: -E_F, x1: E_F, z0: 60, z1: 67, type: 'paved' },      // regional road / village street (E–W)
       { x0: 100, x1: 107, z0: -E_F, z1: E_F, type: 'paved' },    // N–S road through Kurylivka and the crossroads
       { x0: -E_F, x1: E_F, z0: -297, z1: -292, type: 'track' },  // field tracks along the windbreaks
-      { x0: -E_F, x1: E_F, z0: 303, z1: 308, type: 'track' },    // ... becomes the E–W ride through the forest
+      { x0: -E_F, x1: E_F, z0: 321, z1: 326, type: 'track' },    // along the field side of the z 335 belt; the E–W ride through the forest
       { x0: -362, x1: -357, z0: -E_F, z1: E_F, type: 'track' },
       { x0: 357, x1: 362, z0: -E_F, z1: E_F, type: 'track' },
       { x0: -127, x1: -122, z0: 67, z1: 303, type: 'track' },
       { x0: 222, x1: 227, z0: -292, z1: 60, type: 'track' },
       { x0: 107, x1: 357, z0: -146, z1: -141, type: 'track' },
-      { x0: -E_F, x1: E_F, z0: -512, z1: -507, type: 'track' },  // northern field track (enemy rear)
+      { x0: -E_F, x1: E_F, z0: -550, z1: -545, type: 'track' },  // northern field track along the z -560 belt (enemy rear)
       { x0: -357, x1: E_F, z0: 398, z1: 404, type: 'track' },    // crossroads track (objective D)
       { x0: 552, x1: 557, z0: -E_F, z1: E_F, type: 'track' },    // eastern field track
       { x0: -562, x1: -557, z0: -E_F, z1: E_F, type: 'track' },  // western track, N–S ride through the forest

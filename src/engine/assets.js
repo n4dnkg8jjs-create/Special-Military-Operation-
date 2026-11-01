@@ -50,6 +50,12 @@ export class Assets {
     { const c = await this.loadTexSet('curb', renderer, true); if (c) this.tex.curb = c; }
     // farmland ground sets are optional (the ground shader has procedural fallbacks)
     if (opts.rural) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
+    // shell-crater decal atlas (2 x 2, RGBA albedo + normal; tools/blender/env/crater_tex.py), optional
+    {
+      const one = (url, srgb) => new Promise(res => texLoader.load(url, t => { t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); if (srgb) t.colorSpace = THREE.SRGBColorSpace; res(t); }, undefined, () => res(null)));
+      const [map, normalMap] = await Promise.all([one('assets/textures/crater_albedo.png', true), one('assets/textures/crater_normal.jpg')]);
+      if (map) this.tex.crater = { map, normalMap };
+    }
     this.buildKit();
   }
 

@@ -106,3 +106,21 @@ Modern microdistrict (modern.glb, Ukraine 2022-24):
                                       REBUILD_ATLAS=1 repaints both atlases.
   QA: previews/_test/qa_modern.html = qa.html + &show=<regex> (only meshes whose own / ancestor name matches, e.g.
       show=_wreck for the vehicle wreck nodes).  Galleries in previews/_test/modern/.
+
+Look v2 (gritty grade, war wear, farmland layout) -- runtime side, no GLB rebuild needed:
+  src/engine/renderer.js  WarGradeShader: last pass on the display-referred image (after OutputPass / SMAA): ~25 %
+                          desaturation (highlights bleach harder), cool green-grey shadows / warm-grey highlights,
+                          crushed blacks + soft S-curve, faint warm dust veil, vignette, animated film grain; dustier fog /
+                          sky colours, exposure 1.1.  ?grade=0 (or localStorage smo_grade=0) = the old look for A/B.
+  src/world/wear.js       war map (RGBA: scorch / churn / wet / mud) painted per map from the finished layout and read
+                          by the ground, road (potholes, patches, crumbling rural edges, dust, tracked-in mud), track /
+                          trail (muddy ruts, water) shaders; env material weathering (wall-foot grime, streaks, soot);
+                          burntHouse() (roofless charred shell from an intact template -- de-quantises the int16 GLB
+                          positions first, see floatGeo), wreckTemplates() (static charred armour from the vehicles'
+                          hull_wreck / turret_wreck nodes, culled beyond ~450 m), crater decal atlas.
+  crater_tex.py           -> assets/textures/crater_albedo.png (RGBA) + crater_normal.jpg, 2 x 2 atlas (fresh / old with
+                          water / mortar splash / field crater); numpy + scipy + PIL, procedural (no external images).
+  farmland.js warLayout() trails (assault-column tracks from both staging grounds, gaps driven through the belts, worn
+                          shortcuts; they become dirt-track nav cells), two mine-cleared lanes (stakes + TM-62s), field
+                          fires, burnt belt stretches, crater clusters on every strongpoint / no-man's-land band;
+                          burnt-out houses (more in Kurylivka / the hamlet), the north cowshed burnt out, knocked-out armour.
