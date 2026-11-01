@@ -6,6 +6,7 @@ import { MAP } from '../world/city.js';
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
+function evTime(g, clip, ev, def) { const man = g.assets.manifest.soldiers || {}, mc = man.soldier_anims?.clips || man.clips || {}; return mc[clip]?.events?.[ev] ?? def; }
 function cloneNode(g, name) { const o = g?.scene.getObjectByName(name); return o ? o.clone(true) : null; }
 
 // ---------------------------------------------------------------- ATGM team
@@ -15,108 +16,207 @@ function cloneNode(g, name) { const o = g?.scene.getObjectByName(name); return o
 export class AtgmTeam {
   constructor(sq) {
     this.sq = sq; this.g = sq.game; this.state = 'packed'; this.t = 0; this.ammo = 4; this.loaded = true;
-    this.W = WEAPONS[sq.faction.id === 'RU' ? 'kornet' : 'stugna']; this.launcher = null; this.missile = null; this.scanT = 0;
+    this.rus = sq.faction.id === 'RU';
+    this.W = WEAPONS[this.rus ? 'kornet' : 'stugna']; this.launcher = null; this.missile = null; this.scanT = 0;
   }
-  get name() { return this.sq.faction.id === 'RU' ? 'Kornet' : 'Stugna-P'; }
+  get name() { return this.rus ? 'Kornet' : 'Stugna-P'; }
   status() {
     if (this.abandoned) return 'LAUNCHER ABANDONED';
-    if (this.state === 'setting') return 'SETTING UP';
+    if (this.state === 'setting' || this.state === 'manning') return 'SETTING UP';
     if (this.state === 'packing') return 'PACKING UP';
-    if (this.state === 'deployed') return this.missile ? 'MISSILE IN FLIGHT' : !this.loaded && this.ammo > 0 ? 'RELOADING' : this.ammo <= 0 && !this.loaded ? 'OUT OF MISSILES' : `READY · ${this.ammo} MSL`;
-    return `PACKED · ${this.ammo} MSL`;
+    if (this.state === 'deployed') return this.missile ? 'MISSILE IN FLIGHT' : !this.loaded && this.ammo > 0 ? 'RELOADING' : this.ammo <= 0 && !this.loaded ? 'OUT OF MISSILES' : `READY · ${this.ammo + 1} MSL`;
+    return `PACKED · ${this.ammo + (this.loaded ? 1 : 0)} MSL`;
   }
   crew() { return this.sq.effective; }
   efficiency() { const n = this.crew().length; return n >= 3 ? 1 : n === 2 ? 0.5 : 0; }
   gunner() { return this.crew()[0]; }
   loader() { return this.crew()[1] || this.crew()[0]; }
+  clipName(base) { return this.rus || base === 'atgm_aim' || base === 'atgm_fire' ? base : base + '_stugna'; }
+  // manifest record of a clip (events, props with recorded tracks, launcher node visibility) + its duration
+  rec(clip) {
+    const A = this.g.assets, man = A.manifest.soldiers || {}, mc = man.soldier_anims?.clips || man.clips || {};
+    const r = mc[clip]; if (!r) return null;
+    if (r._dur == null) r._dur = (A.gltf.soldier_anims?.animations || []).find(x => x.name === clip)?.duration || r.duration_s || 1;
+    return r;
+  }
+  evFrac(clip, ev, def) { const r = this.rec(clip), t = r?.events?.[ev]; return typeof t === 'number' ? THREE.MathUtils.clamp(t / r._dur, 0, 1) : def; }
+  // the clip's own time when it is playing on that soldier, otherwise the state's progress mapped onto the clip
+  clipTime(s, clip, frac) { const r = this.rec(clip); if (s.curName === clip && s.cur) return s.cur.time; return (r?._dur || 1) * frac; }
   placeLauncher(s) {
     this.removeLauncher();
-    const A = this.g.assets.gltf, rus = this.sq.faction.id === 'RU';
+    const A = this.g.assets.gltf, rus = this.rus;
     const src = rus ? A.kornet : A.stugna;
     let obj = src ? src.scene.clone(true) : null;
-    if (obj) { const hide = []; obj.traverse(o => { if (/folded|gunner_ref|seat_ref/i.test(o.name)) hide.push(o); if (o.isMesh) { o.castShadow = true; if (/_LOD1$/i.test(o.name)) o.visible = false; } }); for (const o of hide) o.visible = false; }
-    if (!obj) { // stand-in: tripod, pedestal, guidance box with sight, missile tube (TLC) on top
-      obj = new THREE.Group(); const rus = this.sq.faction.id === 'RU';
-      const m = new THREE.MeshStandardMaterial({ color: rus ? 0x4a5236 : 0x47503a, roughness: 0.75, metalness: 0.2 }), dk = new THREE.MeshStandardMaterial({ color: 0x1d1f1b, roughness: 0.6 });
-      const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; obj.add(o); return o; };
-      add(new THREE.CylinderGeometry(0.035, 0.04, 0.62, 8), m, 0, 0.31, 0);                                   // pedestal
-      for (let i = 0; i < 3; i++) { const a = i * 2.094 + Math.PI, lx = Math.sin(a) * 0.32, lz = Math.cos(a) * 0.32;   // legs splayed to the ground
-        const leg = add(new THREE.CylinderGeometry(0.016, 0.02, 0.62, 6), m, lx, 0.21, lz); leg.lookAt(lx * 2.2, -0.2, lz * 2.2); leg.rotateX(Math.PI / 2); add(new THREE.BoxGeometry(0.07, 0.02, 0.07), dk, lx * 1.8, 0.01, lz * 1.8); }
-      add(new THREE.BoxGeometry(0.2, 0.24, 0.32), m, 0, 0.72, -0.02);                                         // guidance / sight unit
-      add(new THREE.CylinderGeometry(0.035, 0.04, 0.16, 10), dk, -0.02, 0.76, -0.24, Math.PI / 2);            // eyepiece
-      add(new THREE.BoxGeometry(0.12, 0.14, 0.26), dk, rus ? 0.17 : -0.17, 0.72, 0.0);                       // thermal sight
-      const L = rus ? 1.2 : 1.36, r = rus ? 0.085 : 0.075;
-      add(new THREE.CylinderGeometry(r, r, L, 14), m, 0, 0.93, 0.3, Math.PI / 2);                           // TLC tube
-      for (const z of [0.3 - L / 2, 0.3 + L / 2]) add(new THREE.CylinderGeometry(r + 0.012, r + 0.012, 0.06, 14), dk, 0, 0.93, z, Math.PI / 2);
-      const mz = new THREE.Object3D(); mz.name = 'muzzle'; mz.position.set(0, 0.93, 0.3 + L / 2 + 0.05); obj.add(mz);
+    this.nodes = {};
+    if (obj) {
+      obj.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (/_LOD1$/i.test(o.name)) o.visible = false; } });
+      // the GLB root node (`kornet` / `stugna`, launcher frame) holds the movable parts and the empties
+      const root = obj.getObjectByName(rus ? 'kornet' : 'stugna') || obj; this.lroot = root;
+      for (const c of [...root.children]) this.nodes[c.name] = { o: c, p: c.position.clone(), q: c.quaternion.clone() };
+      if (this.nodes.folded) this.nodes.folded.o.visible = false;
+      this.seatLocal = obj.getObjectByName('seat')?.position.clone() || new THREE.Vector3(0, 0, -0.75);
+      this.tube = obj.getObjectByName(rus ? 'kornet_tube' : 'stugna_tube');
+      const ls = obj.getObjectByName('loader_seat');
+      this.loaderLocal = ls ? ls.position.clone() : new THREE.Vector3(-0.88, 0, 0.1); this.loaderQ = ls ? ls.quaternion.clone() : new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 2);
+      if (this.tube) { // fresh TLC laid out by the bearer (the reload clip's `<tube>(fresh)` prop)
+        const gt = this.tube.clone(true); gt.getObjectByName('muzzle')?.removeFromParent(); gt.name = this.tube.name + '(fresh)'; this.lroot.add(gt); this.groundTube = gt; gt.visible = false;
+        this.nodes[gt.name] = { o: gt, p: this.tube.position.clone(), q: this.tube.quaternion.clone() };
+      }
     }
-    const f = new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
-    obj.position.copy(s.pos).addScaledVector(f, 0.75); obj.rotation.y = s.heading; obj.updateMatrixWorld(true);
+    if (!obj) { // stand-in: tripod, pedestal, guidance box, missile tube (TLC) on top
+      obj = new THREE.Group();
+      const m = new THREE.MeshStandardMaterial({ color: rus ? 0x4a5236 : 0x47503a, roughness: 0.75, metalness: 0.2 }), dk = new THREE.MeshStandardMaterial({ color: 0x1d1f1b, roughness: 0.6 });
+      const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, par = obj) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); o.castShadow = true; par.add(o); return o; };
+      add(new THREE.CylinderGeometry(0.035, 0.04, 0.62, 8), m, 0, 0.31, 0);
+      for (let i = 0; i < 3; i++) { const a = i * 2.094 + Math.PI, lx = Math.sin(a) * 0.32, lz = Math.cos(a) * 0.32;
+        const leg = add(new THREE.CylinderGeometry(0.016, 0.02, 0.62, 6), m, lx, 0.21, lz); leg.lookAt(lx * 2.2, -0.2, lz * 2.2); leg.rotateX(Math.PI / 2); add(new THREE.BoxGeometry(0.07, 0.02, 0.07), dk, lx * 1.8, 0.01, lz * 1.8); }
+      add(new THREE.BoxGeometry(0.2, 0.24, 0.32), m, 0, 0.72, -0.02);
+      const L = rus ? 1.2 : 1.36, r = rus ? 0.085 : 0.075;
+      this.tube = new THREE.Group(); this.tube.position.set(0, 0.93, 0.3); obj.add(this.tube);
+      add(new THREE.CylinderGeometry(r, r, L, 14), m, 0, 0, 0, Math.PI / 2, 0, 0, this.tube);
+      const mz = new THREE.Object3D(); mz.name = 'muzzle'; mz.position.set(0, 0, L / 2 + 0.05); this.tube.add(mz);
+      this.seatLocal = new THREE.Vector3(0, 0, -0.75); this.loaderLocal = new THREE.Vector3(-0.88, 0, 0.1); this.loaderQ = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 2); this.groundTube = null; this.lroot = obj;
+    }
     this.g.scene.add(obj); this.launcher = obj; this.muzzle = obj.getObjectByName('muzzle');
+    this.seatPos = s.pos.clone(); this.spent = [];
+    this.poseLauncher(s.heading);
   }
-  removeLauncher(leave = false) { if (this.launcher && !leave) this.g.scene.remove(this.launcher); this.launcher = null; }
+  // launcher frame placed so its `seat` empty sits on the gunner's spot, firing direction = yaw (the gunner turns with it)
+  poseLauncher(yaw) {
+    const L = this.launcher; if (!L) return;
+    const c = Math.cos(yaw), sn = Math.sin(yaw), sl = this.seatLocal;
+    L.rotation.y = yaw; L.position.set(this.seatPos.x - (sl.x * c + sl.z * sn), this.seatPos.y, this.seatPos.z - (-sl.x * sn + sl.z * c)); L.updateMatrixWorld(true);
+    this.yaw = yaw;
+  }
+  localToWorld(v) { return this.launcher ? this.launcher.localToWorld(v.clone()) : v.clone(); }
+  loaderSpot() { const p = this.localToWorld(this.loaderLocal), f = new THREE.Vector3(0, 0, 1).applyQuaternion(this.loaderQ); return { p, h: this.yaw + Math.atan2(f.x, f.z) }; }
+  removeLauncher(leave = false) {
+    if (this.launcher) { for (const sp of this.spent || []) this.g.scene.attach(sp); if (!leave) this.g.scene.remove(this.launcher); }
+    this.launcher = null; this.spent = []; this.groundTube = null; this.tube = null; this.nodes = {};
+  }
+  // loader kneels at the launcher's loader seat facing it; the ammo bearer a few metres back with the spare tubes
+  postCrew() {
+    const g = this.g, crew = this.crew(), y = this.yaw;
+    const ld = crew[1], br = crew[2];
+    if (ld) { const { p, h } = this.loaderSpot(), [x, z] = g.nav.nearestFree(p.x, p.z, 0.3, 4); ld.goal = [x, z]; ld.goalHeading = h; g.requestPath(ld, ld.pos.x, ld.pos.z, x, z, 0.3); }
+    if (br) { const p = this.localToWorld(new THREE.Vector3(-1.4, 0, this.seatLocal.z - 2.6)), [x, z] = g.nav.nearestFree(p.x, p.z, 0.3, 6); br.goal = [x, z]; br.goalHeading = y; g.requestPath(br, br.pos.x, br.pos.z, x, z, 0.3); }
+  }
+  backKit(s, on) { for (const o of s?.kitObjs || []) if (o.userData.atgmFolded) o.visible = on; }
+  // ---- clip-driven props: what the clip record says each launcher part / prop does at clip time t on soldier s
+  placeNode(name, spec, s) {
+    const n = this.nodes[name]; if (!n) { if (name === 'folded' && spec?.attach === 'weapon_socket_back') this.backKit(s, true); return; }
+    const o = n.o, at = spec ? spec.attach : 'launcher';
+    if (name === 'folded') this.backKit(s, at === 'weapon_socket_back');
+    if (at === 'hidden' || (name === 'folded' && at === 'weapon_socket_back')) { o.visible = false; return; }
+    o.visible = true;
+    if (at === 'world') { if (o.parent !== this.g.scene) this.g.scene.attach(o); return; }
+    if (o.parent !== this.lroot) this.lroot.add(o);
+    const e = spec?.empty && this.lroot.getObjectByName(spec.empty);
+    if (e && e.parent === this.lroot) { o.position.copy(e.position); o.quaternion.copy(e.quaternion); } else { o.position.copy(n.p); o.quaternion.copy(n.q); }
+  }
+  driveProps(s, clip, t) {
+    const r = this.rec(clip); if (!r || !this.launcher) return false;
+    const ev = k => (k == null ? null : typeof r.events?.[k] === 'number' ? r.events[k] : null);
+    for (const ln of r.launcher_nodes || []) { const n = this.nodes[ln.node]; if (!n) continue; const a = ev(ln.show), b = ev(ln.hide); n.o.visible = (a == null || t >= a) && (b == null || t < b); }
+    for (const p of r.props || []) {
+      const tf = ev(p.from_event) ?? 0, tt = ev(p.to_event) ?? r._dur;
+      if (t < tf) this.placeNode(p.node, p.before, s);
+      else if (t >= tt) this.placeNode(p.node, p.after, s);
+      else {
+        const n = this.nodes[p.node]; if (!n) continue; if (p.node === 'folded') this.backKit(s, false);
+        const tr = p.track, o = n.o; o.visible = true;
+        if (tr) { const k = tr.p.length / 3, i = Math.max(0, Math.min(k - 1, Math.round(t * tr.fps) - tr.f0)); if (o.parent !== s.root) s.root.add(o); o.position.set(tr.p[i * 3], tr.p[i * 3 + 1], tr.p[i * 3 + 2]); o.quaternion.set(tr.q[i * 4], tr.q[i * 4 + 1], tr.q[i * 4 + 2], tr.q[i * 4 + 3]); }
+        else { const sk = s.model?.getObjectByName(p.socket); if (sk) { if (o.parent !== sk) sk.add(o); o.position.fromArray(p.t); o.quaternion.fromArray(p.q); } }
+      }
+    }
+    return true;
+  }
+  restLauncher(s) { // deployed: everything in its default place, tube loaded (or spent on the cradle), fresh tube on the ground
+    for (const [k, n] of Object.entries(this.nodes)) { if (k === 'folded' || /\(fresh\)$/.test(k) || !n.o.isObject3D) continue; if (n.o.parent !== this.lroot) this.lroot.add(n.o); n.o.position.copy(n.p); n.o.quaternion.copy(n.q); if (!/^(seat|gunner_ref|grip_|loader_seat|tube_|muzzle|control_)/.test(k)) n.o.visible = true; }
+    if (this.nodes.folded) this.nodes.folded.o.visible = false;
+    if (this.groundTube) { const e = this.lroot.getObjectByName('tube_ground'); if (this.groundTube.parent !== this.lroot) this.lroot.add(this.groundTube); if (e) { this.groundTube.position.copy(e.position); this.groundTube.quaternion.copy(e.quaternion); } this.groundTube.visible = this.ammo > 0 && this.crew().length >= 2; }
+    this.backKit(s, false);
+  }
+  pin(s, x, z, h) { s.pos.x += (x - s.pos.x) * 0.5; s.pos.z += (z - s.pos.z) * 0.5; s.heading = h; s.vel.set(0, 0, 0); }
   update(dt) {
     const sq = this.sq, g = this.g;
     if (this.missile) this.flyMissile(dt);
     if (sq.mounted || sq.destroyed) { if (this.state !== 'packed') { this.state = 'packed'; this.removeLauncher(); } return; }
     const crew = this.crew(), eff = this.efficiency();
-    for (const s of sq.soldiers) { s.supportClip = null; s.noRifle = false; }
+    for (const s of sq.soldiers) { s.supportClip = null; s.noRifle = false; s.supportTs = 1; }
     if (this.abandoned) return;
     if (eff === 0) { // last man: leave the launcher, draw the pistol
       this.abandoned = true; this.removeLauncher(true); this.state = 'packed';
-      for (const s of crew) s.setWeapon?.('pm');
+      for (const s of crew) { this.backKit(s, false); s.setWeapon?.('pm'); }
       if (sq.side === 'player') g.hud?.alert(`${sq.name}: launcher abandoned`, 'bad');
       return;
     }
     const gun = this.gunner();
-    // the gunner went down: the next man crawls over and takes the sight
+    // the gunner went down: the next man crawls over to the sight and takes over
     if (this.launcher && (this.state === 'deployed' || this.state === 'setting') && this.gunRef && gun !== this.gunRef) {
-      const f = this.launcher.rotation.y, lx = this.launcher.position.x - Math.sin(f) * 0.75, lz = this.launcher.position.z - Math.cos(f) * 0.75;
-      g.requestPath(gun, gun.pos.x, gun.pos.z, lx, lz, 0.3); this.state = 'manning'; this.t = 2 / eff;
+      g.requestPath(gun, gun.pos.x, gun.pos.z, this.seatPos.x, this.seatPos.z, 0.3); this.state = 'manning'; this.t = 2 / eff;
+      if (this.state === 'setting') this.restLauncher(gun);
       if (sq.side === 'player') g.hud?.alert(`${sq.name}: gunner down — ${gun.role.role.toLowerCase()} takes over`, 'bad');
     }
     this.gunRef = gun;
     if (this.state === 'manning') {
-      const f = this.launcher.rotation.y, lx = this.launcher.position.x - Math.sin(f) * 0.75, lz = this.launcher.position.z - Math.cos(f) * 0.75;
       gun.noRifle = true; gun.stance = 'crouch';
-      if (Math.hypot(gun.pos.x - lx, gun.pos.z - lz) < 1.3 || (!gun.path && !gun.pathReq)) { this.t -= dt; gun.supportClip = 'atgm_aim'; gun.supportAlt = ['aim_crouch']; if (this.t <= 0) this.state = 'deployed'; }
+      if (Math.hypot(gun.pos.x - this.seatPos.x, gun.pos.z - this.seatPos.z) < 0.6 || (!gun.path && !gun.pathReq)) {
+        this.pin(gun, this.seatPos.x, this.seatPos.z, this.yaw);
+        this.t -= dt; gun.supportClip = 'atgm_aim'; gun.supportAlt = ['aim_crouch']; if (this.t <= 0) { this.state = 'deployed'; this.restLauncher(gun); this.postCrew(); } }
       return;
     }
     const moving = this.state === 'packed' || this.state === 'packing' ? crew.some(s => (s.path && s.pathI < s.path.length) || s.pathReq) : (gun.path && gun.pathI < gun.path.length) || gun.pathReq || (sq.order?.type === 'move' && sq.order !== this.setOrder);
-    if (moving && (this.state === 'deployed' || this.state === 'setting')) { this.state = 'packing'; this.t = 3 / eff; }
+    if (moving && (this.state === 'deployed' || this.state === 'setting')) { this.state = 'packing'; this.T = this.t = 3 / eff; this.reloadT = null; }
     if (this.state === 'packing') {
       this.t -= dt; for (const s of crew) s.aimStopT = Math.max(s.aimStopT || 0, 0.3);
-      gun.supportClip = 'atgm_pack'; gun.supportAlt = ['crouch_idle'];
-      if (this.t <= 0) { this.state = 'packed'; this.removeLauncher(); }
+      const clip = this.clipName('atgm_pack'), f = 1 - this.t / this.T;
+      gun.supportClip = clip; gun.supportAlt = ['crouch_idle']; gun.noRifle = true; gun.supportTs = eff;
+      this.pin(gun, this.seatPos.x, this.seatPos.z, this.yaw);
+      if (this.groundTube) this.groundTube.visible = false;
+      if (!this.driveProps(gun, clip, this.clipTime(gun, clip, f))) {
+        if (this.tube && f > 0.2) this.tube.visible = false; if (this.launcher && f > 0.6) this.launcher.visible = false;
+      }
+      if (this.t <= 0) { this.state = 'packed'; this.removeLauncher(); this.backKit(gun, true); }
       return;
     }
     if (!moving && this.state === 'packed') {
-      this.state = 'setting'; this.setOrder = sq.order; this.t = 6 / eff; this.placeLauncher(gun); if (this.launcher) this.launcher.visible = false;
-      // loader kneels at the gunner's right shoulder, the ammo bearer a few metres back with the spare tubes
-      const h = gun.heading, R = [Math.cos(h), -Math.sin(h)], F = [Math.sin(h), Math.cos(h)];
-      const slots = [[1.1, -0.4], [-1.6, -3.2]];
-      crew.slice(1).forEach((s, i) => { const [r, f] = slots[i] || slots[1]; const [x, z] = g.nav.nearestFree(gun.pos.x + R[0] * r + F[0] * f, gun.pos.z + R[1] * r + F[1] * f, 0.3, 6); s.goal = [x, z]; s.goalHeading = h; g.requestPath(s, s.pos.x, s.pos.z, x, z, 0.3); });
+      this.state = 'setting'; this.setOrder = sq.order; this.T = this.t = 6 / eff; this.placeLauncher(gun);
+      if (!this.rec(this.clipName('atgm_setup'))) { this.launcher.visible = false; if (this.tube) this.tube.visible = false; }
+      this.postCrew();
     }
     if (this.state !== 'packed') for (const s of crew) s.stance = s.stance === 'prone' ? 'prone' : 'crouch';
     if (this.state === 'setting') {
-      this.t -= dt; gun.supportClip = 'atgm_setup'; gun.supportAlt = ['crouch_idle']; gun.noRifle = true;
-      if (this.launcher && this.t < 6 / eff - 1.2) this.launcher.visible = true;
-      if (this.t <= 0) { this.state = 'deployed'; if (sq.side === 'player') g.sfx('ui_click'); }
+      this.t -= dt; const clip = this.clipName('atgm_setup'), f = 1 - this.t / this.T;
+      gun.supportClip = clip; gun.supportAlt = ['crouch_idle']; gun.noRifle = true; gun.supportTs = eff;
+      this.pin(gun, this.seatPos.x, this.seatPos.z, this.yaw);
+      if (this.groundTube) this.groundTube.visible = false;
+      if (!this.driveProps(gun, clip, this.clipTime(gun, clip, f))) {
+        if (f > 0.08) this.backKit(gun, false); if (f > 0.45) this.launcher.visible = true; if (this.tube && f > 0.8) this.tube.visible = true;
+      }
+      if (this.t <= 0) { this.state = 'deployed'; this.launcher.visible = true; this.restLauncher(gun); if (sq.side === 'player') g.sfx('ui_click'); }
       return;
     }
     if (this.state !== 'deployed') return;
     gun.noRifle = true; gun.supportClip = this.fireT > 0 ? 'atgm_fire' : 'atgm_aim'; gun.supportAlt = ['aim_launcher_kneel', 'aim_crouch'];
     this.fireT = Math.max(0, (this.fireT || 0) - dt);
-    if (this.launcher) { gun.heading = this.launcher.rotation.y; }
-    // reload: loader fits a new tube
+    this.pin(gun, this.seatPos.x, this.seatPos.z, this.yaw);
+    const ld = this.loader();
+    if (ld !== gun && !ld.path && !ld.pathReq) { const { p, h } = this.loaderSpot(); if (Math.hypot(ld.pos.x - p.x, ld.pos.z - p.z) < 1.2) this.pin(ld, p.x, p.z, h); }
+    // reload: the loader lifts the spent TLC off, lays it down, picks up the fresh one and seats it (driven by the clip's props)
     if (!this.loaded && !this.missile && this.ammo > 0) {
-      this.reloadT = (this.reloadT ?? 8 / eff) - dt; const ld = this.loader(); if (ld !== gun) { ld.supportClip = 'atgm_reload'; ld.supportAlt = ['crouch_idle']; ld.noRifle = true; }
-      if (this.reloadT <= 0) { this.loaded = true; this.reloadT = null; }
+      if (this.reloadT == null) this.reloadT = this.RT = 8 / eff;
+      this.reloadT -= dt; const clip = this.clipName('atgm_reload'), f = 1 - this.reloadT / this.RT;
+      if (ld !== gun) {
+        ld.supportClip = clip; ld.supportAlt = ['crouch_idle']; ld.noRifle = true; ld.supportTs = eff;
+        if (!this.driveProps(ld, clip, this.clipTime(ld, clip, f))) { if (this.tube && f > 0.15 && f < 0.9) this.tube.visible = false; else if (this.tube) this.tube.visible = true; }
+      } else if (this.tube) this.tube.visible = f > 0.9;
+      if (this.reloadT <= 0) { this.loaded = true; this.ammo--; this.reloadT = null; this.dropSpent(); this.restLauncher(gun); }
     }
     // targeting
     if ((this.scanT -= dt) > 0 || !this.loaded || this.missile) return;
     this.scanT = 0.8;
-    const from = this.muzzle ? this.muzzle.getWorldPosition(tmpA) : tmpA.copy(gun.pos).setY(0.8);
+    const from = this.muzzle ? this.muzzle.getWorldPosition(tmpA) : tmpA.copy(gun.pos).setY(1.2);
     let best = null, bs = -1e9;
     for (const u of g.enemiesOf(sq.side)) {
       if (u.type !== 'vehicle' || u.destroyed || !g.seen(sq.side, u, from)) continue;
@@ -126,14 +226,23 @@ export class AtgmTeam {
       if (sc > bs) { bs = sc; best = u; }
     }
     if (!best) return;
-    // traverse the launcher onto the target, then launch
-    const yaw = Math.atan2(best.pos.x - from.x, best.pos.z - from.z);
-    if (this.launcher) { this.launcher.rotation.y = yaw; this.launcher.updateMatrixWorld(true); }
+    // traverse onto the target (gunner and launcher turn together; the loader shuffles round), then launch
+    const yaw = Math.atan2(best.pos.x - this.seatPos.x, best.pos.z - this.seatPos.z);
+    if (Math.abs(Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw))) > 0.03) { this.poseLauncher(yaw); gun.heading = yaw; this.postCrew(); }
     this.fire(best, gun);
+  }
+  // spent TLC left on the ground beside the launcher (they pile up)
+  dropSpent() {
+    if (!this.tube || !this.launcher) return;
+    const sp = this.tube.clone(true); sp.getObjectByName('muzzle')?.removeFromParent(); sp.visible = true;
+    const e = this.lroot.getObjectByName('tube_spent'), n = this.spent.length;
+    if (e) { sp.position.copy(e.position); sp.quaternion.copy(e.quaternion); } else sp.position.set(-0.8, 0.09, -0.72);
+    sp.position.add(new THREE.Vector3(-0.2 * n, 0, 0.12 * (n % 2)));
+    this.lroot.add(sp); this.spent.push(sp);
   }
   fire(t, gun) {
     const g = this.g, from = (this.muzzle ? this.muzzle.getWorldPosition(new THREE.Vector3()) : gun.pos.clone().setY(0.8));
-    this.loaded = false; this.ammo--; this.fireT = 1.5; this.sq.firedT = 0;
+    this.loaded = false; this.fireT = 1.5; this.sq.firedT = 0;
     const dir = tmpB.set(t.pos.x - from.x, 0, t.pos.z - from.z).normalize();
     g.fx.muzzle(from, dir, 1.8); g.fx.light(from, 0xffc27a, 20, 12, 0.08);
     for (let i = 0; i < 10; i++) g.fx.smoke.spawn({ x: from.x - dir.x * (1 + i * 0.6), y: from.y, z: from.z - dir.z * (1 + i * 0.6), vx: -dir.x * 6 + (Math.random() - .5) * 2, vy: 0.6, vz: -dir.z * 6 + (Math.random() - .5) * 2, life: 3, size0: 0.7, size1: 3.5, r: 0.78, g: 0.76, b: 0.72, a0: 0.5, a1: 0, drag: 1.8, wind: g.fx.wind });
@@ -177,7 +286,7 @@ export class AtgmTeam {
     g.scene.remove(m.mesh); m.snd?.stop();
     if (target) { g.combat.hitVehicle(target, this.W, m.from, 'ce', m.gun, false, at.clone()); g.fx.explosion(at, 1.0); g.sfx('explosion_medium', at); g.fx.light(at, 0xffaa55, 30, 14, 0.08); }
     else { if (occ?.ref?.panels) g.combat.damageBuilding(occ.ref, g.combat.facadePoint(occ, m.pos, at), 40); g.combat.explode(at, 0.9, m.gun, [60, 160], 5); }
-    if (!this.loaded && this.ammo > 0) this.reloadT = 8 / Math.max(0.5, this.efficiency());
+    
   }
 }
 
@@ -223,7 +332,9 @@ export class FpvTeam {
     if (mesh) mesh.traverse(o => { if (o.isMesh) o.visible = !/_LOD1$/i.test(o.name); });
     if (!mesh) { mesh = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }); for (const r of [0.785, -0.785]) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.02, 0.03), m); a.rotation.y = r; mesh.add(a); } const w = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0x4a4f3c })); w.rotation.x = Math.PI / 2; w.position.set(0, -0.04, 0.08); mesh.add(w); for (let i = 0; i < 4; i++) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.004, 10), new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.4 })); p.name = 'prop_' + i; p.position.set(Math.cos(i * 1.571 + 0.785) * 0.15, 0.02, Math.sin(i * 1.571 + 0.785) * 0.15); mesh.add(p); } }
     mesh.scale.setScalar(1.3); mesh.visible = false; g.scene.add(mesh);
-    this.drone = { phase: 'launch', t: 1.1, target, aim: null, mesh, pos: h.pos.clone().setY(1.6), vel: new THREE.Vector3(), props: [0, 1, 2, 3].map(i => mesh.getObjectByName('prop_' + i)).filter(Boolean), pilot: this.pilot(), alt: (MAP.kind === 'rural' ? 18 : 32) + Math.random() * 10, age: 0 };
+    // the assistant holds it up in both hands, then tosses it (clip event `release`)
+    if (h.root) { h.root.add(mesh); mesh.position.set(0, 1.2, 0.35); mesh.rotation.set(0, 0, 0); mesh.scale.setScalar(1); mesh.visible = true; }
+    this.drone = { phase: 'launch', t: evTime(g, 'fpv_launch', 'release', 1.1), lt: 0, helper: h, target, aim: null, mesh, pos: h.pos.clone().setY(1.6), vel: new THREE.Vector3(), props: [0, 1, 2, 3].map(i => mesh.getObjectByName('prop_' + i)).filter(Boolean), pilot: this.pilot(), alt: (MAP.kind === 'rural' ? 18 : 32) + Math.random() * 10, age: 0 };
     if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: FPV drone launched at ${target.name || 'infantry'}`);
   }
   // pick the impact point on the target: vehicles — engine deck / turret roof from above; infantry — a man
@@ -240,7 +351,11 @@ export class FpvTeam {
   flyDrone(dt) {
     const d = this.drone, g = this.g, t = d.target;
     d.age += dt;
-    if (d.phase === 'launch') { d.t -= dt; if (d.t <= 0) { d.phase = 'climb'; d.mesh.visible = true; d.snd = g.audio.ok ? g.audio.loop('drone_buzz', d.pos, 0.8) : null; } return; }
+    if (d.phase === 'launch') { // held up in both hands: follow the clip's recorded drone path in the assistant's frame
+      d.lt += dt; const h = d.helper, man = g.assets.manifest.soldiers || {}, rc = (man.soldier_anims?.clips || {}).fpv_launch, pr = rc?.props?.find(p => p.node === 'fpv_drone'), tr = pr?.track;
+      if (tr && h?.root && d.mesh.parent === h.root) { const tt = h.curName === 'fpv_launch' && h.cur ? h.cur.time : d.lt, k = tr.p.length / 3, i = Math.max(0, Math.min(k - 1, Math.round(tt * tr.fps) - tr.f0)); d.mesh.position.set(tr.p[i * 3], tr.p[i * 3 + 1], tr.p[i * 3 + 2]); d.mesh.quaternion.set(tr.q[i * 4], tr.q[i * 4 + 1], tr.q[i * 4 + 2], tr.q[i * 4 + 3]); }
+      if (!h?.alive) d.t = 0;
+      d.t -= dt; if (d.t <= 0) { d.phase = 'climb'; if (d.mesh.parent !== g.scene) { g.scene.attach(d.mesh); d.mesh.getWorldPosition(d.pos); d.mesh.scale.setScalar(1.3); } d.vel.set(Math.sin(this.helper().heading) * 3, 6, Math.cos(this.helper().heading) * 3); d.mesh.visible = true; d.snd = g.audio.ok ? g.audio.loop('drone_buzz', d.pos, 0.8) : null; } return; }
     for (const p of d.props) p.rotation.y += dt * 90;
     // pilot down or team gone: link lost, the drone drops
     if (!d.pilot.effective && d.phase !== 'fall') { d.phase = 'fall'; }
@@ -279,7 +394,7 @@ export class FpvTeam {
   moveDrone(d, dt) {
     const g = this.g;
     d.pos.addScaledVector(d.vel, dt); d.mesh.position.copy(d.pos);
-    const v = d.vel.lengthSq() > 0.1 ? d.vel : null; if (v) { d.mesh.lookAt(d.pos.clone().add(v)); d.mesh.rotateX(-0.35); }
+    const v = d.vel.lengthSq() > 0.1 ? d.vel : null; if (v) { d.mesh.lookAt(d.pos.clone().add(v)); d.mesh.rotateX(d.phase === 'dive' ? 0.15 : 0.3); }
     d.snd?.set(d.pos, 0.8);
     const aimD = d.aim ? d.pos.distanceTo(d.aim) : 99;
     if (d.phase === 'dive' && (aimD < 1.4 || d.aim && d.vel.y < 0 && d.pos.y <= d.aim.y + 0.05 && Math.hypot(d.pos.x - d.aim.x, d.pos.z - d.aim.z) < 2.5)) return this.impact(d, d.aim.clone());
@@ -307,7 +422,7 @@ export class FpvTeam {
     // the targeted soldier sees it coming in the last seconds
     if (d.phase === 'dive' && d.man && d.man.effective && !d.reacted && d.pos.distanceTo(d.aim) < 22) {
       d.reacted = true; const m = d.man;
-      if (Math.random() < 0.55) { m.dodgeT = 1.2; m.stance = 'prone'; const side = Math.random() < 0.5 ? 1 : -1, h = m.heading + side * Math.PI / 2;
+      if (Math.random() < 0.55) { m.dodgeT = 1.2; m.stance = 'prone'; const side = Math.random() < 0.5 ? 1 : -1, h = m.heading + side * Math.PI / 2; m.dodgeClip = side > 0 ? 'dodge_dive_L' : 'dodge_dive_R';
         const nx = m.pos.x + Math.sin(h) * 2.2, nz = m.pos.z + Math.cos(h) * 2.2, i = g.nav.idx(nx, nz); if (i >= 0 && g.nav.passable(i, 0.3)) { m.path = null; (this.dodgers ||= []).push({ m, x: nx, z: nz, t: 0.45 }); }
         if (Math.random() < 0.22) d.dodged = true; }
       else { m.droneAlertT = 2; if (Math.random() < 0.08) { d.phase = 'fall'; d.vel.y = 3; } }

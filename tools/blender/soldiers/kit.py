@@ -178,11 +178,12 @@ def plate_carrier(env, fac):
 # =================================================================== helmets
 HELMETS = {
     # rim elevation (deg) as function of azimuth: (front, side, back); extra features
-    '6b47': dict(rim=(6, -8, -22), scale=(1.0, 1.0, 1.0), off=0.03, cover='fabric', band=True, nvg=True, rails=False),
-    '6b47_goggles': dict(rim=(6, -8, -22), scale=(1.0, 1.0, 1.0), off=0.03, cover='fabric', band=True, nvg=False, rails=False, goggles=True),
-    'fast': dict(rim=(9, 20, -12), scale=(1.0, 0.98, 1.0), off=0.026, cover='fabric', band=False, nvg=True, rails=True, counterweight=True),
-    'altyn': dict(rim=(14, -34, -30), scale=(1.05, 1.03, 1.05), off=0.034, cover='fabric', band=False, nvg=False, rails=False),
-    'mich': dict(rim=(7, -2, -18), scale=(1.0, 1.0, 1.0), off=0.027, cover='fabric', band=False, nvg=False, rails=False, goggles=True),
+    # scale/off: shell = skull ellipsoid * scale + off (real shells stand 3.5-4 cm off the skull with pads + shell thickness; wider at the sides)
+    '6b47': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=True, rails=False),
+    '6b47_goggles': dict(rim=(6, -8, -22), scale=(1.06, 1.02, 1.04), off=0.037, cover='fabric', band=True, nvg=False, rails=False, goggles=True),
+    'fast': dict(rim=(9, 20, -12), scale=(1.06, 1.02, 1.04), off=0.034, cover='fabric', band=False, nvg=True, rails=True, counterweight=True),
+    'altyn': dict(rim=(14, -34, -30), scale=(1.09, 1.05, 1.08), off=0.040, cover='fabric', band=False, nvg=False, rails=False),
+    'mich': dict(rim=(7, -2, -18), scale=(1.09, 1.02, 1.05), off=0.036, cover='fabric', band=False, nvg=False, rails=False, goggles=True),
 }
 
 

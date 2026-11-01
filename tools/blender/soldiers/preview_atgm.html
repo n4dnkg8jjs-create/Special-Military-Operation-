@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{window.__err=String(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{window.__err=String(e.reason&&e.reason.stack||e.reason);window.__done=true});</script>
+<script type="module">
+// ATGM / FPV composite preview: soldier(s) + clip + launcher placed at its `seat` empty + props re-parented exactly as the game
+// should do it from the clip's props / launcher_nodes records (props.json = the manifest clip records).
+//  glb= soldier glb  combo= combo node (combo_0)  anims= clips glb  clip= clip  ts= times (s, comma list; one view each)
+//  az= azimuths (deg, comma list; cycled)  el= elevation  r= distance  c= look-at x,y,z  fov=  cols=
+//  launcher= launcher glb (placed so that its `seat` empty == the soldier root)   props= props json
+//  clip2= second soldier's clip, at2= launcher empty name for its root (loader_seat) or x,z,headingDeg   combo2=
+//  kit=fpv (goggles on Head, controller on weapon_socket)   rifle=back|hand|none (ak74m)   drone= fpv_drone glb   lod=1
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w')||1400), H = +(q.get('h')||800);
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(W,H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(),0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(5,10,6); sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=sun.shadow.camera.bottom=-3; sun.shadow.camera.right=sun.shadow.camera.top=3; scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60,60), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+if (q.get('grid')) { const g=new THREE.GridHelper(4,40,0x333333,0x555555); g.position.y=0.002; scene.add(g); }
+const loader = new GLTFLoader();
+const lod = q.get('lod')==='1';
+const prepMeshes = (o)=>o.traverse(m=>{ if(m.isMesh){ m.castShadow=m.receiveShadow=true; m.frustumCulled=false; const n=(m.name+' '+(m.parent?m.parent.name:'')); const isL=/_LOD1/.test(n); m.visible = lod?isL||!/_mesh/.test(n):!isL; } });
+async function soldier(combo){
+  const g = await loader.loadAsync(q.get('glb')||'/assets/soldiers/soldier_ru.glb');
+  const m = SkeletonUtils.clone(g.scene); const keep = new Set([combo, combo+'_tape']);
+  m.traverse(o=>{ if(o.isMesh){ o.castShadow=o.receiveShadow=true; o.frustumCulled=false; let n=o, hit=null; while(n){ if(keep.has(n.name.replace(/_LOD1$/,''))) { hit=n; break; } n=n.parent; } o.visible = !!hit && (/_LOD1$/.test(hit.name)===lod); } });
+  scene.add(m); return m;
+}
+const clipsGlb = await loader.loadAsync(q.get('anims')||'/assets/soldiers/soldier_anims.glb');
+const props = q.get('props') ? await (await fetch(q.get('props'))).json() : {};
+const actors = [];
+async function actor(clipName, combo){
+  const m = await soldier(combo); const mixer = new THREE.AnimationMixer(m);
+  const clip = clipsGlb.animations.find(a=>a.name===clipName); if(!clip) throw new Error('no clip '+clipName);
+  mixer.clipAction(clip).play();
+  const a = {m, mixer, clip, rec: props[clipName]||{}, name: clipName, sock: n=>m.getObjectByName(n)};
+  actors.push(a); return a;
+}
+const A1 = await actor(q.get('clip'), q.get('combo')||'combo_0');
+// rifle
+const rifle = q.get('rifle')||'back';
+if (rifle!=='none') { const w=(await loader.loadAsync('/assets/soldiers/ak74m.glb')).scene; prepMeshes(w); A1.sock(rifle==='back'?'weapon_socket_back':'weapon_socket').add(w); }
+// launcher
+let L = null; const Ldef = {};
+if (q.get('launcher')) {
+  L = (await loader.loadAsync(q.get('launcher'))).scene; prepMeshes(L); scene.add(L);
+  L.traverse(o=>{ Ldef[o.name] = {parent:o.parent, p:o.position.clone(), q:o.quaternion.clone(), v:o.visible}; });
+  const seat = L.getObjectByName('seat'); L.position.copy(seat.position).negate(); L.updateMatrixWorld(true);
+  const f = L.getObjectByName('folded'); if (f) f.visible=false;
+}
+// second actor (loader) at a launcher empty
+let A2 = null;
+if (q.get('clip2')) { A2 = await actor(q.get('clip2'), q.get('combo2')||'combo_2'); const at=q.get('at2')||'loader_seat';
+  if (L && L.getObjectByName(at)) { const e=L.getObjectByName(at); L.updateMatrixWorld(true); e.getWorldPosition(A2.m.position); const wq=new THREE.Quaternion(); e.getWorldQuaternion(wq); A2.m.quaternion.copy(wq); }
+  else { const v=at.split(',').map(Number); A2.m.position.set(v[0],0,v[1]); A2.m.rotation.y=(v[2]||0)*Math.PI/180; }
+  const w=(await loader.loadAsync('/assets/soldiers/ak74m.glb')).scene; prepMeshes(w); A2.sock('weapon_socket_back').add(w); }
+// fpv kit
+if (q.get('kit')==='fpv') {
+  const gog=(await loader.loadAsync(q.get('gog')||'/assets/soldiers/fpv_goggles.glb')).scene; prepMeshes(gog); A1.sock('Head').add(gog);
+  const ctl=(await loader.loadAsync(q.get('ctl')||'/assets/soldiers/fpv_controller.glb')).scene; prepMeshes(ctl); A1.sock('weapon_socket').add(ctl);
+}
+const extraGlb = {};
+if (q.get('drone')) { extraGlb.fpv_drone = (await loader.loadAsync(q.get('drone'))).scene; prepMeshes(extraGlb.fpv_drone); scene.add(extraGlb.fpv_drone); extraGlb.fpv_drone.visible=false; }
+if (q.get('extra')) for (const s of q.get('extra').split(';')) { const [u, sk] = s.split('@'); const o=(await loader.loadAsync(u)).scene; prepMeshes(o); A1.sock(sk).add(o); }
+// ---- prop state at time t (what the game does at the events)
+const Lnode = {}; if (L) L.traverse(o=>{ Lnode[o.name] ||= o; });
+function node(a, p){ if (p.glb==='fpv_drone') return extraGlb.fpv_drone;
+  if (!Lnode[p.node] && /\(fresh\)$/.test(p.node)) { const b=p.node.replace('(fresh)',''); if (Lnode[b]) { const c=Lnode[b].clone(true); c.name=p.node; Ldef[b].parent.add(c); Lnode[p.node]=c; Ldef[p.node]={parent:Ldef[b].parent, p:Ldef[b].p.clone(), q:Ldef[b].q.clone(), v:true}; } }
+  return Lnode[p.node] || null; }
+function place(a, o, spec, p){
+  const at = spec ? spec.attach : 'launcher';
+  if (at==='hidden') { o.visible=false; return; }
+  o.visible = true;
+  if (at==='weapon_socket_back' || at==='weapon_socket' || at==='weapon_socket_L') { a.sock(at).add(o); o.position.set(0,0,0); o.quaternion.identity(); return; }
+  if (at==='world') { scene.add(o); o.position.fromArray(p._world.p); o.quaternion.fromArray(p._world.q); return; }
+  if (at==='launcher' && L) { const d=Ldef[o.name]; d.parent.add(o); if (spec.empty) { const e=Lnode[spec.empty]; o.position.copy(e.position); o.quaternion.copy(e.quaternion); } else { o.position.copy(d.p); o.quaternion.copy(d.q); } }
+}
+function setTime(t){
+  for (const a of actors) { a.mixer.setTime(Math.min(t, a.clip.duration - 1e-4)); a.m.updateMatrixWorld(true); }
+  if (L) for (const n of Object.keys(Ldef)) { const o=L.getObjectByName(n); }
+  for (const a of actors) {
+    const ev = a.rec.events||{}; const evt = k => k==null ? null : (typeof ev[k]==='number' ? ev[k] : (Array.isArray(ev[k])?ev[k][0]:null));
+    for (const ln of a.rec.launcher_nodes||[]) { const o=Lnode[ln.node]; if(!o) continue; const s=evt(ln.show), h=evt(ln.hide); o.visible = (s==null||t>=s) && (h==null||t<h); }
+    for (const p of a.rec.props||[]) {
+      const o = node(a,p); if(!o) continue;
+      const tf=evt(p.from_event), tt=evt(p.to_event);
+      if (p.after && p.after.attach==='world' && !p._world) { // world transform at to_event
+        a.mixer.setTime(tt); a.m.updateMatrixWorld(true); const s=a.sock(p.socket); const m=new THREE.Matrix4().compose(new THREE.Vector3().fromArray(p.t), new THREE.Quaternion().fromArray(p.q), new THREE.Vector3(1,1,1));
+        m.premultiply(s.matrixWorld); const P=new THREE.Vector3(), Q=new THREE.Quaternion(), S=new THREE.Vector3(); m.decompose(P,Q,S); p._world={p:P.toArray(), q:Q.toArray()};
+        a.mixer.setTime(Math.min(t, a.clip.duration - 1e-4)); a.m.updateMatrixWorld(true); }
+      if (t < tf) place(a, o, p.before, p);
+      else if (t < tt && p.track) { // recorded path (clip frame = soldier root frame), as the game does it
+        const tr=p.track, n=tr.p.length/3, i=Math.max(0, Math.min(n-1, Math.round(t*tr.fps)-tr.f0)); o.visible=true; a.m.add(o);
+        o.position.set(tr.p[i*3],tr.p[i*3+1],tr.p[i*3+2]); o.quaternion.set(tr.q[i*4],tr.q[i*4+1],tr.q[i*4+2],tr.q[i*4+3]); }
+      else if (t < tt) { o.visible=true; a.sock(p.socket).add(o); o.position.fromArray(p.t); o.quaternion.fromArray(p.q); }
+      else place(a, o, p.after, p);
+    }
+  }
+  scene.updateMatrixWorld(true);
+}
+// ---- views
+const ts = (q.get('ts')||'0').split(',').map(Number);
+let azs = (q.get('az')||'30').split(',').map(Number); const el = +(q.get('el')||12); const r = +(q.get('r')||3.0);
+const c = (q.get('c')||'0,0.7,0.4').split(',').map(Number);
+const nv = Math.max(ts.length, azs.length);
+const cols = Math.min(nv, +(q.get('cols')||4)), rows = Math.ceil(nv/cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov')||30), (W/cols)/(H/rows), 0.01, 200);
+renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
+const info = {views:[]};
+for (let i=0;i<nv;i++){
+  const t = ts[i%ts.length], az = azs[i%azs.length];
+  setTime(t);
+  const a=az*Math.PI/180, e=el*Math.PI/180;
+  cam.position.set(c[0]+r*Math.cos(e)*Math.sin(a), c[1]+r*Math.sin(e), c[2]+r*Math.cos(e)*Math.cos(a)); cam.lookAt(c[0],c[1],c[2]);
+  const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;
+  renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(scene,cam);
+  info.views.push(t+'s@'+az+(Lnode.folded?':'+Lnode.folded.parent.name:''));
+}
+info.clip = A1.clip.name+':'+A1.clip.duration.toFixed(2);
+window.__info = info; window.__done = true;
+</script></body></html>

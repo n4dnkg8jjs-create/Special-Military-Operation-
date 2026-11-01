@@ -1,5 +1,5 @@
 """Automated animation QA for assets/soldiers/soldier_anims.glb (reads the shipped GLB, i.e. exactly what the game plays).
-run: python3 tools/blender/soldiers/check_anims.py [--glb path] [--json out.json] [clip ...]
+run: python3 tools/blender/soldiers/check_anims.py [--glb path] [--manifest manifest.json] [--json out.json] [clip ...]
 
 Per clip it measures
   rot     max per-frame LOCAL joint rotation change (deg) -> pops / quaternion flips (> 25 deg flagged, except deliberate
@@ -77,6 +77,114 @@ HATCH = dict(feet=[('Left', 0.0, 0.12, 0.42), ('Right', 0.0, 0.11, 0.42), ('Left
                    ('Left', 1.37, 1.60, 1.45), ('Right', 1.37, 1.60, 1.45), ('Left', 2.19, 9, 0.0), ('Right', 2.19, 9, 0.0)],
              rim=(0.0, 0.54, 2.272), hole=(0.0, -1.80, 0.36),
              blocks=[(-3.45, -1.15, 1.45, 2.20), (-3.9, -0.42, 0.0, 1.45)])        # (z0, z1, y0, y1): turret (minus the hatch hole), hull + fender
+# ---- ATGM / FPV teams + drone reactions (clips_atgm.py)
+ATGM_AIM = ['atgm_aim', 'atgm_fire']                      # right eye at the sight (atgm_layout.EYE), palms on GRIP_R / GRIP_L, both knees down
+ATGM_PROPS = ['atgm_setup', 'atgm_setup_stugna', 'atgm_pack', 'atgm_pack_stugna', 'atgm_reload', 'atgm_reload_stugna', 'fpv_launch']
+KNEEL2 = {'atgm_aim': [(0, 9)], 'atgm_fire': [(0, 9)], 'atgm_setup': [(5.6, 9)], 'atgm_setup_stugna': [(5.5, 9)], 'atgm_pack': [(0, 0.25)],
+          'atgm_pack_stugna': [(0, 0.25)]}                 # both knees on the ground in these windows
+STAND += ['fpv_launch', 'drone_shoot']
+RIFLE_STD += ['drone_shoot']
+AIM_BUTT['drone_shoot'] = POCKET
+SNAP.update({'dodge_dive': (0.0, 1.2, 45.0), 'dodge_dive_R': (0.0, 1.2, 45.0), 'dodge_dive_L': (0.0, 1.2, 45.0), 'fpv_launch': (0.2, 0.5, 32.0),
+             'atgm_reload': (2.6, 3.0, 30.0), 'atgm_reload_stugna': (2.6, 3.0, 30.0)})   # dive / quick lift overhead / loader's quick turn with the spent TLC
+PROP_TOL = dict(palm=0.06, place=0.015, place_rot=2.0)   # other hand on the held prop (m); prop placement at from / to events (m, deg)
+MANIFEST = None
+
+
+def atgm_checks(name, r, pose, model, B):
+    """eye / grips / knees for the aim clips; held props (manifest records): other palm on its spot, placement at the events"""
+    import atgm_layout as LY
+    F = pose['F']; t = np.arange(F) / FPS
+    gp, gq = pose['gp'], pose['gq']
+    if name in ATGM_AIM:
+        eye = world_pt(pose, model, 'Head', model.T[model.idx['aim_eye_R']])
+        e = np.linalg.norm(eye - LY.EYE, axis=1)
+        pr = world_pt(pose, model, 'RightHand', B['palmR']); pl = world_pt(pose, model, 'LeftHand', B['palmL'])
+        g = max(np.linalg.norm(pr - LY.GRIP_R, axis=1).max(), np.linalg.norm(pl - LY.GRIP_L, axis=1).max())
+        sel = np.ones(F, bool)
+        if name == 'atgm_fire':                            # launch flinch: the eye may leave the eyepiece for ~0.4 s
+            sel = (t < 0.1) | (t > 0.6)
+        r['atgm_eye'] = round(float(e[sel].max()), 4); r['atgm_grips'] = round(float(g), 4)
+        if e[sel].max() > 0.015:
+            r['flags'].append(f'eye off the sight {e[sel].max():.3f} m')
+        if g > 0.015:
+            r['flags'].append(f'palms off the control grips {g:.3f} m')
+    if name in KNEEL2:
+        m = np.zeros(F, bool)
+        for a, b in KNEEL2[name]:
+            m |= (t >= a - 1e-6) & (t <= b + 1e-6)
+        kn = np.stack([gp[:, model.idx['LeftLeg'], 1], gp[:, model.idx['RightLeg'], 1]], 1)[m] - 0.075
+        r['knees2'] = (round(float(kn.min()), 4), round(float(kn.max()), 4))
+        if kn.min() < -0.02 or kn.max() > 0.03:
+            r['flags'].append(f'knees off the ground {kn.min():.3f}..{kn.max():.3f}')
+    rec = (MANIFEST or {}).get(name) or {}
+    if name in ATGM_PROPS and rec.get('props'):
+        ev = rec.get('events', {})
+        kind = rec.get('launcher')
+        # launcher frame in the clip frame
+        if kind:
+            if name.startswith('atgm_reload'):
+                hq = qaxis_y(-LY.LOADER_HEADING); Lq = hq; Lp = -qrot(hq, LY.loader_root(kind))
+            else:
+                Lq = np.array([0, 0, 0, 1.0]); Lp = LY.K(kind)['L0']
+        res = {}
+        for p in rec['props']:
+            sq = qmul(gq[:, model.idx[SOCK[p['socket']][0]]], np.broadcast_to(model.R[model.idx[p['socket']]], (F, 4)))
+            sp = world_pt(pose, model, SOCK[p['socket']][0], model.T[model.idx[p['socket']]])
+            oq = qmul(sq, np.broadcast_to(p['q'], (F, 4))); op = sp + qrot(sq, np.broadcast_to(p['t'], (F, 3)))
+            f0, f1 = int(round(ev[p['from_event']] * FPS)), min(int(round(ev[p['to_event']] * FPS)), F - 1)
+            if p.get('track'):            # the game drives the prop from its recorded path (clip frame) over the hold window
+                tr = p['track']; a, b = tr['f0'], min(tr['f1'], F - 1); n = b - a + 1
+                op = op.copy(); oq = oq.copy()
+                op[a:b + 1] = np.asarray(tr['p'], float).reshape(-1, 3)[:n]; oq[a:b + 1] = np.asarray(tr['q'], float).reshape(-1, 4)[:n]
+            out = {}
+            if p.get('other_hand'):
+                oh = p['other_hand']
+                palm = world_pt(pose, model, oh['side'] + 'Hand', B['palmL'] if oh['side'] == 'Left' else B['palmR'])
+                tgt = op + qrot(oq, np.broadcast_to(oh['palm_local'], (F, 3)))
+                d = np.linalg.norm(palm - tgt, axis=1)[f0:f1 + 1]
+                out['palm'] = round(float(d.max()), 4)
+                if d.max() > PROP_TOL['palm']:
+                    r['flags'].append(f'{p["node"]}: {oh["side"]} palm off its spot on the prop {d.max():.3f} m')
+            for which, f, spec in (('before', f0, p.get('before')), ('after', f1, p.get('after'))):
+                if not spec or spec.get('attach') in ('hidden', 'world', 'weapon_socket'):
+                    continue
+                if spec['attach'] == 'weapon_socket_back':
+                    bq = qmul(gq[f, model.idx['Spine1']], model.R[model.idx['weapon_socket_back']])
+                    bp = gp[f, model.idx['Spine1']] + qrot(gq[f, model.idx['Spine1']], model.T[model.idx['weapon_socket_back']])
+                else:
+                    base = p['node'].replace('(fresh)', '')
+                    emp = spec.get('empty')
+                    if emp == 'tube_setup':
+                        q_, p_ = np.array([0, 0, 0, 1.0]), LY.tube_setup(kind)
+                    elif emp == 'tube_ground':
+                        q_, p_ = np.array([0, 0, 0, 1.0]), LY.tube_ground(kind)
+                    elif emp == 'tube_spent':
+                        q_, p_ = qaxis_y(LY.SPENT_YAW), LY.tube_spent(kind)
+                    elif base.endswith('_tube'):
+                        q_, p_ = np.array([0, 0, 0, 1.0]), LY.tube_mount(kind)[0]
+                    else:
+                        continue
+                    bq = qmul(Lq, q_); bp = Lp + qrot(Lq, p_)
+                dp = float(np.linalg.norm(op[f] - bp)); da = float(qang(oq[f], bq))
+                out[which] = (round(dp, 4), round(da, 2))
+                if dp > PROP_TOL['place'] or da > PROP_TOL['place_rot']:
+                    r['flags'].append(f'{p["node"]} {which} ({p["from_event" if which == "before" else "to_event"]}) placement off {dp:.3f} m / {da:.1f} deg')
+            res[p['node']] = out
+        r['props'] = res
+    if name == 'fpv_pilot':                 # sitting on the ground: pelvis on the floor, both feet flat and still
+        hy = gp[:, model.idx['Hips'], 1]
+        r['hips_y'] = (round(float(hy.min()), 3), round(float(hy.max()), 3))
+        if hy.max() > 0.15 or hy.min() < 0.08:
+            r['flags'].append(f'sitting pelvis off the ground: hips {hy.min():.3f}..{hy.max():.3f} m')
+
+
+SOCK = {'weapon_socket': ('RightHand',), 'weapon_socket_L': ('LeftHand',)}
+
+
+def qaxis_y(deg):
+    a = np.radians(deg) / 2
+    return np.array([0, np.sin(a), 0, np.cos(a)])
 
 CHEST_TORSO_SHRINK = 0.9
 
@@ -360,6 +468,8 @@ def check_clip(name, model, pose, B, torso):
         r['sight'] = (round(float(off.max()), 4), round(float(ang.max()), 2))
         if off.max() > 0.015 or ang.max() > 3.0:
             r['flags'].append(f'pistol sight line off the right eye {off.max():.3f} m / {ang.max():.1f} deg from +Z')
+    if name in ATGM_AIM or name in ATGM_PROPS or name in KNEEL2 or name == 'fpv_pilot':
+        atgm_checks(name, r, pose, model, B)
     # ---- feet
     soles = {sd: sole_points(pose, model, B, sd) for sd in ('Left', 'Right')}
     if name in CRAWL or name == 'hatch_exit':
@@ -574,6 +684,12 @@ def main():
     if '--json' in args:
         i = args.index('--json'); js = args[i + 1]; del args[i:i + 2]
     setup_consts()
+    global MANIFEST
+    mp = f'{ROOT}/assets/soldiers/manifest.json'
+    if '--manifest' in args:
+        i = args.index('--manifest'); mp = args[i + 1]; del args[i:i + 2]
+    if os.path.exists(mp):
+        MANIFEST = json.load(open(mp)).get('soldier_anims', {}).get('clips', {})
     G = read_glb(glb)
     model = Model(G)
     B = body_geometry()
@@ -585,7 +701,8 @@ def main():
         res.append(r)
         status = 'OK  ' if not r['flags'] else 'FAIL'
         extra = ' '.join(f'{k}={r[k]}' for k in ('rot', 'handL', 'handLrot', 'butt', 'sight', 'clip', 'gun_clip', 'ground_pen', 'rest_gap', 'seam', 'crawl_slide', 'crawl_flat',
-                                                     'crawl_feet_up', 'rifle_low', 'hatch_feet', 'hatch_rim', 'hatch_pen', 'hatch_end_hips') if k in r)
+                                                     'crawl_feet_up', 'rifle_low', 'hatch_feet', 'hatch_rim', 'hatch_pen', 'hatch_end_hips', 'atgm_eye', 'atgm_grips',
+                                                     'knees2', 'props', 'hips_y') if k in r)
         print(f'{status} {n:24s} {r["dur"]:6.3f}s {"loop" if r["loop"] else "once"} {extra} feet={r["feet"]}')
         for f in r['flags']:
             print('       !', f)
@@ -595,7 +712,10 @@ def main():
              ('fire_peek_crouch_right', 0, 'peek_crouch_right', 0), ('launcher_raise', -1, 'aim_launcher', 0),
              ('launcher_raise_kneel', -1, 'aim_launcher_kneel', 0), ('fire_launcher', 0, 'aim_launcher', 0), ('fire_launcher_kneel', 0, 'aim_launcher_kneel', 0),
              ('reload_stand', 0, 'aim_stand', 0), ('reload_stand', -1, 'aim_stand', 0), ('reload_crouch', 0, 'aim_crouch', 0), ('reload_crouch', -1, 'aim_crouch', 0),
-             ('pistol_fire', 0, 'pistol_aim', 0), ('pistol_fire', -1, 'pistol_aim', 0)]
+             ('pistol_fire', 0, 'pistol_aim', 0), ('pistol_fire', -1, 'pistol_aim', 0),
+             ('atgm_fire', 0, 'atgm_aim', 0), ('atgm_fire', -1, 'atgm_aim', 0), ('atgm_setup', -1, 'atgm_aim', 0), ('atgm_setup_stugna', -1, 'atgm_aim', 0),
+             ('atgm_pack', 0, 'atgm_aim', 0), ('atgm_pack_stugna', 0, 'atgm_aim', 0), ('dodge_dive', -1, 'prone_idle', 0), ('dodge_dive_R', -1, 'prone_idle', 0),
+             ('dodge_dive_L', -1, 'prone_idle', 0)]
     print('\ntransitions (max local joint angle deg / root m):')
     J = [model.idx[b] for b in BONES if not b.endswith(('Thumb', 'FingerBase', 'Finger1'))]
     for a, fa, b, fb in PAIRS:

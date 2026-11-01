@@ -351,6 +351,10 @@ def build_all(rig, R, only=None):
                                    lambda *a, **k: loco_body(rig, *a, **k)))
     if want('hatch_exit'):
         out['hatch_exit'] = CW.hatch_exit(rig, lm, stance, plant_feet)
+    # ---------------- ATGM / FPV teams + drone reactions (clips_atgm.py)
+    import clips_atgm as CA
+    if any(want(n) for n in CA.CLIPS):
+        out.update(CA.atgm_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, prone))
     return out
 
 
