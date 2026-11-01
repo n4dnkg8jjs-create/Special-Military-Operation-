@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { vegetationLOS } from '../world/vegetation.js';
 import { deployCampaign } from './campaignBattle.js';
+import { hostBattle, clientBattle, clientFrame } from '../net/battle.js';
 import { Renderer } from '../engine/renderer.js';
 import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
@@ -27,7 +28,7 @@ export class Game {
     this.time = 0; this.roundLen = opts.minutes * 60; this.paused = false; this.over = false; this.timeScale = +(Q.get('speed') || 1);
     this.stats = { player: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 }, enemy: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 } };
     this.mortars = TUNING.mortarStrikes; this.strikes = [];
-    this.noRender = Q.has('norender');
+    this.noRender = Q.has('norender') || (() => { try { return localStorage.getItem('smo_norender') === '1'; } catch { return false; } })();
     setMap(opts.map || 'city'); this.map = MAP;
   }
   async init(progress) {
@@ -58,7 +59,11 @@ export class Game {
     this.objectiveMarkers();
     this.zoneMarkers();
     this.deploy();
-    this.commander = new Commander(this);
+    const net = this.opts.net;
+    this.commander = net ? { update() {}, begin() {}, adoptCrew() {}, plan: [], waveI: 0 } : new Commander(this);   // versus: the other side is a human
+    if (net) this.reinforced = true;   // no scripted reinforcements in versus
+    if (net?.role === 'host') hostBattle(this, net.peer);
+    if (net?.role === 'client') { const Z = DEPLOY_ZONES, a = Z.player; Z.player = Z.enemy; Z.enemy = a; for (const m of this.zoneMeshes || []) this.scene.remove(m); this.zoneMarkers(); }
     if (Q.has('autoplay')) this.autoDef = new AutoDefender(this);
     // atmosphere: burning buildings & distant smoke columns
     for (const [x, z, s] of MAP.smoulder) this.fx.emitter(new THREE.Vector3(x + (Math.random() - .5) * (MAP.kind === 'rural' ? 6 : 20), MAP.kind === 'rural' ? 6 : 14, z), 'smoulder', 2 * s);
@@ -67,6 +72,7 @@ export class Game {
     Math.random = rnd;
     if (this.audio.ok) { this.audio.play(MAP.ambience || 'ambience_city', null, { gain: 0.8 }); this.audio.play('ambience_wind', null, { gain: 0.6 }); this.audio.play('ambience_battle', null, { gain: 0.5 }); }
     this.cam.lookAt(MAP.cam[0], MAP.cam[1]); this.cam.tYaw = 0.1; this.cam.tDist = MAP.cam[2];
+    if (net?.role === 'client') { const Z = DEPLOY_ZONES.player; this.cam.lookAt((Z.x0 + Z.x1) / 2, (Z.z0 + Z.z1) / 2 - 60); this.cam.tYaw = Math.PI + 0.1; }
     progress(1, 'Ready');
   }
   // ---------------------------------------------------------------- forces
@@ -87,7 +93,8 @@ export class Game {
   deploy() {
     const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
     const pf = this.playerFaction, B = this.city.buildings;
-    if (this.campaign) return deployCampaign(this);   // the brigade's persistent task group
+    if (this.opts.net?.role === 'client') return clientBattle(this, this.opts.net.peer);   // versus joiner: puppet units from the host
+    if (this.campaign) { deployCampaign(this); if (this.opts.net?.role === 'host') deployCampaign(this, 'enemy', this.opts.net.enemyForce, this.opts.net.enemyMods); return; }   // the brigade's persistent task group (+ the versus opponent's)
     // --- player: motorized rifle company riding on armour at the southern edge
     const lineup = MAP.lineup;
     this.playerUnits = [];
@@ -126,8 +133,8 @@ export class Game {
     const Z = DEPLOY_ZONES[side];
     return [Math.min(Z.x1 - pad, Math.max(Z.x0 + pad, x)), Math.min(Z.z1 - pad, Math.max(Z.z0 + pad, z))];
   }
-  deployPlace(u, x, z, facing) {
-    [x, z] = this.inZone(x, z);
+  deployPlace(u, x, z, facing, side = 'player') {
+    [x, z] = this.inZone(x, z, side);
     if (u.type === 'vehicle') {
       const [fx, fz] = this.nav.nearestFree(x, z, u.kind === 'tank' ? 2.2 : 2.0, 30); u.place(fx, fz, facing ?? u.heading); u.path = null;
       if (u.passengers?.mounted) u.passengers.board(u, true);
@@ -333,6 +340,7 @@ export class Game {
   }
   // ---------------------------------------------------------------- loop
   update(dt) {
+    if (this.netClient) { if (!this.paused) clientFrame(this, dt); return; }
     if (this.phase === 'deploy') { for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(0.05, true); else for (const s of sq.soldiers) { s.animate(0.05, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
     if (this.paused || this.over) { this.servicePaths(4); return; }
     dt = Math.min(dt, 0.05) * this.timeScale;
@@ -383,6 +391,7 @@ export class Game {
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }
+    this.netTick?.(dt);
     this.hud?.update(dt);
     if (!this.noRender) this.renderer.render(dt, this.time);
   }

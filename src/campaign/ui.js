@@ -35,17 +35,19 @@ function chooseSide(root, CAMPAIGNS, done) {
   root.appendChild(box);
 }
 
-class CampaignUI {
-  constructor(root, C, onLaunch) { this.root = root; this.C = C; this.onLaunch = onLaunch; this.tab = 'dir'; this.sel = null; this.group = new Set(); this.msg = ''; }
+export class CampaignUI {
+  constructor(root, C, onLaunch, vs = null) { this.vs = vs; this.root = root; this.C = C; this.onLaunch = onLaunch; this.tab = 'dir'; this.sel = null; this.group = new Set(); this.msg = ''; }
   render(result = null) {
     const C = this.C, D = C.def;
     this.root.innerHTML = '';
     const top = h('div', { class: 'cp-top' }, `<div><div class="kicker">${esc(D.brigade?.short || D.brigade?.name || '')} · ${esc(D.region || '')}</div><h2>${esc(D.title)}</h2></div>
       <div class="cp-stats"><div><span>TURN</span><b>${C.turn}</b></div><div><span>LOGISTICS POINTS</span><b class="lp">${C.lp}</b></div><div><span>INCOME</span><b>+${C.lpIncome()}/turn</b></div><div><span>BATTLES</span><b>${C.stats.won}/${C.stats.battles}</b></div></div>`);
-    const endBtn = h('button', { class: 'big cp-end', onclick: () => { C.endTurn(); this.sel = null; this.group.clear(); this.render(); } }, 'END TURN');
+    const vs = this.vs;
+    const endBtn = h('button', { class: 'big cp-end', onclick: () => { if (vs) { vs.endTurn(); return; } C.endTurn(); this.sel = null; this.group.clear(); this.render(); } }, vs ? vs.readyLabel() : 'END TURN');
     top.appendChild(endBtn);
-    top.appendChild(h('button', { class: 'cp-menu', onclick: () => { if (confirm('Abandon this campaign? Progress will be lost.')) { Campaign.clear(); location.href = location.pathname; } } }, 'Abandon'));
-    top.appendChild(h('button', { class: 'cp-menu', onclick: () => { location.href = location.pathname; } }, 'Main menu'));
+    if (vs) top.appendChild(h('div', { class: 'cp-vs' }, vs.status()));
+    if (!vs) top.appendChild(h('button', { class: 'cp-menu', onclick: () => { if (confirm('Abandon this campaign? Progress will be lost.')) { Campaign.clear(); location.href = location.pathname; } } }, 'Abandon'));
+    top.appendChild(h('button', { class: 'cp-menu', onclick: () => { if (vs && !confirm('Leave the versus campaign? The connection will be closed.')) return; location.href = location.pathname; } }, vs ? 'Leave' : 'Main menu'));
     this.root.appendChild(top);
     const body = h('div', { class: 'cp-body' });
     const mapBox = h('div', { class: 'cp-map' }); mapBox.appendChild(this.mapSvg()); body.appendChild(mapBox);
@@ -55,7 +57,7 @@ class CampaignUI {
     side.appendChild(tabs);
     const pane = h('div', { class: 'cp-pane' });
     if (this.sel) pane.appendChild(this.sectorPanel());
-    if (C.pendingAttacks.length) pane.appendChild(this.attacksPanel());
+    if (C.pendingAttacks.length && !this.vs) pane.appendChild(this.attacksPanel());
     pane.appendChild(({ dir: () => this.directivesPanel(), force: () => this.forcePanel(), hc: () => this.hcPanel(), tech: () => this.techPanel(), log: () => this.logPanel() })[this.tab]());
     side.appendChild(pane); body.appendChild(side); this.root.appendChild(body);
     if (this.msg) { this.root.appendChild(h('div', { class: 'cp-toast' }, esc(this.msg))); this.msg = ''; }
@@ -105,7 +107,14 @@ class CampaignUI {
     const p = h('div', { class: 'cp-card' }, `<div class="cp-card-h">${esc(s.name)} <small>${esc(s.type)} · ${own === 'player' ? 'held' : 'enemy-held'}</small><button class="cp-x">×</button></div>
       <div class="cp-kv">Importance <b>${s.vp}</b> · Supply <b>+${s.lp || 0} LP/turn</b> · Fortifications <b>${['none', 'light', 'dug in', 'fortified line'][C.fort[s.id] || 0]}</b>${own === 'enemy' ? ` · Enemy strength <b>${['—', 'company', 'reinforced company', 'battalion'][C.garrison[s.id] || 0]}</b>` : ''}</div>${s.notes ? `<p class="cp-note">${esc(s.notes)}</p>` : ''}`);
     $('.cp-x', p).onclick = () => { this.sel = null; this.render(); };
-    if (C.canAttack(s.id)) {
+    if (C.canAttack(s.id) && this.vs) {
+      const pl = this.vs.myPlan();
+      if (pl && pl.sector === s.id) p.appendChild(h('p', { class: 'cp-note' }, `Attack planned with ${pl.uids.length} units — it is fought when both commanders end the turn.`));
+      p.appendChild(this.groupPicker()); const row = h('div', { class: 'cp-row' });
+      row.appendChild(h('button', { class: 'big', onclick: () => { if (!this.group.size) return this.toast('Pick the units for the task group first'); this.vs.plan({ sector: s.id, uids: [...this.group] }); this.toast(`Attack on ${s.name} planned`); this.render(); } }, `PLAN ATTACK: ${esc(s.name.toUpperCase())}`));
+      if (pl) row.appendChild(h('button', { onclick: () => { this.vs.plan(null); this.render(); } }, 'Cancel plan'));
+      p.appendChild(row);
+    } else if (C.canAttack(s.id)) {
       if (C.battleFought) p.appendChild(h('p', { class: 'cp-note' }, 'The task group has already attacked this turn. End the turn to plan the next operation.'));
       else { p.appendChild(this.groupPicker()); const row = h('div', { class: 'cp-row' });
         row.appendChild(h('button', { class: 'big', onclick: () => this.launch(s.id, 'attack') }, `ATTACK ${esc(s.name.toUpperCase())}`));
@@ -157,7 +166,7 @@ class CampaignUI {
       const lvl = xpLevel(u.xp), cost = C.replaceCost(u);
       const row = h('div', { class: 'cp-card cp-u' }, `<div class="cp-card-h"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small class="vt v${lvl}">${XP_NAMES[lvl]}</small></div>
         <div class="cp-kv">${u.menMax ? `Men <b>${u.men}/${u.menMax}</b>${u.wounded ? ` (+${u.wounded} wounded, back soon)` : ''} · ` : ''}${u.veh ? `Vehicle <b>${u.veh.lost ? 'destroyed' : Math.round(u.veh.hp * 100) + '%'}</b> · ` : ''}Battles ${u.battles} · Kills ${u.kills} · <b>${u.status === 'ready' ? 'ready' : u.status === 'refit' ? 'refitting' : 'arriving'}</b></div>`);
-      if (cost) row.appendChild(h('button', { onclick: () => { const e = C.replenish(u.uid); this.toast(e || `${u.name}: replacements ordered`); this.render(); } }, `Order replacements / repairs — ${cost} LP`));
+      if (cost) row.appendChild(h('button', { onclick: () => { const e = C.replenish(u.uid); if (!e) this.vs?.action('replenish', u.uid); this.toast(e || `${u.name}: replacements ordered`); this.render(); } }, `Order replacements / repairs — ${cost} LP`));
       p.appendChild(row);
     }
     return p;
@@ -168,7 +177,7 @@ class CampaignUI {
     for (const c of C.def.catalog) {
       const ok = C.catalogAvailable(c), locked = !C.available.includes(c.key) || !(c.req || []).every(r => C.unlocked.includes(r));
       const row = h('div', { class: 'cp-card cp-cat' + (locked ? ' locked' : '') }, `<div class="cp-card-h"><span class="ic">${KIND_ICON[c.kind] || '·'}</span> ${esc(c.label)} <small>${c.lp} LP · ${c.eta ?? 1} turn${(c.eta ?? 1) === 1 ? '' : 's'}</small></div><div class="cp-kv">${esc(c.desc || '')}${locked ? ` <i>(needs ${(c.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ') || 'authorisation'})</i>` : ''}</div>`);
-      if (!locked) row.appendChild(h('button', { disabled: ok && C.lp >= c.lp ? null : '', onclick: () => { const e = C.orderUnit(c.key); this.toast(e || `${c.label} ordered`); this.render(); } }, ok ? 'Order' : 'Limit reached'));
+      if (!locked) row.appendChild(h('button', { disabled: ok && C.lp >= c.lp ? null : '', onclick: () => { const e = C.orderUnit(c.key); if (!e) this.vs?.action('orderUnit', c.key); this.toast(e || `${c.label} ordered`); this.render(); } }, ok ? 'Order' : 'Limit reached'));
       p.appendChild(row);
     }
     return p;
@@ -180,7 +189,7 @@ class CampaignUI {
       for (const t of C.def.tech.filter(x => x.branch === b)) {
         const st = C.unlocked.includes(t.id) ? 'have' : C.orders.some(o => o.key === t.id) ? 'ordered' : C.techAvailable(t.id) ? 'avail' : 'locked';
         const n = h('div', { class: `cp-tn ${st}` }, `<div class="cp-tn-h">${esc(t.name)} <small>${st === 'have' ? '✓' : st === 'ordered' ? 'on the way' : `${t.lp} LP`}</small></div><div class="cp-tn-d">${esc(t.desc || '')}</div>${(t.req || []).length ? `<div class="cp-tn-r">needs ${(t.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ')}</div>` : ''}`);
-        if (st === 'avail') n.appendChild(h('button', { disabled: C.lp >= t.lp ? null : '', onclick: () => { const e = C.orderTech(t.id); this.toast(e || `${t.name} requested`); this.render(); } }, `Request (${t.lp} LP)`));
+        if (st === 'avail') n.appendChild(h('button', { disabled: C.lp >= t.lp ? null : '', onclick: () => { const e = C.orderTech(t.id); if (!e) this.vs?.action('orderTech', t.id); this.toast(e || `${t.name} requested`); this.render(); } }, `Request (${t.lp} LP)`));
         col.appendChild(n);
       }
       p.appendChild(col);
@@ -205,7 +214,7 @@ class CampaignUI {
   toast(m) { this.msg = m; }
 }
 
-function injectCss() {
+export function injectCss() {
   if (document.getElementById('cp-css')) return;
   const css = `
 #campaign{position:fixed;inset:0;background:#191b16;color:#e6e2d3;z-index:50;display:flex;flex-direction:column;font-family:inherit;overflow:hidden}
@@ -216,7 +225,7 @@ function injectCss() {
 .cp-back,.cp-menu{background:none;border:1px solid #4a4d42;color:#bdb8a5;padding:6px 12px;cursor:pointer;border-radius:3px;margin-left:8px}
 .cp-top{display:flex;align-items:center;gap:18px;padding:10px 18px;border-bottom:1px solid #33362d;background:#1f211b}.cp-top h2{margin:2px 0 0;font-size:20px}
 .cp-stats{display:flex;gap:18px;margin-left:auto}.cp-stats div{display:flex;flex-direction:column;align-items:flex-end}.cp-stats span{font-size:10px;letter-spacing:1.5px;color:#8a877a}.cp-stats b{font-size:18px}.cp-stats .lp{color:#e8c870}
-.cp-end{margin-left:10px}
+.cp-end{margin-left:10px}.cp-vs{font-size:12px;color:#c9c4b0;max-width:220px}
 .cp-body{flex:1;display:flex;min-height:0}.cp-map{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:10px}.cp-svg{width:100%;height:100%;max-height:calc(100vh - 90px)}
 .cp-sec{cursor:pointer}.cp-sec:hover circle,.cp-sec:hover rect{filter:brightness(1.25)}
 .cp-side-panel{width:440px;border-left:1px solid #33362d;display:flex;flex-direction:column;background:#1d1f1a}

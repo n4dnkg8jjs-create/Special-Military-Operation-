@@ -483,6 +483,14 @@ export class Vehicle {
     for (const a of this.lidAnim) { a.t = Math.min(1, a.t + dt / 0.45); const e = 1 - (1 - a.t) ** 3; a.o.rotation[a.ax] = a.from + (a.to - a.from) * e; }
     this.lidAnim = this.lidAnim.filter(a => a.t < 1);
   }
+  // swap the model to its wreck (also used by the versus joiner's puppet vehicles)
+  showWreck() {
+    if (this.wreckParts?.length) {
+      if (this.hull && this.hull !== this.model) this.hull.visible = false;
+      else this.model.traverse(o => { if (o.isMesh && !/_wreck/i.test(o.name) && !/_wreck/i.test(o.parent?.name || '')) o.visible = false; });
+      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }); }
+    } else charObject(this.model, this.ember ||= { value: 1 });
+  }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
     if (!catastrophic && !this.abandoned) this.bailCrew(0.6); else this.abandoned = true;
@@ -490,12 +498,7 @@ export class Vehicle {
     const g = this.game;
     if (this.passengers) g.bailOut(this, catastrophic ? 0.8 : 0.4);
     g.onVehicleLost(this);
-    // swap to wreck
-    if (this.wreckParts?.length) {
-      if (this.hull && this.hull !== this.model) this.hull.visible = false;
-      else this.model.traverse(o => { if (o.isMesh && !/_wreck/i.test(o.name) && !/_wreck/i.test(o.parent?.name || '')) o.visible = false; });
-      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }); }
-    } else charObject(this.model, this.ember ||= { value: 1 });
+    this.showWreck();
     if (catastrophic && this.turret) {
       // ammunition cook-off: turret thrown into the air
       const tw = (this.wreckParts || []).find(w => /turret/i.test(w.name)) || this.turret;

@@ -34,7 +34,7 @@ export class Campaign {
   static load(defs) {
     try { const raw = localStorage.getItem(KEY); if (!raw) return null; const s = JSON.parse(raw); const def = defs[s.side]; return def ? new Campaign(def, s) : null; } catch { return null; }
   }
-  save() { const { def, ...rest } = this; try { localStorage.setItem(KEY, JSON.stringify(rest)); } catch (e) { console.warn('campaign save failed', e); } }
+  save() { if (this.def.versus) return; const { def, ...rest } = this; try { localStorage.setItem(KEY, JSON.stringify(rest)); } catch (e) { console.warn('campaign save failed', e); } }
   static clear() { try { localStorage.removeItem(KEY); localStorage.removeItem(KEY + '.battle'); localStorage.removeItem(KEY + '.result'); } catch {} }
   static pendingBattle() { try { return JSON.parse(localStorage.getItem(KEY + '.battle') || 'null'); } catch { return null; } }
   static storeResult(r) { try { localStorage.setItem(KEY + '.result', JSON.stringify(r)); localStorage.removeItem(KEY + '.battle'); } catch {} }

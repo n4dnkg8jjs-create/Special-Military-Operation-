@@ -7,6 +7,7 @@ const LIMITS = { rifle_near: 14, rifle_far: 10, mg_near: 6, mg_far: 6, bullet_cr
 export class Audio {
   constructor() { this.ok = false; this.buffers = {}; this.manifest = {}; this.voices = new Map(); this.loops = new Set(); this.listener = { x: 0, y: 0, z: 0 }; }
   async init(progress) {
+    try { if (localStorage.getItem('smo_noaudio') === '1') return; } catch { }   // headless multi-instance tests
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const ctx = this.ctx = new AC({ latencyHint: 'interactive' });
     if (ctx.state === 'suspended') await ctx.resume().catch(() => {});

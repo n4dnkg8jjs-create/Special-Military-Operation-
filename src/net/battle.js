@@ -1,0 +1,165 @@
+// Versus battles over the peer link. The HOST runs the whole simulation: its own force is the 'player' side, the
+// joiner's force is the 'enemy' side (no AI), the joiner's orders arrive as commands. The JOINER runs a puppet copy:
+// the same seeded world, the same units (from a spawn manifest), positions/animation state from ~10 Hz snapshots,
+// and every visual/audio effect (muzzle flashes, tracers, explosions, building damage, craters, sounds) replayed from
+// an event stream. On the joiner the sides are swapped locally so its own units are 'player' (HUD, input, fog).
+import * as THREE from 'three';
+import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
+
+const STANCE = ['stand', 'crouch', 'prone'], STATE = ['ok', 'light', 'critical', 'stable', 'dead', 'evac'];
+const FX_EVENTS = ['light', 'muzzle', 'tracer', 'impact', 'blood', 'explosion', 'collapseDust', 'muzzleBlastTank', 'dustCloud', 'smokeScreen', 'emitter'];
+const r2 = v => Math.round(v * 100) / 100;
+const enc = a => (a && a.isVector3 ? { v: [r2(a.x), r2(a.y), r2(a.z)] } : Array.isArray(a) ? a.map(enc) : (a && typeof a === 'object') ? (Object.values(a).some(x => x && typeof x === 'object' && !x.isVector3 && !Array.isArray(x)) ? null : Object.fromEntries(Object.entries(a).map(([k, x]) => [k, enc(x)]))) : a);
+const dec = a => (a && a.v && a.v.length === 3 ? new THREE.Vector3(...a.v) : Array.isArray(a) ? a.map(dec) : (a && typeof a === 'object') ? Object.fromEntries(Object.entries(a).map(([k, x]) => [k, dec(x)])) : a);
+const flip = s => (s === 'player' ? 'enemy' : 'player');
+
+// ------------------------------------------------------------------------------------------------------- host
+export function hostBattle(game, peer) {
+  const ev = [];
+  game.netEvents = ev;
+  // record effects as they happen
+  for (const m of FX_EVENTS) { const f = game.fx[m].bind(game.fx); game.fx[m] = (...a) => { ev.push(['fx', m, enc(a)]); return f(...a); }; }
+  const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };
+  const C = game.city;
+  C.buildings.forEach((b, bi) => {
+    const ss = b.setState.bind(b), sg = b.setGone.bind(b);
+    b.setState = (p, s) => { ev.push(['bs', bi, b.panels.indexOf(p), s]); return ss(p, s); };
+    b.setGone = p => { ev.push(['bg', bi, b.panels.indexOf(p)]); return sg(p); };
+  });
+  const sr = C.spawnRubble.bind(C); C.spawnRubble = (x, z, s) => { ev.push(['rb', r2(x), r2(z), s]); return sr(x, z, s); };
+  const ac = C.addCrater.bind(C); C.addCrater = (x, z, s, cell) => { ev.push(['cr', r2(x), r2(z), s]); return ac(x, z, s, cell); };
+  if (C.damageFortAt) { const df = C.damageFortAt.bind(C); C.damageFortAt = (x, z, p, r) => { const n = df(x, z, p, r); if (n) ev.push(['ft', r2(x), r2(z), p, r]); return n; }; }
+  // the joiner's orders, applied to its ('enemy') units
+  const byId = id => game.squads.find(s => s.id === id) || game.vehicles.find(v => v.id === id);
+  peer.on('cmd', c => applyCommand(game, byId, c));
+  const sb = game.startBattle.bind(game);
+  game.startBattle = () => { if (game.phase !== 'deploy') return; game.hostReady = true; if (game.guestReady) sb(); else game.hud?.alert('Ready — waiting for the opponent to finish deploying', 'good'); };
+  peer.on('ready', () => { game.guestReady = true; game.hud?.alert('Opponent is ready', 'good'); if (game.hostReady) sb(); });
+  // snapshots + events
+  let acc = 0;
+  game.netTick = dt => {
+    acc += dt; if (acc < 0.1) return; acc = 0;
+    if (ev.length) { peer.send('ev', ev.splice(0, ev.length)); }
+    const sn = snapshot(game); window.__lastSnapSize = JSON.stringify(sn).length; peer.sendSnap('snap', sn);
+  };
+}
+
+export function manifest(game) {
+  return {
+    squads: game.squads.map(sq => ({ id: sq.id, side: sq.side, kind: sq.kind, name: sq.name, n: sq.soldiers.length, roles: sq.soldiers.map(s => s.role.role), carrier: sq.carrier?.id ?? null, mounted: sq.mounted })),
+    vehicles: game.vehicles.map(v => ({ id: v.id, side: v.side, kind: v.kind, name: v.name, hp: v.hp, x: v.pos.x, z: v.pos.z, h: v.heading })),
+    mortars: game.mortars,
+  };
+}
+
+function snapshot(g) {
+  const seen = u => g.seen?.('enemy', u) ? 1 : 0;
+  const sq = g.squads.map(q => [q.id, Math.round(q.morale), q.mounted ? 1 : 0, q.side === 'player' ? seen(q) : 1, q.soldiers.map(s => {
+    const f = (s.firingT > 0 ? 1 : 0) | (s.target ? 2 : 0) | (s.groundAim ? 4 : 0) | (s.ducking ? 8 : 0) | (s.reloadT > 0 ? 16 : 0) | (s.throwT > 0 ? 32 : 0) | (s.launcherT > 0 ? 64 : 0) | (s.legWound ? 128 : 0) | (s.peek ? 256 : 0) | (s.hitT > 0 ? 512 : 0);
+    const tp = s.target?.pos;
+    return [r2(s.pos.x), r2(s.pos.y), r2(s.pos.z), r2(s.heading), r2(s.vel.x), r2(s.vel.z), STANCE.indexOf(s.stance), STATE.indexOf(s.state), f,
+      s.inside === 'ride' ? 1 : s.inside === 'btr' ? 2 : s.inside && typeof s.inside === 'object' ? 3 : 0, s.weaponKey, tp ? [r2(tp.x), r2(tp.z)] : 0,
+      s.state === 'dead' ? (s.deathClip || 0) : (s.hatchT > 0 ? ['h', s.hatchClip, r2(s.hatchT)] : s.jumpT > 0 ? ['j', s.jumpClip, r2(s.jumpT)] : 0), s.seatType || 0];
+  })]);
+  const v = g.vehicles.map(x => [x.id, r2(x.pos.x), r2(x.pos.y || 0), r2(x.pos.z), r2(x.heading), r2(x.pitch || 0), r2(x.roll || 0), r2(x.turretYaw), r2(x.gunPitch), Math.round(x.hp), (x.destroyed ? 1 : 0) | (x.burning > 0 ? 2 : 0) | (x.abandoned ? 4 : 0), r2(x.doorK || 0), r2(x.speed), x.side === 'player' ? seen(x) : 1, x.lidAnim ? 1 : 0, x.spg ? [x.spg.k, x.spg.state] : 0]);
+  const pr = g.combat.projectiles.filter(p => p.mesh).map(p => [r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.target.x), r2(p.target.y), r2(p.target.z)]);
+  const dr = []; for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh && d.mesh.parent === g.scene) dr.push([r2(d.pos.x), r2(d.pos.y), r2(d.pos.z), ...d.mesh.quaternion.toArray().map(r2)]); }
+  return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, over: g.over ? g.result : null };
+}
+
+function applyCommand(game, byId, c) {
+  const u = byId(c.id); if (!u || u.side !== 'enemy') return;
+  const a = dec(c.a || []);
+  const ref = x => (x && x.unit != null ? byId(x.unit) : x && x.bld != null ? game.city.buildings[x.bld] : x && x.trench != null ? game.city.trenchSystems?.[x.trench] : x);
+  switch (c.m) {
+    case 'set': if (['holdFire', 'run'].includes(c.k)) u[c.k] = c.v; else if (c.k === 'fireAt') u.fireAt = c.v ? { p: new THREE.Vector3(...c.v.p), until: game.time + 30 } : null; break;
+    case 'place': game.deployPlace(u, a[0], a[1], a[2], 'enemy'); break;
+    default: if (typeof u[c.m] === 'function') u[c.m](...a.map(ref));
+  }
+}
+
+// ------------------------------------------------------------------------------------------------------ joiner
+const CMDS = ['orderMove', 'orderAttack', 'orderGarrison', 'orderMount', 'dismount', 'halt', 'orderTrench', 'orderClearTrench'];
+export function clientBattle(game, peer) {
+  const local = id => game.netMap.get(id);
+  // build the units from the host's manifest (sides swapped: the joiner's own units are 'player' here)
+  game.netMap = new Map();
+  const M = game.opts.net.manifest;
+  for (const vm of M.vehicles) { const v = game.makeVehicle(flip(vm.side), vm.kind, vm.x, vm.z, vm.h); v.name = vm.name; v.hp = vm.hp; v.netId = vm.id; game.netMap.set(vm.id, v); }
+  for (const sm of M.squads) {
+    const sq = game.makeSquad(flip(sm.side), 0, 0, 0, sm.name, sm.kind, rolesFor(sm)); sq.name = sm.name; sq.netId = sm.id; game.netMap.set(sm.id, sq);
+    const car = sm.carrier != null ? game.netMap.get(sm.carrier) : null; if (car && sm.mounted) sq.board(car, true);
+  }
+  game.playerUnits = [...game.squads, ...game.vehicles].filter(u => u.side === 'player' && !(u.type === 'squad' && u.crew));
+  // outgoing orders: unit methods / property sets turn into commands to the host
+  const encArg = x => (x && (x.type === 'squad' || x.type === 'vehicle') ? { unit: x.netId } : x && x.panels ? { bld: game.city.buildings.indexOf(x) } : x && x.slots && x.lines ? { trench: game.city.trenchSystems.indexOf(x) } : enc(x));
+  for (const u of [...game.squads, ...game.vehicles]) {
+    if (u.side !== 'player') continue;
+    for (const m of CMDS) if (typeof u[m] === 'function') u[m] = (...a) => peer.send('cmd', { id: u.netId, m, a: a.map(encArg) });
+    for (const k of ['holdFire', 'run', 'fireAt']) { let val = u[k]; Object.defineProperty(u, k, { get: () => val, set: x => { val = x; peer.send('cmd', { id: u.netId, m: 'set', k, v: k === 'fireAt' ? (x ? { p: [x.p.x, x.p.y, x.p.z] } : null) : x }); }, configurable: true }); }
+  }
+  const dp = game.deployPlace.bind(game);
+  game.deployPlace = (u, x, z, f) => { dp(u, x, z, f); if (u.netId != null) peer.send('cmd', { id: u.netId, m: 'place', a: [x, z, f] }); };
+  game.startBattle = () => { if (game.sentReady) return; game.sentReady = true; peer.send('ready', 1); game.hud?.alert('Ready — waiting for the opponent', 'good'); };
+  game.playerMortar = () => { game.hud?.alert('Mortar support is not available in versus battles', 'bad'); return false; };
+  // incoming
+  peer.on('snap', s => { if (!game.lastSnap || s.t >= game.lastSnap.t) game.lastSnap = s; });
+  peer.on('ev', list => replay(game, list));
+  game.netClient = true;
+}
+function rolesFor(sm) { const pool = { assault: ASSAULT_ROLES, crew: CREW_ROLES, atgm: ATGM_ROLES, fpv: FPV_ROLES }[sm.kind] || SQUAD_ROLES; return sm.roles.map(n => pool.find(r => r.role === n) || CREW_ROLES.find(r => r.role === n) || pool[0]); }
+
+function replay(g, list) {
+  for (const e of list) {
+    try {
+      if (e[0] === 'fx') g.fx[e[1]]?.(...dec(e[2]));
+      else if (e[0] === 'sfx') g.sfx(e[1], dec(e[2]), dec(e[3]) || undefined);
+      else if (e[0] === 'bs') { const b = g.city.buildings[e[1]], p = b?.panels[e[2]]; if (p) b.setState(p, e[3]); }
+      else if (e[0] === 'bg') { const b = g.city.buildings[e[1]], p = b?.panels[e[2]]; if (p) b.setGone(p); }
+      else if (e[0] === 'rb') g.city.spawnRubble(e[1], e[2], e[3]);
+      else if (e[0] === 'cr') g.city.addCrater(e[1], e[2], e[3]);
+      else if (e[0] === 'ft') g.city.damageFortAt?.(e[1], e[2], e[3], e[4]);
+    } catch (err) { console.warn('replay', e[0], err); }
+  }
+}
+
+// per frame on the joiner: apply the latest snapshot smoothly, animate, run local cosmetics
+export function clientFrame(g, dt) {
+  const s = g.lastSnap; if (!s) return;
+  g.time = s.t; globalThis.__gameTime = g.time; g.stats = s.st;
+  if (s.ph !== 'deploy' && g.phase === 'deploy') { g.phase = s.ph; for (const m of g.zoneMeshes || []) m.visible = false; g.hud?.battleStarted?.(); }
+  g.phase = s.ph;
+  s.o.forEach(([own, ctl, con], i) => { const o = g.objectives[i]; if (!o) return; o.owner = own === 'neutral' ? own : flip(own); o.control = -ctl; o.contested = !!con; o.ring?.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8); });
+  const k = Math.min(1, dt * 10);
+  for (const [id, morale, mounted, vis, men] of s.sq) {
+    const sq = g.netMap.get(id); if (!sq) continue; sq.morale = morale; sq.mounted = !!mounted; sq.spotted = sq.side === 'player' || !!vis;
+    men.forEach((m, i) => {
+      const so = sq.soldiers[i]; if (!so) return;
+      const [x, y, z, h, vx, vz, st, stt, f, ins, wk, tp, clip, seat] = m;
+      if (so.pos.distanceTo(so._np ||= new THREE.Vector3()) > 6 || so.pos.lengthSq() === 0) so.pos.set(x, y, z);
+      so._np.set(x, y, z); so.pos.lerp(so._np, k); so.heading += Math.atan2(Math.sin(h - so.heading), Math.cos(h - so.heading)) * k; so.vel.set(vx, 0, vz);
+      so.stance = STANCE[st] || 'stand'; so.firingT = f & 1 ? 0.2 : 0; so.groundAim = !!(f & 4); so.ducking = !!(f & 8); so.reloadT = f & 16 ? 0.5 : 0; so.throwT = f & 32 ? 0.5 : 0; so.legWound = !!(f & 128); so.hitT = f & 512 ? 0.3 : 0;
+      so.target = f & 2 && tp ? { pos: new THREE.Vector3(tp[0], 0, tp[1]), type: 'squad' } : null;
+      so.inside = ins === 1 ? 'ride' : ins === 2 ? 'btr' : ins === 3 ? (so.inside && typeof so.inside === 'object' ? so.inside : { panel: { floor: 0 } }) : null; so.seatType = seat || so.seatType;
+      if (wk && so.weaponKey !== wk && so.setWeapon) try { so.setWeapon(wk); } catch {}
+      if (Array.isArray(clip)) { if (clip[0] === 'h') { so.hatchClip = clip[1]; so.hatchT = clip[2]; } else { so.jumpClip = clip[1]; so.jumpT = clip[2]; } }
+      const state = STATE[stt] || 'ok';
+      if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
+      so.visible = sq.side === 'player' || !!vis || state === 'dead';
+    });
+    for (const so of sq.soldiers) { so.animate(dt, g.camDist(so.pos)); so.sync(); }
+  }
+  for (const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis] of s.v) {
+    const v = g.netMap.get(id); if (!v) continue;
+    v._np ||= new THREE.Vector3(x, y, z); v._np.set(x, y, z); if (v.pos.distanceTo(v._np) > 10) v.pos.copy(v._np); else v.pos.lerp(v._np, k);
+    v.heading += Math.atan2(Math.sin(h - v.heading), Math.cos(h - v.heading)) * k; v.pitch = p; v.roll = r; v.turretYaw = ty; v.gunPitch = gp; v.hp = hp; v.speed = sp; v.dist = (v.dist || 0) + sp * dt;
+    v.spotted = v.side === 'player' || !!vis;
+    if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); g.fx.explosion(v.pos.clone().setY(1.2), 1.2); v.fire = g.fx.emitter(v.pos.clone().setY(1.6), 'fire', 1.2, 180); }
+    v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : v.burning; v.abandoned = !!(fl & 4); v.doorK = dk;
+    v.sync(); if (!v.destroyed) v.fx?.(dt);
+  }
+  // rockets and drones (pooled meshes)
+  g._rk ||= []; s.pr.forEach((q, i) => { const m = g._rk[i] ||= (() => { const mm = g.combat.rocketMesh(); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.lookAt(q[3], q[4], q[5]); }); for (let i = s.pr.length; i < g._rk.length; i++) g._rk[i].visible = false;
+  g._dr ||= []; s.dr.forEach((q, i) => { const m = g._dr[i] ||= (() => { const t = g.assets.gltf.fpv_drone?.scene; const mm = t ? t.clone(true) : new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.4)); mm.scale.setScalar(1.3); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.quaternion.set(q[3], q[4], q[5], q[6]); }); for (let i = s.dr.length; i < g._dr.length; i++) g._dr[i].visible = false;
+  if (s.over && !g.over) { g.over = true; const r = s.over; g.result = { ...r, win: !r.win, title: r.win ? 'DEFEAT' : 'VICTORY', why: r.why }; g.hud?.showEnd(g.result); }
+}

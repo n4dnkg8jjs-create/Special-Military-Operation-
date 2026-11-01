@@ -6,6 +6,7 @@ import { Input } from './ui/input.js';
 import { MAPS } from './world/maps.js';
 import { Campaign } from './campaign/state.js';
 import { collectResult } from './game/campaignBattle.js';
+import { manifest } from './net/battle.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -17,7 +18,7 @@ async function start(opts) {
     await game.init((f, msg) => { $('loadBar').style.width = `${Math.round(f * 100)}%`; $('loadText').textContent = msg; });
   } catch (e) { console.error(e); $('loadText').textContent = 'Failed to start: ' + e.message; throw e; }
   const hud = new HUD(game); new Input(game, hud);
-  if (opts.campaign) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
+  if (opts.campaign && !opts.net) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
     const C = opts.campaign, b = document.createElement('button');
     b.textContent = 'WITHDRAW'; b.title = 'Pull the task group out: the battle counts as lost, survivors are saved';
     Object.assign(b.style, { position: 'fixed', right: '14px', top: '104px', zIndex: 20, background: '#3a2a22', color: '#e6d2c0', border: '1px solid #7a4a3a', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', letterSpacing: '1px' });
@@ -65,7 +66,7 @@ async function start(opts) {
     if (Q.has('bail')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('bail')]; if (v.passengers) v.passengers.dismount(); v.burning = 0.01; v.bailAt = 0.2; }
     if (Q.has('collapse')) { const b = game.city.buildings[+Q.get('collapse')]; game.city.collapseSection(b, +(Q.get('sec') || 0), game); }
     const t0 = performance.now();
-    for (let t = 0; t < total; t += 0.05) { game.frame(0.05); if (game.over) break; }
+    for (let t = 0; t < total; t += 0.05) { window.__replayStep?.(t); game.frame(0.05); if (game.over) break; }
     if (cam === 'fight') { // frame the nearest firefight
       let best = null, bd = 1e9;
       for (const e of game.squads) if (e.side === 'enemy' && !e.mounted && !e.destroyed) for (const p of game.squads) if (p.side === 'player' && !p.mounted && !p.destroyed) { const d = e.center().distanceTo(p.center()); if (d < bd) { bd = d; best = [e.center(), p.center()]; } }
@@ -84,7 +85,7 @@ async function start(opts) {
     window.__info = { renderMs: Math.round(renderMs), calls: Math.round(ri.render.calls / 3), tris: Math.round(ri.render.triangles / 3), programs: ri.programs?.length, simMs: Math.round(performance.now() - t0), time: Math.round(game.time), over: game.over, result: game.result?.title,
       objectives: game.objectives.map(o => `${o.id}:${o.owner}:${Math.round(o.control)}`),
       player: game.stats.player, enemy: game.stats.enemy, squads: game.squads.map(s => `${s.side[0]}${s.effective.length}/${Math.round(s.morale)}${s.routing ? 'R' : ''}${s.mounted ? 'M' : ''}`).join(' '),
-      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), placed: Q.has('placed') ? Object.entries(PLACED.reduce((a, p) => { const k = p.template.name || p.template.type; a[k] = (a[k] || 0) + p.matrices.length; return a; }, {})).map(([k, v]) => k + ':' + v).join(' ') : undefined, camp: game.campaign ? collectResult(game) : undefined, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
+      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), placed: Q.has('placed') ? Object.entries(PLACED.reduce((a, p) => { const k = p.template.name || p.template.type; a[k] = (a[k] || 0) + p.matrices.length; return a; }, {})).map(([k, v]) => k + ':' + v).join(' ') : undefined, camp: game.campaign ? collectResult(game) : undefined, netSent: window.__sent, netSnap: window.__snap, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
     window.__done = true; return;
   }
   let last = performance.now();
@@ -111,13 +112,37 @@ if (Q.has('ctest')) {   // headless test of a campaign battle without a stored c
   const side = Q.get('side') || 'UA', mode = Q.get('ctest') || 'attack';
   const force = [{ uid: 1, key: 'mech_btr', name: '1st Platoon', kind: 'mech', men: 6, menMax: 8, veh: { kind: 'btr', hp: 0.7 }, xp: 3 }, { uid: 2, key: 'mech_ifv', name: '2nd Platoon', kind: 'imech', men: 8, menMax: 8, veh: { kind: 'ifv', hp: 1 }, xp: 6 },
     { uid: 3, key: 'tank', name: 'Tank 1', kind: 'tank', men: 0, veh: { kind: 'tank', hp: 1 }, xp: 0 }, { uid: 4, key: 'assault', name: 'Assault group', kind: 'assault', men: 5, menMax: 6, xp: 9 }, { uid: 5, key: 'fpv', name: 'Drone team', kind: 'fpv', men: 2, menMax: 2, xp: 2 }];
-  start({ side, minutes: 12, quality: Q.get('quality') || 'low', map: Q.get('map') || 'farmland', campaign: { sector: 's1', sectorName: 'Test sector', map: Q.get('map') || 'farmland', mode, fort: 2, strength: 2, force, enemy: [{ kind: 'mech' }, { kind: 'foot' }, { kind: 'tank' }, { kind: 'atgm' }], mods: { armorPlate: 0.1, fpvDrones: 2, accuracy: 0.1, reconDrone: true }, side } });
+  const fakePeer = { on() { return this; }, send(t, d) { window.__sent = (window.__sent || 0) + JSON.stringify(d).length; }, sendSnap(t, d) { window.__snap = JSON.stringify(d).length; } };
+  start({ side, minutes: 12, quality: Q.get('quality') || 'low', map: Q.get('map') || 'farmland', net: Q.has('fakenet') ? { role: 'host', peer: fakePeer, enemyForce: force.map(u => ({ ...u, uid: u.uid + 100 })), enemyMods: {} } : undefined, campaign: { sector: 's1', sectorName: 'Test sector', map: Q.get('map') || 'farmland', mode, fort: 2, strength: 2, force, enemy: [{ kind: 'mech' }, { kind: 'foot' }, { kind: 'tank' }, { kind: 'atgm' }], mods: { armorPlate: 0.1, fpvDrones: 2, accuracy: 0.1, reconDrone: true }, side } });
 }
 if (Q.has('cbattle')) {
   const setup = Campaign.pendingBattle();
   if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: setup.map, campaign: setup });
   else import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle));
 }
+// ---------------------------------------------------------------- versus (2 players): lobby, and battles in an iframe
+$('versusBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } import('./net/versus_ui.js').then(m => m.openVersus()); });
+if (Q.has('versus')) import('./net/versus_ui.js').then(m => m.openVersus());
+if (Q.has('vsbattle') && window.parent?.__vs) {
+  const P = window.parent.__vs, o = P.opts, quality = localStorage.getItem('smo_quality') || 'medium';
+  const go = net => start({ ...o, minutes: 12, quality, net }).then(() => {
+    const g = window.game;
+    if (o.net.role === 'host') {
+      P.peer.send('manifest', manifest(g));
+      let sent = false; window.__campaignReturn = () => { if (sent) return; sent = true; P.done(collectResult(g, 'player'), collectResult(g, 'enemy')); };
+      const iv = setInterval(() => { if (g.over) { clearInterval(iv); setTimeout(() => window.__campaignReturn(), 25000); } }, 1000);   // don't keep the opponent waiting forever
+    } else window.__campaignReturn = () => { const b = document.querySelector('#endscreen button.big'); if (b) b.textContent = 'WAITING FOR THE HOST…'; };
+  });
+  if (o.net.role === 'client') P.peer.on('manifest', man => go({ ...o.net, peer: P.peer, manifest: man }));
+  else go({ ...o.net, peer: P.peer });
+}
+// test hook: replay a recorded versus stream (tools/mp_record.mjs) into a joiner game — index.html?vsreplay&sim=N
+if (Q.has('vsreplay')) fetch('previews/versus/stream.json').then(r => r.json()).then(S => {
+  const H = {}, peer = { on(t, f) { (H[t] ||= []).push(f); return this; }, send() {}, sendSnap() {} };
+  const msgs = S.rec.filter(m => m.t !== 'manifest');
+  window.__replayStep = t => { while (msgs.length && (msgs[0].t !== 'snap' || msgs[0].d.t <= t)) { const m = msgs.shift(); for (const f of H[m.t] || []) f(m.d); } };
+  start({ side: S.side, minutes: 12, quality: Q.get('quality') || 'low', map: S.map, campaign: { sectorName: 'replay', mode: 'attack', force: [], enemy: [] }, net: { role: 'client', peer, manifest: S.manifest } });
+});
 // end of a campaign battle: report back to the brigade and return to the sector map
 window.__campaignReturn = () => { const g = window.game; if (g?.campaign) Campaign.storeResult(collectResult(g)); location.href = `${location.pathname}?campaign=1`; };
 

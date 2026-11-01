@@ -14,7 +14,7 @@ let BUILDINGS, E;
 export function setMap(id) {
   MAP = MAPS[id] || MAPS.city;
   MAP_SIZE = MAP.sizeM; BOUNDS = MAP.bounds; ROADS = MAP.roads; OBJECTIVES = MAP.objectives;
-  DEPLOY_ZONES = MAP.deployZones; SPAWNS = MAP.spawns; BUILDINGS = MAP.buildings; E = MAP_SIZE / 2 + 2;
+  DEPLOY_ZONES = JSON.parse(JSON.stringify(MAP.deployZones)); SPAWNS = MAP.spawns; BUILDINGS = MAP.buildings; E = MAP_SIZE / 2 + 2;
   return MAP;
 }
 setMap('city');
