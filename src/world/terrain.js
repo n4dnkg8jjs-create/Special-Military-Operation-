@@ -2,31 +2,57 @@ import * as THREE from 'three';
 import { BLOCK } from './nav.js';
 import { trs } from './instancer.js';
 
-// Ground relief for the flat game world: field fortifications cut INTO the ground (trenches with vertical revetted
-// walls, firing bays, dugout passages), smooth relief (anti-tank ditches, spoil berms, parapets, dugout mounds) and
-// rubble piles, all feeding one sparse heightfield that the game queries with groundHeight(x, z).
+// Ground relief for the flat game world: field fortifications cut INTO the ground (trenches, firing cells, foxholes,
+// dugout passages), smooth relief (anti-tank ditches, spoil berms, parapets, dugout mounds, shell craters) and rubble
+// piles, all feeding one sparse heightfield that the game queries with groundHeight(x, z).
 //
-//   cuts     convex quads (x-z) with vertical walls and a flat floor at -depth; the union of the quads is the hole.
-//            Signed distance S(p) = min over quads of max over the quad's edge planes  (exact on the zero set, sharp
-//            mitred corners).  Parapets / parados are a function of S and the side of the quad's 'front'.
-//   reliefs  ditches (polyline, trapezoid profile + spoil berm) and mounds (rounded boxes); mesh:false = height only.
+//   cuts     simple polygons (x-z) dug to a flat floor at -depth; the union of the polygons is the hole.
+//            Signed distance S(p) = per polygon the exact distance to its edges, then pushed out by a noise field
+//            (widen(), scaled by the polygon's roughness) so outlines are ragged and widths uneven like hand-dug
+//            2023-25 positions (slumped lips, over-dug corners); union = min over polygons.  Everything (heights,
+//            nav, mask, meshes, dressing) reads the same displaced S, so collision and visuals agree.
+//            Spoil / parapets are a function of S, lumpy and patchy (thrown out by hand, partly spread / hidden).
+//   reliefs  ditches (polyline, trapezoid profile + spoil berm), mounds (rounded boxes; mesh:false = height only)
+//            and shell craters (bowl + rim).
 //   heights  16 m tiles of (CPT+1)^2 Float32 vertices at RES m, allocated only where something is non-flat.
 //
 // Rendering: the cut / relief areas get their own terrain mesh (same splat shader as the ground, plus depth
-// darkening), built on a GR grid whose vertices next to a cut are snapped onto the cut outline, so lips are crisp
-// and walls exactly vertical; the main ground plane discards fragments where the hole mask (1 px / m) is set.
+// darkening / mud), built on a GR grid whose vertices next to a cut are snapped onto the cut outline; the walls are
+// raw earth: battered (the floor is narrower than the lip), three rows of lumpy vertices between lip and floor, and
+// the main ground plane discards fragments where the hole mask (1 px / m) is set.
 const TS = 16, CPT = 40, RES = TS / CPT, VW = CPT + 1;   // heightfield tiles: 16 m, 0.4 m cells
 const GR = RES;                                           // trench mesh grid == heightfield grid (shared vertices)
 const BLK = 20;                                           // meshing block: 20 cells = 8 m
-const CORR = 3.3;                                         // the terrain mesh covers the cut + this margin
+const SPOIL = 3.1;                                        // max reach of the spoil / parapet past the cut (m)
+const CORR = 3.5;                                         // the terrain mesh covers the cut + this margin
 const HC = 8;                                             // feature hash cell (m)
 const LOW = -0.02;                                        // terrain mesh rim, tucked just under the ground plane
-// cut kinds: parapet front / rear height, nav cost (infantry), vehicle flag (1 = wheeled can't cross, 2 = no vehicle)
+// cut kinds: parapet front / rear height, nav cost (infantry), vehicle flag (1 = wheeled can't cross, 2 = no vehicle),
+// rough = outline noise scale, batter = how far the wall foot creeps in (slumped raw earth)
 const KIND = {
-  fire: { pf: 0.36, pr: 0.24, cost: 3, veh: 1 }, comm: { pf: 0.26, pr: 0.26, cost: 3, veh: 1 },
-  bay: { pf: 0.34, pr: 0.0, cost: 3, veh: 1 }, pass: { pf: 0.2, pr: 0.2, cost: 3, veh: 2 }, pit: { pf: 0.3, pr: 0.2, cost: 4, veh: 2 },
+  fire: { pf: 0.38, pr: 0.26, cost: 3, veh: 1, rough: 1.0, batter: 1.0 }, comm: { pf: 0.27, pr: 0.27, cost: 3, veh: 1, rough: 0.85, batter: 0.9 },
+  bay: { pf: 0.34, pr: 0.0, cost: 3, veh: 1, rough: 0.45, batter: 0.65 }, pass: { pf: 0.2, pr: 0.2, cost: 3, veh: 2, rough: 0.3, batter: 0.45 },
+  pit: { pf: 0.32, pr: 0.24, cost: 4, veh: 2, rough: 0.5, batter: 0.7 },
 };
 const hkey = (x, z) => Math.floor(x / HC) * 8192 + Math.floor(z / HC);
+
+// ---------------------------------------------------------------- noise (deterministic, C1)
+function h2(i, j) { let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
+export function vnoise(x, z) {
+  const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = h2(i, j), b = h2(i + 1, j), c = h2(i, j + 1), d = h2(i + 1, j + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+// how much wider than drawn the cut is at (x, z) for roughness 1 (m, -0.24 .. +0.3): long uneven stretches, slumped
+// bites out of the lip, small lumps
+function widen(x, z) {
+  return 0.3 * (vnoise(x * 0.11 + 3.1, z * 0.11 + 7.7) - 0.4) + 0.17 * (vnoise(x * 0.42 + 11.3, z * 0.42 + 1.9) - 0.5) + 0.07 * (vnoise(x * 1.05 - 4.2, z * 1.05 + 9.4) - 0.5);
+}
+// spoil amount / spread at (x, z): heaps, thin spread-out stretches, gaps where it was carried off or levelled
+function spoilAt(x, z) {
+  const lump = vnoise(x * 0.33 + 5.2, z * 0.33 + 2.4), l2 = vnoise(x * 0.9 + 1.7, z * 0.9 + 8.3), gap = vnoise(x * 0.07 + 9.1, z * 0.07 + 4.6);
+  return [Math.min(1.6, Math.max(0.08, (gap - 0.24) * 2.3) * (0.5 + 0.8 * lump * lump + 0.3 * l2)), 0.72 + 0.58 * lump];
+}
 
 export class Terrain {
   constructor(size, nav, rng = Math.random) {
@@ -40,6 +66,7 @@ export class Terrain {
     this._touch = []; this._stamp = 0; this._pd = null;
     this.roadTest = null;     // (x, z, pad) => bool, set by the map so trenches leave gaps at roads
     this.keepOut = null;      // (x, z) => bool, e.g. buildings / village yards
+    this.covers = [];         // [x, z, ux, uz, width, kind] requested overhead cover (nets / branches / tarps)
   }
   // ================================================================ heightfield
   tile(ti, tj, make) { const k = tj * this.TN + ti; let t = this.tiles[k]; if (!t && make) { t = this.tiles[k] = new Float32Array(VW * VW); } return t; }
@@ -86,15 +113,15 @@ export class Terrain {
     return false;
   }
   // ================================================================ features
-  // A cut is a simple polygon (strip runs, firing cells, passages) with vertical walls and a flat floor at -depth.
+  // A cut is a simple polygon (strip runs, firing cells, foxholes, passages) dug to a flat floor at -depth.
   // Edges are hashed; S(p) per polygon = exact signed distance to its edges (sign from the edge normal, or the vertex
-  // pseudo-normal at corners), union = min over polygons (overlapping pieces stay negative inside, no seams).
+  // pseudo-normal at corners) minus rough * widen(p); union = min over polygons (overlaps stay negative, no seams).
   addPoly(pts, o) {
     pts = pts.map(p => [p[0], p[1]]);
     let area = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1]; }
     if (area < 0) pts.reverse();
     const n = pts.length, K = KIND[o.kind] || KIND.fire, id = this.cuts.length;
-    const q = { pts, depth: o.depth, kind: o.kind, K, front: o.front || null, revet: o.revet || null, sys: o.sys, segs: o.segs || null, tag: o.tag, id, edges: [] };
+    const q = { pts, depth: o.depth, kind: o.kind, K, rough: o.rough ?? K.rough, front: o.front || null, revet: o.revet || null, sys: o.sys, segs: o.segs || null, w: o.w, tag: o.tag, id, edges: [] };
     q.cx = pts.reduce((s, p) => s + p[0], 0) / n; q.cz = pts.reduce((s, p) => s + p[1], 0) / n;
     const N = []; for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1; N.push([dz / L, -dx / L, L]); }
     for (let i = 0; i < n; i++) {
@@ -111,20 +138,26 @@ export class Terrain {
     return q;
   }
   markBlocks(x0, z0, x1, z1) { const B = BLK * GR; for (let i = Math.floor((x0 + this.half) / B); i <= Math.floor((x1 + this.half) / B); i++) for (let j = Math.floor((z0 + this.half) / B); j <= Math.floor((z1 + this.half) / B); j++) this.blocks.add(i * 8192 + j); }
-  // per-polygon signed distances at (x, z) for the polygons whose edges are hashed here; returns the touched list
+  // per-polygon signed distances at (x, z) for the polygons whose edges are hashed here; returns the touched list.
+  // this._pd[id] = displaced signed distance, this._pvx/_pvz[id] = vector from the nearest outline point to (x, z)
   polyDists(x, z) {
     const l = this.hCut.get(hkey(x, z)); this._touch.length = 0; if (!l) return this._touch;
-    if (!this._pd || this._pd.length < this.cuts.length) { this._pd = new Float64Array(this.cuts.length + 64); this._ps = new Float64Array(this.cuts.length + 64); this._pst = new Uint32Array(this.cuts.length + 64); }
-    const st = ++this._stamp, pd = this._pd, ps = this._ps, pst = this._pst, touch = this._touch;
+    if (!this._pd || this._pd.length < this.cuts.length) { const n = this.cuts.length + 64; this._pd = new Float64Array(n); this._ps = new Float64Array(n); this._pst = new Uint32Array(n); this._pvx = new Float64Array(n); this._pvz = new Float64Array(n); }
+    const st = ++this._stamp, pd = this._pd, ps = this._ps, pst = this._pst, pvx = this._pvx, pvz = this._pvz, touch = this._touch;
     for (let n = 0; n < l.length; n++) {
       const e = l[n], dx = e.bx - e.ax, dz = e.bz - e.az, wx = x - e.ax, wz = z - e.az;
       let t = (wx * dx + wz * dz) / (e.L * e.L); let sx, sz;
       if (t <= 0) { t = 0; sx = e.pax; sz = e.paz; } else if (t >= 1) { t = 1; sx = e.pbx; sz = e.pbz; } else { sx = e.nx; sz = e.nz; }
       const px = wx - dx * t, pz = wz - dz * t, d2 = px * px + pz * pz, id = e.q.id;
-      if (pst[id] !== st) { pst[id] = st; pd[id] = d2; ps[id] = px * sx + pz * sz; touch.push(id); }
-      else if (d2 < pd[id] - 1e-12) { pd[id] = d2; ps[id] = px * sx + pz * sz; }
+      if (pst[id] !== st) { pst[id] = st; pd[id] = d2; ps[id] = px * sx + pz * sz; pvx[id] = px; pvz[id] = pz; touch.push(id); }
+      else if (d2 < pd[id] - 1e-12) { pd[id] = d2; ps[id] = px * sx + pz * sz; pvx[id] = px; pvz[id] = pz; }
     }
-    for (const id of touch) pd[id] = (ps[id] < 0 ? -1 : 1) * Math.sqrt(pd[id]);
+    let D = null;
+    for (const id of touch) {
+      let d = (ps[id] < 0 ? -1 : 1) * Math.sqrt(pd[id]); const r = this.cuts[id].rough;
+      if (r) { if (D === null) D = widen(x, z); d -= r * D; }
+      pd[id] = d;
+    }
     return touch;
   }
   // signed distance to the union of cuts (m, < 0 inside); this._q = the polygon it comes from (deepest inside)
@@ -133,29 +166,39 @@ export class Terrain {
     for (const id of touch) { const d = this._pd[id]; if (d < best) { best = d; this._q = this.cuts[id]; } }
     return best;
   }
-  // parapet / parados / spoil height outside the cut
+  // unit gradient of cutSDF (points out of the cut)
+  grad(x, z) {
+    const e = 0.05, gx = this.cutSDF(x + e, z) - this.cutSDF(x - e, z), gz = this.cutSDF(x, z + e) - this.cutSDF(x, z - e), L = Math.hypot(gx, gz);
+    return L > 1e-6 ? [gx / L, gz / L] : [1, 0];
+  }
+  // parapet / parados / spoil height outside the cut: hand-thrown heaps, thicker on the enemy side, lumpy, with gaps
   parapet(x, z) {
     const touch = this.polyDists(x, z); if (!touch.length) return 0;
-    let h = 0;
+    let h = 0, sp = null;
     for (const id of touch) {
-      const d = this._pd[id]; if (d < 0 || d > 2.6) continue; const q = this.cuts[id];
-      const fr = q.front ? ((x - q.cx) * q.front[0] + (z - q.cz) * q.front[1] > 0) : true;
+      const d = this._pd[id]; if (d < 0 || d > SPOIL) continue; const q = this.cuts[id];
+      const fr = q.front ? (this._pvx[id] * q.front[0] + this._pvz[id] * q.front[1] > 0) : true;
       const H = fr ? q.K.pf : q.K.pr; if (H <= 0) continue;
-      const W = fr ? 2.3 : 1.7, t = d / W;
-      const prof = t < 0.14 ? 0.5 + 0.5 * t / 0.14 : t < 0.42 ? 1 : t < 1 ? Math.pow(1 - ((t - 0.42) / 0.58) ** 2, 1.3) : 0;
-      h = Math.max(h, H * prof);
+      sp ||= spoilAt(x, z);
+      const W = (fr ? 2.3 : 1.75) * sp[1], t = d / W;
+      const prof = t < 0.1 ? 0.5 + 0.5 * t / 0.1 : t < 0.3 ? 1 : t < 1 ? Math.pow(1 - ((t - 0.3) / 0.7) ** 2, 1.6) : 0;
+      // clods / thrown shovelfuls: lumps of ~1 m and ~0.4 m, a few landing past the heap
+      const cl = vnoise(x * 1.15 + 4.4, z * 1.15 + 9.9), c2 = vnoise(x * 2.7 + 1.1, z * 2.7 + 6.6);
+      h = Math.max(h, H * sp[0] * prof * (0.62 + 0.55 * cl + 0.18 * c2) + (t > 0.6 && t < 1.35 ? 0.09 * H / 0.38 * Math.max(0, cl - 0.62) * sp[0] : 0));
     }
-    return h > 0 ? h * (1 + 0.16 * Math.sin(x * 1.31 + z * 0.73) * Math.sin(z * 1.67 - x * 0.41)) : 0;
+    return h;
   }
   addRelief(r) {
     r.bb = r.type === 'ditch' ? (() => { const xs = r.pts.map(p => p[0]), zs = r.pts.map(p => p[1]); return [Math.min(...xs) - r.reach, Math.min(...zs) - r.reach, Math.max(...xs) + r.reach, Math.max(...zs) + r.reach]; })()
+      : r.type === 'crater' ? [r.x - r.reach, r.z - r.reach, r.x + r.reach, r.z + r.reach]
       : (() => { const R = Math.hypot(r.hx, r.hz) + 0.5; return [r.x - R, r.z - R, r.x + R, r.z + R]; })();
     this.reliefs.push(r);
     for (let x = Math.floor((r.bb[0] - 2) / HC); x <= Math.floor((r.bb[2] + 2) / HC); x++) for (let z = Math.floor((r.bb[1] - 2) / HC); z <= Math.floor((r.bb[3] + 2) / HC); z++) { const k = x * 8192 + z; (this.hRel.get(k) || this.hRel.set(k, []).get(k)).push(r); }
     if (r.mesh !== false) this.markBlocks(r.bb[0] - 1.6, r.bb[1] - 1.6, r.bb[2] + 1.6, r.bb[3] + 1.6);
     return r;
   }
-  // relief at a point: [negative part (ditch), positive part (berm / mound)], meshOnly = skip height-only features
+  // relief at a point: [negative part (ditch, crater bowl), positive part (berm, mound, crater rim)], meshOnly = skip
+  // height-only features
   relief(x, z, meshOnly) {
     const l = this.hRel.get(hkey(x, z)); if (!l) return null;
     let neg = 0, pos = 0, hit = false;
@@ -165,9 +208,16 @@ export class Terrain {
       if (r.type === 'ditch') {
         let best = 1e9, side = 0;
         for (let i = 0; i < r.pts.length - 1; i++) { const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz; let t = ((x - ax) * dx + (z - az) * dz) / L2; t = Math.max(0, Math.min(1, t)); const px = ax + dx * t - x, pz = az + dz * t - z, d = Math.hypot(px, pz); if (d < best) { best = d; side = Math.sign(dx * (z - az) - dz * (x - ax)); } }
+        // machine-dug, but slumped: the edges wander a little
+        best += (vnoise(x * 0.35 + 2.2, z * 0.35 + 6.1) - 0.5) * 0.7;
         if (best > r.reach) continue; hit = true;
-        if (best < r.top) neg = Math.min(neg, best < r.bot ? -r.depth : -r.depth * Math.pow(1 - (best - r.bot) / (r.top - r.bot), 0.85));
-        const bd = best - r.top - 0.4; if (side === r.bermSide && bd > 0 && bd < r.bermW) pos = Math.max(pos, r.bermH * Math.sin(Math.PI * bd / r.bermW) ** 0.8 * (1 + 0.12 * Math.sin(x * 0.9 + z * 1.3)));
+        if (best < r.top) neg = Math.min(neg, best < r.bot ? -r.depth : -r.depth * Math.pow(Math.max(0, 1 - (best - r.bot) / (r.top - r.bot)), 0.85));
+        const bd = best - r.top - 0.4; if (side === r.bermSide && bd > 0 && bd < r.bermW) pos = Math.max(pos, r.bermH * Math.sin(Math.PI * bd / r.bermW) ** 0.8 * (0.75 + 0.5 * vnoise(x * 0.45 + 1.3, z * 0.45 + 8.8)));
+      } else if (r.type === 'crater') {
+        const dx = x - r.x, dz = z - r.z, d = Math.hypot(dx, dz); if (d > r.reach) continue;
+        const a = Math.atan2(dz, dx), rr = r.r * (0.86 + 0.28 * vnoise(Math.cos(a) * 1.7 + r.x, Math.sin(a) * 1.7 + r.z)), t = d / rr;
+        const h = (t < 1 ? -r.depth * Math.pow(1 - t * t, 1.25) : 0) + r.rim * Math.exp(-(((t - 1.0) / (t < 1 ? 0.22 : 0.45)) ** 2)) * (0.6 + 0.6 * vnoise(x * 1.3, z * 1.3));
+        hit = true; if (h < 0) neg = Math.min(neg, h); else pos = Math.max(pos, h);
       } else { // mound: rounded box
         const c = Math.cos(r.rot), s = Math.sin(r.rot), dx = x - r.x, dz = z - r.z, lx = (dx * c - dz * s) / r.hx, lz = (dx * s + dz * c) / r.hz;
         const e = Math.pow(Math.abs(lx), 4) + Math.pow(Math.abs(lz), 4); if (e >= 1) continue; hit = true;
@@ -176,15 +226,24 @@ export class Terrain {
     }
     return hit ? [neg, pos] : null;
   }
+  // both top heights at once: [terrain-mesh version, heightfield version] (one parapet + one relief pass)
+  topH2(x, z) {
+    const p = this.parapet(x, z), l = this.hRel.get(hkey(x, z));
+    if (!l) return [p > 0.004 ? p : LOW, p > 0.004 ? p : 0];
+    let heightOnly = false; for (const r of l) if (r.mesh === false && x >= r.bb[0] && x <= r.bb[2] && z >= r.bb[1] && z <= r.bb[3]) { heightOnly = true; break; }
+    const fin = (rel, mesh) => { const pos = Math.max(p, rel ? rel[1] : 0); if (rel && rel[0] < -0.001) return rel[0] + pos * 0.5; return pos > 0.004 ? pos : (mesh ? LOW : 0); };
+    const ra = this.relief(x, z, false), rm = heightOnly ? this.relief(x, z, true) : ra;
+    return [fin(rm, true), fin(ra, false)];
+  }
   // top-surface height outside the cut (mesh = terrain mesh version: skips height-only mounds and keeps the LOW rim)
   topH(x, z, mesh) {
     const rel = this.relief(x, z, mesh);
     let pos = Math.max(this.parapet(x, z), rel ? rel[1] : 0);
-    if (rel && rel[0] < -0.001) return rel[0];
+    if (rel && rel[0] < -0.001) return rel[0] + pos * 0.5;
     return pos > 0.004 ? pos : (mesh ? LOW : 0);
   }
   // ---------------------------------------------------------------- trench builders
-  // polyline -> one polygon (mitred offset outline); segs keeps the centre line for duckboards
+  // polyline -> one polygon (mitred offset outline); segs keeps the centre line for floor litter / covers
   strip(P, w, o) {
     const n = P.length; if (n < 2) return [];
     const N = []; for (let i = 0; i < n - 1; i++) { const dx = P[i + 1][0] - P[i][0], dz = P[i + 1][1] - P[i][1], L = Math.hypot(dx, dz) || 1; N.push([-dz / L, dx / L]); }
@@ -220,60 +279,125 @@ export class Terrain {
         pts.push(at(L, 0)); continue;
       }
       while (t < L - 0.5) {
-        const o = style === 'wiggle' ? (k % 2 ? 1 : -1) * amp * (0.35 + R() * 0.65) : (k % 2 ? 0.5 : -0.5) * amp * (0.8 + R() * 0.4);
+        const o = style === 'wiggle' ? (k % 2 ? 1 : -1) * amp * (0.35 + R() * 0.65) : (k % 2 ? 0.5 : -0.5) * amp * (0.7 + R() * 0.6);
         pts.push(at(t, o)); if (o > 0) fwd.push(pts.length - 1);
-        t += leg * (0.75 + R() * 0.5); k++;
+        t += leg * (0.6 + R() * 0.8); k++;
       }
       if (s === base.length - 2) pts.push(at(L, 0));
     }
     return { pts, fwd };
   }
-  // Fire trench: zig-zag (Russian 'lomanaya'), crenellated (bays + traverses) or wiggly (tree-line) along `base`,
-  // firing cells on the front side, revetment of the given type. front = unit vector towards the enemy.
+  // Hand-dug trench line: follows the baseline with a slow meander and sharp dog-leg jogs (traverses against blast /
+  // enfilade) every 6-13 m.  Returns {pts, fwd: indices of points that sit forward (towards the front side)}
+  wander(base, amp, jog, frontSign, step = 1.6) {
+    const R = this.R, pts = [], lat = [], ph = R() * 100, total = base.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - base[i][0], p[1] - base[i][1]), 0);
+    let acc = 0, nextJog = 3 + R() * 6, off = 0;
+    for (let s = 0; s < base.length - 1; s++) {
+      const [ax, az] = base[s], [bx, bz] = base[s + 1], L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz * frontSign, nz = ux * frontSign;
+      const ts = []; for (let t = s === 0 ? 0 : step * 0.5; t < L - step * 0.4; t += step * (0.8 + R() * 0.4)) ts.push(t); ts.push(L);
+      for (const tt of ts) {
+        const g = acc + tt, m = amp * (vnoise(g * 0.06 + ph, ph) - 0.5) * 2 * Math.min(1, g / 3, (total - g) / 3);
+        if (jog > 0 && g > nextJog && total - g > 3) { // dog-leg: the old offset and the new one at the same station
+          const o0 = m + off; pts.push([ax + ux * tt + nx * o0, az + uz * tt + nz * o0]); lat.push(o0);
+          off += (Math.abs(off) > jog * 0.8 ? -Math.sign(off) : (R() < 0.5 ? 1 : -1)) * jog * (0.7 + R() * 0.5);
+          nextJog = g + 6 + R() * 7;
+        }
+        const o = m + off;
+        pts.push([ax + ux * tt + nx * o, az + uz * tt + nz * o]); lat.push(o);
+      }
+      acc += L;
+    }
+    // forward points: local maxima of the lateral offset
+    const lo = Math.min(...lat), fwd = []; for (let i = 1; i < pts.length - 1; i++) if (lat[i] >= lat[i - 1] - 0.05 && lat[i] >= lat[i + 1] - 0.05 && lat[i] > lo + 0.3) fwd.push(i);
+    return { pts, fwd };
+  }
+  // irregular rounded polygon around (x, z): half sizes a (along s) and b (along f), squareness k
+  blob(x, z, fx, fz, a, b, n = 10, k = 3) {
+    const sx = -fz, sz = fx, R = this.R, out = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / n * Math.PI * 2 + 0.2, c = Math.cos(t), s = Math.sin(t), e = 2 / k;
+      const u = Math.sign(c) * Math.abs(c) ** e * a * (0.9 + R() * 0.2), v = Math.sign(s) * Math.abs(s) ** e * b * (0.9 + R() * 0.2);
+      out.push([x + sx * u + fx * v, z + sz * u + fz * v]);
+    }
+    return out;
+  }
+  // Fire trench along `base`: style 'rough' (hand-dug meander with jogs, default), 'zigzag' (machine-dug Russian
+  // 'lomanaya'), 'crenel' or 'wiggle'; firing cells pushed out of the front wall. front = unit vector towards the enemy.
   fireTrench(base, o = {}) {
-    const R = this.R, front = o.front, w = (o.width || 1.0) / 2, depth = o.depth || 1.7, style = o.style || 'zigzag';
-    // which side of the baseline is the front?
+    const R = this.R, front = o.front, w = (o.width || 1.25) / 2, depth = o.depth || 1.7, style = o.style || 'rough';
     const [ax, az] = base[0], [bx, bz] = base[base.length - 1], fs = Math.sign((-(bz - az)) * front[0] + (bx - ax) * front[1]) || 1;
-    const { pts, fwd } = this.zigzag(base, style, o.leg || 7, o.amp || 2.4, fs);
+    const { pts, fwd } = style === 'rough' ? this.wander(base, o.amp ?? 0.9, o.jog ?? 1.5, fs) : this.zigzag(base, style, o.leg || 7, o.amp || 2.4, fs);
     const sys = o.sys, made = [];
     for (const run of this.runs(pts, 3.5)) made.push(...this.strip(run, w, { kind: 'fire', depth, front, revet: o.revet, sys }));
-    // firing cells: small pits pushed forward from the forward vertices
-    const every = o.bayEvery ?? 2, bays = [];
-    fwd.forEach((i, n) => {
-      if (n % every || !pts[i]) return;
-      const [x, z] = pts[i]; if (this.cutSDF(x, z) > -0.05) return; // vertex dropped (road gap)
-      const L = 1.15 + R() * 0.3, W = 0.65, d0 = w - 0.1, fx = front[0], fz = front[1], sx = -fz, sz = fx;
+    // firing cells: small irregular pits pushed forward, roughly every bayGap metres (from the forward points)
+    const gap = o.bayGap ?? (o.bays ? o.bays * 7 : 9), bays = []; let last = -1e9, along = 0;
+    for (let i = 0; i < pts.length; i++) {
+      if (i) along += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (style === 'rough' ? along - last < gap * (0.75 + R() * 0.5) || !(fwd.includes(i) || along - last > gap * 1.6) : !fwd.includes(i) || along - last < gap * 0.8) continue;
+      const [x, z] = pts[i]; if (this.cutSDF(x, z) > -0.05) continue; // dropped (road gap)
+      // cells fan out a little (each covers its own sector) and vary in size: no regular crenellation
+      const ang = style === 'rough' ? (R() - 0.5) * 0.7 : (R() - 0.5) * 0.2, ca = Math.cos(ang), sa = Math.sin(ang);
+      const L = 0.95 + R() * 0.55, W = 0.5 + R() * 0.2, d0 = w - 0.1, fx = front[0] * ca - front[1] * sa, fz = front[0] * sa + front[1] * ca, sx = -fz, sz = fx;
       const c = (a, b) => [x + fx * a + sx * b, z + fz * a + sz * b];
-      if (this.roadTest && this.roadTest(x + fx * (d0 + L), z + fz * (d0 + L), 2)) return;
-      bays.push(this.addPoly([c(d0, -W), c(d0 + L, -W), c(d0 + L, W), c(d0, W)], { kind: 'bay', depth: o.bayDepth || 1.1, front, revet: o.revet, sys, tag: { x, z, fx, fz, L: d0 + L } }));
-    });
+      if (this.roadTest && this.roadTest(x + fx * (d0 + L), z + fz * (d0 + L), 2)) continue;
+      if (this.keepOut && this.keepOut(x + fx * (d0 + L), z + fz * (d0 + L))) continue;
+      last = along;
+      bays.push(this.addPoly([c(d0 - 0.2, -W), c(d0 + L * 0.65, -W * (0.85 + R() * 0.3)), c(d0 + L, -W * (0.4 + R() * 0.3)), c(d0 + L + 0.05, (R() - 0.5) * 0.2), c(d0 + L, W * (0.4 + R() * 0.3)), c(d0 + L * 0.65, W * (0.85 + R() * 0.3)), c(d0 - 0.2, W)], { kind: 'bay', depth: o.bayDepth || 1.12, front: [fx, fz], revet: o.revet, sys, tag: { x, z, fx, fz, L: d0 + L } }));
+    }
     return { pts, quads: made, bays, front, depth, w, sys };
   }
   commTrench(base, o = {}) {
-    const style = o.style || 'zigzag', w = (o.width || 0.85) / 2;
-    const P = base.length === 2 && style !== 'straight' ? this.zigzag(base, style === 'wiggle' ? 'wiggle' : 'zigzag', o.leg || 9, o.amp || 3, 1).pts : base;
+    const style = o.style || 'rough', w = (o.width || 1.05) / 2;
+    let P;
+    if (style === 'rough') P = this.wander(base, o.amp ?? 0.7, o.jog ?? 1.2, 1).pts;
+    else P = base.length === 2 && style !== 'straight' ? this.zigzag(base, style === 'wiggle' ? 'wiggle' : 'zigzag', o.leg || 9, o.amp || 3, 1).pts : base.map(p => [p[0], p[1]]);
     // keep the exact end points (junctions)
     P[0] = base[0]; P[P.length - 1] = base[base.length - 1];
     const made = []; for (const run of this.runs(P, 3)) made.push(...this.strip(run, w, { kind: 'comm', depth: o.depth || 1.55, front: null, revet: o.revet, sys: o.sys }));
     return { pts: P, quads: made };
+  }
+  // Foxhole / two-man fighting pit facing (fx, fz): an irregular rounded pit, long axis across the front.
+  // Returns the cut with tag {x, z, fx, fz, L, slots: [[x, z], ...]} (one or two firing places against the front wall).
+  foxhole(x, z, fx, fz, o = {}) {
+    const R = this.R, dbl = o.double ?? R() < 0.45, a = (dbl ? 1.25 : 0.82) + R() * 0.15, b = 0.56 + R() * 0.1, sx = -fz, sz = fx;
+    if (this.roadTest && this.roadTest(x, z, 1.5)) return null;
+    if (this.keepOut && this.keepOut(x, z)) return null;
+    const q = this.addPoly(this.blob(x, z, fx, fz, a, b, dbl ? 12 : 9, 3.2), { kind: 'pit', depth: o.depth || 1.25 + R() * 0.2, front: [fx, fz], revet: o.revet, sys: o.sys });
+    const k = b * 0.25, slots = dbl ? [[x + sx * a * 0.45 + fx * k, z + sz * a * 0.45 + fz * k], [x - sx * a * 0.45 + fx * k, z - sz * a * 0.45 + fz * k]] : [[x + fx * k, z + fz * k]];
+    q.tag = { x, z, fx, fz, L: b, slots, fox: true };
+    return q;
+  }
+  // machine-gun pit (open-backed cell, log roof on posts over it) facing (fx, fz)
+  mgPit(x, z, fx, fz, o = {}) {
+    if (this.roadTest && this.roadTest(x, z, 2)) return null;
+    if (this.keepOut && this.keepOut(x, z)) return null;
+    const q = this.addPoly(this.blob(x, z, fx, fz, 1.0, 0.85, 10, 4), { kind: 'bay', depth: 1.12, front: [fx, fz], revet: o.revet, sys: o.sys });
+    q.tag = { x: x - fx * 0.6, z: z - fz * 0.6, fx, fz, L: 1.25 };
+    this.put('mg_nest_roof', trs(x - fx * 0.05, 0, z - fz * 0.05, Math.atan2(fx, fz) + (this.R() - 0.5) * 0.15));
+    q.covered = true;
+    return q;
   }
   // Dugout (blindazh): passage from the trench point (x,z) going along (dx,dz), ending at a log-roofed, earth-covered
   // pit; the roof mound is height-only (the dugout_roof piece carries its own earth cover).
   dugout(x, z, dx, dz, o = {}) {
     const L = Math.hypot(dx, dz); dx /= L; dz /= L;
     const len = o.len || 3.2, depth = o.depth || 1.7, ex = x + dx * len, ez = z + dz * len;
-    this.strip([[x - dx * 0.6, z - dz * 0.6], [ex, ez]], 0.42, { kind: 'pass', depth, front: null, revet: o.revet || 'logs', sys: o.sys });
+    this.strip([[x - dx * 0.6, z - dz * 0.6], [ex, ez]], 0.44, { kind: 'pass', depth, front: null, revet: o.revet || 'pass', sys: o.sys });
     const hl = 2.5, cx = ex + dx * hl, cz = ez + dz * hl, rot = Math.atan2(dx, dz);
-    this.addRelief({ type: 'mound', x: cx, z: cz, hx: 2.35, hz: 2.75, rot: -rot, h: 0.62, mesh: false, nav: 'dugout' });
-    this.put('dugout_roof', trs(cx, 0, cz, rot + Math.PI));
+    this.addRelief({ type: 'mound', x: cx, z: cz, hx: 2.35, hz: 2.75, rot: -rot, h: 0.5, mesh: false, nav: 'dugout' });
+    this.put(this.R() < 0.5 ? 'dugout_roof' : 'dugout_roof_b', trs(cx, 0, cz, rot + Math.PI));
     return [cx, cz];
   }
   // covered machine-gun position over a firing cell (log roof on posts, sandbag cheeks, embrasure to the front)
   mgNest(bay) { const t = bay.tag; const cx = t.x + t.fx * (t.L - 0.7), cz = t.z + t.fz * (t.L - 0.7); this.put('mg_nest_roof', trs(cx, 0, cz, Math.atan2(t.fx, t.fz))); bay.covered = true; }
   antitankDitch(pts, o = {}) {
     const r = { type: 'ditch', pts, top: (o.top || 5.6) / 2, bot: (o.bot || 0.9) / 2, depth: o.depth || 2.6, bermSide: o.bermSide || 1, bermW: o.bermW || 4.5, bermH: o.bermH || 0.9 };
-    r.reach = r.top + 0.4 + r.bermW + 0.2;
+    r.reach = r.top + 0.4 + r.bermW + 0.6;
     for (const run of this.runs(pts, r.reach)) this.addRelief({ ...r, pts: run });
+  }
+  // shell crater: bowl + thrown-out rim (r = bowl radius, m)
+  crater(x, z, r, o = {}) {
+    return this.addRelief({ type: 'crater', x, z, r, depth: o.depth ?? Math.min(1.0, 0.16 + r * 0.19), rim: o.rim ?? Math.min(0.35, 0.05 + r * 0.06), reach: r * 1.9 });
   }
   // rows of concrete pyramids ("dragon's teeth"), staggered; gaps where roads cross
   dragonTeeth(pts, o = {}) {
@@ -281,12 +405,12 @@ export class Terrain {
     for (let s = 0; s < pts.length - 1; s++) {
       const [ax, az] = pts[s], [bx, bz] = pts[s + 1], L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, nx = -uz, nz = ux;
       for (let r = 0; r < rows; r++) for (let t = (r % 2) * gap * 0.5; t < L; t += gap) {
-        const off = (r - (rows - 1) / 2) * rowGap, x = ax + ux * t + nx * off + (R() - .5) * 0.25, z = az + uz * t + nz * off + (R() - .5) * 0.25;
+        const off = (r - (rows - 1) / 2) * rowGap, x = ax + ux * t + nx * off + (R() - .5) * 0.35, z = az + uz * t + nz * off + (R() - .5) * 0.35;
         if (this.roadTest && this.roadTest(x, z, 4)) continue;
         if (this.keepOut && this.keepOut(x, z)) continue;
-        if (R() < 0.03) continue; // a few lifted out / blown
-        const bad = R() < 0.07;
-        this.put(bad ? 'dragon_tooth_b' : 'dragon_tooth', trs(x, -0.12 - R() * 0.1, z, R() * 6.28, 0.92 + R() * 0.16, bad ? (R() - .5) * 0.5 : (R() - .5) * 0.06, bad ? (R() - .5) * 0.5 : (R() - .5) * 0.06));
+        if (R() < 0.04) continue; // a few lifted out / blown
+        const bad = R() < 0.08;
+        this.put(bad ? 'dragon_tooth_b' : 'dragon_tooth', trs(x, -0.12 - R() * 0.12, z, R() * 6.28, 0.92 + R() * 0.16, bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08, bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08));
         (this.teeth ||= []).push([x, z]);
       }
     }
@@ -315,7 +439,7 @@ export class Terrain {
           if (bnd) { v.cls = 1; this.snap(v); }
         }
         if (v.cls === 2) { v.H = -v.q.depth; }
-        else { v.H = this.topH(v.x, v.z, true); v.Hh = this.topH(v.x, v.z, false); }
+        else { const h = this.topH2(v.x, v.z); v.H = h[0]; v.Hh = h[1]; }
         if (v.cls === 1) { v.F = -v.q.depth; }
       }
     }
@@ -344,7 +468,7 @@ export class Terrain {
   }
   snap(v) {
     let x = v.x, z = v.z; const e = 0.02;
-    for (let it = 0; it < 4; it++) {
+    for (let it = 0; it < 5; it++) {
       const S = this.cutSDF(x, z); if (Math.abs(S) < 1e-4) break;
       const gx = (this.cutSDF(x + e, z) - this.cutSDF(x - e, z)) / (2 * e), gz = (this.cutSDF(x, z + e) - this.cutSDF(x, z - e)) / (2 * e), g2 = gx * gx + gz * gz || 1;
       x -= S * gx / g2; z -= S * gz / g2;
@@ -352,6 +476,36 @@ export class Terrain {
     const dx = x - v.x, dz = z - v.z, d = Math.hypot(dx, dz), mx = GR * 0.95;
     if (d > mx) { x = v.x + dx / d * mx; z = v.z + dz / d * mx; }
     v.x = x; v.z = z; this.cutSDF(x, z); v.q = this._q || v.q;
+  }
+  // battered raw-earth walls: s0 = how far the wall foot creeps in from the lip at this spot
+  s0At(x, z, q) { return (q ? q.K.batter : 1) * (0.16 + 0.2 * vnoise(x * 0.31 + 11.7, z * 0.31 + 2.3)); }
+  floorY(v) { return -v.q.depth + 0.08 * (vnoise(v.x * 0.7 + 3.3, v.z * 0.7 + 1.1) - 0.5) + (v.cls === 1 ? 0.06 : 0); }
+  // floor position of a vertex: pulled in along the gradient by g(S) = s0 (1 + S / 2 s0) so the floor shrinks
+  // monotonically (no folds) and meets the wall foot
+  floorPos(v) {
+    if (v.fx !== undefined) return;
+    const s0 = this.s0At(v.x, v.z, v.q), S = v.cls === 1 ? 0 : v.S; v.s0 = s0;
+    if (S < -2 * s0) { v.fx = v.x; v.fz = v.z; v.gx = 1; v.gz = 0; return; }
+    const [gx, gz] = this.grad(v.x, v.z), g = s0 * Math.max(0, 1 + S / (2 * s0));
+    v.gx = gx; v.gz = gz; v.fx = v.x - gx * g; v.fz = v.z - gz * g;
+  }
+  // wall vertex ring (lip -> floor): [x, y, z, nx, ny, nz] x 5
+  wallRing(v) {
+    if (v.wr) return v.wr; this.floorPos(v);
+    const top = v.H, bot = this.floorY(v), s0 = v.s0, gx = v.gx, gz = v.gz, K = v.q.K, D = Math.max(0.4, top - bot);
+    // rows: lip, eroded shoulder, upper wall, lower wall, slumped foot
+    const LV = [0, 0.09, 0.36, 0.7, 1], IN = [0, 0.34, 0.64, 0.86, 1], SL = [2.6, 2.0, 1.1, 0.7, 0.5], ring = [];
+    for (let k = 0; k < 5; k++) {
+      let ins = s0 * IN[k], y = top + (bot - top) * LV[k], jx = 0, jz = 0;
+      if (k >= 1 && k <= 3) {
+        ins += (vnoise(v.x * 2.3 + k * 17.1, v.z * 2.3 - k * 5.3) - 0.5) * (k === 1 ? 0.08 : 0.17) * K.rough;
+        y += (vnoise(v.x * 1.9 - k * 3.7, v.z * 1.9 + k * 9.1) - 0.5) * (k === 1 ? 0.05 : 0.12);
+        jx = (vnoise(v.x * 3.1 + k, v.z * 3.1) - 0.5) * 0.6; jz = (vnoise(v.x * 3.1, v.z * 3.1 + k * 7) - 0.5) * 0.6;
+      }
+      let nx = -gx + jx, ny = SL[k] * s0 / D + (k === 0 ? 0.6 : k === 1 ? 0.25 : 0), nz = -gz + jz; const L = Math.hypot(nx, ny, nz) || 1;
+      ring.push([v.x - gx * ins, y, v.z - gz * ins, nx / L, ny / L, nz / L]);
+    }
+    return v.wr = ring;
   }
   markNav() {
     const nav = this.nav; if (!nav) return; nav.terrain = this;
@@ -365,6 +519,7 @@ export class Terrain {
         if (S < 0.15 && q) { nav.cost[i] = Math.max(nav.cost[i] === BLOCK ? 1 : nav.cost[i], q.K.cost); nav.veh[i] = Math.max(nav.veh[i], q.K.veh); nav.trench[i] = Math.max(1, Math.min(255, Math.round(q.depth * 10))); nav.low[i] = 1; continue; }
         const rel = this.relief(cx, cz, false);
         if (rel && rel[0] < -0.7) { nav.cost[i] = Math.max(nav.cost[i], 6); nav.veh[i] = 2; nav.low[i] = 1; nav.trench[i] = Math.min(255, Math.round(-rel[0] * 10)); }
+        else if (rel && rel[0] < -0.35) { nav.low[i] = 1; nav.cost[i] = Math.max(nav.cost[i], 2); }
         else if (rel && rel[1] > 0.5) { nav.veh[i] = Math.max(nav.veh[i], 1); }
       }
     }
@@ -373,21 +528,23 @@ export class Terrain {
     if (this.teeth) for (const [x, z] of this.teeth) nav.setVeh(x, z, 1.6, 1.6, 0, 2);
     nav.vehDirty = true;
   }
-  // 1 px / m hole mask for the ground plane (R channel): cut + parapet zone and meshed relief
+  // 1 px / m hole mask for the ground plane (R channel): cut + spoil zone and meshed relief.  maskData (what map
+  // painters read as 'disturbed ground') is only the cut and its lips -- the spoil colour itself comes from the
+  // terrain shader, so no 1 m pixel staircase shows around the positions.
   buildMask() {
-    const N = Math.round(this.size), data = new Uint8Array(N * N);
+    const N = Math.round(this.size), data = new Uint8Array(N * N), core = new Uint8Array(N * N);
     for (const b of this.blocks) {
       const bi = Math.floor(b / 8192), bj = b % 8192, x0 = bi * BLK * GR - this.half, z0 = bj * BLK * GR - this.half;
       for (let z = Math.floor(z0) + 0.5; z < z0 + BLK * GR; z += 1) for (let x = Math.floor(x0) + 0.5; x < x0 + BLK * GR; x += 1) {
         const i = Math.floor(x + this.half), j = Math.floor(z + this.half); if (i < 0 || j < 0 || i >= N || j >= N) continue;
-        const S = this.cutSDF(x, z); let hole = S < 2.15;
+        const S = this.cutSDF(x, z); let hole = S < SPOIL - 0.05;
+        if (S < 0.5) core[j * N + i] = 255;
         if (!hole) { const rel = this.relief(x, z, true); if (rel && (rel[0] < -0.004 || rel[1] > 0.004)) hole = true; }
         if (hole) data[j * N + i] = 255;
       }
     }
-    // reliefs: dilate 1 px (their mesh reaches 1.6 m past the feature)
     const t = new THREE.DataTexture(data, N, N, THREE.RedFormat, THREE.UnsignedByteType); t.flipY = false; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
-    this.mask = t; this.maskData = data; this.maskN = N;
+    this.mask = t; this.maskData = core; this.holeData = data; this.maskN = N;
     return t;
   }
   // terrain meshes per 64 m chunk: top + floor (ground material) and walls (earth material)
@@ -395,12 +552,11 @@ export class Terrain {
     const CH = 64, chunks = new Map(), nb = Math.round(this.size / GR);
     const chunkOf = (x, z) => { const k = Math.floor((x + this.half) / CH) * 1024 + Math.floor((z + this.half) / CH); let c = chunks.get(k); if (!c) chunks.set(k, c = { tp: [], tn: [], tu: [], ti: [], tmap: new Map(), fmap: new Map(), wp: [], wn: [], wu: [] }); return c; };
     const S = groundS, uvOf = (x, z) => [x / S + 0.5, 0.5 - z / S];
-    const nrmH = (x, z) => { const e = 0.2, hx = this.topH(x + e, z, true) - this.topH(x - e, z, true), hz = this.topH(x, z + e, true) - this.topH(x, z - e, true), L = Math.hypot(hx / (2 * e), 1, hz / (2 * e)); return [-hx / (2 * e) / L, 1 / L, -hz / (2 * e) / L]; };
     const vtx = (c, key, v, floor) => {
       const map = floor ? c.fmap : c.tmap; let i = map.get(key); if (i !== undefined) return i;
       i = c.tp.length / 3; map.set(key, i);
-      const y = floor ? (v.F ?? v.H) : v.H; c.tp.push(v.x, y, v.z); c.tu.push(...uvOf(v.x, v.z));
-      if (floor || v.cls === 1) c.tn.push(0, 1, 0); else c.tn.push(...nrmH(v.x, v.z));
+      if (floor) { this.floorPos(v); c.tp.push(v.fx, this.floorY(v), v.fz); c.tu.push(...uvOf(v.fx, v.fz)); c.tn.push(0, 1, 0); }
+      else { c.tp.push(v.x, v.H, v.z); c.tu.push(...uvOf(v.x, v.z)); c.tn.push(0, 1, 0); }
       return i;
     };
     const edges = new Map(); // edge key -> {a, b, top, floor, fx, fz (floor-side point)}
@@ -414,14 +570,14 @@ export class Terrain {
         const keys = ids.map(([a, c]) => a * 65536 + c);
         const diag = (gi + gj) % 2 === 0;
         const tris = diag ? [[0, 2, 1], [0, 3, 2]] : [[0, 3, 1], [1, 3, 2]];
-        const ccx = (V[0].x + V[2].x) / 2, ccz = (V[0].z + V[2].z) / 2, c = chunkOf(gi * GR - this.half + 0.2, gj * GR - this.half + 0.2);
+        const c = chunkOf(gi * GR - this.half + 0.2, gj * GR - this.half + 0.2);
         for (const t of tris) {
           const tv = t.map(k => V[k]); let floor;
           if (tv.some(v => v.cls === 0)) floor = false; else if (tv.some(v => v.cls === 2)) floor = true;
           else { const ox = t.reduce((s, k) => s + (ids[k][0] * GR - this.half), 0) / 3, oz = t.reduce((s, k) => s + (ids[k][1] * GR - this.half), 0) / 3; floor = this.cutSDF(ox, oz) < 0; }
           const ia = vtx(c, keys[t[0]], tv[0], floor), ib = vtx(c, keys[t[1]], tv[1], floor), ic = vtx(c, keys[t[2]], tv[2], floor);
-          // winding: up-facing (x-z ccw seen from +Y)
-          const ax = tv[0].x, az = tv[0].z, cr = (tv[1].x - ax) * (tv[2].z - az) - (tv[1].z - az) * (tv[2].x - ax);
+          // winding: up-facing (x-z ccw seen from +Y), from the emitted positions (floor vertices are pulled in)
+          const P = c.tp, ax = P[ia * 3], az = P[ia * 3 + 2], cr = (P[ib * 3] - ax) * (P[ic * 3 + 2] - az) - (P[ib * 3 + 2] - az) * (P[ic * 3] - ax);
           if (cr < 0) c.ti.push(ia, ib, ic); else c.ti.push(ia, ic, ib);
           for (let e = 0; e < 3; e++) {
             const p = t[e], q = t[(e + 1) % 3]; if (V[p].cls !== 1 || V[q].cls !== 1) continue;
@@ -432,27 +588,31 @@ export class Terrain {
         }
       }
     }
-    // walls along top|floor edges
+    // raw earth walls along top|floor edges: 3 rows of quads from the lip down to the (pulled-in) floor edge
     let nw = 0;
     for (const E of edges.values()) {
       if (!E.top || !E.floor) continue;
-      const { a, b } = E, c = chunkOf((a.x + b.x) / 2, (a.z + b.z) / 2);
-      let nx = -(b.z - a.z), nz = b.x - a.x; const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
-      if ((E.fx - a.x) * nx + (E.fz - a.z) * nz < 0) { nx = -nx; nz = -nz; }
-      const ya0 = a.H, yb0 = b.H, ya1 = a.F, yb1 = b.F;
-      const P = [[a.x, ya0, a.z], [b.x, yb0, b.z], [b.x, yb1, b.z], [a.x, ya1, a.z]];
-      // front face towards the trench (normal n): order so that (P1-P0)x(P3-P0) points along n
-      const ux = b.x - a.x, uz = b.z - a.z, cy = ux * nz - uz * nx; // y-component sign check of cross((b-a),(down)) ~ horizontal normal
-      const order = cy > 0 ? [0, 3, 2, 0, 2, 1] : [0, 1, 2, 0, 2, 3];
-      const along = Math.abs(nx) > Math.abs(nz) ? 'z' : 'x';
-      for (const k of order) { const p = P[k]; c.wp.push(p[0], p[1], p[2]); c.wn.push(nx, 0, nz); c.wu.push((along === 'x' ? p[0] : p[2]) / 1.6, p[1] / 1.6); }
+      const { a, b } = E, c = chunkOf((a.x + b.x) / 2, (a.z + b.z) / 2), ra = this.wallRing(a), rb = this.wallRing(b);
+      // face towards the floor-side point
+      const dx = b.x - a.x, dz = b.z - a.z, sx = E.fx - a.x, sz = E.fz - a.z, flip = (dx * sz - dz * sx) > 0;
+      for (let k = 0; k < 4; k++) {
+        const A0 = ra[k], B0 = rb[k], A1 = ra[k + 1], B1 = rb[k + 1];
+        const quad = flip ? [A0, A1, B1, A0, B1, B0] : [A0, B0, B1, A0, B1, A1];
+        for (const p of quad) {
+          c.wp.push(p[0], p[1], p[2]); c.wn.push(p[3], p[4], p[5]);
+          c.wu.push(0, p[1] / 1.4);   // the wall shader maps biplanar in world space
+        }
+      }
       nw++;
     }
     this.meshes = [];
     let tris = 0;
     for (const c of chunks.values()) {
       if (c.ti.length) {
-        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(c.tp, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(c.tn, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(c.tu, 2)); g.setIndex(c.ti); g.computeBoundingSphere();
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(c.tp, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(c.tn, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(c.tu, 2)); g.setIndex(c.ti);
+        g.computeVertexNormals(); g.computeBoundingSphere();
+        // flat rim / floor stay straight up (the rim must match the ground plane's shading)
+        { const P = g.attributes.position.array, Nn = g.attributes.normal.array; for (let i = 0; i < P.length / 3; i++) { const y = P[i * 3 + 1]; if (Math.abs(y - LOW) < 0.002 || y < -0.6) { Nn[i * 3] = 0; Nn[i * 3 + 1] = 1; Nn[i * 3 + 2] = 0; } } }
         const m = new THREE.Mesh(g, matTop); m.receiveShadow = true; m.castShadow = true; m.name = 'terrain'; scene.add(m); this.meshes.push(m); tris += c.ti.length / 3;
       }
       if (c.wp.length) {
@@ -462,43 +622,86 @@ export class Terrain {
     }
     this.stats = { tris, walls: nw, chunks: chunks.size, cuts: this.cuts.length, reliefs: this.reliefs.length };
   }
-  // revetment panels on every exposed cut wall, duckboards, sandbag lips on the firing cells
+  // ---------------------------------------------------------------- dressing: improvised, sparse, varied
+  // Revetment is patchy scrap leaned against the raw wall (pallets, old doors, corrugated / plywood sheets, branches,
+  // a few logs, wire-mesh panels on engineered stretches); sandbags on some firing places only; mud-floor pallets and
+  // planks in the wet spots; litter; overhead cover (camo net, cut branches, tarps) over some sections.
   buildDressing() {
-    const R = this.R;
+    const R = this.R, up = new THREE.Vector3(0, 1, 0), ax = new THREE.Vector3(1, 0, 0);
+    const Q = new THREE.Quaternion(), Q2 = new THREE.Quaternion(), P = new THREE.Vector3(), SC = new THREE.Vector3();
+    const place = (name, x, y, z, ry, lean = 0, sx = 1, sy = 1, sz = 1) => {
+      Q.setFromAxisAngle(up, ry); if (lean) Q.multiply(Q2.setFromAxisAngle(ax, lean));
+      this.put(name, new THREE.Matrix4().compose(P.set(x, y, z), Q, SC.set(sx, sy, sz)));
+    };
+    const SETS = {
+      rough: [['rv_pallet', 0.24], ['rv_sheet', 0.2], ['rv_ply', 0.16], ['rv_door', 0.07], ['rv_branches', 0.18], ['rv_logs', 0.15]],
+      crude: [['rv_pallet', 0.22], ['rv_sheet', 0.2], ['rv_ply', 0.2], ['rv_door', 0.1], ['rv_branches', 0.14], ['rv_logs', 0.14]],
+      urban: [['rv_door', 0.22], ['rv_sheet', 0.26], ['rv_ply', 0.26], ['rv_pallet', 0.26]],
+      logs: [['rv_logs', 0.45], ['rv_branches', 0.4], ['rv_pallet', 0.15]],
+      eng: [['rv_mesh', 0.72], ['rv_logs', 0.18], ['rv_ply', 0.1]],
+      pass: [['rv_logs', 0.55], ['rv_ply', 0.25], ['rv_pallet', 0.2]],
+    };
+    const DENS = { none: 0, rough: 0.05, crude: 0.11, urban: 0.12, logs: 0.08, eng: 0.3, pass: 0.4 };
+    const RUN = { rough: [1, 3], crude: [1, 4], urban: [1, 3], logs: [1, 3], eng: [3, 9], pass: [2, 4] };
+    const pick = set => { let r = R(); for (const [n, w] of set) { if ((r -= w) < 0) return n; } return set[0][0]; };
+    const W = { rv_pallet: 1.2, rv_sheet: 0.95, rv_ply: 1.22, rv_door: 0.84, rv_branches: 1.3, rv_logs: 1.6, rv_mesh: 1.5 };
+    const toWall = (x, z) => { for (let it = 0; it < 4; it++) { const S = this.cutSDF(x, z); if (Math.abs(S) < 0.01) break; const [gx, gz] = this.grad(x, z); x -= gx * S; z -= gz * S; } return [x, z]; };
+    const floorAt = (x, z) => { const S = this.cutSDF(x, z), q = this._q; return q && S < 0 ? -q.depth : 0; };
     for (const q of this.cuts) {
-      const revet = q.revet;
-      const pieces = !revet || revet === 'none' ? [] : revet === 'mixed' ? ['revet_boards', 'revet_wattle', 'revet_logs'] : ['revet_' + revet];
-      for (const ed of pieces.length ? q.edges : []) {
-        if (!ed.wall) continue;
-        const a = [ed.ax, ed.az], dx = ed.bx - ed.ax, dz = ed.bz - ed.az, L = ed.L; if (L < 0.3) continue;
-        const nx = ed.nx, nz = ed.nz; // outward (into the earth)
-        const n = Math.max(1, Math.round(L / 1.1)), seg = L / n;
-        for (let k = 0; k < n; k++) {
-          const t0 = k * seg, mx = a[0] + dx / L * (t0 + seg / 2), mz = a[1] + dz / L * (t0 + seg / 2);
-          // skip where the wall opens into another cut (junctions, bays, passages)
-          if (this.cutSDF(mx + nx * 0.14, mz + nz * 0.14) < -0.01) continue;
-          const e0x = a[0] + dx / L * (t0 + 0.08), e0z = a[1] + dz / L * (t0 + 0.08), e1x = a[0] + dx / L * (t0 + seg - 0.08), e1z = a[1] + dz / L * (t0 + seg - 0.08);
-          if (this.cutSDF(e0x + nx * 0.14, e0z + nz * 0.14) < -0.01 || this.cutSDF(e1x + nx * 0.14, e1z + nz * 0.14) < -0.01) continue;
-          const top = this.topH(mx + nx * 0.03, mz + nz * 0.03, false) + 0.04, depth = q.depth;
-          const name = pieces.length > 1 ? pieces[Math.floor((this.noise(mx * 0.08, mz * 0.08)) * pieces.length) % pieces.length] : pieces[0];
-          const ry = Math.atan2(-nx, -nz); // piece +Z faces into the trench
-          const M = new THREE.Matrix4().compose(new THREE.Vector3(mx - nx * 0.005, top, mz - nz * 0.005), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(seg + 0.03, top + depth, 1));
-          this.put(name, M);
+      // ---- revetment patches along the walls
+      const style = q.revet || 'rough', set = SETS[style] || SETS.rough, dens = DENS[style] ?? 0.05, run = RUN[style] || [1, 3];
+      if (dens > 0) for (const ed of q.edges) {
+        if (!ed.wall || ed.L < 0.5) continue;
+        let t = 0.3 + R() * 0.5, left = 0, name = null;
+        while (t < ed.L - 0.3) {
+          if (!left) { if (R() > dens * (q.kind === 'bay' || q.kind === 'pit' ? 2.2 : 1) * 1.15) { t += 1.0; continue; } left = run[0] + Math.floor(R() * (run[1] - run[0] + 1)); name = pick(set); }
+          const wPiece = W[name] * (0.92 + R() * 0.12);
+          const mx = ed.ax + (ed.bx - ed.ax) * t / ed.L, mz = ed.az + (ed.bz - ed.az) * t / ed.L;
+          const [wx, wz] = toWall(mx + ed.nx * 0.05, mz + ed.nz * 0.05), [gx, gz] = this.grad(wx, wz);
+          // the wall opens into another cut here (junction, firing cell, passage): no panel
+          if (this.cutSDF(wx + gx * 0.25, wz + gz * 0.25) < 0.02 || this.cutSDF(wx + gx * 0.25 - gz * wPiece * 0.45, wz + gz * 0.25 + gx * wPiece * 0.45) < 0.02 || this.cutSDF(wx + gx * 0.25 + gz * wPiece * 0.45, wz + gz * 0.25 - gx * wPiece * 0.45) < 0.02) { left = 0; t += 0.8; continue; }
+          this.cutSDF(wx - gx * 0.3, wz - gz * 0.3); const sq = this._q || q, depth = sq.depth, s0 = this.s0At(wx, wz, sq), lip = Math.max(0, this.topH(wx + gx * 0.08, wz + gz * 0.08, false));
+          const H = name === 'rv_door' ? 2.0 : name === 'rv_sheet' ? 1.8 : name === 'rv_mesh' || name === 'rv_ply' ? 1.25 + (name === 'rv_mesh' ? 0.25 : 0) : name === 'rv_pallet' ? 1.2 : name === 'rv_logs' ? 1.0 : 1.3;
+          const room = depth + lip + 0.06, sy = H > room ? room / H : (name === 'rv_branches' ? Math.min(1.3, room / H) : 1);
+          const hEff = H * sy, lean = -Math.atan2(s0 * Math.min(1, hEff / depth) + 0.04 + R() * 0.05, hEff);
+          const fx = wx - gx * (s0 + 0.06), fz = wz - gz * (s0 + 0.06);
+          place(name, fx, -depth + 0.02, fz, Math.atan2(-gx, -gz) + (R() - 0.5) * 0.1, lean + (R() - 0.5) * 0.04, 1 + (R() - 0.5) * 0.1, sy, 1);
+          left--; t += wPiece + (R() < 0.3 ? 0.15 + R() * 0.4 : 0.02);
         }
       }
-      // duckboards on the trench floor (fire / comm trenches), sometimes missing
-      if (q.segs && (q.kind === 'fire' || q.kind === 'comm')) for (const [ax, az, bx, bz] of q.segs) {
-        const L = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L, uz = (bz - az) / L, ry = Math.atan2(ux, uz) + Math.PI / 2;
-        for (let t = 0.7; t < L - 0.6; t += 1.28) { if (R() < 0.3) continue; const x = ax + ux * t, z = az + uz * t; if (this.cutSDF(x, z) > -0.25) continue; this.put('duckboard', trs(x, -q.depth + 0.005, z, ry + (R() - .5) * 0.05)); }
+      // ---- sandbags / debris on some firing places (raw earth notch on the rest)
+      if ((q.kind === 'bay' || (q.kind === 'pit' && q.tag?.fox)) && !q.covered && q.tag) {
+        const t = q.tag, x = t.x + t.fx * (t.L + 0.35), z = t.z + t.fz * (t.L + 0.35), r = R();
+        if (r < (style === 'urban' ? 0.25 : 0.45)) place(R() < 0.6 ? 'sandbag_row' : 'sandbag_pile', x, this.topH(x, z, false) - 0.08, z, Math.atan2(t.fx, t.fz) + (R() - 0.5) * 0.3, 0, 0.8 + R() * 0.3);
+        else if (style === 'urban' && r < 0.75) place('debris_conc', x, this.topH(x, z, false) - 0.05, z, R() * 6.28);
+        if (q.kind === 'pit' && R() < 0.3) this.covers.push([t.x, t.z, -t.fz, t.fx, 1.6, R() < 0.5 ? 'branch_cover' : 'net_cover']);
       }
-      if (q.kind === 'bay' && !q.covered && q.tag) { // sandbag lip on the front parapet
-        const t = q.tag, x = t.x + t.fx * (t.L + 0.32), z = t.z + t.fz * (t.L + 0.32);
-        this.put('sandbag_row', trs(x, this.topH(x, z, false) - 0.07, z, Math.atan2(t.fx, t.fz)));
+      // ---- floor: pallets / planks in the wet spots, litter against the walls, crates in the odd traverse
+      if (q.segs && (q.kind === 'fire' || q.kind === 'comm')) for (const [ax0, az0, bx0, bz0] of q.segs) {
+        const L = Math.hypot(bx0 - ax0, bz0 - az0); if (L < 0.4) continue; const ux = (bx0 - ax0) / L, uz = (bz0 - az0) / L, ry = Math.atan2(ux, uz);
+        for (let t = 0.4; t < L - 0.3; t += 1.5) {
+          const x = ax0 + ux * t, z = az0 + uz * t; if (this.cutSDF(x, z) > -0.3) continue;
+          const wet = vnoise(x * 0.45 + 7.7, z * 0.45 + 1.3), r = R();
+          if (wet > 0.62 && r < 0.22) place(R() < 0.6 ? 'floor_pallet' : 'floor_planks', x, -q.depth + 0.01, z, ry + Math.PI / 2 + (R() - 0.5) * 0.25);
+          else if (r < (style === 'urban' ? 0.07 : 0.045)) { const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) * 0.45; place(R() < 0.5 ? 'litter_a' : 'litter_b', x - uz * o * side, -q.depth + 0.01, z + ux * o * side, R() * 6.28); }
+          else if (r < 0.06 && q.kind === 'fire') { const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) * 0.35; place('ammo_crates', x - uz * o * side, -q.depth + 0.02, z + ux * o * side, ry + (R() - 0.5) * 0.5, 0, 0.9); }
+        }
+        // urban positions: broken brick / concrete thrown out with the spoil
+        if (style === 'urban') for (let t = 0.8; t < L; t += 2.2) { if (R() > 0.4) continue; const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) + 0.7 + R() * 1.2, x = ax0 + ux * t - uz * o * side, z = az0 + uz * t + ux * o * side; if (this.cutSDF(x, z) < 0.5) continue; place('debris_conc', x, Math.max(0, this.topH(x, z, false)) - 0.06, z, R() * 6.28, 0, 0.7 + R() * 0.6); }
+        // overhead cover: a section every so often under a camo net / cut branches / a tarp / an anti-drone net
+        if (L > 2.2) for (let t = 1.2; t < L - 1.2; t += 4.5) {
+          const x = ax0 + ux * t, z = az0 + uz * t; if (this.cutSDF(x, z) > -0.25) continue;
+          const r = R(), wTr = 2 * (q.w || 0.5) + 2 * Math.max(0, widen(x, z) * q.rough);
+          const kind = r < 0.13 ? 'net_cover' : r < 0.22 ? 'branch_cover' : r < 0.25 ? 'tarp_cover' : r < 0.27 && q.kind === 'comm' ? 'net_drone' : null;
+          if (kind) this.covers.push([x, z, ux, uz, wTr, kind]);
+        }
       }
-      if (q.kind === 'fire' && q.segs) for (const [ax, az, bx, bz] of q.segs) { // ammo crates in the odd traverse
-        if (R() > 0.06) continue; const f = 0.3 + R() * 0.4, x = ax + (bx - ax) * f, z = az + (bz - az) * f;
-        if (this.cutSDF(x, z) < -0.3) this.put('ammo_crates', trs(x, -q.depth + 0.02, z, Math.atan2(bx - ax, bz - az) + (R() - .5) * 0.4));
-      }
+    }
+    // overhead covers (after all cuts, so they can measure the actual width and sit on the lips)
+    for (const [x, z, ux, uz, wTr, kind] of this.covers) {
+      const lipA = this.topH(x - uz * (wTr / 2 + 0.25), z + ux * (wTr / 2 + 0.25), false), lipB = this.topH(x + uz * (wTr / 2 + 0.25), z - ux * (wTr / 2 + 0.25), false);
+      const y = Math.max(0, Math.min(lipA, lipB)) + 0.02, across = (wTr + 1.3) / (kind === 'net_drone' ? 2.0 : kind === 'tarp_cover' ? 2.2 : 2.6);
+      place(kind, x, y, z, Math.atan2(ux, uz) + Math.PI / 2 + (R() - 0.5) * 0.25, 0, 0.85 + R() * 0.35, 1, Math.max(0.7, across));
     }
   }
   noise(x, z) { const t = Math.sin(Math.floor(x) * 127.1 + Math.floor(z) * 311.7) * 43758.5453; return t - Math.floor(t); }

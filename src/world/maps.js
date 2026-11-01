@@ -78,9 +78,17 @@ export const MAPS = {
       overwatch: { A: [[-95, -70], [-10, -40]], B: [[85, -95], [143, -60]] },
       army: [[-95, -168, 'mech', 'A'], [-30, -172, 'assault', 'A'], [85, -168, 'imech', 'B'], [130, -172, 'foot', 'B'], [-60, -180, 'tank', 'A'], [40, -180, 'tank', 'B'], [10, -186, 'atgm', 'A'], [-140, -186, 'fpv', 'B'], [176, -170, 'spg', 'B']],
     },
-    // a dug-in last line across the southern green strip (facing north), dugout behind it
+    // improvised positions dug into the courtyard greens (spoil full of brick and concrete): a slit trench across the
+    // school forecourt covering the avenue, and foxholes + an MG pit on the market crossroads' south-west corner
     fortifications: [
-      { type: 'fire', base: [[-24, 177], [64, 177]], front: [0, -1], style: 'zigzag', revet: 'boards', leg: 6.5, amp: 2.2, bays: 2, dug: [0.4], mg: [0.9] },
+      { type: 'sp', id: 'A', name: 'School No. 7 forecourt', front: [0, -1], revet: 'urban', craters: 4 },
+      { type: 'fire', sp: 'A', base: [[-86, 21], [-70, 22.5], [-52, 21], [-40, 22]], bayGap: 7 },
+      { type: 'mg', sp: 'A', at: [-33, 18], front: [0.5, -0.86] },
+      { type: 'fox', sp: 'A', pts: [[-90, 25, -0.7, -0.7], [-34, 28, 1, 0]] },
+      { type: 'sp', id: 'B', name: 'Market crossroads SW corner', front: [0.6, -0.8], kind: 'outpost', revet: 'urban', craters: 3 },
+      { type: 'fire', sp: 'B', base: [[56, 24], [66, 23], [72, 30]], front: [0.6, -0.8], bayGap: 6 },
+      { type: 'mg', sp: 'B', at: [73, 17], front: [0.3, -0.95] },
+      { type: 'fox', sp: 'B', pts: [[71, 40, 1, 0], [55, 16, 0, -1]] },
     ],
     smoulder: [[-152, -66, 1.2], [12, -72, 1.4], [-59, -22, 1], [145, -150, 0.8], [172, 66, 0.7]],
     plumes: [[-320, -380, 1.4], [260, -420, 1.8], [420, -120, 1.1], [-460, 60, 1.2], [80, -520, 2.2]],
@@ -157,27 +165,120 @@ export const MAPS = {
     ],
     farm: { x: 262, z: 112 },
     farmstead: { x: 150, z: 372 },   // objective D: private farm at the crossroads (yard north-east of the junction)
-    // Field fortifications (terrain.js cuts them into the ground). front = towards the enemy the line was dug against.
-    //   fire: zig-zag ('zigzag', Russian 'lomanaya'), crenellated ('crenel': fire bays + traverses) or 'wiggle' (tree-line);
-    //         dug = dugouts at baseline fractions (passage to the rear), mg = covered MG cells nearest those fractions
+    // Field fortifications (terrain.js cuts them into the ground), laid out as 2023-25 positions: platoon / squad
+    // strongpoints of short hand-dug trench segments, foxholes and covered MG pits in the tree lines and at the
+    // village / farm edges, all-round, covering the roads, the gaps between tree belts and the field crossings, with
+    // dugouts behind and crawl / communication trenches back into cover; forward and flank outposts; and one
+    // continuous machine-dug line only where it belongs (the enemy's rear 'Surovikin' line: AT ditch, dragon's teeth).
+    //   sp:   strongpoint header (id, name, front = main facing towards the enemy, kind, revet, craters, yard)
+    //   fire: trench segment (style 'rough' hand-dug meander with dog-legs, 'zigzag' machine-dug 'lomanaya'),
+    //         bayGap = firing cells every ~n m; dug = dugouts at baseline fractions, mg = covered MG cells there
+    //   fox:  foxholes [x, z, fx, fz]; mg: MG pit with a log roof at `at` facing `front` (crawl trench to the nearest
+    //         trench); dug: dugout near `at` (passage from the nearest trench); comm: communication trench
+    //   revet: 'rough' (sparse scrap), 'crude' (more scrap), 'logs' (forest), 'eng' (wire mesh), 'urban', 'none'
     fortifications: [
-      // Novomykolaivka north line: in the rear edge of the windbreak, firing cells pushed into the belt, facing north
-      { type: 'fire', base: [[-334, -14], [-36, -14]], front: [0, -1], style: 'zigzag', revet: 'boards', leg: 7, amp: 2.4, bays: 2, dug: [0.1, 0.36, 0.62, 0.9], mg: [0.03, 0.5, 0.97] },
-      { type: 'comm', pts: [[-262, -13], [-262, 16]] }, { type: 'comm', pts: [[-150, -13], [-150, 16]] }, { type: 'comm', pts: [[-78, -13], [-78, 16]] },
-      // kolkhoz farm north line (Ukrainian crenellated fire trench, wattle / log revetment)
-      { type: 'fire', base: [[166, -14], [352, -14]], front: [0, -1], style: 'crenel', revet: 'mixed', leg: 6, amp: 2.0, bays: 3, dug: [0.15, 0.55, 0.88], mg: [0.3, 0.75] },
-      { type: 'comm', pts: [[244, -12], [244, 48]], revet: 'wattle' }, { type: 'comm', pts: [[306, -12], [306, 48]], revet: 'wattle' },
-      // C: forest-edge strongpoint, trench just inside the tree line facing the southern fields and the east
-      { type: 'fire', base: [[-566, 447], [-418, 447]], front: [0, 1], style: 'wiggle', revet: 'logs', leg: 6, amp: 1.8, bays: 2, dug: [0.25, 0.6], mg: [0.95, 0.45] },
-      { type: 'fire', base: [[-414, 449], [-414, 352]], front: [1, 0], style: 'wiggle', revet: 'logs', leg: 6, amp: 1.6, bays: 2, dug: [0.5], mg: [0.2] },
-      { type: 'comm', pts: [[-486, 446], [-486, 312]], revet: 'logs' },
-      // D: crossroads farmstead, crenellated positions south of the track facing the southern approach
-      { type: 'fire', base: [[118, 421], [206, 421]], front: [0, 1], style: 'crenel', revet: 'boards', leg: 6, amp: 1.9, bays: 2, dug: [0.3, 0.75], mg: [0.04] },
-      { type: 'fire', base: [[24, 421], [93, 421]], front: [0, 1], style: 'zigzag', revet: 'wattle', leg: 7, amp: 2.2, bays: 2, dug: [0.5], mg: [0.95] },
-      // enemy main line in the northern windbreak, facing south: AT ditch, three rows of dragon's teeth, then the trench
-      { type: 'fire', base: [[-334, -344], [-62, -344]], front: [0, 1], style: 'zigzag', revet: 'boards', leg: 8, amp: 2.6, bays: 2, dug: [0.2, 0.5, 0.8], mg: [0.35, 0.7] },
-      { type: 'fire', base: [[148, -344], [344, -344]], front: [0, 1], style: 'zigzag', revet: 'boards', leg: 8, amp: 2.6, bays: 2, dug: [0.3, 0.7], mg: [0.5] },
-      { type: 'comm', pts: [[-200, -345], [-200, -400]] }, { type: 'comm', pts: [[250, -345], [250, -400]] },
+      // ---- A: Novomykolaivka. North edge in the rear of the windbreak (old positions facing the enemy line), three
+      //      platoon positions 120-150 m apart with the gaps covered by MG; the school yard; the south tree belt.
+      { type: 'sp', id: 'A1', name: 'Novomykolaivka NW edge', front: [0, -1], revet: 'crude' },
+      { type: 'fire', sp: 'A1', base: [[-326, -12], [-306, -13.5], [-284, -12]], bayGap: 8 },
+      { type: 'mg', sp: 'A1', at: [-332, -16], front: [-0.6, -0.8] },
+      { type: 'fox', sp: 'A1', pts: [[-299, -3, 0, -1], [-276, -6, 0.7, -0.7], [-337, -3, -1, 0.15]] },
+      { type: 'dug', sp: 'A1', at: [-308, -3] }, { type: 'comm', sp: 'A1', pts: [[-296, -12], [-294, 17]] },
+      { type: 'sp', id: 'A2', name: 'Novomykolaivka north - Shkilna gap', front: [0, -1], revet: 'crude' },
+      { type: 'fire', sp: 'A2', base: [[-158, -12], [-140, -13.5], [-118, -12]], bayGap: 8 },
+      { type: 'mg', sp: 'A2', at: [-160, -17], front: [-0.75, -0.66] },
+      { type: 'fox', sp: 'A2', pts: [[-128, -3, 0, -1], [-111, -6, 0.6, -0.8]] },
+      { type: 'dug', sp: 'A2', at: [-140, -3] }, { type: 'comm', sp: 'A2', pts: [[-136, -12], [-137, 17]] },
+      { type: 'sp', id: 'A3', name: 'Novomykolaivka NE corner', front: [0, -1], revet: 'crude' },
+      { type: 'fire', sp: 'A3', base: [[-84, -12], [-62, -13.5], [-40, -12]], bayGap: 8 },
+      { type: 'mg', sp: 'A3', at: [-34, -16], front: [-0.15, -1] },
+      { type: 'fox', sp: 'A3', pts: [[-8, -13, 0.7, -0.7], [-5, 1, 1, 0], [-52, -3, 0, -1]] },
+      { type: 'dug', sp: 'A3', at: [-64, -3] }, { type: 'comm', sp: 'A3', pts: [[-58, -12], [-57, 17]] },
+      { type: 'sp', id: 'A4', name: 'School yard', front: [0, -1], revet: 'crude', yard: true, craters: 3 },
+      { type: 'fire', sp: 'A4', base: [[-186, 76], [-175, 77.5], [-163, 76]], bayGap: 6 },
+      { type: 'mg', sp: 'A4', at: [-151, 72.5], front: [1, -0.1] },
+      { type: 'fox', sp: 'A4', pts: [[-193, 74, -1, 0], [-146, 81, 1, 0.2]] },
+      { type: 'dug', sp: 'A4', at: [-175, 86] },
+      { type: 'sp', id: 'A5', name: 'Novomykolaivka south belt', front: [0, 1], revet: 'rough', yard: true },
+      { type: 'fire', sp: 'A5', base: [[-178, 191], [-158, 192.5], [-140, 191]], bayGap: 8 },
+      { type: 'mg', sp: 'A5', at: [-135, 196], front: [0.45, 0.9] },
+      { type: 'fox', sp: 'A5', pts: [[-112, 196, 0, 1], [-186, 197, -0.3, 1]] },
+      { type: 'dug', sp: 'A5', at: [-160, 183] }, { type: 'comm', sp: 'A5', pts: [[-152, 191], [-151, 170]] },
+      // ---- B: kolkhoz farm. Forward edge in the north windbreak either side of the farm track, an east flank
+      //      position between the field track and the east belt, the south belt, a road block on the west road.
+      { type: 'sp', id: 'B1', name: 'Kolkhoz north belt', front: [0, -1], revet: 'rough' },
+      { type: 'fire', sp: 'B1', base: [[188, -12], [208, -13.5], [230, -12], [252, -13.5], [268, -12]], bayGap: 8 },
+      { type: 'mg', sp: 'B1', at: [214, -17], front: [0.35, -0.94] },
+      { type: 'fox', sp: 'B1', pts: [[180, -4, -0.7, -0.7], [276, -4, 0.6, -0.8], [238, 3, 0, -1]] },
+      { type: 'dug', sp: 'B1', at: [200, -2] }, { type: 'dug', sp: 'B1', at: [258, -2] },
+      { type: 'comm', sp: 'B1', pts: [[248, -12], [250, 40]] },
+      { type: 'sp', id: 'B2', name: 'Kolkhoz east flank', front: [1, 0], revet: 'rough' },
+      { type: 'fire', sp: 'B2', base: [[374, 76], [376.5, 95], [373, 114]], bayGap: 8 },
+      { type: 'mg', sp: 'B2', at: [378, 71], front: [0.8, -0.6] },
+      { type: 'fox', sp: 'B2', pts: [[371, 128, 0.7, 0.7], [380, 50, 0.6, -0.8]] },
+      { type: 'dug', sp: 'B2', at: [374, 124] },
+      { type: 'sp', id: 'B3', name: 'Kolkhoz south belt', front: [0, 1], revet: 'rough' },
+      { type: 'fire', sp: 'B3', base: [[190, 191], [212, 192.5], [236, 191]], bayGap: 8 },
+      { type: 'mg', sp: 'B3', at: [244, 196], front: [0.4, 0.92] },
+      { type: 'fox', sp: 'B3', pts: [[182, 197, -0.5, 0.87], [262, 196, 0.2, 1], [298, 195, 0, 1]] },
+      { type: 'dug', sp: 'B3', at: [214, 182] },
+      { type: 'sp', id: 'B4', name: 'Kolkhoz west road block', front: [-1, 0], kind: 'outpost', revet: 'rough', craters: 4 },
+      { type: 'fire', sp: 'B4', base: [[152, 74], [151, 88]], bayGap: 6 },
+      { type: 'fox', sp: 'B4', pts: [[155, 52, -0.8, -0.6], [149, 97, -0.8, 0.6]] },
+      // ---- C: forest edge strongpoint. Trench 10-15 m inside the trees (cover from drones), firing cells at the edge,
+      //      an MG on the corner covering both the southern fields and the track junction; the west part of the south
+      //      edge covers the forest ride; outposts on the east edge and forward in the tree belt south of the corner.
+      { type: 'sp', id: 'C1', name: 'Forest corner', front: [0, 1], revet: 'logs' },
+      { type: 'fire', sp: 'C1', base: [[-474, 442], [-452, 443.5], [-432, 441], [-423, 436]], bayGap: 8 },
+      { type: 'fire', sp: 'C1', base: [[-418, 429], [-416.5, 412], [-419, 396]], front: [1, 0], bayGap: 8 },
+      { type: 'mg', sp: 'C1', at: [-420, 447], front: [0.7, 0.7] },
+      { type: 'fox', sp: 'C1', pts: [[-487, 446, 0, 1], [-412, 383, 1, 0.2], [-441, 449, 0, 1]] },
+      { type: 'dug', sp: 'C1', at: [-452, 431] }, { type: 'dug', sp: 'C1', at: [-430, 424] },
+      { type: 'comm', sp: 'C1', pts: [[-447, 442], [-450, 400]] },
+      { type: 'sp', id: 'C2', name: 'Forest south edge - ride', front: [0, 1], revet: 'logs' },
+      { type: 'fire', sp: 'C2', base: [[-547, 443], [-530, 444.5], [-512, 442]], bayGap: 8 },
+      { type: 'mg', sp: 'C2', at: [-551, 447], front: [-0.45, 0.9] },
+      { type: 'fox', sp: 'C2', pts: [[-500, 447, 0, 1], [-567, 439, -1, 0.3]] },
+      { type: 'dug', sp: 'C2', at: [-530, 432] },
+      { type: 'sp', id: 'C3', name: 'Forest east edge outpost', front: [1, 0], kind: 'outpost', revet: 'logs', craters: 4 },
+      { type: 'fire', sp: 'C3', base: [[-417, 372], [-416, 357], [-418, 344]], bayGap: 7 },
+      { type: 'fox', sp: 'C3', pts: [[-412, 331, 0.8, -0.6], [-411, 389, 1, 0]] },
+      { type: 'sp', id: 'C4', name: 'Tree belt forward outpost', front: [0, 1], kind: 'outpost', revet: 'rough', craters: 5 },
+      { type: 'fire', sp: 'C4', base: [[-402, 524], [-388, 525]], bayGap: 6 },
+      { type: 'fox', sp: 'C4', pts: [[-398, 510, -0.8, 0.6], [-391, 512, 0.8, 0.6]] },
+      // ---- D: crossroads farmstead. Positions either side of the N-S road south of the track with crossing MG fire
+      //      down the road, the head of the east tree belt on the flank, and a forward outpost down that belt.
+      { type: 'sp', id: 'D1', name: 'Crossroads east', front: [0, 1], revet: 'rough' },
+      { type: 'fire', sp: 'D1', base: [[114, 413], [131, 414.5], [150, 413]], bayGap: 8 },
+      { type: 'mg', sp: 'D1', at: [112, 420], front: [-0.3, 0.95] },
+      { type: 'fox', sp: 'D1', pts: [[160, 419, 0.3, 1], [113, 432, -0.7, 0.7]] },
+      { type: 'dug', sp: 'D1', at: [158, 412] },
+      { type: 'sp', id: 'D2', name: 'Crossroads west - hamlet edge', front: [0, 1], revet: 'crude' },
+      { type: 'fire', sp: 'D2', base: [[44, 413], [64, 414.5], [86, 413]], bayGap: 8 },
+      { type: 'mg', sp: 'D2', at: [93, 419], front: [0.35, 0.94] },
+      { type: 'fox', sp: 'D2', pts: [[34, 419, -0.4, 0.9], [72, 426, 0, 1]] },
+      { type: 'dug', sp: 'D2', at: [36, 412] },
+      { type: 'sp', id: 'D3', name: 'East belt head', front: [0, 1], revet: 'rough' },
+      { type: 'fire', sp: 'D3', base: [[221, 421], [238, 422]], bayGap: 6 },
+      { type: 'mg', sp: 'D3', at: [220, 431], front: [-0.6, 0.8] },
+      { type: 'fox', sp: 'D3', pts: [[238, 438, 0.7, 0.7], [224, 451, -0.5, 0.85], [236, 455, 0.4, 0.9]] },
+      { type: 'comm', sp: 'D3', pts: [[230, 421], [230, 409]] },
+      { type: 'sp', id: 'D4', name: 'East belt forward outpost', front: [0, 1], kind: 'outpost', revet: 'rough', craters: 5 },
+      { type: 'fire', sp: 'D4', base: [[223, 500], [237, 501]], bayGap: 6 },
+      { type: 'fox', sp: 'D4', pts: [[226, 488, -0.6, 0.8], [235, 486, 0.6, 0.8]] },
+      // ---- flank outpost at the junction of the central belts, covering the open fields between C and D
+      { type: 'sp', id: 'O1', name: 'Central belt junction outpost', front: [0, 1], kind: 'outpost', revet: 'rough', craters: 5 },
+      { type: 'fire', sp: 'O1', base: [[1, 343], [19, 344]], bayGap: 6 },
+      { type: 'mg', sp: 'O1', at: [11, 349], front: [0, 1] },
+      { type: 'fox', sp: 'O1', pts: [[-7, 347, -0.5, 0.85], [27, 348, 0.5, 0.85]] },
+      // ---- enemy main line in the northern windbreak, facing south ('Surovikin' style): machine-dug zig-zag fire
+      //      trenches with wire-mesh / log revetment in stretches, AT ditch, three rows of dragon's teeth
+      { type: 'sp', id: 'NW', name: 'Northern line west', front: [0, 1], kind: 'line', revet: 'eng', craters: 10 },
+      { type: 'fire', sp: 'NW', base: [[-334, -344], [-62, -344]], style: 'zigzag', leg: 8, amp: 2.6, bays: 2, dug: [0.2, 0.5, 0.8], mg: [0.35, 0.7] },
+      { type: 'comm', sp: 'NW', pts: [[-200, -345], [-200, -400]], style: 'zigzag', link: false },
+      { type: 'sp', id: 'NE', name: 'Northern line east', front: [0, 1], kind: 'line', revet: 'rough', craters: 8 },
+      { type: 'fire', sp: 'NE', base: [[148, -344], [344, -344]], style: 'zigzag', leg: 8, amp: 2.6, bays: 2, dug: [0.3, 0.7], mg: [0.5] },
+      { type: 'comm', sp: 'NE', pts: [[250, -345], [250, -400]], style: 'zigzag', link: false },
       { type: 'teeth', pts: [[-560, -321], [-372, -321]], rows: 3 }, { type: 'teeth', pts: [[-348, -321], [-262, -321]], rows: 3 },
       { type: 'teeth', pts: [[-228, -321], [-12, -321]], rows: 3 }, { type: 'teeth', pts: [[22, -321], [88, -321]], rows: 3 },
       { type: 'teeth', pts: [[118, -321], [244, -321]], rows: 3 }, { type: 'teeth', pts: [[276, -321], [348, -321]], rows: 3 },

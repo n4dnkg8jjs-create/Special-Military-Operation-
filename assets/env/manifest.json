@@ -4330,95 +4330,277 @@
      2.86
     ]
    },
-   "revet_boards": {
-    "tris": 82,
+   "rv_pallet": {
+    "tris": 238,
     "bbox_min": [
-     -0.52,
-     -1.0,
-     -0.03
-    ],
-    "bbox_max": [
-     0.53,
-     0.07,
-     0.09
-    ]
-   },
-   "revet_wattle": {
-    "tris": 52,
-    "bbox_min": [
-     -0.52,
-     -1.0,
-     0.01
-    ],
-    "bbox_max": [
-     0.52,
-     0.09,
-     0.09
-    ]
-   },
-   "revet_logs": {
-    "tris": 156,
-    "bbox_min": [
-     -0.53,
-     -1.0,
-     -0.13
-    ],
-    "bbox_max": [
-     0.53,
-     0.14,
-     0.11
-    ]
-   },
-   "duckboard": {
-    "tris": 164,
-    "bbox_min": [
-     -0.6,
+     -0.4,
      0.0,
-     -0.32
+     -0.12
     ],
     "bbox_max": [
-     0.6,
-     0.08,
-     0.32
+     0.4,
+     1.2,
+     0.0
     ]
    },
-   "sandbag_row": {
-    "tris": 101,
+   "rv_door": {
+    "tris": 38,
     "bbox_min": [
-     -0.67,
-     -0.01,
-     -0.21
+     -0.42,
+     0.0,
+     -0.04
+    ],
+    "bbox_max": [
+     0.42,
+     2.0,
+     0.04
+    ]
+   },
+   "rv_sheet": {
+    "tris": 416,
+    "bbox_min": [
+     -0.47,
+     0.0,
+     -0.11
+    ],
+    "bbox_max": [
+     0.47,
+     1.8,
+     0.08
+    ]
+   },
+   "rv_ply": {
+    "tris": 58,
+    "bbox_min": [
+     -0.61,
+     0.0,
+     -0.04
+    ],
+    "bbox_max": [
+     0.61,
+     1.25,
+     0.0
+    ]
+   },
+   "rv_branches": {
+    "tris": 248,
+    "bbox_min": [
+     -0.75,
+     -0.0,
+     -0.04
     ],
     "bbox_max": [
      0.77,
-     0.26,
-     0.23
+     1.47,
+     0.11
+    ]
+   },
+   "rv_logs": {
+    "tris": 184,
+    "bbox_min": [
+     -0.91,
+     -0.0,
+     -0.15
+    ],
+    "bbox_max": [
+     0.88,
+     0.84,
+     0.09
+    ]
+   },
+   "rv_mesh": {
+    "tris": 84,
+    "bbox_min": [
+     -0.76,
+     -0.0,
+     -0.06
+    ],
+    "bbox_max": [
+     0.77,
+     1.6,
+     0.11
+    ]
+   },
+   "floor_pallet": {
+    "tris": 88,
+    "bbox_min": [
+     -0.6,
+     -0.07,
+     -0.4
+    ],
+    "bbox_max": [
+     0.6,
+     0.13,
+     0.4
+    ]
+   },
+   "floor_planks": {
+    "tris": 48,
+    "bbox_min": [
+     -1.03,
+     -0.03,
+     -0.3
+    ],
+    "bbox_max": [
+     1.11,
+     0.06,
+     0.28
+    ]
+   },
+   "sandbag_row": {
+    "tris": 114,
+    "bbox_min": [
+     -0.77,
+     -0.03,
+     -0.27
+    ],
+    "bbox_max": [
+     0.71,
+     0.27,
+     0.26
+    ]
+   },
+   "sandbag_pile": {
+    "tris": 163,
+    "bbox_min": [
+     -0.47,
+     -0.04,
+     -0.5
+    ],
+    "bbox_max": [
+     0.62,
+     0.25,
+     0.48
+    ]
+   },
+   "litter_a": {
+    "tris": 108,
+    "bbox_min": [
+     -0.47,
+     0.0,
+     -0.24
+    ],
+    "bbox_max": [
+     0.5,
+     0.16,
+     0.43
+    ]
+   },
+   "litter_b": {
+    "tris": 114,
+    "bbox_min": [
+     -0.65,
+     0.0,
+     -0.4
+    ],
+    "bbox_max": [
+     0.39,
+     0.12,
+     0.61
+    ]
+   },
+   "debris_conc": {
+    "tris": 156,
+    "bbox_min": [
+     -0.83,
+     -0.18,
+     -0.37
+    ],
+    "bbox_max": [
+     0.34,
+     0.3,
+     0.46
+    ]
+   },
+   "net_cover": {
+    "tris": 462,
+    "bbox_min": [
+     -1.64,
+     -0.06,
+     -1.3
+    ],
+    "bbox_max": [
+     1.64,
+     0.19,
+     1.3
+    ]
+   },
+   "branch_cover": {
+    "tris": 2060,
+    "bbox_min": [
+     -2.57,
+     -0.3,
+     -1.33
+    ],
+    "bbox_max": [
+     1.6,
+     0.55,
+     1.86
+    ]
+   },
+   "tarp_cover": {
+    "tris": 208,
+    "bbox_min": [
+     -1.0,
+     -0.2,
+     -1.1
+    ],
+    "bbox_max": [
+     1.0,
+     0.18,
+     1.17
+    ]
+   },
+   "net_drone": {
+    "tris": 456,
+    "bbox_min": [
+     -2.0,
+     -0.2,
+     -1.03
+    ],
+    "bbox_max": [
+     2.0,
+     1.96,
+     1.03
     ]
    },
    "dugout_roof": {
-    "tris": 2310,
+    "tris": 1938,
     "bbox_min": [
-     -2.52,
+     -2.45,
      -1.72,
      -2.5
     ],
     "bbox_max": [
-     2.54,
-     1.17,
+     2.4,
+     1.07,
+     2.57
+    ]
+   },
+   "dugout_roof_b": {
+    "tris": 2738,
+    "bbox_min": [
+     -2.42,
+     -1.72,
+     -2.5
+    ],
+    "bbox_max": [
+     2.45,
+     1.07,
      2.57
     ]
    },
    "mg_nest_roof": {
-    "tris": 1049,
+    "tris": 1606,
     "bbox_min": [
-     -1.15,
+     -2.33,
      -1.1,
-     -1.24
+     -1.31
     ],
     "bbox_max": [
-     1.16,
-     0.8,
-     1.36
+     1.28,
+     1.13,
+     1.38
     ]
    },
    "dragon_tooth": {
@@ -4461,6 +4643,6 @@
     ]
    }
   },
-  "notes": "Builds assets/env/fortifications.glb: dressing for the field fortifications that src/world/terrain.js cuts INTO the\nground (trench walls / floors / parapets are the game's terrain mesh; these pieces only dress them).  Modelled on the\n2022-24 Ukrainian / Russian field works: board, wattle and log revetment held by driven stakes, pallet-style duckboards,\nsandbag lips on the firing cells, log-roofed earth-covered dugouts (blindazh) with a timbered doorway at the end of a\ndog-leg passage, covered MG positions, concrete \"dragon's teeth\" pyramids (pir\u0430\u043c\u0456\u0434\u043a\u0438) and ammo boxes.\nMaterials: farmland_atlas + farmland_foliage (same atlases / cache as farmland.glb, so they match the village set).\nConventions (metres, +Y up):\n  revet_boards / revet_wattle / revet_logs   wall panel 1.0 m along X (x -0.5..0.5), top edge at y=0, bottom at y=-1,\n                                              face in the plane z=0 looking +Z (into the trench).  The game scales it\n                                              (segment length, lip height + trench depth, 1).\n  duckboard        1.2 m along X, 0.62 m wide, origin on the trench floor.\n  sandbag_row      1.3 m along X, two courses, origin at the bottom centre; front (+Z) towards the enemy.\n  dugout_roof      earth-covered log roof 4.7 x 4.9 m (x +-2.35, z +-2.45) sitting on flat ground over the pit; the\n                   timbered doorway facade drops to y=-1.7 at z=+2.45 (the passage arrives from +Z).\n  mg_nest_roof     log roof on 4 posts over a firing cell, embrasure to +Z; origin at ground level, cell centre.\n  dragon_tooth(_b) concrete pyramid, base 1.2 m, 1.0 m tall (b: chipped, toppled-looking); origin base centre.\n  ammo_crates      a few wooden ammunition boxes, origin on the floor.\n  tree_*_mid       mid-distance LODs of the farmland.glb trees (build_forest_lods.py), same origins / crowns."
+  "notes": "Builds assets/env/fortifications.glb: dressing for the field fortifications that src/world/terrain.js cuts INTO the\nground (trench walls / floors / spoil are the game's terrain mesh -- raw earth; these pieces only dress them).\nModelled on the 2023-25 photo / drone-footage record of Ukrainian and Russian positions: mostly unrevetted hand-dug\nearth, revetment improvised and patchy -- pallets, scavenged doors, corrugated and plywood / OSB sheets, brushwood,\na few logs, wire-mesh panels on engineered stretches -- sandbags at some firing places only, pallets and planks\nthrown into the mud, litter (zinc ammo tins, cans, ration pouches, cardboard, plastic), overhead cover of garnished\ncamouflage net, cut branches, tarpaulins and (2024-25) anti-drone fishing nets on poles, low overgrown log-and-earth\ndugouts (blindazh) and crude covered MG positions, concrete \"dragon's teeth\".\nMaterials: farmland_atlas + farmland_foliage (same atlases / cache as farmland.glb, so they match the village set)\nand fort_extra (tools/blender/env/fort_atlas.py: nets, tarps, plastic, boards, cardboard, labels; alpha, 2-sided).\nConventions (metres, +Y up):\n  rv_pallet / rv_door / rv_sheet / rv_ply / rv_branches / rv_logs / rv_mesh\n                   improvised revetment, natural size: origin at the bottom centre ON THE TRENCH FLOOR, width along X,\n                   face looking +Z (into the trench), thickness behind (-Z).  The game leans it back against the\n                   battered wall and may squash Y to fit the trench depth.  Widths 0.8 / 0.84 / 0.95 / 1.22 / 1.3 /\n                   1.6 / 1.5 m, heights 1.2 / 2.0 / 1.8 / 1.25 / 1.3 / 1.0 / 1.5 m.\n  floor_pallet / floor_planks   lying in the mud, origin on the floor, long axis X.\n  litter_a / litter_b           small litter heaps (ammo tins, cans, bottle / cardboard, pouches, plastic), on floor.\n  sandbag_row (1.3 m along X, two untidy courses) / sandbag_pile (heap)   origin bottom centre, front +Z.\n  debris_conc      broken concrete and bricks thrown on the spoil (urban positions), origin on the ground.\n  net_cover / branch_cover / tarp_cover / net_drone\n                   overhead cover laid across a trench: long axis X ALONG the trench (3.2 / 2.4 / 2.0 / 4.0 m), Z across\n                   (2.6 / 2.4 / 2.2 / 2.0 m, the game scales Z to the trench width + lips); origin centre at lip level.\n  dugout_roof(_b)  low earth-covered log roof 4.7 x 4.9 m (x +-2.35, z +-2.45), grassed over (b: netted + branches);\n                   the timbered doorway drops to y=-1.7 at z=+2.45 (the passage arrives from +Z).\n  mg_nest_roof     crude log roof on 4 posts over a firing cell, embrasure to +Z; origin at ground level, cell centre.\n  dragon_tooth(_b) concrete pyramid, base 1.2 m, 1.0 m tall (b: chipped, toppled-looking); origin base centre.\n  ammo_crates      a few wooden ammunition boxes, origin on the floor.\n  tree_*_mid       mid-distance LODs of the farmland.glb trees (build_forest_lods.py), same origins / crowns."
  }
 }

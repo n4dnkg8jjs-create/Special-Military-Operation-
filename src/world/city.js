@@ -145,79 +145,207 @@ export class City {
     return m;
   }
   // ================================================================ field fortifications (MAP.fortifications -> terrain.js)
+  // MAP.fortifications entries (see maps.js): 'sp' (strongpoint header: id, name, front, kind, revet, craters),
+  // 'fire' (fire trench), 'comm' (communication trench), 'fox' (foxholes), 'mg' (machine-gun pit with log roof),
+  // 'dug' (dugout), 'ditch' (AT ditch), 'teeth' (dragon's teeth).  Entries carrying the same `sp` form one trench
+  // system (strongpoint) for the game; a 'fire' entry without `sp` is a system of its own.
   fortifications() {
     const T = this.terrain, R = this.rng;
     T.roadTest = (x, z, pad) => onRoad(x, z, pad);
-    T.keepOut = (x, z) => this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 4 && Math.abs(lz) < b.D / 2 + 4; }) || !!(this.inVillage && this.inVillage(x, z, 1)) || !!(this.inFarm && this.inFarm(x, z, 3)) || !!(this.inFarmstead && this.inFarmstead(x, z, 2));
-    this.trenchSystems = [];
+    let yard = false;   // entry may dig into village yards / gardens (never into buildings, the farm or the farmstead)
+    const bHit = (x, z) => this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 4 && Math.abs(lz) < b.D / 2 + 4; });
+    T.keepOut = (x, z) => bHit(x, z) || (!yard && !!(this.inVillage && this.inVillage(x, z, 1))) || !!(this.inFarm && this.inFarm(x, z, 3)) || !!(this.inFarmstead && this.inFarmstead(x, z, 2));
+    // gameplay contract (src/game: trench garrison / clearing): one entry per trench system, see trenchSystem()
+    const systems = new Map();
+    const sysOf = (key, f) => {
+      if (key == null) key = '_' + systems.size;
+      let s = systems.get(key);
+      if (!s) systems.set(key, s = { id: systems.size, key, name: f.name || null, kind: f.kind || null, front: f.front || [0, -1], revet: null, fires: [], comms: [], foxes: [], mgs: [], dugouts: [], craters: null });
+      return s;
+    };
+    // nearest centre-line point of the system's trenches (inside the cut) to (x, z)
+    const nearestTrench = (s, x, z, maxD = 1e9) => {
+      let best = null, bd = maxD;
+      for (const l of [...s.fires.map(r => r.pts), ...s.comms]) for (const p of l) { const d = Math.hypot(p[0] - x, p[1] - z); if (d < bd && T.cutSDF(p[0], p[1]) < -0.2) { bd = d; best = p; } }
+      return best;
+    };
+    const dugoutFrom = (s, p, bx, bz, w = 0.5) => {
+      const L = Math.hypot(bx, bz); bx /= L; bz /= L; const sx = -bz, sz = bx, d0 = w + 0.1, cx = p[0] + bx * (d0 + 3.2 + 2.5), cz = p[1] + bz * (d0 + 3.2 + 2.5);
+      const clear = [[-2.4, -2.6], [2.4, -2.6], [-2.4, 2.6], [2.4, 2.6], [0, 0], [0, -1.5]].every(([u, v]) => { const x = cx + sx * u + bx * v, z = cz + sz * u + bz * v; return T.cutSDF(x, z) > 0.4 && !onRoad(x, z, 2) && !T.keepOut(x, z); });
+      if (!clear) return false;
+      const ch = T.dugout(p[0] + bx * d0, p[1] + bz * d0, bx, bz, { sys: s.key });
+      s.dugouts.push({ x: ch[0], z: ch[1], door: [p[0], p[1]], dir: [bx, bz], occupants: new Set() });
+      return true;
+    };
     for (const f of MAP.fortifications || []) {
+      yard = !!f.yard;
+      if (f.type === 'sp') { const s = sysOf(f.id, f); s.name = f.name || s.name; s.front = f.front || s.front; s.kind = f.kind || 'strongpoint'; s.revet = f.revet || null; s.craters = f.craters ?? null; s.yard = !!f.yard; s.frontSet = !!f.front; continue; }
+      const s = (f.type === 'fire' || f.sp != null) && f.type !== 'ditch' && f.type !== 'teeth' ? sysOf(f.sp, f) : null;
+      if (s) yard = yard || !!s.yard;
+      const revet = f.revet || s?.revet || 'rough';
       if (f.type === 'fire') {
-        const res = T.fireTrench(f.base, { front: f.front, style: f.style, revet: f.revet, leg: f.leg, amp: f.amp, bayEvery: f.bays, depth: f.depth, sys: f });
-        const sysRec = { id: this.trenchSystems.length, front: f.front, res, dugouts: [] }; this.trenchSystems.push(sysRec);
-        const at = fr => { // trench point nearest to a fraction along the baseline
-          const B = f.base, L = B.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - B[i][0], p[1] - B[i][1]), 0); let d = fr * L, i = 0;
+        const res = T.fireTrench(f.base, { front: f.front || s.front, style: f.style, revet, leg: f.leg, amp: f.amp, jog: f.jog, bays: f.bays, bayGap: f.bayGap, depth: f.depth, width: f.width, sys: s.key });
+        s.fires.push(res); if (!s.kind) s.kind = 'line'; if (!s.frontSet) { s.front = f.front || s.front; s.frontSet = true; }
+        const fr = res.front, at = t => { // trench point nearest to a fraction along the baseline
+          const B = f.base, L = B.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - B[i][0], p[1] - B[i][1]), 0); let d = t * L, i = 0;
           while (i < B.length - 2 && d > Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1])) { d -= Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1]); i++; }
           const sl = Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1]) || 1, x = B[i][0] + (B[i + 1][0] - B[i][0]) * d / sl, z = B[i][1] + (B[i + 1][1] - B[i][1]) * d / sl;
           let best = null, bd = 1e9; for (const p of res.pts) { const dd = Math.hypot(p[0] - x, p[1] - z); if (dd < bd && T.cutSDF(p[0], p[1]) < -0.2) { bd = dd; best = p; } } return best;
         };
-        // dugouts hang off the rear-most trench vertex near the requested spot; the roof must sit clear of every cut
-        const rear = fr => { const p0 = at(fr); if (!p0) return null; let best = null, bv = 1e9; for (const p of res.pts) { if (Math.hypot(p[0] - p0[0], p[1] - p0[1]) > 7 || T.cutSDF(p[0], p[1]) > -0.2) continue; const v = p[0] * f.front[0] + p[1] * f.front[1]; if (v < bv) { bv = v; best = p; } } return best || p0; };
-        for (const fr of f.dug || []) {
-          const p = rear(fr); if (!p) continue; const bx = -f.front[0], bz = -f.front[1], sx = -bz, sz = bx, d0 = res.w + 0.1, cx = p[0] + bx * (d0 + 3.2 + 2.5), cz = p[1] + bz * (d0 + 3.2 + 2.5);
-          const clear = [[-2.4, -2.5], [2.4, -2.5], [-2.4, 2.5], [2.4, 2.5], [0, 0]].every(([u, v]) => { const x = cx + sx * u + bx * v, z = cz + sz * u + bz * v; return T.cutSDF(x, z) > 0.4 && !onRoad(x, z, 2) && !T.keepOut(x, z); });
-          if (!clear) continue;
-          const ch = T.dugout(p[0] + bx * d0, p[1] + bz * d0, bx, bz, { sys: f, revet: 'logs' });
-          sysRec.dugouts.push({ x: ch[0], z: ch[1], door: [p[0], p[1]], dir: [bx, bz], occupants: new Set() });
-        }
-        for (const fr of f.mg || []) {
-          const p = at(fr); if (!p) continue; let best = null, bd = 1e9;
+        // dugouts hang off the rear-most trench point near the requested spot; the roof must sit clear of every cut
+        const rear = t => { const p0 = at(t); if (!p0) return null; let best = null, bv = 1e9; for (const p of res.pts) { if (Math.hypot(p[0] - p0[0], p[1] - p0[1]) > 6 || T.cutSDF(p[0], p[1]) > -0.2) continue; const v = p[0] * fr[0] + p[1] * fr[1]; if (v < bv) { bv = v; best = p; } } return best || p0; };
+        for (const t of f.dug || []) { const p = rear(t); if (p) dugoutFrom(s, p, -fr[0] + (R() - 0.5) * 0.3, -fr[1] + (R() - 0.5) * 0.3, res.w); }
+        for (const t of f.mg || []) {
+          const p = at(t); if (!p) continue; let best = null, bd = 1e9;
           for (const b of res.bays) { const d = Math.hypot(b.tag.x - p[0], b.tag.z - p[1]); if (d < bd && !b.covered) { bd = d; best = b; } }
           if (best && bd < 25) T.mgNest(best);
         }
-      } else if (f.type === 'comm') T.commTrench(f.pts, { revet: f.revet || 'boards', style: f.style, sys: f });
-      else if (f.type === 'ditch') T.antitankDitch(f.pts, { bermSide: f.bermSide });
+      } else if (f.type === 'comm') {
+        let pts = f.pts.map(p => [p[0], p[1]]);
+        if (s && f.link !== false) { const a = nearestTrench(s, pts[0][0], pts[0][1], 7); if (a) pts[0] = [a[0], a[1]]; }
+        const res = T.commTrench(pts, { revet: f.revet || (s ? revet : 'rough'), style: f.style, amp: f.amp, sys: s?.key });
+        if (s) s.comms.push(res.pts);
+      } else if (f.type === 'fox') {
+        for (const p of f.pts) {
+          let fx = p[2] ?? f.front?.[0] ?? s.front[0], fz = p[3] ?? f.front?.[1] ?? s.front[1]; const L = Math.hypot(fx, fz) || 1; fx /= L; fz /= L;
+          const q = T.foxhole(p[0], p[1], fx, fz, { sys: s.key, revet, double: f.double });
+          if (q) s.foxes.push(q);
+        }
+      } else if (f.type === 'mg') {
+        let [fx, fz] = f.front || s.front; const L = Math.hypot(fx, fz) || 1; fx /= L; fz /= L;
+        const q = T.mgPit(f.at[0], f.at[1], fx, fz, { sys: s.key, revet }); if (!q) continue;
+        s.mgs.push(q);
+        // crawl trench back to the nearest trench of the strongpoint
+        const bx = f.at[0] - fx * 0.9, bz = f.at[1] - fz * 0.9, p = f.link === false ? null : nearestTrench(s, bx, bz, 26);
+        if (p && Math.hypot(p[0] - bx, p[1] - bz) > 2.5) { const res = T.commTrench([[bx, bz], [p[0], p[1]]], { revet, width: 0.75, amp: 0.4, jog: 0, sys: s.key }); s.comms.push(res.pts); }
+      } else if (f.type === 'dug') {
+        const p = nearestTrench(s, f.at[0], f.at[1], 16);
+        if (p) { const dx = f.at[0] - p[0], dz = f.at[1] - p[1]; dugoutFrom(s, p, dx || -s.front[0], dz || -s.front[1]); }
+        else { const [dx, dz] = f.dir || [-s.front[0], -s.front[1]]; dugoutFrom(s, [f.at[0] - dx * 6, f.at[1] - dz * 6], dx, dz); }
+      } else if (f.type === 'ditch') T.antitankDitch(f.pts, { bermSide: f.bermSide });
       else if (f.type === 'teeth') T.dragonTeeth(f.pts, { rows: f.rows });
     }
-    this.trenchSystems = this.trenchSystems.map(r => this.trenchSystem(r)).filter(Boolean);
+    yard = false;
+    this.trenchSystems = [...systems.values()].map(s => this.trenchSystem(s)).filter(Boolean);
+    // shell craters around every position (the ground near a held position is always churned)
+    const teethNear = (x, z, r) => (T.teeth || []).some(([tx, tz]) => Math.abs(tx - x) < r && Math.abs(tz - z) < r);
+    for (const sy of this.trenchSystems) {
+      const n = sy.craters ?? Math.round(3 + sy.radius / 8);
+      for (let i = 0, made = 0; i < n * 4 && made < n; i++) {
+        const a = R() * Math.PI * 2, d = sy.radius * 0.3 + R() * (sy.radius + 28), x = sy.center[0] + Math.cos(a) * d, z = sy.center[1] + Math.sin(a) * d, r = 0.9 + R() * R() * 3.4;
+        if (Math.abs(x) > MAP_SIZE / 2 - 8 || Math.abs(z) > MAP_SIZE / 2 - 8 || T.cutSDF(x, z) < r * 1.9 + 1.2 || onRoad(x, z, r * 1.9 + 1) || T.keepOut(x, z) || teethNear(x, z, r * 2 + 1)) continue;
+        if (T.relief(x, z, false)) continue;
+        T.crater(x, z, r); made++;
+      }
+    }
     const wall = this.wallMat();
-    T.finalize({ scene: this.scene, matTop: this.groundMat(true), matWall: wall, groundS: this.groundS });
+    T.finalize({ scene: this.scene, matTop: this.trenchTopMat(), matWall: wall, groundS: this.groundS });
     this.groundUniforms.tHole.value = T.mask;
     // dressing pieces (fortifications.glb, procedural stand-ins otherwise)
-    const g = this.assets.gltf.fortifications, cull = { revet_boards: 330, revet_wattle: 330, revet_logs: 330, duckboard: 240, sandbag_row: 420, ammo_crates: 200, dragon_tooth: 1100, dragon_tooth_b: 1100, dugout_roof: 1100, mg_nest_roof: 900 };
+    const g = this.assets.gltf.fortifications, cull = { rv_pallet: 260, rv_sheet: 260, rv_ply: 260, rv_door: 260, rv_branches: 260, rv_logs: 260, rv_mesh: 300, floor_pallet: 170, floor_planks: 170, litter_a: 140, litter_b: 140, ammo_crates: 170, sandbag_row: 380, sandbag_pile: 380, debris_conc: 300, net_cover: 520, branch_cover: 480, tarp_cover: 480, net_drone: 420, dragon_tooth: 1100, dragon_tooth_b: 1100, dugout_roof: 1000, dugout_roof_b: 1000, mg_nest_roof: 850 };
     for (const [name, mats] of T.dress) {
       const t = g?.scene.getObjectByName(name) || fortFallback(name); if (!t) continue;
-      instance(this.scene, t, mats, { cullDist: cull[name] || 600, shadows: !/duckboard|ammo/.test(name) });
+      instance(this.scene, t, mats, { cullDist: cull[name] || 400, shadows: !/floor_|litter|ammo|_cover|net_/.test(name) });
     }
   }
-  // gameplay contract for src/game/trench.js: front, lines, slots {x,z,fx,fz,kind}, dugouts {x,z,door,dir,occupants}, center, radius
+  // A trench system (strongpoint / line) as the game sees it:
+  //   id, key, name, kind ('strongpoint' | 'outpost' | 'line'), obj (objective id within 160 m, or null),
+  //   front [fx,fz] (main facing, towards the enemy), lines: walkable fire-trench centre polylines [[x,z]...] (split
+  //   at road gaps), comms: communication / crawl trench polylines, slots: fighting positions {x, z, fx, fz, kind:
+  //   'bay' | 'mg' | 'line', fox?, line?, i?} (firing cells, foxholes and covered MG pits first, each with its own facing
+  //   -- all-round defence -- then places along the trench front wall every ~5.5 m), dugouts: {x, z (chamber), door
+  //   [x,z] (trench point), dir, occupants}, center [x,z], radius, depth.  Positions are on the floor of the cut; feet
+  //   height = groundHeight / trenchInfo().fireY.
   trenchSystem(r) {
-    const T = this.terrain, res = r.res, [fx, fz] = r.front, inside = (x, z) => T.cutSDF(x, z) < -0.15;
-    const lines = T.runs(res.pts, 3.5).map(run => run.filter(p => inside(p[0], p[1]))).filter(l => l.length > 1);
-    if (!lines.length) return null;
-    const slots = [];
-    for (const b of res.bays) {
+    const T = this.terrain, inside = (x, z, m = -0.15) => T.cutSDF(x, z) < m;
+    const lines = [], slots = [], far = (x, z, d) => !slots.some(o => Math.hypot(o.x - x, o.z - z) < d);
+    const ko = T.keepOut; T.keepOut = null;   // split at road gaps only (yard positions sit inside villages)
+    for (const res of r.fires) for (const run of T.runs(res.pts, 3.5)) { const l = run.filter(p => inside(p[0], p[1])); if (l.length > 1) lines.push(l); }
+    T.keepOut = ko;
+    for (const res of r.fires) for (const b of res.bays) {
       const t = b.tag, k = Math.max(0.5, t.L - 0.55), x = t.x + t.fx * k, z = t.z + t.fz * k;
       if (inside(x, z)) slots.push({ x, z, fx: t.fx, fz: t.fz, kind: b.covered ? 'mg' : 'bay' });
     }
+    for (const b of r.mgs) { const t = b.tag, x = t.x + t.fx * 0.7, z = t.z + t.fz * 0.7; if (inside(x, z)) slots.push({ x, z, fx: t.fx, fz: t.fz, kind: 'mg' }); }
+    for (const q of r.foxes) for (const [x, z] of q.tag.slots) if (inside(x, z, -0.1) && far(x, z, 0.9)) slots.push({ x, z, fx: q.tag.fx, fz: q.tag.fz, kind: 'bay', fox: true });
     lines.forEach((l, li) => {
-      let acc = 3;
+      const res = r.fires.find(f => f.pts.includes(l[0])) || r.fires[0], [fx, fz] = res.front;
+      let acc = 2.5;
       for (let i = 0; i < l.length - 1; i++) {
         const [ax, az] = l[i], [bx, bz] = l[i + 1], L = Math.hypot(bx - ax, bz - az);
-        for (; acc < L; acc += 6) {
-          const x = ax + (bx - ax) * acc / L, z = az + (bz - az) * acc / L, px = x + fx * (res.w - 0.3), pz = z + fz * (res.w - 0.3);
-          if (inside(px, pz) && !slots.some(o => Math.hypot(o.x - px, o.z - pz) < 3.5)) slots.push({ x: px, z: pz, fx, fz, kind: 'line', line: li, i });
+        for (; acc < L; acc += 5.5) {
+          const x = ax + (bx - ax) * acc / L, z = az + (bz - az) * acc / L;
+          // stand against the front wall of the trench (clear of the slumped wall foot)
+          for (const k of [res.w - 0.42, res.w - 0.6, 0]) { const px = x + fx * k, pz = z + fz * k; if (inside(px, pz, -0.28) && far(px, pz, 3)) { slots.push({ x: px, z: pz, fx, fz, kind: 'line', line: li, i }); break; } }
         }
         acc -= L;
       }
     });
-    const all = lines.flat(), cx = all.reduce((a, p) => a + p[0], 0) / all.length, cz = all.reduce((a, p) => a + p[1], 0) / all.length;
-    const radius = Math.max(...all.map(p => Math.hypot(p[0] - cx, p[1] - cz)));
-    return { id: r.id, front: r.front, lines, slots, dugouts: r.dugouts, center: [cx, cz], radius, depth: res.depth };
+    if (!lines.length && !slots.length) return null;
+    const all = [...lines.flat(), ...slots.map(s => [s.x, s.z])], cx = all.reduce((a, p) => a + p[0], 0) / all.length, cz = all.reduce((a, p) => a + p[1], 0) / all.length;
+    const radius = Math.max(4, ...all.map(p => Math.hypot(p[0] - cx, p[1] - cz)));
+    let obj = null, od = 160; for (const o of OBJECTIVES || []) { const d = Math.hypot(o.x - cx, o.z - cz); if (d < od) { od = d; obj = o.id; } }
+    const depth = r.fires[0]?.depth || 1.3;
+    return { id: r.id, key: r.key, name: r.name, kind: r.kind || 'line', obj, front: r.front, lines, comms: r.comms, slots, dugouts: r.dugouts, center: [cx, cz], radius, depth, craters: r.craters };
   }
+  // raw earth trench walls: dark damp chernozem over lighter loess / clay, roots and stones, spade marks, wet foot
   wallMat() {
-    const T = this.assets.tex.dirt || {}, p = { color: 0x8c7c6a, roughness: 1 };
-    for (const k of ['map', 'normalMap']) if (T[k]) { p[k] = T[k].clone(); p[k].needsUpdate = true; p[k].wrapS = p[k].wrapT = THREE.RepeatWrapping; }
-    return new THREE.MeshStandardMaterial(p);
+    const map = trenchWallTexture();
+    const m = new THREE.MeshStandardMaterial({ map, color: 0xffffff, roughness: 0.96 });
+    m.customProgramCacheKey = () => 'trench_wall_v2';
+    // world-space biplanar mapping (walls run every which way; mesh UVs are only a fallback)
+    m.onBeforeCompile = sh => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vTW; varying vec3 vTWN;')
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvTW = (modelMatrix * vec4(transformed, 1.0)).xyz; vTWN = normalize(mat3(modelMatrix) * objectNormal);');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vTW; varying vec3 vTWN; float twWet;
+        float twh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float twn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(twh(i), twh(i+vec2(1,0)), f.x), mix(twh(i+vec2(0,1)), twh(i+vec2(1,1)), f.x), f.y); }`)
+        .replace('#include <map_fragment>', `
+          vec3 twA = texture2D(map, vec2(vTW.x, vTW.y) / 1.4).rgb, twB = texture2D(map, vec2(vTW.z + 0.37, vTW.y) / 1.4).rgb;
+          float twwA = abs(vTWN.z) + 0.05, twwB = abs(vTWN.x) + 0.05;
+          diffuseColor.rgb *= (twA * twwA + twB * twwB) / (twwA + twwB);
+          float twd = -vTW.y, twa = (vTW.x + vTW.z) * 0.7;
+          float twb = smoothstep(0.55, 1.25, twd + (twn(vec2(twa * 0.9, twd * 2.0)) - 0.5) * 0.5);   // humus -> loess / clay
+          vec3 twc = mix(vec3(0.62, 0.56, 0.5), vec3(0.95, 0.83, 0.68), twb);
+          twc *= 0.8 + 0.4 * twn(vec2(twa * 0.35, twd * 0.6 + 4.0));                                // patchy damp / dry
+          twc = mix(twc, twc * vec3(1.2, 1.16, 1.1), smoothstep(0.32, 0.0, twd) * 0.6);              // sun-dried lip
+          twWet = smoothstep(0.75, 1.45, twd) * (0.55 + 0.45 * twn(vec2(twa * 1.3, 2.0)));
+          twc *= 1.0 - 0.4 * twWet;                                                                    // wet, muddy foot
+          diffuseColor.rgb *= twc;`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+          roughnessFactor = mix(roughnessFactor, 0.55, twWet * 0.8);`);
+    };
+    return m;
+  }
+  // trench / relief terrain material: the map's ground shader plus fresh spoil (dark clods, partly grassed / spread
+  // out of sight), a muddy floor and standing water in the low spots
+  trenchTopMat() {
+    const m = this.groundMat(true), base = m.onBeforeCompile, key = m.customProgramCacheKey;
+    m.customProgramCacheKey = () => key() + '_trench2';
+    m.onBeforeCompile = (sh, r) => {
+      base(sh, r);
+      sh.fragmentShader = sh.fragmentShader.replace('diffuseColor.rgb *= col;', `
+          #ifdef TERRAIN_MESH
+            float tPud = 0.0;
+            {
+              float ty = vWPos.y;
+              float tsp = smoothstep(0.02, 0.14, ty) * (1.0 - 0.7 * smoothstep(0.42, 0.78, vn(wp * 0.19 + 3.0)));
+              vec3 soil = dirt * vec3(0.44, 0.39, 0.34) * (0.7 + 0.6 * vn(wp * 4.3)) + vec3(0.05, 0.045, 0.035) * step(0.78, vn(wp * 9.1));
+              col = mix(col, soil, tsp * 0.85);
+              float tfl = smoothstep(0.55, 0.95, -ty);
+              col = mix(col, dirt * vec3(0.34, 0.3, 0.26) * (0.8 + 0.4 * vn(wp * 1.9 + 5.0)), tfl * 0.7);
+              tPud = smoothstep(0.6, 0.67, vn(wp * 0.5 + 11.0) + 0.16 * vn(wp * 2.3)) * tfl;
+              col = mix(col, dirt * vec3(0.16, 0.15, 0.13), tPud * 0.9);
+            }
+          #endif
+          diffuseColor.rgb *= col;`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+          #ifdef TERRAIN_MESH
+            roughnessFactor = mix(roughnessFactor, 0.42, tPud);
+          #endif`);
+    };
+    return m;
   }
   // value-noise helper for painting
   noise2(x, z, s) { const h = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + s * 17.3) * 43758.5453; return t - Math.floor(t); }; const i = Math.floor(x), j = Math.floor(z), f = x - i, g = z - j, u = f * f * (3 - 2 * f), v = g * g * (3 - 2 * g); return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v; }
@@ -1095,13 +1223,57 @@ function fm(c) { return (_fm[c] ||= new THREE.MeshStandardMaterial({ color: c, r
 function fbox(g, w, h, d, c, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fm(c)); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); }
 function fortFallback(name) {
   const g = new THREE.Group();
-  if (/^revet/.test(name)) { fbox(g, 1, 1, 0.04, /logs/.test(name) ? 0x5a4a3a : /wattle/.test(name) ? 0x6b5a40 : 0x7a6a55, 0, -0.5, -0.01); }
-  else if (name === 'duckboard') fbox(g, 1.2, 0.08, 0.6, 0x6e604c, 0, 0.04, 0);
+  const panel = { rv_pallet: [1.2, 1.2, 0x8a7a62], rv_sheet: [0.95, 1.8, 0x7a6a5a], rv_ply: [1.22, 1.25, 0x9a8462], rv_door: [0.84, 2.0, 0x8a9aa0], rv_branches: [1.3, 1.3, 0x5a4a32], rv_logs: [1.6, 1.0, 0x5a4a3a], rv_mesh: [1.5, 1.5, 0x77756f] }[name];
+  if (panel) fbox(g, panel[0], panel[1], 0.05, panel[2], 0, panel[1] / 2, -0.03);
+  else if (name === 'floor_pallet') fbox(g, 1.2, 0.14, 0.8, 0x7e6e56, 0, 0.07, 0);
+  else if (name === 'floor_planks') fbox(g, 1.8, 0.04, 0.5, 0x6e604c, 0, 0.02, 0);
   else if (name === 'sandbag_row') fbox(g, 1.3, 0.3, 0.42, 0x8a7d5e, 0, 0.15, 0);
-  else if (name === 'dugout_roof') { fbox(g, 4.6, 0.6, 4.8, 0x4f4636, 0, 0.3, 0); fbox(g, 1.6, 1.9, 0.2, 0x4b3d2e, 0, -0.85, 2.45); }
+  else if (name === 'sandbag_pile') fbox(g, 1.0, 0.35, 0.7, 0x857858, 0, 0.17, 0);
+  else if (name === 'debris_conc') fbox(g, 0.9, 0.25, 0.6, 0x8f8b84, 0, 0.12, 0);
+  else if (/^litter/.test(name)) fbox(g, 0.4, 0.15, 0.3, name === 'litter_a' ? 0x4c5236 : 0x9a8a6a, 0, 0.07, 0);
+  else if (name === 'net_cover' || name === 'net_drone') fbox(g, 3.0, 0.04, 2.6, 0x4d5236, 0, 0.05, 0);
+  else if (name === 'branch_cover') fbox(g, 2.4, 0.15, 2.4, 0x55603a, 0, 0.08, 0);
+  else if (name === 'tarp_cover') fbox(g, 2.0, 0.03, 2.2, 0x4a5038, 0, 0.04, 0);
+  else if (/^dugout_roof/.test(name)) { fbox(g, 4.6, 0.45, 4.8, 0x4f4636, 0, 0.22, 0); fbox(g, 1.6, 1.9, 0.2, 0x4b3d2e, 0, -0.85, 2.45); }
   else if (name === 'mg_nest_roof') fbox(g, 2.3, 0.3, 2.1, 0x4b3d2e, 0, 0.55, -0.1);
   else if (/^dragon_tooth/.test(name)) { const m = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.0, 4), fm(0x9a958a)); m.position.y = 0.5; m.rotation.y = Math.PI / 4; m.castShadow = m.receiveShadow = true; g.add(m); }
   else if (name === 'ammo_crates') fbox(g, 0.66, 0.3, 0.36, 0x4c5236, 0, 0.15, 0);
   else return null;
   return g;
+}
+// Raw trench-wall soil (tiles every 1.4 m along the wall / in depth; y up = towards the lip): crumbly chernozem
+// clods and crumbs, pale root threads and dark root channels, pebbles and chalky loess flecks, vertical spade cuts.
+let _twTex = null;
+function trenchWallTexture() {
+  if (_twTex) return _twTex;
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  let s = 917; const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  x.fillStyle = '#5c4e40'; x.fillRect(0, 0, N, N);
+  const wrap = (f) => { for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) { x.save(); x.translate(dx, dy); f(); x.restore(); } };
+  // clods: overlapping irregular blobs of browns, dark and light
+  for (let i = 0; i < 2600; i++) {
+    const px = r() * N, py = r() * N, rad = 2 + r() * r() * 16, l = 0.55 + r() * 0.75, cr = Math.round(92 * l), cg = Math.round(76 * l), cb = Math.round(62 * l);
+    x.fillStyle = `rgba(${cr},${cg},${cb},${0.35 + r() * 0.5})`;
+    const ang = r() * 6.28, ell = 0.5 + r() * 0.6;
+    wrap(() => { x.beginPath(); x.ellipse(px, py, rad, rad * ell, ang, 0, 6.29); x.fill(); });
+  }
+  // crumbs and shadows under clods
+  for (let i = 0; i < 9000; i++) { const px = r() * N, py = r() * N, d = r() < 0.5; x.fillStyle = d ? `rgba(28,22,17,${0.25 + r() * 0.4})` : `rgba(150,128,104,${0.15 + r() * 0.3})`; x.fillRect(px, py, 1 + r() * 2, 1 + r() * 2); }
+  // vertical spade cuts (shovel marks on the face): faint darker / lighter strokes in groups
+  for (let i = 0; i < 46; i++) {
+    const px = r() * N, py = r() * N, h = 40 + r() * 110, w = 6 + r() * 10;
+    const gr = x.createLinearGradient(px - w, 0, px + w, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.45, 'rgba(25,19,14,0.22)'); gr.addColorStop(0.55, 'rgba(160,138,112,0.16)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = gr; wrap(() => x.fillRect(px - w, py, w * 2, h));
+  }
+  // roots: pale fine threads and darker thicker ones, mostly hanging down from the top
+  for (let i = 0; i < 70; i++) {
+    let px = r() * N, py = r() * N; const thick = r() < 0.25, len = 30 + r() * 140;
+    x.strokeStyle = thick ? `rgba(48,36,26,${0.6 + r() * 0.3})` : `rgba(196,176,140,${0.45 + r() * 0.4})`; x.lineWidth = thick ? 2 + r() * 2.5 : 0.7 + r() * 0.9; x.lineCap = 'round';
+    const pts = [[px, py]]; let a = Math.PI / 2 + (r() - 0.5) * 1.6; for (let k = 0; k < 8; k++) { a += (r() - 0.5) * 0.8; px += Math.cos(a) * len / 8; py += Math.sin(a) * len / 8; pts.push([px, py]); }
+    wrap(() => { x.beginPath(); x.moveTo(...pts[0]); for (const p of pts.slice(1)) x.lineTo(...p); x.stroke(); });
+  }
+  // pebbles / chalky loess flecks
+  for (let i = 0; i < 260; i++) { const px = r() * N, py = r() * N, rad = 1 + r() * 4, l = 120 + r() * 80; x.fillStyle = `rgb(${l},${l * 0.94 | 0},${l * 0.86 | 0})`; wrap(() => { x.beginPath(); x.ellipse(px, py, rad, rad * (0.6 + r() * 0.4), r() * 6, 0, 6.29); x.fill(); }); x.fillStyle = 'rgba(20,15,10,0.5)'; wrap(() => { x.beginPath(); x.ellipse(px + 1, py + rad * 0.8, rad, rad * 0.35, 0, 0, 6.29); x.fill(); }); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.needsUpdate = true;
+  return (_twTex = t);
 }

@@ -30,12 +30,17 @@ Environment asset pipeline (run from this folder, Blender 5.2 bpy module, `nice 
                                       then gltf-transform webp --quality 88 on the rebuilt files.  The game rasterises every pile
                                       into a height map (src/world/terrain.js templateHeights) -> city.groundHeight(x, z).
   python3 build_fortifications.py  -> assets/env/fortifications.glb (+ manifest 'fortifications'), then ./optimize_fortifications.sh
-                                      (WebP + quantize, ~4.7 MB).  Dressing for the trenches that terrain.js cuts into the ground:
-                                      revet_boards / revet_wattle / revet_logs (1 m wall panels, top at y=0, face +Z, scaled by the
-                                      game), duckboard, sandbag_row, dugout_roof (earth-covered log roof + timbered doorway down to
-                                      y=-1.7), mg_nest_roof, dragon_tooth(_b), ammo_crates; plus tree_*_mid mid-distance LODs of the
-                                      farmland trees (build_forest_lods.py, same seeds as farmland.glb) used 58..210 m (windbreaks) /
-                                      12..175 m (forest).  Uses the cached farmland atlases.
+                                      (WebP + quantize, ~5.5 MB).  Dressing for the raw-earth trenches that terrain.js cuts into the
+                                      ground (2023-25 look: patchy improvised scrap, not continuous revetment): rv_pallet / rv_door /
+                                      rv_sheet / rv_ply / rv_branches / rv_logs / rv_mesh (natural size, origin bottom centre on the
+                                      trench floor, face +Z; the game leans them back against the battered wall), floor_pallet,
+                                      floor_planks, litter_a/b, ammo_crates, sandbag_row / sandbag_pile, debris_conc, overhead cover
+                                      net_cover / branch_cover / tarp_cover / net_drone (long axis X along the trench, Z scaled to the
+                                      width), dugout_roof(_b) (low overgrown log-and-earth roof + timbered doorway down to y=-1.7),
+                                      mg_nest_roof, dragon_tooth(_b); plus tree_*_mid mid-distance LODs of the farmland trees
+                                      (build_forest_lods.py, same seeds as farmland.glb) used 58..210 m (windbreaks) / 12..175 m
+                                      (forest).  Uses the cached farmland atlases + fort_atlas.py (material fort_extra: camo / drone
+                                      net, wire mesh, tarps, plastic, OSB / plywood, cardboard, labels).  ONLY=a,b OUT=x.glb for QA.
   python3 build_trees.py           -> assets/env/trees.glb
   python3 build_wires.py           -> assets/env/wires.glb
   python3 build_props.py           -> assets/env/props.glb (then WebP the textures: gltf-transform webp --quality 88; NO

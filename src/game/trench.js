@@ -87,19 +87,19 @@ export const TrenchMixin = {
     const c = this.center();
     const free = T.slots.filter(sl => !sl.occupant || !sl.occupant.effective);
     if (!free.length) { if (this.side === 'player') this.game.hud?.alert('Trench is fully manned', 'bad'); return; }
-    // a contiguous stretch of the trench nearest the squad: the n positions closest to the nearest free one
-    const anchor = free.reduce((a, sl) => (Math.hypot(sl.x - c.x, sl.z - c.z) < Math.hypot(a.x - c.x, a.z - c.z) ? sl : a));
-    const pick = free.slice().sort((p, q) => Math.hypot(p.x - anchor.x, p.z - anchor.z) - Math.hypot(q.x - anchor.x, q.z - anchor.z)).slice(0, men.length);
-    // machine gunner -> covered MG cell or a bay; RPG -> a bay; the rest fill in
-    const order = men.slice().sort((a, b) => (b.weaponKey === 'pkm' ? 2 : b.weaponKey === 'rpg7' ? 1 : 0) - (a.weaponKey === 'pkm' ? 2 : a.weaponKey === 'rpg7' ? 1 : 0));
-    const rank = sl => (sl.kind === 'mg' ? 2 : sl.kind === 'bay' ? 1 : 0);
-    this.order = { type: 'trench', trench: T }; this.trench = T;
-    // a captured trench faces the wrong way: fight from the rear wall (parados) toward the enemy instead
+    // where is the enemy? (nearest enemy squad, else the enemy's side of the map)
     let ex = 0, ez = this.side === 'player' ? -1 : 1, bd = 1e9;
     for (const q of this.game.squads) if (q.side !== this.side && !q.destroyed && q.effective.length) { const qc = q.center(), d = Math.hypot(qc.x - c.x, qc.z - c.z); if (d < bd && d < 400) { bd = d; ex = qc.x - c.x; ez = qc.z - c.z; } }
-    const flip = (T.front[0] * ex + T.front[1] * ez) / (Math.hypot(ex, ez) || 1) < -0.25;
-    if (flip) for (let i = pick.length - 1; i >= 0; i--) if (pick[i].kind !== 'line') pick.splice(i, 1);   // the firing cells point the wrong way
-    this.trenchFlip = flip;
+    const eL = Math.hypot(ex, ez) || 1; ex /= eL; ez /= eL;
+    const facing = sl => sl.fx * ex + sl.fz * ez;
+    // a contiguous stretch nearest the squad, preferring positions that face the enemy (a strongpoint faces all
+    // ways; in a captured trench the men turn round and fight from the rear wall)
+    const anchor = free.reduce((a, sl) => (Math.hypot(sl.x - c.x, sl.z - c.z) - facing(sl) * 8 < Math.hypot(a.x - c.x, a.z - c.z) - facing(a) * 8 ? sl : a));
+    const pick = free.slice().sort((p, q) => (Math.hypot(p.x - anchor.x, p.z - anchor.z) - facing(p) * 10) - (Math.hypot(q.x - anchor.x, q.z - anchor.z) - facing(q) * 10)).slice(0, men.length);
+    // machine gunner -> covered MG cell or a bay; RPG -> a bay; the rest fill in
+    const order = men.slice().sort((a, b) => (b.weaponKey === 'pkm' ? 2 : b.weaponKey === 'rpg7' ? 1 : 0) - (a.weaponKey === 'pkm' ? 2 : a.weaponKey === 'rpg7' ? 1 : 0));
+    const rank = sl => (sl.kind === 'mg' ? 2 : sl.kind === 'bay' ? 1 : 0) + (facing(sl) > 0 ? 1 : 0);
+    this.order = { type: 'trench', trench: T }; this.trench = T;
     for (const s of order) {
       let sl = null;
       if (s.weaponKey === 'pkm' || s.weaponKey === 'rpg7') sl = pick.filter(p => rank(p) > 0).sort((p, q) => rank(q) - rank(p))[0];
@@ -112,7 +112,8 @@ export const TrenchMixin = {
       }
       pick.splice(pick.indexOf(sl), 1);
       sl.occupant = s; s.trenchSlot = sl; s.trenchSys = T; s.trenchReserve = false;
-      s.goal = [sl.x, sl.z]; s.goalHeading = flip ? Math.atan2(-sl.fx, -sl.fz) : Math.atan2(sl.fx, sl.fz);
+      s.trenchFlip = facing(sl) < -0.35;
+      s.goal = [sl.x, sl.z]; s.goalHeading = s.trenchFlip ? Math.atan2(-sl.fx, -sl.fz) : Math.atan2(sl.fx, sl.fz);
       s.speedMul = 0.9 + Math.random() * 0.2; s.startDelay = Math.random() * 0.6;
       this.game.requestPath(s, s.pos.x, s.pos.z, sl.x, sl.z, 0.45);
     }
@@ -170,7 +171,7 @@ export const TrenchMixin = {
       // crouches until he shoots; firing: up on the step (squad.groundY raises him to fireY), heavy fire: duck
       const firing = s.target || g.time - (s.lastShotT ?? -99) < 2 || (this.fireAt && !this.holdFire);
       s.stance = s.suppression > 75 ? 'crouch' : firing ? 'stand' : s.trenchSlot.kind === 'line' ? 'stand' : 'crouch';
-      s.goalHeading = this.trenchFlip ? Math.atan2(-s.trenchSlot.fx, -s.trenchSlot.fz) : Math.atan2(s.trenchSlot.fx, s.trenchSlot.fz);
+      s.goalHeading = s.trenchFlip ? Math.atan2(-s.trenchSlot.fx, -s.trenchSlot.fz) : Math.atan2(s.trenchSlot.fx, s.trenchSlot.fz);
     }
   },
   // ------------------------------------------------------------------------------------------ trench clearing
@@ -183,6 +184,10 @@ export const TrenchMixin = {
     // the line the defenders are in; enter it from the end nearest to us
     let line = T.lines[0], bestN = -1;
     for (const l of T.lines) { const r = routeOf(l), n = foes.filter(f => routeProject(r, f.pos.x, f.pos.z).d < 6 || (f.dugout && T.dugouts.includes(f.dugout))).length; if (n > bestN) { bestN = n; line = l; } }
+    if (bestN <= 0 && foes.length) {   // defenders only in foxholes / outside the trench lines: plain assault on them
+      const f = foes.reduce((a, o) => (o.pos.distanceTo(c) < a.pos.distanceTo(c) ? o : a));
+      this.orderMove(f.pos.x, f.pos.z, null, 14, true); this.focus = f.squad; return;
+    }
     if (near(line[line.length - 1], [c.x, c.z]) < near(line[0], [c.x, c.z])) line = line.slice().reverse();
     const route = routeOf(line);
     const out = Math.atan2(line[0][0] - line[1][0], line[0][1] - line[1][1]);   // outward past the entry end
