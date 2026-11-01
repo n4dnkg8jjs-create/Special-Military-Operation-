@@ -31,7 +31,7 @@ export const WEAPONS = {
   // ATGM teams (tripod, SACLOS): tandem HEAT, long range. FPV: RPG-7 warhead strapped to a quadcopter.
   kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
   stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 1200, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 1000, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
-  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [110, 200], pen: 380, blast: 4, spread: 0, sound: 'rpg' },
+  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [130, 230], pen: 420, blast: 4, spread: 0, sound: 'rpg' },
   a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 39, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
 };
 

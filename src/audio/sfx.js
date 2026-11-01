@@ -57,7 +57,15 @@ export class Audio {
     def('tankgun', { gain: 1, refDistance: 25 }, [() => buf(2.5, (t, st) => { const n = noise(); return lp(st, n, 0.08) * Math.exp(-t / 0.15) * 3 + Math.sin(2 * Math.PI * 38 * t) * Math.exp(-t / 0.25) * 1.2 + lp({ a: st.b }, n, 0.01) * Math.exp(-t / 0.8) * 2; })]);
     const boom = (dec, low) => () => buf(dec * 4, (t, st) => { const n = noise(); st.b += (n - st.b) * 0.02; return (lp(st, n, 0.12) * Math.exp(-t / (dec * 0.25)) * 2.2 + st.b * Math.exp(-t / dec) * 6 + Math.sin(2 * Math.PI * low * t) * Math.exp(-t / (dec * 0.4)) * 1.4) * 0.7; });
     // FPV drone: 7-inch quad motor whine (looped), and a missile motor roar for ATGMs
-    def('drone_buzz', { gain: 0.5, refDistance: 10, loop: true }, [() => buf(1.0, (t, st) => { const f = 205 + Math.sin(2 * Math.PI * 3 * t) * 6; let v = 0; for (let h = 1; h <= 6; h++) v += Math.sin(2 * Math.PI * f * h * t + h) / h; return v * 0.35 + lp(st, noise(), 0.3) * 0.25; })]);
+    // FPV quad: four slightly detuned motors (integer Hz so the 1 s loop is seamless) -> beating, band-limited saw harmonics,
+    // two-blade prop pass flutter, a hiss of prop wash on top. The game raises playbackRate with throttle / dive.
+    def('drone_buzz', { gain: 0.55, refDistance: 16, loop: true }, [() => buf(1.0, (t, st) => {
+      let v = 0;
+      for (const [f, a] of [[372, 1], [377, 0.9], [369, 0.85], [383, 0.8]]) { for (let h = 1; h <= 9; h++) v += a * Math.sin(2 * Math.PI * f * h * t + h * 1.7) / (h * 1.15); }
+      const flutter = 0.78 + 0.22 * Math.sin(2 * Math.PI * 41 * t) * Math.sin(2 * Math.PI * 3 * t);
+      st.hp = (st.hp || 0) * 0.6 + noise() * 0.4; const hiss = noise() - st.hp;
+      return Math.tanh(v * 0.16 * flutter) * 0.85 + hiss * 0.18;
+    })]);
     def('atgm_motor', { gain: 0.6, refDistance: 14, loop: true }, [() => buf(1.0, (t, st) => lp(st, noise(), 0.25) * 0.9 + Math.sin(2 * Math.PI * 95 * t) * 0.15)]);
     def('explosion_small', { gain: 0.9, refDistance: 14 }, [boom(0.4, 55), boom(0.5, 48)]);
     def('explosion_medium', { gain: 1, refDistance: 22 }, [boom(0.8, 40), boom(0.9, 35)]);

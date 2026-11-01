@@ -5,8 +5,10 @@ import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
 // objective, or 40% into the round): counterattack waves from the north — mounted approach riding on
 // armour, dismount at staging, fire-team bounding through cover with smoke, flanking routes, tank
 // overwatch with stand-off from RPG teams, assault squads storming garrisoned buildings, artillery.
-const STAGING = new Proxy({}, { get: (_, k) => MAP.ai.staging[k] });
-const OVERWATCH = new Proxy({}, { get: (_, k) => MAP.ai.overwatch[k] });
+// per-objective AI points; objectives without hand-placed points get ones derived from the objective (enemy side = -Z)
+const objXZ = k => { const o = OBJECTIVES.find(q => q.id === k) || OBJECTIVES[0]; return [o.x, o.z]; };
+const STAGING = new Proxy({}, { get: (_, k) => MAP.ai.staging?.[k] || (([x, z]) => [[x - 40, z - 90], [x + 40, z - 95], [x, z - 110], [x - 70, z - 80]])(objXZ(k)) });
+const OVERWATCH = new Proxy({}, { get: (_, k) => MAP.ai.overwatch?.[k] || (([x, z]) => [[x - 50, z - 130], [x + 50, z - 130]])(objXZ(k)) });
 
 export class Commander {
   constructor(game) {
@@ -148,6 +150,32 @@ export class Commander {
     const moving = sq.effective.some(s => (s.path && s.pathI < s.path.length) || s.pathReq || s.waitTeam);
     if (b.wait > 0) { b.wait -= 1.5; return; }
     if (sq.order?.type === 'storm') return;
+    // ---- regrouping after a mauling: hold the fallback position until the squad has its nerve back, then go again
+    if (b.state === 'regroup') {
+      if (moving) return;
+      if (g.time > b.regroupT && sq.morale > 50 && sq.underFireT > 8) { b.state = 'advance'; b.wait = 4; if (sq.building) sq.leaveBuilding(); }
+      else { b.wait = 4; return; }
+    }
+    // ---- strongpoint: a building taken in contact is held for a while (covering friends) before moving on
+    if (b.state === 'strongpoint') {
+      if (!sq.building && !moving) b.state = 'advance';
+      else if (g.time > b.holdT && sq.morale > 55 && this.friendsNear(c, 90) >= 1 && sq.underFireT > 4) { b.state = 'advance'; sq.leaveBuilding(); }
+      else { b.wait = 3; return; }
+    }
+    // ---- badly hurt or shaken and outgunned: pull back to cover / a building on the own side and regroup
+    const strength = sq.effective.length / sq.soldiers.length;
+    if ((strength <= 0.45 || sq.morale < 36) && b.state !== 'hold' && !sq.building) {
+      const thr = this.threatsNear(c, 120);
+      if (thr.n > this.friendsNear(c, 90) || sq.morale < 30) {
+        const home = this.stagingFor(b.obj), back = new THREE.Vector3(home[0] - c.x, 0, home[1] - c.z); const L = back.length() || 1; back.multiplyScalar(1 / L);
+        const fb = new THREE.Vector3(c.x + back.x * Math.min(L, 70), 0, c.z + back.z * Math.min(L, 70));
+        const bld = this.buildingBehind(c, back, 70, sq);
+        if (bld) sq.orderGarrison(bld);
+        else { const cv = this.coverSpot(fb, new THREE.Vector3(c.x - back.x * 50, 0, c.z - back.z * 50), 18) || [fb.x, fb.z]; sq.orderMove(cv[0], cv[1], Math.atan2(-back.x, -back.z), 14, true); }
+        b.state = 'regroup'; b.regroupT = g.time + 35 + Math.random() * 25; b.wait = 6;
+        return;
+      }
+    }
     if (sq.morale < 32) { if (!moving && sq.underFireT < 3 && !sq.building) { const bld = this.nearBuilding(c, 30, sq); if (bld) sq.orderGarrison(bld); } b.wait = 8; return; }
     if (moving) return;
     // assault squads: storm a player-held building near the objective
@@ -155,7 +183,7 @@ export class Commander {
       const target = this.g.city.buildings.filter(bl => bl.slots.some(sl => sl.occupant && sl.occupant.squad.side === 'player')).sort((p, q) => Math.hypot(p.x - ox, p.z - oz) - Math.hypot(q.x - ox, q.z - oz))[0];
       if (target && Math.hypot(target.x - c.x, target.z - c.z) < 110) { sq.orderGarrison(target); b.wait = 4; return; }
     }
-    if (b.state === 'hold') { if (g.objectives.every(o => o.owner === 'enemy')) return; if (Math.random() < 0.04) { b.state = 'advance'; b.obj = b.obj === 'A' ? 'B' : 'A'; } return; }
+    if (b.state === 'hold') { if (g.objectives.every(o => o.owner === 'enemy')) return; if (Math.random() < 0.04) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = others[Math.floor(Math.random() * others.length)].id; if (sq.building) sq.leaveBuilding(); } } return; }
     if (dObj < 22) { b.state = 'hold'; const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
     if (sq.building && sq.underFireT < 4 && Math.random() < 0.7) { b.wait = 5; return; }
     // in contact: fire and manoeuvre — one fire team keeps the enemy's heads down while the other bounds to
@@ -163,6 +191,11 @@ export class Commander {
     const contact = this.contactNear(sq, c, 170);
     if (contact) {
       const T = contact.p, local = this.threatsNear(c, 90).n, friends = this.friendsNear(c, 70);
+      // a solid building close by facing the contact: turn it into a strongpoint (360 deg garrison) instead of fighting in the open
+      if (!b.noBld && b.kind !== 'assault' && T.distanceTo(c) < 160) {
+        const bld = this.nearBuilding(c, 28, sq);
+        if (bld && Math.random() < (local >= friends ? 0.75 : 0.4)) { sq.orderGarrison(bld); b.state = 'strongpoint'; b.holdT = g.time + 30 + Math.random() * 30; b.wait = 5; return; }
+      }
       if (local > friends + 1 && sq.morale < 60) { const cv = this.coverSpot(c, T, 14); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 12, true); b.wait = 8 + Math.random() * 6; return; }
       const flank = b.flank || (Math.random() < 0.5 ? -1 : 1); b.flank = flank;
       const ax = T.x - c.x, az = T.z - c.z, L = Math.hypot(ax, az) || 1, ux = ax / L, uz = az / L;
@@ -228,6 +261,17 @@ export class Commander {
       if (!nav.passable(i, 0.45)) continue;
       const sc = nav.coverFrom(x, z, T.x, T.z) - rr * 0.015 + (nav.low[i] ? 0.05 : 0);
       if (sc > bs) { bs = sc; best = [x, z]; }
+    }
+    return best;
+  }
+  // nearest usable building lying back along `dir` (toward the own side) from c, within r
+  buildingBehind(c, dir, r, sq) {
+    let best = null, bs = 1e9;
+    for (const bl of this.g.city.buildings) {
+      if (bl.collapsedAll) continue; const dx = bl.x - c.x, dz = bl.z - c.z, d = Math.hypot(dx, dz); if (d > r || d < 8) continue;
+      const along = (dx * dir.x + dz * dir.z) / (d || 1); if (along < 0.3) continue;
+      if (!bl.slots.some(s => !s.occupant && !s.panel.gone) || bl.slots.some(s => s.occupant && s.occupant.squad.side !== sq.side)) continue;
+      const sc = d - along * 20; if (sc < bs) { bs = sc; best = bl; }
     }
     return best;
   }

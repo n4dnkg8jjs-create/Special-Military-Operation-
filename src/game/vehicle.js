@@ -3,6 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { VEHICLES, WEAPONS } from '../config.js';
 import { angDiff, Squad } from './squad.js';
 import { initArmor } from './armor.js';
+import { hasClip } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 
@@ -61,8 +62,9 @@ export class Vehicle {
     this.supply = this.def.supply ? { ...this.def.supply } : null;
     this.build();
     // anti-drone "cope cage" over the turret: most tanks by 2024, some BTRs. Sets off a share of FPV warheads early.
-    const cageP = kind === 'tank' ? (faction.id === 'RU' ? 0.85 : 0.55) : 0.35;
-    if (!this.fallback && this.turret && Math.random() < cageP) this.addCage();
+    // the tank models already carry their anti-drone screen; BTRs get a welded cage on some vehicles
+    if (kind === 'tank') this.cage = 0.55;
+    else if (kind === 'btr' && !this.fallback && this.turret && Math.random() < 0.35) this.addCage();
     this.immob = {}; initArmor(this);
     this.thinkT = Math.random();
   }
@@ -97,30 +99,33 @@ export class Vehicle {
     this.game.scene.add(root);
   }
   addCage() {
-    const t = this.turret, gun = this.gun, box = new THREE.Box3(), b = new THREE.Box3();
+    // fit to the turret's actual roof: robust extents from the turret vertices (ignoring antennas / the gun), posts welded to the roof
+    const t = this.turret, gun = this.gun, v = new THREE.Vector3(), xs = [], ys = [], zs = [];
     this.root.updateMatrixWorld(true);
-    t.traverse(o => { if (!o.isMesh || /_LOD1$|_wreck$/i.test(o.name)) return; let p = o; while (p && p !== t) { if (p === gun) return; p = p.parent; } b.setFromObject(o); box.union(b); });
-    if (box.isEmpty()) return;
-    const tank = this.kind === 'tank', pad = tank ? 0.25 : 0.3, top = box.max.y + (tank ? 0.55 : 0.45);
-    const x0 = box.min.x - pad, x1 = box.max.x + pad, z0 = box.min.z - pad * (tank ? 2.2 : 1), z1 = Math.min(box.max.z + pad, box.min.z + (tank ? 3.6 : 2.4));
-    const geos = [], bar = (ax, ay, az, bx, by, bz, r = 0.022) => {
+    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+    t.traverse(o => {
+      if (!o.isMesh || /_LOD1$|_wreck$|antenna|aerial/i.test(o.name)) return; let p = o; while (p && p !== t) { if (p === gun) return; p = p.parent; }
+      const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 1500));
+      for (let i = 0; i < pos.count; i += step) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv); xs.push(v.x); ys.push(v.y); zs.push(v.z); }
+    });
+    if (xs.length < 20) return;
+    const q = (a, f) => { const s_ = [...a].sort((p, r) => p - r); return s_[Math.floor(f * (s_.length - 1))]; };
+    const roof = q(ys, 0.9), x0 = q(xs, 0.03) - 0.18, x1 = q(xs, 0.97) + 0.18, z0 = q(zs, 0.03) - 0.25, z1 = q(zs, 0.97) + 0.2;
+    const top = roof + 0.42, base = roof - 0.02, geos = [];
+    const bar = (ax, ay, az, bx, by, bz, r = 0.02) => {
       const a = new THREE.Vector3(ax, ay, az), c = new THREE.Vector3(bx, by, bz), L = a.distanceTo(c);
       const g = new THREE.BoxGeometry(r * 2, r * 2, L); g.lookAt(new THREE.Vector3().subVectors(c, a)); g.translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); geos.push(g);
     };
-    const yb = box.max.y - 0.1;
-    // corner posts and side rails welded to the turret
-    for (const x of [x0, x1]) for (const z of [z0, z1]) bar(x * 0.92, yb - 0.25, z * 0.95, x, top, z, 0.03);
-    for (const z of [z0, z1]) bar(x0, top, z, x1, top, z, 0.03);
-    for (const x of [x0, x1]) bar(x, top, z0, x, top, z1, 0.03);
-    // roof grid
-    const nx = Math.round((x1 - x0) / 0.32), nz = Math.round((z1 - z0) / 0.45);
-    for (let i = 1; i < nx; i++) { const x = x0 + (x1 - x0) * i / nx; bar(x, top, z0, x, top, z1); }
-    for (let i = 1; i < nz; i++) { const z = z0 + (z1 - z0) * i / nz; bar(x0, top, z, x1, top, z, 0.018); }
-    // a couple of side drops of mesh at the rear
-    bar(x0, top, z0, x0 * 0.95, yb, z0, 0.02); bar(x1, top, z0, x1 * 0.95, yb, z0, 0.02);
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ix = (x1 - x0) * 0.32, iz = (z1 - z0) * 0.32;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bar(cx + sx * ix, base, cz + sz * iz, cx + sx * (x1 - x0) / 2, top, cz + sz * (z1 - z0) / 2, 0.026);   // splayed posts from the roof
+    for (const z of [z0, z1]) bar(x0, top, z, x1, top, z, 0.025);
+    for (const x of [x0, x1]) bar(x, top, z0, x, top, z1, 0.025);
+    const nx = Math.round((x1 - x0) / 0.3), nz = Math.round((z1 - z0) / 0.42);
+    for (let i = 1; i < nx; i++) { const x = x0 + (x1 - x0) * i / nx; bar(x, top, z0, x, top, z1, 0.015); }
+    for (let i = 1; i < nz; i++) { const z = z0 + (z1 - z0) * i / nz; bar(x0, top, z, x1, top, z, 0.013); }
     const m = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x3e4130, roughness: 0.85, metalness: 0.3 }));
     m.name = 'drone_cage'; m.castShadow = true;
-    t.attach(m); this.cage = tank ? 0.55 : 0.4; this.cageMesh = m;
+    this.root.add(m); t.attach(m); this.cage = 0.4; this.cageMesh = m;
   }
   // desant seats: model empties ride_seat_N (+Z = facing, extras.seat_type) or a fallback layout
   seats() {
@@ -153,7 +158,7 @@ export class Vehicle {
     this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'tank' ? 2.0 : 1.8, true);
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
-  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; }
+  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     if (this.destroyed) { this.updateWreck(dt); return; }
@@ -225,10 +230,12 @@ export class Vehicle {
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.6; this.game.combat.vehicleTargets(this); }
     const main = this.weapons[0], t = this.target;
+    const gp = !t && !this.holdFire ? this.game.combat.groundPoint(this) : null;     // fire-at-ground order
     // turret slew
     if (this.turret) {
       let want = this.turretYaw;
       if (t) { const tp = t.pos; want = angDiff(Math.atan2(tp.x - this.pos.x, tp.z - this.pos.z), this.heading); }
+      else if (gp) want = angDiff(Math.atan2(gp.x - this.pos.x, gp.z - this.pos.z), this.heading);
       else want = this.turretYaw * (1 - dt * 0.3);
       // riders on the deck: keep the barrel out of them (BTR front arc, T-72 locked forward)
       const riders = this.passengers?.mounted && this.passengers.soldiers.some(s => s.inside === 'ride');
@@ -239,6 +246,7 @@ export class Vehicle {
       if (t) { const dist = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z); const dh = (t.aimY ?? 1) - 2.2; this.gunPitch = THREE.MathUtils.lerp(this.gunPitch, THREE.MathUtils.clamp(Math.atan2(dh, dist), -0.1, 0.35), Math.min(1, dt * 3)); }
     }
     for (const w of this.weapons) w.cd -= dt;
+    if (gp && !this.gunDisabled) { this.groundFire(gp, dt); return; }
     if (!t || this.holdFire || this.gunDisabled) { this.coaxFire(dt); return; }
     const aligned = Math.abs(angDiff(angDiff(Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z), this.heading), this.turretYaw)) < 0.04;
     if (!aligned) { this.coaxFire(dt); return; }
@@ -263,6 +271,44 @@ export class Vehicle {
       }
     }
     this.coaxFire(dt);
+  }
+  // area fire on a clicked point: tank HE + coax, BTR cannon / HMG bursts + coax
+  groundFire(p, dt) {
+    const g = this.game, C = g.combat, dist = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
+    const aligned = Math.abs(angDiff(angDiff(Math.atan2(p.x - this.pos.x, p.z - this.pos.z), this.heading), this.turretYaw)) < 0.05;
+    this.gunPitch = THREE.MathUtils.lerp(this.gunPitch, THREE.MathUtils.clamp(Math.atan2(-1.8, dist), -0.1, 0.35), Math.min(1, dt * 3));
+    if (!aligned) return;
+    const main = this.weapons[0], W = WEAPONS[main.key];
+    const from = () => (this.muzzle ? this.muzzle.getWorldPosition(new THREE.Vector3()) : this.pos.clone().setY(2.2));
+    if (this.kind === 'tank') {
+      if (main.cd <= 0 && main.he > 0 && dist < W.range) {
+        main.he--; main.ammo--; main.cd = W.reload + (this.crew < 3 ? 6 : 0);
+        const f = from(), tp = p.clone().setY(0.3); tp.x += (Math.random() - .5) * (2 + dist * 0.02); tp.z += (Math.random() - .5) * (2 + dist * 0.02);
+        const occ = g.nav.occluded(f.x, f.y, f.z, tp.x, tp.y, tp.z, null, null), dir = tp.clone().sub(f).normalize();
+        g.fx.muzzleBlastTank(f, dir); g.sfx('tankgun', this.pos); g.cam.addShake(Math.max(0, 0.6 - g.camDist(this.pos) / 250)); g.fx.tracer(f, tp, 1600, [1, 0.8, 0.5]);
+        C.projectiles.push({ kind: 'he', pos: f.clone(), target: tp, t: null, speed: 850, owner: this, side: this.side, weapon: W, occ, hit: false });
+        this.recoil = 1; this.firedT = 0;
+      }
+    } else if (main.ammo > 0 && dist < W.range) {
+      if (main.burst <= 0 && main.cd <= 0) main.burst = Math.round(THREE.MathUtils.randFloat(...W.burst));
+      if (main.burst > 0 && main.cd <= 0) {
+        main.burst--; main.ammo--; main.cd = main.burst === 0 ? THREE.MathUtils.randFloat(...W.burstGap) * 1.2 : 60 / W.rof; this.recoil = 0.4; this.firedT = 0;
+        const f = from();
+        if (W.type === 'autocannon') {
+          const end = p.clone(); const m = 1 + dist * 0.02; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2;
+          if (g.camDist(this.pos) < 300) g.fx.muzzle(f, end.clone().sub(f).normalize(), 1.6); g.sfx('cannon30', this.pos);
+          if (g.camDist(this.pos) < 500) g.fx.tracer(f, end, 900, [1, 0.6, 0.3]);
+          C.projectiles.push({ kind: 'he30', pos: f.clone(), target: end, t: null, speed: 960, owner: this, side: this.side, weapon: W, hit: false });
+        } else { C.groundRound(this, f, p, W, this.side, this); g.sfx(W.sound === 'hmg' ? 'hmg' : 'mg_near', this.pos); }
+      }
+    }
+    const w = this.weapons[1];
+    if (w && w.ammo > 0 && dist < 700) {
+      const Wc = WEAPONS.pkt;
+      if (w.burst <= 0 && w.cd <= 0) w.burst = Math.round(THREE.MathUtils.randFloat(...Wc.burst));
+      if (w.burst > 0 && w.cd <= 0) { w.burst--; w.ammo--; w.cd = w.burst === 0 ? THREE.MathUtils.randFloat(...Wc.burstGap) * 1.3 : 60 / Wc.rof;
+        const f = this.coax ? this.coax.getWorldPosition(new THREE.Vector3()) : this.pos.clone().setY(2.1); C.groundRound(this, f, p, Wc, this.side, this); g.sfx('mg_near', this.pos); }
+    }
   }
   coaxFire(dt) {
     const w = this.weapons[1], t = this.coaxTarget; if (!t || this.holdFire || w.ammo <= 0) return;
@@ -318,7 +364,8 @@ export class Vehicle {
       const hx = this.pos.x + right.x * h[0] + fwd.x * h[1], hz = this.pos.z + right.z * h[0] + fwd.z * h[1];
       const exitD = this.def.width / 2 - Math.abs(h[0]) + 1.8 - 0.42;
       const [x, z] = g.nav.nearestFree(hx + right.x * side * exitD, hz + right.z * side * exitD, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
-      s.hatchWait = i * 0.9; s.inside = 'btr'; s.stance = 'stand';
+      s.hatchWait = 0.6 + i * 1.4 + Math.random() * 0.5; s.inside = 'btr'; s.stance = 'stand';
+      s.hatchClip = this.kind === 'btr' && hasClip('hatch_exit_btr') ? 'hatch_exit_btr' : hasClip('hatch_exit_tank') ? 'hatch_exit_tank' : 'hatch_exit';
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }
       s.sync();
     });

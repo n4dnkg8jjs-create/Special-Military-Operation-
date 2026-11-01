@@ -23,6 +23,10 @@ export function prepareSoldierAssets(assets) {
   SHARED = { clips, manifest: man, assets };
 }
 
+// duration of a clip from the shared set (falls back to def when the clip is missing)
+export function clipDuration(name, def) { return SHARED?.clips[name]?.duration || def; }
+export function hasClip(name) { return !!SHARED?.clips[name]; }
+
 function pick(arr, r) { return arr[Math.floor(r * arr.length) % arr.length]; }
 
 export class Soldier {
@@ -40,7 +44,7 @@ export class Soldier {
     this.target = null; this.fireCd = Math.random(); this.burstLeft = 0; this.reloadT = 0; this.aimT = 0; this.scanT = Math.random() * 0.5;
     this.bleed = 0; this.dragger = null; this.dragging = null; this.treatT = 0;
     this.inside = null; // 'btr' | building slot
-    this.visible = true; this.rand = Math.random();
+    this.visible = true; this.rand = Math.random(); this.animJit = 0.9 + Math.random() * 0.2;
     this.buildVisual();
   }
   get alive() { return this.state !== 'dead' && this.state !== 'evac'; }
@@ -168,11 +172,14 @@ export class Soldier {
     let a = this.action(name);
     for (let i = 0; !a && i < alt.length; i++) { name = alt[i]; a = this.action(name); }
     if (!a) return;
-    a.timeScale = timeScale;
+    // looping clips: every man runs at his own slightly different rate and phase, so a squad never moves (or turns its
+    // heads) in lock-step
+    const loop = a.loop !== THREE.LoopOnce;
+    a.timeScale = timeScale * (loop && !/(walk|run|crawl|drag)/.test(name) ? this.animJit : 1);
     if (this.curName === name) return;
     a.reset(); a.enabled = true; a.setEffectiveWeight(1);
     if (this.cur && fade > 0) a.crossFadeFrom(this.cur, fade, true); else if (this.cur) this.cur.stop();
-    if (!/^(death)/.test(name)) a.time = Math.random() * (a.getClip().duration || 1) * (/(walk|run|crawl|idle|aim|cower)/.test(name) ? 1 : 0);
+    if (!/^(death)/.test(name)) a.time = loop ? Math.random() * (a.getClip().duration || 1) : 0;
     a.play(); this.cur = a; this.curName = name;
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
@@ -226,8 +233,8 @@ export class Soldier {
       else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
       else clip = 'wounded_ground';
     } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
-    else if (this.hatchT > 0) { clip = 'hatch_exit'; alt = ['dismount_jump', 'crouch_idle']; if (this.weaponObj) this.weaponObj.visible = this.hatchT < 0.5; }
-    else if (this.jumpT > 0) { clip = 'dismount_jump'; alt = ['crouch_idle']; }
+    else if (this.hatchT > 0) { clip = this.hatchClip || 'hatch_exit'; alt = ['hatch_exit', 'dismount_jump', 'crouch_idle']; if (this.weaponObj) this.weaponObj.visible = this.hatchT < 0.5; }
+    else if (this.jumpT > 0) { clip = this.jumpClip || 'dismount_jump'; alt = ['dismount_jump', 'crouch_idle']; }
     else if (this.launcherT > 0) {
       const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;
       if (this.launchFired) { clip = 'fire_launcher' + k; alt = ['fire_launcher', aim]; }
@@ -252,8 +259,8 @@ export class Soldier {
     } else if (this.reloadT > 0) { clip = st === 'stand' ? 'reload_stand' : 'reload_crouch'; alt = ['reload_stand', 'aim_crouch']; }
     else if (this.ducking) { if (st === 'prone') { clip = 'pinned_prone'; alt = ['prone_idle']; } else { clip = 'cover_duck'; alt = ['suppressed_cower', 'crouch_idle']; } }
     else if (this.peek && this.target) { const L = this.peek < 0 ? 'left' : 'right', c = st === 'stand' ? '' : 'crouch_'; clip = (this.firingT > 0 ? 'fire_peek_' : 'peek_') + c + L; alt = this.firingT > 0 ? ['peek_' + c + L, st === 'stand' ? 'aim_stand' : 'aim_crouch'] : [st === 'stand' ? 'aim_stand' : 'aim_crouch']; }
-    else if (this.target && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
-    else if (this.target) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
+    else if ((this.target || this.groundAim) && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
+    else if (this.target || this.groundAim) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
     else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
     if (this.mixer) {
       this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);

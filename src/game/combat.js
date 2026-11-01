@@ -68,7 +68,9 @@ export class Combat {
       if (s.launcherT <= 0) { s.discardLauncher(); s.launcherTarget = null; }
       return;
     }
-    const t = s.target; if (!t) return;
+    const t = s.target;
+    s.groundAim = false;
+    if (!t) { if (sq.fireAt && !sq.holdFire) this.fireAtGround(s, dt); return; }
     if (s.noRifle || s.supportClip) return;                          // busy on the launcher / drone controls
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
@@ -95,6 +97,50 @@ export class Combat {
     s.burstLeft--; s.inMag--;
     s.fireCd = s.burstLeft > 0 ? 60 / W.rof : rf(W.burstGap[0], W.burstGap[1]) * (1 + s.suppression / 60);
     this.fireSmallArms(s, t, W);
+  }
+  // ---- fire at ground (suppressive / recon-by-fire on a point the player clicked, without a spotted target)
+  groundPoint(u, s) {
+    const fa = u.fireAt; if (!fa) return null;
+    if (this.g.time > fa.until) { u.fireAt = null; return null; }
+    const k = s ? s.idx * 2.399 : 0, r = s ? 2.5 + (s.idx % 3) * 1.4 : 0;            // each man takes his own bit of the area
+    return (s ? (s._gp ||= new THREE.Vector3()) : (u._gp ||= new THREE.Vector3())).set(fa.p.x + Math.cos(k) * r, 0.4, fa.p.z + Math.sin(k) * r);
+  }
+  fireAtGround(s, dt) {
+    const sq = s.squad, W = s.weapon;
+    if (s.noRifle || s.supportClip || s.ducking || s.inside === 'btr' || W.type === 'at' || s.reloadT > 0) return;
+    const p = this.groundPoint(sq, s); if (!p) return;
+    const d = Math.hypot(p.x - s.pos.x, p.z - s.pos.z); if (d > W.range * 1.3 || d < 4) return;
+    s.groundAim = true; s.aimPoint = p;
+    if (s.vel.lengthSq() > 0.5) return;
+    if (Math.abs(angDiff(Math.atan2(p.x - s.pos.x, p.z - s.pos.z), s.heading)) > 0.3) return;
+    s.fireCd -= dt; if (s.fireCd > 0) return;
+    if (s.inMag <= 0) { this.startReload(s); return; }
+    if (s.burstLeft <= 0) s.burstLeft = Math.round(rf(W.burst[0], W.burst[1] + 0.49));
+    s.burstLeft--; s.inMag--;
+    s.fireCd = s.burstLeft > 0 ? 60 / W.rof : rf(W.burstGap[0], W.burstGap[1]) * 1.3;
+    this.groundRound(s, s.muzzleWorld(C).clone(), p, W, s.squad.side, s);
+    s.kick = 1; s.squad.firedT = 0; s.firingT = W.type === 'mg' ? 0.5 : 0.35; s.lastShotT = this.g.time;
+    this.g.sfx(W.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos);
+  }
+  // one round into an area: tracer, impact, suppression of anyone near, a small chance to hit someone hidden there
+  groundRound(owner, from, p, W, side, shooter) {
+    const g = this.g, d = from.distanceTo(p), m = 0.8 + d * 0.025;
+    const end = p.clone(); end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .5) * 0.8);
+    const occ = g.nav.occluded(from.x, from.y, from.z, end.x, end.y, end.z, owner.squad?.building || null, null);
+    if (occ && occ.ref?.panels) end.copy(this.facadePoint(occ, from, end));
+    if (g.camDist(from) < 260) g.fx.muzzle(from, end.clone().sub(from).normalize(), W.type === 'mg' || W.type === 'hmg' ? 1.1 : 0.8);
+    owner.shots = (owner.shots || 0) + 1;
+    if (owner.shots % (W.tracerEvery || 4) === 0 && g.camDist(from) < 450) g.fx.tracer(from, end, 800, TRACER[(shooter || owner).faction.id]);
+    if (g.camDist(end) < 200) g.fx.impact(end, occ ? 'concrete' : 'dirt', W.type === 'hmg' ? 1.2 : 0.6);
+    if (occ?.ref?.panels && W.type === 'hmg') this.damageBuilding(occ.ref, end, 3);
+    for (const sq of g.squads) {
+      if (sq.side === side || sq.destroyed || sq.mounted) continue;
+      for (const o of sq.effective) {
+        const dd = o.pos.distanceTo(end); if (dd > 6) continue;
+        o.suppression = Math.min(100, o.suppression + (W.suppress || 1) * 7 * (1 - dd / 7)); sq.underFireT = 0;
+        if (dd < 1.6 && Math.random() < (o.inBuilding ? (this.windowExposed(o) ? 0.05 : 0.004) : o.stance === 'prone' ? 0.02 : 0.05)) this.hitSoldier(o, W, from, false, shooter || owner);
+      }
+    }
   }
   acquire(s) {
     const g = this.g, sq = s.squad, eye = this.soldierEye(s, A).clone();
@@ -159,7 +205,9 @@ export class Combat {
     if (t.type === 'vehicle') return Math.min(0.95, p * 4);
     // target modifiers
     if (t.ducking) p *= 0.3;
-    if (t.inBuilding) p *= 0.3;
+    // inside a building the walls stop small-arms fire: only a man showing himself at the window (shooting in the last ~1.5 s)
+    // is really hittable; otherwise only the odd round through the opening finds him
+    if (t.inBuilding) p *= this.windowExposed(t) ? 0.3 : 0.02;
     else if (t.inside === 'ride') p *= 0.75;
     else {
       const cov = this.g.nav.coverFrom(t.pos.x, t.pos.z, s.pos.x, s.pos.z);
@@ -170,10 +218,11 @@ export class Combat {
     if (t.state === 'critical' || t.state === 'stable') p *= 0.6;
     return THREE.MathUtils.clamp(p, 0.004, 0.75);
   }
+  windowExposed(t) { return (this.g.time - (t.lastShotT ?? -99)) < 1.5 || t.throwT > 0 || t.launcherT > 0; }
   fireSmallArms(s, t, W) {
     const g = this.g, from = s.muzzleWorld(C).clone(), tp = this.targetPoint(t, B).clone();
     const d = from.distanceTo(tp);
-    s.kick = 1; s.squad.firedT = 0; s.firingT = W.type === 'mg' ? 0.5 : 0.35;
+    s.kick = 1; s.squad.firedT = 0; s.firingT = W.type === 'mg' ? 0.5 : 0.35; s.lastShotT = g.time;
     const near = g.camDist(s.pos) < 220;
     if (near) g.fx.muzzle(from, tp.clone().sub(from).normalize(), W.type === 'mg' ? 1.1 : 0.8);
     g.sfx(W.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos);
@@ -341,7 +390,7 @@ export class Combat {
     if (near) g.fx.muzzle(from, tp.clone().sub(from).normalize(), W.type === 'autocannon' ? 1.6 : W.type === 'hmg' ? 1.3 : 0.9);
     g.sfx(W.sound === 'cannon30' ? 'cannon30' : W.sound === 'hmg' ? 'hmg' : 'mg_near', v.pos);
     let p = (W.type === 'autocannon' ? 0.3 : W.type === 'hmg' ? 0.2 : 0.14) * Math.exp(-Math.pow(d / 260, 1.35)) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.7 : 1) * (v.opticsDamaged ? 0.55 : 1);
-    if (t.type !== 'vehicle') { if (t.inBuilding) p *= 0.45; else if (t.inside === 'ride') p *= 0.8; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
+    if (t.type !== 'vehicle') { if (t.inBuilding) p *= W.type === 'hmg' || W.type === 'autocannon' ? 0.45 : this.windowExposed(t) ? 0.4 : 0.03; else if (t.inside === 'ride') p *= 0.8; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
     else p = Math.min(0.9, p * 3);
     const hit = Math.random() < p;
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.02; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Soldier } from './soldier.js';
+import { Soldier, clipDuration, hasClip } from './soldier.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING, WEAPONS } from '../config.js';
 import { AtgmTeam, FpvTeam } from './support.js';
 
@@ -112,10 +112,10 @@ export class Squad {
     if (!free.length) { this.game.hud?.alert(`${b.kind === 'school' ? 'School' : 'Building'} is full`, 'bad'); return; }
     this.order = { type: 'garrison', building: b };
     this.building = b;
-    // fill slots nearest to the threat (north for defenders) first
-    free.sort((p, q) => this.threatScore(b, q) - this.threatScore(b, p));
+    // spread the men round the building for all-round (360 deg) fire, the threatened facade getting a bit more
+    const picked = this.spreadSlots(b, free, men.length);
     men.forEach((s, i) => {
-      const sl = free[i % free.length]; if (i >= free.length) return;
+      const sl = picked[i]; if (!sl) return;
       sl.occupant = s; s.slotRef = sl;
       const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a));
       s.goal = [ent.x, ent.z]; s.goalHeading = null; this.game.requestPath(s, s.pos.x, s.pos.z, ent.x, ent.z, 0.45);
@@ -137,6 +137,19 @@ export class Squad {
     this.run = true;
     if (this.side === 'player') this.game.hud?.alert(`${this.name}: storming the building`);
   }
+  // slots grouped by facade (outward direction in 4 sectors), taken round-robin: threat side, flanks, threat, rear, ...
+  spreadSlots(b, free, n) {
+    const bucket = [[], [], [], []];
+    for (const sl of free) { const o = b.outward(sl.panel); const a = Math.atan2(o.x, o.z); bucket[((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4].push(sl); }
+    const score = sl => this.threatScore(b, sl) * 0.2 + (sl.panel.floor >= 1 && sl.panel.floor <= 3 ? 0.3 : 0) - (sl.panel.state >= 2 ? 0.4 : 0) + Math.random() * 0.05;
+    for (const k of bucket) k.sort((p, q) => score(q) - score(p));
+    const facadeThreat = k => k.length ? k.reduce((a, sl) => a + this.threatScore(b, sl), 0) / k.length : -9;
+    const order = [0, 1, 2, 3].sort((p, q) => facadeThreat(bucket[q]) - facadeThreat(bucket[p]));
+    const [T, S1, S2, R] = order, cycle = [T, S1, S2, T, R, S1, S2, T];
+    const out = [];
+    for (let i = 0; out.length < n && i < n * 8 + 8; i++) { const k = bucket[cycle[i % cycle.length]]; if (k.length) out.push(k.shift()); }
+    return out;
+  }
   threatScore(b, sl) { const o = b.outward(sl.panel); const enemyDir = this.side === 'player' ? -1 : 1; return o.z * enemyDir - sl.panel.floor * 0.1 + (sl.panel.state >= 2 ? -0.5 : 0); }
   leaveBuilding() {
     if (!this.building) return;
@@ -156,23 +169,40 @@ export class Squad {
   dismount(facing) {
     const v = this.carrier; if (!v || !this.mounted) return;
     this.mounted = false; v.passengers = null;
+    if (!v.destroyed && Math.abs(v.speed) > 0.5) v.halt();
     facing ??= v.heading;
+    // men get off one after another (riders from the deck, the rest through the doors), not all in the same instant
+    let k = 0;
     this.soldiers.forEach((s, i) => {
-      if (s.inside === 'ride' && s.seat) {
-        // jump down off the deck on the seat's side
-        const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
-        const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
-        s.pos.set(w.pos.x + out.x * 1.6, 0, w.pos.z + out.z * 1.6); s.heading = Math.atan2(out.x, out.z); s.jumpT = 1.1;
-        s.inside = null; s.seat = null; return;
-      }
-      if (s.inside !== 'btr' || s.state === 'evac') return;
-      const d = v.doorPos(i, true); s.pos.set(d.x, 0, d.z); s.inside = null; s.heading = v.heading + (i % 2 ? 1.57 : -1.57);
+      if (s.state === 'evac') return;
+      if (s.inside === 'ride' && s.seat) { s.dmWait = 0.15 + k * 0.42 + Math.random() * 0.25; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; k++; return; }
+      if (s.inside !== 'btr') return;
+      s.dmWait = 0.4 + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
     });
-    const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
-    this.order = null;
-    const slots = this.formationSlots(back.x, back.z, facing, 18);
-    this.effective.forEach((s, i) => { s.goal = slots[i]; s.goalHeading = facing; this.game.requestPath(s, s.pos.x, s.pos.z, slots[i][0], slots[i][1], 0.45); });
+    this.order = null; this.dmFacing = facing;
     this.game.sfx('hatch', v.pos);
+  }
+  // one man leaving the carrier (called when his turn comes)
+  exitCarrier(s) {
+    const v = s.dmVeh, g = this.game; s.dmWait = null;
+    if (s.dmKind === 'jump' && s.seat) {
+      const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
+      const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
+      s.pos.set(w.pos.x + out.x * 1.6, 0, w.pos.z + out.z * 1.6); s.heading = Math.atan2(out.x, out.z);
+      s.jumpClip = 'dismount_jump'; s.jumpT = clipDuration('dismount_jump', 1.1);
+      s.inside = null; s.seat = null;
+    } else {
+      const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, 0, d.z); s.inside = null;
+      const rear = v.kind !== 'btr' && hasClip('dismount_rear');
+      s.heading = rear ? v.heading + Math.PI : v.heading + ((s.dmI ?? 0) % 2 ? 1.57 : -1.57);
+      const clip = rear ? 'dismount_rear' : hasClip('dismount_door') ? 'dismount_door' : null;
+      if (clip) { s.jumpClip = clip; s.jumpT = clipDuration(clip, 1.4); }
+    }
+    s.dmVeh = null;
+    const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
+    const slots = this.formationSlots(back.x, back.z, this.dmFacing ?? v.heading, 18), i = this.soldiers.indexOf(s);
+    const sl = slots[i % slots.length]; s.goal = sl; s.goalHeading = this.dmFacing ?? v.heading;
+    s.pathDelay = s.jumpT || 0; g.requestPath(s, s.pos.x, s.pos.z, sl[0], sl[1], 0.45);
   }
   // ride on top of the vehicle (tank/BTR desant). Overflow rides inside.
   board(v, instant = false) {
@@ -196,7 +226,7 @@ export class Squad {
     if (d > range) { const p = c.clone().lerp(tc, 1 - range * 0.85 / d); this.orderMove(p.x, p.z, Math.atan2(tc.x - p.x, tc.z - p.z), 18, this.run); this.order.attack = target; }
     this.focus = target;
   }
-  halt() { this.order = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
+  halt() { this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
   // ------------------------------------------------------------ morale
   addMorale(d, why) { if (this.destroyed) return; this.morale = THREE.MathUtils.clamp(this.morale + d, 0, 100); }
   onCasualty(s, killed) {
@@ -365,7 +395,19 @@ export class Squad {
   }
   updateSoldier(s, dt) {
     const g = this.game;
-    if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchT = 2.7; g.sfx('hatch', s.pos); } else { s.sync(); return; } }
+    if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchT = clipDuration(s.hatchClip || 'hatch_exit', 2.7); g.sfx('hatch', s.pos); } else { s.sync(); return; } }
+    // waiting for his turn to get off the carrier: stays on his seat (riders, carried along) or inside
+    if (s.dmWait != null) {
+      const v = s.dmVeh;
+      if (!v) s.dmWait = null;
+      else {
+        s.dmWait -= dt;
+        if (s.inside === 'ride' && s.seat) { const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = w.heading; s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); }
+        else if (s.inside === 'btr') s.pos.copy(v.pos);
+        if (s.dmWait <= 0 || v.destroyed) this.exitCarrier(s);
+        else { s.sync(); return; }
+      }
+    }
     s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
     // heavily suppressed: duck behind the wall / window sill, pop up for a burst, duck again
     if (s.suppression > 55 || this.pinned) {
@@ -399,8 +441,9 @@ export class Squad {
     let want = s.heading;
     if (s.target && s.effective && !(s.path && s.pathI < s.path.length && this.run)) want = Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z);
     else if (s.vel.lengthSq() > 0.05) want = Math.atan2(s.vel.x, s.vel.z);
+    else if (s.groundAim && s.aimPoint) want = Math.atan2(s.aimPoint.x - s.pos.x, s.aimPoint.z - s.pos.z);
     else if (s.goalHeading != null) want = s.goalHeading;
-    if (s.inBuilding && s.target) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
+    if (s.inBuilding && (s.target || s.groundAim)) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
     if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
     s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);
     // combat

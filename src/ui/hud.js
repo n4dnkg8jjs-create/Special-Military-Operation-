@@ -18,7 +18,18 @@ export class HUD {
     this.selected = new Set(); this.groups = {}; this.banners = new Map();
     this.timerEl = document.getElementById('timer'); this.phaseEl = document.getElementById('phase'); this.fpsEl = document.getElementById('fps');
     document.getElementById('hud').classList.remove('hidden');
-    for (const o of game.objectives) { const n = document.querySelector(`#obj-${o.id} .name`); if (n) n.textContent = o.name; }
+    // objective boxes: A / B exist in the page; further objectives (C, D, ...) are cloned from A and placed outside them
+    const tb = document.getElementById('topbar'), tplA = document.getElementById('obj-A');
+    for (const el of tb.querySelectorAll('.objective.extra')) el.remove();
+    let left = true;
+    for (const o of game.objectives) {
+      if (!document.getElementById(`obj-${o.id}`) && tplA) {
+        const el = tplA.cloneNode(true); el.id = `obj-${o.id}`; el.classList.add('extra'); el.querySelector('.tag').textContent = o.id;
+        if (left) tb.insertBefore(el, tb.firstChild); else tb.appendChild(el); left = !left;
+      }
+      const n = document.querySelector(`#obj-${o.id} .name`); if (n) n.textContent = o.name;
+    }
+    tb.classList.toggle('many', game.objectives.length > 2);
     this.rings(); this.drawMinimapBase(); this.rebuildCards();
     this.mm.addEventListener('mousedown', e => this.minimapClick(e));
     this.mm.addEventListener('contextmenu', e => { e.preventDefault(); this.minimapClick(e, true); });
@@ -56,6 +67,13 @@ export class HUD {
     this.orderLines.geometry.dispose(); this.orderLines.geometry = geo; this.orderLines.computeLineDistances();
   }
   showPreview(points) { const m = new THREE.Matrix4(); this.preview.count = Math.min(80, points.length); points.slice(0, 80).forEach((p, i) => { m.makeTranslation(p[0], 0.15, p[1]); this.preview.setMatrixAt(i, m); }); this.preview.instanceMatrix.needsUpdate = true; }
+  // area-fire marker: a red ring on the ground for the duration of the fire order
+  groundMarker(p) {
+    const g = this.g; if (this._gm) { g.scene.remove(this._gm); clearTimeout(this._gmT); }
+    const m = new THREE.Mesh(new THREE.RingGeometry(4.2, 5, 40), new THREE.MeshBasicMaterial({ color: 0xd8483a, transparent: true, opacity: 0.55, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(p.x, 0.25, p.z); m.renderOrder = 3; g.scene.add(m); this._gm = m;
+    this._gmT = setTimeout(() => { g.scene.remove(m); if (this._gm === m) this._gm = null; }, 30000);
+  }
   // ------------------------------------------------------------ cards
   // Order-of-battle roster: a compact, grouped, scrollable list (left edge) instead of a row of big cards.
   // Squads are nested under the BTR that carries them; groups collapse; Tab folds the whole panel to icons.
@@ -194,7 +212,7 @@ export class HUD {
     const men = side => g.squads.reduce((n, q) => n + (q.side === side && !q.destroyed ? q.effective.length : 0), 0), veh = side => g.vehicles.filter(v => v.side === side && !v.destroyed).length;
     const res = g.commander ? Math.max(0, (g.commander.waves?.length ?? g.commander.plan.length) - g.commander.waveI) : 0;
     (this.forcesEl ||= document.getElementById('forces')).textContent = `YOU ${men('player')} MEN · ${veh('player')} VEH${g.reinforced ? '' : ' (+1 RESERVE)'}   ENEMY ≈${men('enemy')} · ${veh('enemy')}${res ? ` (+${res} RESERVE)` : ''}`;
-    this.phaseEl.textContent = g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : 'HOLD BOTH OBJECTIVES';
+    this.phaseEl.textContent = g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : g.objectives.length > 2 ? 'HOLD ALL OBJECTIVES' : 'HOLD BOTH OBJECTIVES';
     for (const o of g.objectives) {
       const el = document.getElementById(`obj-${o.id}`);
       el.querySelector('.fill').style.width = `${(o.control + 100) / 2}%`;

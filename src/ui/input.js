@@ -64,6 +64,7 @@ export class Input {
     const d = this.drag; this.drag = null; this.box.style.display = 'none'; this.hud.preview.count = 0;
     if (!d) return;
     if (d.btn === 0) {
+      if (this.mode === 'fireground') { const p = this.groundAt(e.clientX, e.clientY); if (p) { const sel = [...this.hud.selected]; for (const u of sel) { u.fireAt = { p: p.clone(), until: this.g.time + 30 }; u.target = null; } this.hud.groundMarker?.(p); this.g.hud.alert(`${sel.length > 1 ? sel.length + ' units' : sel[0]?.name} firing on the area for 30 s (X halts)`); this.g.sfx('ui_order'); } this.mode = null; document.body.style.cursor = ''; return; }
       if (this.mode === 'mortar') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerMortar(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; } return; }
       if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 8) {
         const x0 = Math.min(d.x, e.clientX), x1 = Math.max(d.x, e.clientX), y0 = Math.min(d.y, e.clientY), y1 = Math.max(d.y, e.clientY);
@@ -144,7 +145,7 @@ export class Input {
     if (o === 'mount' && g.phase === 'deploy') {
       for (const u of sel) { const sq = u.type === 'squad' ? u : u.passengers; const v = u.type === 'vehicle' ? u : u.carrier;
         if (!sq || !v) continue;
-        if (sq.mounted) { sq.dismount(); for (const s of sq.soldiers) { s.jumpT = 0; s.path = null; s.goal = null; } const p = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -9); g.deployPlace(sq, p.x, p.z, v.heading); }
+        if (sq.mounted) { sq.dismount(); for (const s of sq.soldiers) { if (s.dmWait != null) sq.exitCarrier(s); s.jumpT = 0; s.path = null; s.goal = null; } const p = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -9); g.deployPlace(sq, p.x, p.z, v.heading); }
         else if (!v.passengers) sq.board(v, true); }
       g.sfx('ui_click'); this.hud.updateInfo(); return;
     }
@@ -158,13 +159,14 @@ export class Input {
       const m = this.lastMouse && this.groundAt(this.lastMouse[0], this.lastMouse[1]); const th = u.effective.find(s => !s.inside); if (!th || !m) continue;
       u.smokes = (u.smokes ?? 2) - 1; g.combat.throwSmoke(th, m);
     }
+    if (o === 'fireground') { if (g.phase === 'deploy') { g.hud.alert('Area fire is available once the battle starts'); return; } if (sel.length) { this.mode = 'fireground'; document.body.style.cursor = 'crosshair'; g.hud.alert('Fire at ground: left-click the area to engage'); } }
     if (o === 'mortar' && g.phase === 'deploy') { g.hud.alert('Fire missions are available once the battle starts'); return; }
     if (o === 'mortar') { if (g.mortars > 0) { this.mode = 'mortar'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mortar: left-click a target area'); } }
     g.sfx('ui_click'); this.hud.updateInfo();
   }
   key(e) {
     if (e.repeat) return; const g = this.g;
-    const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke' };
+    const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke', KeyC: 'fireground' };
     if (map[e.code]) { this.command(map[e.code]); return; }
     if (e.code === 'Enter' && g.phase === 'deploy') { g.startBattle(); return; }
     if (e.code === 'Tab') { e.preventDefault(); this.hud.rosterMini = !this.hud.rosterMini; this.hud.rebuildCards(); return; }

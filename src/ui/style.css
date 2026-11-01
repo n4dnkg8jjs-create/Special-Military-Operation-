@@ -135,3 +135,5 @@ button{font:inherit;cursor:pointer}
 .roster.mini .r{gap:2px;padding:0 3px;justify-content:center;height:26px}
 .roster.mini .r.nest{padding-left:3px}
 .roster.mini .r .mn{font-size:10px;min-width:0}
+
+#topbar.many .objective{width:168px;padding-left:40px} #topbar.many .objective .name{font-size:13px}

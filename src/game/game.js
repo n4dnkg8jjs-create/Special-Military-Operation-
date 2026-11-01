@@ -77,7 +77,7 @@ export class Game {
   }
   garrison(sq, b) {
     sq.building = b;
-    const free = b.slots.filter(s => !s.occupant && !s.panel.gone).sort((a, c) => sq.threatScore(b, c) - sq.threatScore(b, a));
+    const free = sq.spreadSlots(b, b.slots.filter(s => !s.occupant && !s.panel.gone), sq.soldiers.length);
     sq.soldiers.forEach((s, i) => { const sl = free[i]; if (!sl) return; sl.occupant = s; s.slotRef = sl; s.inside = sl; b.slotPos(sl, s.pos); const o = b.outward(sl.panel); s.heading = Math.atan2(o.x, o.z); s.stance = 'crouch'; s.sync(); });
   }
   deploy() {
