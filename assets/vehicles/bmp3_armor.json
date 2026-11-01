@@ -1,0 +1,428 @@
+{
+ "vehicle": "bmp3",
+ "model": "BMP-3 (Russian service 2022-24, add-on side screens fitted, no Kaktus ERA)",
+ "frame": "src/game/armor.js frame: x = vehicle RIGHT (mirror of glTF x), y up, z forward, metres; origin ground/footprint centre",
+ "units": "mm RHA-equivalent, horizontal line of sight, vs kinetic (ke) and shaped-charge (ce)",
+ "basis": [
+  "hull front 22 mm BT-70Sh steel + 60 mm ABT-102 Al, very shallow glacis (~16-20 deg from horizontal): rated vs 30 mm APDS at 200-300 m -> ~70 KE LOS",
+  "turret front 16 mm steel + 70 mm gap + 50 mm Al -> ~55 KE",
+  "sides/rear 43 mm Al (~15 RHA); with the 2022 bolted steel side screens ~25 KE (vs 12.7 mm at 100-200 m)",
+  "roof 15-18 mm Al (~6-7 RHA), floor 10 mm Al",
+  "Al vs HEAT counted at ~0.55 of thickness, steel 1.0, gaps ~0.1"
+ ],
+ "zones": [
+  {
+   "name": "turret",
+   "min": [
+    -1.05,
+    1.7,
+    -0.55
+   ],
+   "max": [
+    1.05,
+    2.3,
+    1.45
+   ],
+   "faces": {
+    "front": {
+     "ke": 55,
+     "ce": 75
+    },
+    "side": {
+     "ke": 18,
+     "ce": 30
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 25
+    },
+    "top": {
+     "ke": 7,
+     "ce": 10
+    }
+   }
+  },
+  {
+   "name": "glacis",
+   "min": [
+    -1.57,
+    1.14,
+    1.9
+   ],
+   "max": [
+    1.57,
+    1.7,
+    3.36
+   ],
+   "faces": {
+    "front": {
+     "ke": 70,
+     "ce": 95
+    },
+    "side": {
+     "ke": 25,
+     "ce": 40
+    },
+    "top": {
+     "ke": 28,
+     "ce": 40
+    }
+   },
+   "note": "upper front plate incl. folded trim vane; top = drone strike on the shallow glacis"
+  },
+  {
+   "name": "lower_front",
+   "min": [
+    -1.07,
+    0.45,
+    2.78
+   ],
+   "max": [
+    1.07,
+    1.14,
+    3.36
+   ],
+   "faces": {
+    "front": {
+     "ke": 40,
+     "ce": 55
+    },
+    "side": {
+     "ke": 18,
+     "ce": 30
+    },
+    "bottom": {
+     "ke": 10,
+     "ce": 14
+    }
+   }
+  },
+  {
+   "name": "hull",
+   "min": [
+    -1.57,
+    0.45,
+    -3.36
+   ],
+   "max": [
+    1.57,
+    1.7,
+    1.9
+   ],
+   "faces": {
+    "side": {
+     "ke": 25,
+     "ce": 40
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 25
+    },
+    "top": {
+     "ke": 6,
+     "ce": 10
+    },
+    "bottom": {
+     "ke": 4,
+     "ce": 8
+    }
+   },
+   "note": "side 25/40 with the add-on side screens (side_screens node); without them use 15/25"
+  },
+  {
+   "name": "tracks_l",
+   "min": [
+    -1.58,
+    0.0,
+    -3.36
+   ],
+   "max": [
+    -1.12,
+    1.14,
+    2.95
+   ],
+   "faces": {
+    "side": {
+     "ke": 15,
+     "ce": 15
+    },
+    "front": {
+     "ke": 15,
+     "ce": 15
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 15
+    }
+   }
+  },
+  {
+   "name": "tracks_r",
+   "min": [
+    1.12,
+    0.0,
+    -3.36
+   ],
+   "max": [
+    1.58,
+    1.14,
+    2.95
+   ],
+   "faces": {
+    "side": {
+     "ke": 15,
+     "ce": 15
+    },
+    "front": {
+     "ke": 15,
+     "ce": 15
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 15
+    }
+   }
+  }
+ ],
+ "parts": [
+  {
+   "name": "driver",
+   "crew": "driver",
+   "min": [
+    -0.35,
+    0.55,
+    1.95
+   ],
+   "max": [
+    0.35,
+    1.6,
+    2.9
+   ]
+  },
+  {
+   "name": "bow_gunner_l",
+   "troops": true,
+   "seat": "bow_mg_L",
+   "role": "bow_gunner_left",
+   "min": [
+    -1.25,
+    0.55,
+    1.95
+   ],
+   "max": [
+    -0.45,
+    1.6,
+    2.9
+   ]
+  },
+  {
+   "name": "bow_gunner_r",
+   "troops": true,
+   "seat": "bow_mg_R",
+   "role": "bow_gunner_right",
+   "min": [
+    0.45,
+    0.55,
+    1.95
+   ],
+   "max": [
+    1.25,
+    1.6,
+    2.9
+   ]
+  },
+  {
+   "name": "gunner",
+   "crew": "gunner",
+   "min": [
+    -0.85,
+    1.0,
+    -0.1
+   ],
+   "max": [
+    -0.1,
+    2.2,
+    0.9
+   ]
+  },
+  {
+   "name": "commander",
+   "crew": "commander",
+   "min": [
+    0.1,
+    1.0,
+    -0.1
+   ],
+   "max": [
+    0.85,
+    2.2,
+    0.9
+   ]
+  },
+  {
+   "name": "autoloader",
+   "ammo": 0.65,
+   "note": "ring conveyor under the turret floor: 22 x 100 mm HE-Frag + 3 9M117",
+   "min": [
+    -1.0,
+    0.5,
+    -0.6
+   ],
+   "max": [
+    1.0,
+    0.9,
+    1.2
+   ]
+  },
+  {
+   "name": "hull_ammo_l",
+   "ammo": 0.5,
+   "note": "9 x 100 mm + ATGMs stowed on the troop compartment left wall",
+   "min": [
+    -1.45,
+    0.6,
+    -1.7
+   ],
+   "max": [
+    -0.95,
+    1.45,
+    -0.4
+   ]
+  },
+  {
+   "name": "hull_ammo_r",
+   "ammo": 0.5,
+   "note": "9 x 100 mm + ATGMs stowed on the troop compartment right wall",
+   "min": [
+    0.95,
+    0.6,
+    -1.7
+   ],
+   "max": [
+    1.45,
+    1.45,
+    -0.4
+   ]
+  },
+  {
+   "name": "ammo_30mm",
+   "ammo": 0.3,
+   "note": "2A72 belt boxes (500 rds) in the turret, right side",
+   "min": [
+    0.35,
+    1.2,
+    0.1
+   ],
+   "max": [
+    0.9,
+    1.65,
+    0.9
+   ]
+  },
+  {
+   "name": "fuel",
+   "fuel": 0.35,
+   "note": "main tank low in the bow under the driver / bow gunners",
+   "min": [
+    -1.0,
+    0.47,
+    2.0
+   ],
+   "max": [
+    1.0,
+    0.8,
+    3.1
+   ]
+  },
+  {
+   "name": "engine",
+   "engine": true,
+   "fuel": 0.25,
+   "note": "UTD-29 transverse in the rear floor, under the troop passage",
+   "min": [
+    -1.3,
+    0.47,
+    -3.3
+   ],
+   "max": [
+    1.3,
+    1.15,
+    -1.85
+   ]
+  },
+  {
+   "name": "troops",
+   "troops": true,
+   "note": "5 seats aft of the turret",
+   "min": [
+    -1.1,
+    0.9,
+    -1.85
+   ],
+   "max": [
+    1.1,
+    1.68,
+    -0.6
+   ]
+  },
+  {
+   "name": "troop_passage",
+   "troops": true,
+   "note": "crawl-way over the engine to the rear doors",
+   "min": [
+    -0.55,
+    1.15,
+    -3.3
+   ],
+   "max": [
+    0.55,
+    1.68,
+    -1.85
+   ]
+  },
+  {
+   "name": "gun",
+   "gun": true,
+   "note": "2A70 breech + 2A72 receiver",
+   "min": [
+    -0.45,
+    1.55,
+    -0.1
+   ],
+   "max": [
+    0.45,
+    2.05,
+    1.3
+   ]
+  },
+  {
+   "name": "optics",
+   "optics": true,
+   "note": "1K13-2 gunner sight (left) and commander TKN sight (right)",
+   "min": [
+    -1.0,
+    2.15,
+    0.55
+   ],
+   "max": [
+    1.0,
+    2.5,
+    1.25
+   ]
+  },
+  {
+   "name": "turret_ring",
+   "ring": true,
+   "min": [
+    -1.0,
+    1.6,
+    -0.7
+   ],
+   "max": [
+    1.0,
+    1.78,
+    1.3
+   ]
+  }
+ ]
+}

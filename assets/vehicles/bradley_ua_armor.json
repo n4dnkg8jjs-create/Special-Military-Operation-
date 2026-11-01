@@ -1,0 +1,505 @@
+{
+ "vehicle": "bradley_ua",
+ "model": "M2A2 ODS-SA Bradley (Ukraine 2023+, BRAT tiles on hull sides and turret)",
+ "frame": "src/game/armor.js frame: x = vehicle RIGHT (mirror of glTF x), y up, z forward, metres; origin ground/footprint centre",
+ "units": "mm RHA-equivalent, horizontal line of sight, vs kinetic (ke) and shaped-charge (ce)",
+ "basis": [
+  "hull 25-38 mm 5083 Al (~0.35 RHA vs KE) with the upper front steel/titanium layer: A2 rated vs 30 mm APDS frontally -> ~75 KE LOS",
+  "sides: 25 mm Al + spaced laminate (2 x 6.4 mm steel, 25 mm apart, ~89 mm stand-off) + 32 mm A2 steel appliqu\u00e9 -> ~55 KE (14.5 mm API at all ranges), spaced -> ~70 CE",
+  "turret: steel + 32 mm appliqu\u00e9 front/sides ~60/45 KE",
+  "rear ramp spaced laminate ~35 KE",
+  "BRAT (M19-type tiles, single-charge HEAT / RPG-7 class): +~280-300 CE, ~+10 KE; ERA zones are thin stand-off layers in front of the hull sides / skirts so they are hit before the hull boxes",
+  "belly 9.5 mm steel mine plate over the front third + Al"
+ ],
+ "zones": [
+  {
+   "name": "turret",
+   "min": [
+    -1.0,
+    1.98,
+    -1.05
+   ],
+   "max": [
+    1.0,
+    2.6,
+    1.15
+   ],
+   "faces": {
+    "front": {
+     "ke": 60,
+     "ce": 75,
+     "era": {
+      "ke": 10,
+      "ce": 280
+     }
+    },
+    "side": {
+     "ke": 45,
+     "ce": 60,
+     "era": {
+      "ke": 10,
+      "ce": 280
+     }
+    },
+    "rear": {
+     "ke": 25,
+     "ce": 30
+    },
+    "top": {
+     "ke": 20,
+     "ce": 25
+    }
+   }
+  },
+  {
+   "name": "tow_launcher",
+   "min": [
+    -1.46,
+    2.05,
+    -0.55
+   ],
+   "max": [
+    -1.0,
+    2.55,
+    0.95
+   ],
+   "faces": {
+    "front": {
+     "ke": 6,
+     "ce": 6
+    },
+    "side": {
+     "ke": 6,
+     "ce": 6
+    },
+    "rear": {
+     "ke": 6,
+     "ce": 6
+    },
+    "top": {
+     "ke": 6,
+     "ce": 6
+    },
+    "bottom": {
+     "ke": 6,
+     "ce": 6
+    }
+   },
+   "note": "light launcher box; any hit here disables the TOW (part tow_launcher)"
+  },
+  {
+   "name": "glacis",
+   "min": [
+    -1.5,
+    1.12,
+    1.65
+   ],
+   "max": [
+    1.5,
+    1.98,
+    3.22
+   ],
+   "faces": {
+    "front": {
+     "ke": 75,
+     "ce": 90
+    },
+    "side": {
+     "ke": 55,
+     "ce": 70
+    },
+    "top": {
+     "ke": 30,
+     "ce": 40
+    }
+   }
+  },
+  {
+   "name": "lower_front",
+   "min": [
+    -0.92,
+    0.46,
+    2.85
+   ],
+   "max": [
+    0.92,
+    1.12,
+    3.22
+   ],
+   "faces": {
+    "front": {
+     "ke": 45,
+     "ce": 55
+    },
+    "side": {
+     "ke": 40,
+     "ce": 50
+    },
+    "bottom": {
+     "ke": 20,
+     "ce": 25
+    }
+   }
+  },
+  {
+   "name": "era_l",
+   "min": [
+    -1.78,
+    0.64,
+    -2.7
+   ],
+   "max": [
+    -1.58,
+    1.44,
+    2.5
+   ],
+   "faces": {
+    "side": {
+     "ke": 55,
+     "ce": 70,
+     "era": {
+      "ke": 10,
+      "ce": 300
+     }
+    },
+    "front": {
+     "ke": 55,
+     "ce": 70
+    },
+    "rear": {
+     "ke": 55,
+     "ce": 70
+    },
+    "top": {
+     "ke": 40,
+     "ce": 50
+    },
+    "bottom": {
+     "ke": 30,
+     "ce": 30
+    }
+   },
+   "note": "BRAT tile belt (2 rows) on the left skirt/side"
+  },
+  {
+   "name": "era_r",
+   "min": [
+    1.58,
+    0.64,
+    -2.7
+   ],
+   "max": [
+    1.78,
+    1.44,
+    2.5
+   ],
+   "faces": {
+    "side": {
+     "ke": 55,
+     "ce": 70,
+     "era": {
+      "ke": 10,
+      "ce": 300
+     }
+    },
+    "front": {
+     "ke": 55,
+     "ce": 70
+    },
+    "rear": {
+     "ke": 55,
+     "ce": 70
+    },
+    "top": {
+     "ke": 40,
+     "ce": 50
+    },
+    "bottom": {
+     "ke": 30,
+     "ce": 30
+    }
+   },
+   "note": "BRAT tile belt (2 rows) on the right skirt/side"
+  },
+  {
+   "name": "hull",
+   "min": [
+    -1.56,
+    0.46,
+    -3.24
+   ],
+   "max": [
+    1.56,
+    1.98,
+    1.65
+   ],
+   "faces": {
+    "side": {
+     "ke": 55,
+     "ce": 70
+    },
+    "rear": {
+     "ke": 35,
+     "ce": 50
+    },
+    "top": {
+     "ke": 15,
+     "ce": 20
+    },
+    "bottom": {
+     "ke": 18,
+     "ce": 25
+    }
+   }
+  },
+  {
+   "name": "tracks_l",
+   "min": [
+    -1.62,
+    0.0,
+    -3.0
+   ],
+   "max": [
+    -0.95,
+    1.15,
+    3.1
+   ],
+   "faces": {
+    "side": {
+     "ke": 30,
+     "ce": 30
+    },
+    "front": {
+     "ke": 20,
+     "ce": 20
+    },
+    "rear": {
+     "ke": 20,
+     "ce": 20
+    }
+   },
+   "note": "spaced-laminate high-hardness steel skirts over the upper run"
+  },
+  {
+   "name": "tracks_r",
+   "min": [
+    0.95,
+    0.0,
+    -3.0
+   ],
+   "max": [
+    1.62,
+    1.15,
+    3.1
+   ],
+   "faces": {
+    "side": {
+     "ke": 30,
+     "ce": 30
+    },
+    "front": {
+     "ke": 20,
+     "ce": 20
+    },
+    "rear": {
+     "ke": 20,
+     "ce": 20
+    }
+   }
+  }
+ ],
+ "parts": [
+  {
+   "name": "driver",
+   "crew": "driver",
+   "min": [
+    -1.0,
+    0.6,
+    1.8
+   ],
+   "max": [
+    -0.3,
+    1.85,
+    2.7
+   ]
+  },
+  {
+   "name": "engine",
+   "engine": true,
+   "fuel": 0.2,
+   "note": "Cummins VTA-903T + HMPT-500 front right",
+   "min": [
+    0.1,
+    0.5,
+    1.7
+   ],
+   "max": [
+    1.4,
+    1.85,
+    3.1
+   ]
+  },
+  {
+   "name": "gunner",
+   "crew": "gunner",
+   "min": [
+    -0.85,
+    1.1,
+    -0.5
+   ],
+   "max": [
+    -0.1,
+    2.3,
+    0.5
+   ]
+  },
+  {
+   "name": "commander",
+   "crew": "commander",
+   "min": [
+    0.1,
+    1.1,
+    -0.6
+   ],
+   "max": [
+    0.85,
+    2.3,
+    0.4
+   ]
+  },
+  {
+   "name": "ammo_ready_25",
+   "ammo": 0.3,
+   "note": "300 ready rounds (dual feed) in the turret basket",
+   "min": [
+    -0.6,
+    0.8,
+    -0.5
+   ],
+   "max": [
+    0.6,
+    1.3,
+    0.5
+   ]
+  },
+  {
+   "name": "ammo_stowed_25",
+   "ammo": 0.35,
+   "note": "600 stowed 25 mm rounds, troop compartment left",
+   "min": [
+    -1.4,
+    0.6,
+    -2.3
+   ],
+   "max": [
+    -0.9,
+    1.5,
+    -1.0
+   ]
+  },
+  {
+   "name": "tow_rack",
+   "ammo": 0.45,
+   "note": "5 stowed TOW/Javelin missiles, troop compartment right wall",
+   "min": [
+    0.9,
+    0.6,
+    -2.6
+   ],
+   "max": [
+    1.45,
+    1.6,
+    -1.2
+   ]
+  },
+  {
+   "name": "fuel",
+   "fuel": 0.4,
+   "note": "fuel cell in the right rear of the troop compartment (BUSK shields it)",
+   "min": [
+    0.8,
+    0.5,
+    -3.1
+   ],
+   "max": [
+    1.45,
+    1.4,
+    -2.0
+   ]
+  },
+  {
+   "name": "troops",
+   "troops": true,
+   "note": "6 dismounts aft of the turret",
+   "min": [
+    -1.3,
+    0.6,
+    -3.1
+   ],
+   "max": [
+    1.3,
+    1.9,
+    -0.7
+   ]
+  },
+  {
+   "name": "gun",
+   "gun": true,
+   "note": "M242 receiver / dual feeder + M240C",
+   "min": [
+    -0.3,
+    1.95,
+    0.2
+   ],
+   "max": [
+    0.35,
+    2.5,
+    1.1
+   ]
+  },
+  {
+   "name": "optics",
+   "optics": true,
+   "note": "ISU (gunner, left front of roof) + commander periscope",
+   "min": [
+    -0.75,
+    2.5,
+    0.3
+   ],
+   "max": [
+    0.2,
+    2.95,
+    1.0
+   ]
+  },
+  {
+   "name": "turret_ring",
+   "ring": true,
+   "min": [
+    -0.95,
+    1.9,
+    -0.9
+   ],
+   "max": [
+    0.95,
+    2.05,
+    1.0
+   ]
+  },
+  {
+   "name": "tow_launcher",
+   "atgm": true,
+   "note": "TOW box on the left of the turret; destroyed -> no ATGM",
+   "min": [
+    -1.46,
+    2.05,
+    -0.55
+   ],
+   "max": [
+    -1.0,
+    2.55,
+    0.95
+   ]
+  }
+ ]
+}

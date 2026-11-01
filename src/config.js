@@ -4,12 +4,12 @@
 export const FACTIONS = {
   UA: {
     id: 'UA', name: 'Ukraine', tape: 0xf2c81a, tapeName: 'yellow',
-    soldierAsset: 'soldier_ua', btrAsset: 'btr80_ua', tankAsset: 't72av_ua',
+    soldierAsset: 'soldier_ua', btrAsset: 'btr80_ua', tankAsset: 't72av_ua', ifvAsset: 'bradley_ua', ifvName: 'M2A2 Bradley',
     btrName: 'BTR-80', tankName: 'T-72AV', squadName: 'Mech. Inf. Squad', color: '#f2c81a',
   },
   RU: {
     id: 'RU', name: 'Russia', tape: 0xf4f4ee, tapeName: 'white',
-    soldierAsset: 'soldier_ru', btrAsset: 'btr82a', tankAsset: 't72b3',
+    soldierAsset: 'soldier_ru', btrAsset: 'btr82a', tankAsset: 't72b3', ifvAsset: 'bmp3', ifvName: 'BMP-3',
     btrName: 'BTR-82A', tankName: 'T-72B3', squadName: 'Motor Rifle Squad', color: '#f4f4ee',
   },
 };
@@ -32,6 +32,11 @@ export const WEAPONS = {
   kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
   stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 1200, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 1000, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
   fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [130, 230], pen: 420, blast: 4, spread: 0, sound: 'rpg' },
+  // IFV weapons (BMP-3 / M2A2 Bradley)
+  m242:   { name: 'M242 Bushmaster 25 mm', type: 'autocannon', range: 900, rof: 200, burst: [2, 5], burstGap: [0.8, 1.6], mag: 300, reload: 0, dmg: [80, 130], pen: 55, blast: 1.8, spread: 1.4, sound: 'cannon30', tracerEvery: 1 },
+  a70:    { name: '2A70 100 mm (HE-Frag)', type: 'tankgun', range: 1200, rof: 10, mag: 40, reload: 6, dmg: [180, 320], pen: 40, blast: 6, spread: 0.6, sound: 'tankgun', projectile: { speed: 250, gravity: 0 } },
+  m9m117: { name: '9M117M1 Arkan (gun-launched ATGM)', type: 'atgm', range: 1500, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 750, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 300, gravity: 0 } },
+  tow2:   { name: 'BGM-71 TOW-2A', type: 'atgm', range: 1500, rof: 1, mag: 2, reload: 25, dmg: [190, 330], pen: 900, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 280, gravity: 0 } },
   a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 39, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
 };
 
@@ -88,6 +93,17 @@ export const VEHICLES = {
     armor: { front: { ke: 14, ce: 14 }, side: { ke: 9, ce: 9 }, rear: { ke: 7, ce: 7 }, top: { ke: 7, ce: 7 } },
     passengers: 8, seats: 8, supply: { rifle: 1500, rpg: 6, mg: 400 },
     turretSpeed: 1.2, wheeled: true,
+  },
+  // IFVs (values from assets/vehicles/manifest.json game_suggested; armour from <asset>_armor.json)
+  ifv_ru: {
+    kind: 'ifv', asset: 'bmp3', hp: 1050, speed: 12, accel: 2.6, turnRate: 0.75, radius: 2.2, length: 7.1, width: 3.2, height: 2.4,
+    armor: { front: { ke: 70, ce: 95 }, side: { ke: 25, ce: 40 }, rear: { ke: 15, ce: 25 }, top: { ke: 6, ce: 10 } },
+    passengers: 7, seats: 7, supply: { rifle: 1200, rpg: 4, mg: 400 }, turretSpeed: 0.7, wheeled: false, atgm: 'm9m117', atgmAmmo: 8, main: 'a72', mainAmmo: 500, gun100: 40,
+  },
+  ifv_ua: {
+    kind: 'ifv', asset: 'bradley_ua', hp: 1250, speed: 10.5, accel: 2.4, turnRate: 0.7, radius: 2.2, length: 6.6, width: 3.6, height: 2.6,
+    armor: { front: { ke: 75, ce: 90 }, side: { ke: 55, ce: 70 }, rear: { ke: 35, ce: 50 }, top: { ke: 15, ce: 20 } },
+    passengers: 6, seats: 6, supply: { rifle: 1200, rpg: 4, mg: 400 }, turretSpeed: 1.0, wheeled: false, atgm: 'tow2', atgmAmmo: 7, main: 'm242', mainAmmo: 900,
   },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,

@@ -61,11 +61,12 @@ const BTR_PARTS = [
   { name: 'weapon', gun: true, min: [-0.25, 2.05, 1.6], max: [0.25, 2.5, 3.2] },
 ];
 
-export function armorModelOf(v) { return v.kind === 'tank' ? (v.faction.id === 'RU' ? 't72b3' : 't72av') : 'btr'; }
+export function armorModelOf(v) { return v.def?.asset ? v.def.asset : v.kind === 'tank' ? (v.faction.id === 'RU' ? 't72b3' : 't72av') : 'btr'; }
 export function initArmor(v) {
-  const m = armorModelOf(v);
-  v.zones = m === 'btr' ? btrZones() : tankZones(m);
-  v.parts = m === 'btr' ? BTR_PARTS : TANK_PARTS;
+  const m = armorModelOf(v), J = v.game?.assets?.armor?.[m];
+  if (J) { v.zones = J.zones; v.parts = J.parts; }                       // researched layout from <asset>_armor.json
+  else if (v.def?.asset) { v.zones = btrZones(); v.parts = BTR_PARTS; }   // file missing: light-armour stand-in
+  else { v.zones = m === 'btr' ? btrZones() : tankZones(m); v.parts = m === 'btr' ? BTR_PARTS : TANK_PARTS; }
   v.eraLeft = {}; // per zone+face remaining ERA coverage (0..1)
   for (const z of v.zones) for (const [f, a] of Object.entries(z.faces)) if (a.era) v.eraLeft[z.name + ':' + f] = 1;
   v.crewList = [{ role: 'commander', hp: 100 }, { role: 'gunner', hp: 100 }, { role: 'driver', hp: 100 }];
@@ -116,7 +117,7 @@ export function resolveHit(v, W, fromPos, kind, at = null, dist = 0) {
   const res = { zone: z.name, face, armor: Math.round(armor), pen: Math.round(pen), era: eraHit, local: hitLocal, effects: [] };
   // running gear: tracks / wheels break even without penetrating the hull
   if (/tracks|wheels/.test(z.name)) {
-    if (v.kind === 'tank') { if ((kind !== 'ke' || pen > 30) && Math.random() < (kind === 'ke' ? 0.35 : 0.65)) res.effects.push('track'); }
+    if (v.kind !== 'btr' && !v.def?.wheeled) { if ((kind !== 'ke' || pen > 30) && Math.random() < (kind === 'ke' ? 0.35 : 0.65)) res.effects.push('track'); }
     else if (pen > 8 || kind !== 'ke') res.effects.push('wheel');
     res.pen0 = true; return res;
   }

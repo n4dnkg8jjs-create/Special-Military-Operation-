@@ -28,6 +28,9 @@ if (q.get('only')) { const re = new RegExp(q.get('only')); const keep = new Set(
 // ride_seat_* empty (same proxy points as tools/blender/vehicles/seats.py: pelvis at origin, facing local +Z)
 if (q.get('turret')) { const t = root.getObjectByName('turret'); if (t) t.rotation.y += (+q.get('turret'))*Math.PI/180; }
 if (q.get('gun')) { const g = root.getObjectByName('gun_pivot'); if (g) g.rotation.x -= (+q.get('gun'))*Math.PI/180; }
+// debug: rot=<node>:<x|y|z>:<deg>;... rotates any node about its local axis (artillery spades, travel lock),
+// show=<regex> makes matching hidden nodes visible again (e.g. wrecks after hide=)
+if (q.get('rot')) for (const r of q.get('rot').split(';')) { const [n, ax, deg] = r.split(':'); const o = root.getObjectByName(n); if (o) o.rotation[ax] += (+deg) * Math.PI / 180; }
 if (q.get('seats')) {
   const P = { edge: [[0,0.10,0],[0,0.62,-0.06],[0,0.08,0.44],[0,-0.40,0.72]], deck: [[0,0.10,0],[0,0.62,-0.06],[0,0.32,0.38],[0,0.06,0.74]] };
   const seats = []; root.traverse(o => { if (/^ride_seat_\d+$/.test(o.name)) seats.push(o); });

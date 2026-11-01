@@ -164,7 +164,7 @@ export class Squad {
     if (this.routing || !v || v.destroyed) return;
     this.leaveBuilding();
     this.order = { type: 'mount', vehicle: v }; this.carrier = v;
-    for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
+    v.doorT = Math.max(v.doorT || 0, this.game.time + 6); for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
   }
   dismount(facing) {
     const v = this.carrier; if (!v || !this.mounted) return;
@@ -177,8 +177,9 @@ export class Squad {
       if (s.state === 'evac') return;
       if (s.inside === 'ride' && s.seat) { s.dmWait = 0.15 + k * 0.42 + Math.random() * 0.25; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; k++; return; }
       if (s.inside !== 'btr') return;
-      s.dmWait = 0.4 + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
+      s.dmWait = (v.kind === 'ifv' ? (v.def.asset === 'bradley_ua' ? 1.9 : 1.0) : 0.4) + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
     });
+    v.doorT = Math.max(v.doorT || 0, this.game.time + 1.6 + k * 0.6 + 2.5);   // IFV rear doors / ramp stay open while they get out
     this.order = null; this.dmFacing = facing;
     this.game.sfx('hatch', v.pos);
   }
@@ -207,10 +208,13 @@ export class Squad {
   // ride on top of the vehicle (tank/BTR desant). Overflow rides inside.
   board(v, instant = false) {
     const seats = v.seatCount(); let k = 0;
+    // Bradley crews ride inside (overflow on the deck); BMP-3 / BTR desant sits on top, as Russian crews do for mines
+    let room = v.def.asset === 'bradley_ua' ? v.def.passengers : 0;
     for (const s of this.soldiers) {
       if (s.state === 'dead' || s.state === 'evac' || s.aboard) continue;
       if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
-      if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
+      if (room > 0) { room--; s.inside = 'btr'; }
+      else if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
       else { s.inside = 'btr'; }
       s.path = null; s.goal = null; s.target = null;
       if (instant) { const w = v.seatWorld(s.seat ? s.seat.i : 0); s.pos.copy(w.pos); s.heading = w.heading; }

@@ -86,10 +86,10 @@ export class Game {
     // --- player: motorized rifle company riding on armour at the southern edge
     const lineup = MAP.lineup;
     this.playerUnits = [];
-    let bn = 1, tn = 1;
+    let bn = 1, tn = 1, in_ = 1;
     for (const [x, z, kind, sqName] of lineup) {
       const v = this.makeVehicle('player', kind, x, z, N);
-      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
+      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : kind === 'ifv' ? `${pf.ifvName} #${in_++}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
       this.playerUnits.push(v);
       if (sqName) {
         const sq = this.makeSquad('player', x, z + 6, N, sqName, kind === 'tank' ? 'assault' : 'mech'); sq.name = sqName;

@@ -30,7 +30,7 @@ export class Commander {
     const lay = MAP.ai.army;
     for (const [x, z, kind, obj] of lay) {
       if (kind === 'tank') { const v = g.makeVehicle('enemy', 'tank', x, z, N); this.army.push({ kind: 'tank', v, obj, state: 'move', t: 2, home: OVERWATCH[obj][0] }); continue; }
-      if (kind === 'mech') { const v = g.makeVehicle('enemy', 'btr', x, z, N); const s = g.makeSquad('enemy', x, z + 6, N, 'Enemy squad'); s.board(v, true); this.army.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() }); continue; }
+      if (kind === 'mech' || kind === 'imech') { const v = g.makeVehicle('enemy', kind === 'imech' ? 'ifv' : 'btr', x, z, N); const s = g.makeSquad('enemy', x, z + 6, N, 'Enemy squad'); s.board(v, true); this.army.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() }); continue; }
       if (kind === 'atgm' || kind === 'fpv') { const s = g.makeSquad('enemy', x, z, N, kind === 'atgm' ? `Enemy ${g.enemyFaction.id === 'RU' ? 'Kornet' : 'Stugna'} team` : 'Enemy FPV team', kind); this.army.push({ kind, sq: s, obj, state: 'move', t: 2 }); continue; }
       const s = g.makeSquad('enemy', x, z, N, kind === 'assault' ? 'Enemy assault squad' : 'Enemy squad', kind === 'assault' ? 'assault' : 'mech');
       this.army.push({ kind, sq: s, obj, state: 'advance', t: 2, bound: 0, flank: this.flank() });

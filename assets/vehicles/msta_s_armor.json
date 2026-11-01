@@ -1,0 +1,493 @@
+{
+ "model": "msta_s",
+ "vehicle": "2S19M2 Msta-S",
+ "summary": "Welded rolled-steel hull and turret, ~15 mm all round (turret front, sides, roof and hull per FAS / GlobalSecurity / Wikipedia). Proof against 7.62 mm ball and most 152/155 mm splinters beyond ~20-30 m; 12.7/14.5 mm AP, 30 mm, any RPG/ATGM, FPV-drone shaped charges and top-attack submunitions defeat it. The sloped glacis and turret cheeks give ~20-30 mm line of sight. Projectiles and especially propellant charges fill the turret rear and the hull centre: a penetration of the turret bustle or fighting compartment usually ends in a cook-off.",
+ "frame": "armor.js: metres, x right, y up, z forward, origin on the ground at the hull centre; faces in mm RHA-equivalent vs a horizontal shot",
+ "zones": [
+  {
+   "name": "turret",
+   "min": [
+    -1.58,
+    1.54,
+    -2.95
+   ],
+   "max": [
+    1.58,
+    2.99,
+    1.55
+   ],
+   "faces": {
+    "front": {
+     "ke": 20,
+     "ce": 20
+    },
+    "side": {
+     "ke": 15,
+     "ce": 15
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 15
+    },
+    "top": {
+     "ke": 15,
+     "ce": 15
+    }
+   }
+  },
+  {
+   "name": "mantlet",
+   "min": [
+    -0.5,
+    1.9,
+    1.3
+   ],
+   "max": [
+    0.5,
+    3.0,
+    2.0
+   ],
+   "faces": {
+    "front": {
+     "ke": 25,
+     "ce": 25
+    },
+    "side": {
+     "ke": 15,
+     "ce": 15
+    },
+    "top": {
+     "ke": 15,
+     "ce": 15
+    }
+   }
+  },
+  {
+   "name": "glacis",
+   "min": [
+    -1.69,
+    0.98,
+    2.3
+   ],
+   "max": [
+    1.69,
+    1.52,
+    3.5
+   ],
+   "faces": {
+    "front": {
+     "ke": 30,
+     "ce": 30
+    },
+    "side": {
+     "ke": 15,
+     "ce": 15
+    },
+    "top": {
+     "ke": 17,
+     "ce": 17
+    }
+   }
+  },
+  {
+   "name": "lower_front",
+   "min": [
+    -1.69,
+    0.45,
+    2.95
+   ],
+   "max": [
+    1.69,
+    0.98,
+    3.5
+   ],
+   "faces": {
+    "front": {
+     "ke": 25,
+     "ce": 25
+    },
+    "side": {
+     "ke": 15,
+     "ce": 15
+    }
+   }
+  },
+  {
+   "name": "hull",
+   "min": [
+    -1.69,
+    0.45,
+    -3.42
+   ],
+   "max": [
+    1.69,
+    1.52,
+    2.95
+   ],
+   "faces": {
+    "side": {
+     "ke": 19,
+     "ce": 19,
+     "note": "15 mm side + ~4 mm steel skirt (front 2/3)"
+    },
+    "rear": {
+     "ke": 15,
+     "ce": 15
+    },
+    "top": {
+     "ke": 12,
+     "ce": 12
+    },
+    "bottom": {
+     "ke": 10,
+     "ce": 10
+    }
+   }
+  },
+  {
+   "name": "tracks_l",
+   "min": [
+    -1.76,
+    0.0,
+    -3.45
+   ],
+   "max": [
+    -1.11,
+    0.95,
+    3.4
+   ],
+   "faces": {
+    "side": {
+     "ke": 25,
+     "ce": 25
+    },
+    "front": {
+     "ke": 25,
+     "ce": 25
+    },
+    "rear": {
+     "ke": 25,
+     "ce": 25
+    }
+   }
+  },
+  {
+   "name": "tracks_r",
+   "min": [
+    1.11,
+    0.0,
+    -3.45
+   ],
+   "max": [
+    1.76,
+    0.95,
+    3.4
+   ],
+   "faces": {
+    "side": {
+     "ke": 25,
+     "ce": 25
+    },
+    "front": {
+     "ke": 25,
+     "ce": 25
+    },
+    "rear": {
+     "ke": 25,
+     "ce": 25
+    }
+   }
+  }
+ ],
+ "screens": [
+  {
+   "name": "cope_cage",
+   "node": "cope_cage",
+   "zone": "turret",
+   "faces": {
+    "top": {
+     "ke": 0,
+     "ce": 300
+    },
+    "side": {
+     "ke": 0,
+     "ce": 200
+    }
+   },
+   "coverage": 0.6,
+   "decay_per_hit": 0.15,
+   "note": "2023-24 anti-drone cage: treat like armor.js ERA (era: {ke, ce}) only while the cope_cage node is visible; defeats/pre-detonates part of FPV / RPG / submunition hits"
+  }
+ ],
+ "parts": [
+  {
+   "name": "driver",
+   "min": [
+    -0.45,
+    0.55,
+    1.65
+   ],
+   "max": [
+    0.45,
+    1.5,
+    2.6
+   ],
+   "crew": "driver"
+  },
+  {
+   "name": "commander",
+   "min": [
+    0.45,
+    1.6,
+    -0.85
+   ],
+   "max": [
+    1.4,
+    2.9,
+    0.35
+   ],
+   "crew": "commander"
+  },
+  {
+   "name": "gunner",
+   "min": [
+    -1.4,
+    1.6,
+    -0.35
+   ],
+   "max": [
+    -0.45,
+    2.9,
+    0.85
+   ],
+   "crew": "gunner"
+  },
+  {
+   "name": "loader_projectiles",
+   "min": [
+    0.3,
+    1.6,
+    -2.35
+   ],
+   "max": [
+    1.35,
+    2.9,
+    -1.05
+   ],
+   "crew": "loader"
+  },
+  {
+   "name": "loader_charges",
+   "min": [
+    -1.35,
+    1.6,
+    -2.35
+   ],
+   "max": [
+    -0.3,
+    2.9,
+    -1.05
+   ],
+   "crew": "loader"
+  },
+  {
+   "name": "turret_shell_rack",
+   "min": [
+    -1.45,
+    1.6,
+    -2.9
+   ],
+   "max": [
+    1.45,
+    2.6,
+    -2.35
+   ],
+   "ammo": 0.35,
+   "ammo_kind": "projectiles (ready rack, mechanised)",
+   "rounds": 28
+  },
+  {
+   "name": "turret_charge_rack",
+   "min": [
+    -1.45,
+    1.6,
+    -2.35
+   ],
+   "max": [
+    -0.95,
+    2.7,
+    -0.6
+   ],
+   "ammo": 0.75,
+   "ammo_kind": "propellant charges (combustible-case 4Zh)",
+   "rounds": 28
+  },
+  {
+   "name": "hull_rack",
+   "min": [
+    -1.0,
+    0.5,
+    -1.6
+   ],
+   "max": [
+    1.0,
+    1.45,
+    0.6
+   ],
+   "ammo": 0.55,
+   "ammo_kind": "22 projectiles + charges",
+   "rounds": 22
+  },
+  {
+   "name": "breech",
+   "min": [
+    -0.35,
+    2.05,
+    -0.7
+   ],
+   "max": [
+    0.35,
+    2.85,
+    1.4
+   ],
+   "gun": true
+  },
+  {
+   "name": "gun_tube",
+   "min": [
+    -0.25,
+    2.25,
+    1.5
+   ],
+   "max": [
+    0.25,
+    2.75,
+    8.45
+   ],
+   "gun": true,
+   "external": true
+  },
+  {
+   "name": "optics",
+   "min": [
+    -1.1,
+    2.95,
+    0.2
+   ],
+   "max": [
+    -0.35,
+    3.45,
+    1.1
+   ],
+   "optics": true
+  },
+  {
+   "name": "mg_mount",
+   "min": [
+    0.6,
+    2.99,
+    -0.7
+   ],
+   "max": [
+    1.3,
+    3.55,
+    0.4
+   ],
+   "optics": true,
+   "external": true
+  },
+  {
+   "name": "turret_ring",
+   "min": [
+    -1.25,
+    1.42,
+    -1.65
+   ],
+   "max": [
+    1.25,
+    1.6,
+    0.85
+   ],
+   "ring": true
+  },
+  {
+   "name": "fuel_front",
+   "min": [
+    0.5,
+    0.5,
+    1.6
+   ],
+   "max": [
+    1.6,
+    1.5,
+    3.0
+   ],
+   "fuel": 0.35
+  },
+  {
+   "name": "fuel_rear",
+   "min": [
+    -1.6,
+    0.55,
+    -1.95
+   ],
+   "max": [
+    1.6,
+    1.4,
+    -1.6
+   ],
+   "fuel": 0.4
+  },
+  {
+   "name": "engine",
+   "min": [
+    -1.3,
+    0.5,
+    -3.4
+   ],
+   "max": [
+    1.3,
+    1.5,
+    -1.95
+   ],
+   "engine": true,
+   "fuel": 0.25
+  }
+ ],
+ "crew_positions": [
+  {
+   "role": "commander",
+   "hatch": "hatch_commander"
+  },
+  {
+   "role": "gunner",
+   "hatch": "hatch_gunner"
+  },
+  {
+   "role": "loader",
+   "hatch": "hatch_side_R"
+  },
+  {
+   "role": "loader",
+   "hatch": "hatch_ammo_rear"
+  },
+  {
+   "role": "driver",
+   "hatch": "hatch_driver"
+  }
+ ],
+ "notes": [
+  "koi.legion.wplus.net lists 50-80 mm hull/turret armour; this contradicts FAS/GlobalSecurity/Wikipedia (15 mm) and the vehicle mass budget, so the 15 mm figure is used.",
+  "Line-of-sight values: glacis 15 mm at ~60 deg -> 30; lower front plate ~55 deg -> 25; turret cheeks ~40 deg -> 20."
+ ],
+ "generator": "tools/blender/vehicles/arty_specs.py",
+ "sources": [
+  "https://en.wikipedia.org/wiki/2S19_Msta-S (crew 5; 42 t; 7.15 x 3.38 x 2.99 m; armour 15 mm all-round; T-80 running gear + T-72 V-84A diesel; 2A64 L/47, -4..+68 deg, 360 deg; 6-8 rpm, 2S19M2 10 rpm; 50 rounds; ranges 24.7 km standard / 28.9-29 km base bleed / 36 km RAP; 60 km/h, 500 km)",
+  "https://man.fas.org/dod-101/sys/land/row/2s19.htm (armour turret 15 / turret top 15 / hull 15 mm; burst 8, normal 6, sustained 2 rpm, 6-7 rpm from ground; OF-72 6.5-24.7 km, OF-61 BB 6.71-29 km; emplace / displace 1-2 min; 60 km/h road, 25 km/h off-road; 11.91 m long)",
+  "https://www.globalsecurity.org/military/world/russia/2s19.htm (NSVT 5 x 60 = 300 rds on the PZU-5 mount; projectile conveyor stowed on the turret rear, charge conveyor inside; 7-8 rpm internal, 6-7 rpm ground fed, 2S19M2 up to 10 rpm; 3OF45 24.7 km, 3OF61 28.9 km, 3O23 cargo 26 km, 3NS30 jammer 22.3 km, Krasnopol 20 km; 6 road wheels + 5 return rollers, T-80 idler/sprocket; armour vs small arms and shell fragments)",
+  "https://www.globalsecurity.org/military/world/russia/2s19-specs.htm (crew 5 + 2 in the ammo carrier; 15 mm turret/top/hull; 11.91 x 3.58 x 2.98 m; 1-2 min in/out of action; fording 1.5 m)",
+  "https://koi.legion.wplus.net/guide/army/ar/2s19.shtml (crew: commander, driver, gunner, two loaders; 12.0 m gun forward, hull 7.15 m, 3.38 m, clearance 0.45 m, 580 mm track; 28 rds in the turret ready rack + 22 in the hull; 8 rpm first minute, 6-7 rpm for 3-5 min, 2-3 rpm long term; 60 km/h road, 30-35 km/h cross-country; 60-90 s march-to-first-round; two 6-tube 81 mm smoke launchers; its 50-80 mm armour figures contradict every other source and are not used)",
+  "https://znanierussia.ru/articles/2%D0%A119 (11.917 m gun forward, 3.38 m width, track 2.8 m, clearance 450 mm, homogeneous steel armour, -4..+68 deg, 6 pairs of road wheels, fuel 1,300 l, 500 km)",
+  "https://www.army-technology.com/?p=228338 (2S19M1: up to five crew, 3.38 m wide, -4..+70 deg, 8 rpm max, Krasnopol-M to 17 km, ground-fed projectiles, 60 km/h, 500 km)"
+ ]
+}

@@ -90,7 +90,7 @@ export class Input {
       // click: attack / mount / garrison / move
       const target = this.unitAt(e.clientX, e.clientY);
       if (target && target.side === 'enemy') { for (const u of sel) u.orderAttack(target); this.g.sfx('ui_order'); return; }
-      if (target && target.type === 'vehicle' && target.side === 'player' && target.kind === 'btr' && !target.passengers) {
+      if (target && target.type === 'vehicle' && target.side === 'player' && (target.kind === 'btr' || target.kind === 'ifv') && !target.passengers) {
         const sq = sel.find(u => u.type === 'squad' && !u.mounted); if (sq) { sq.orderMount(target); this.g.sfx('ui_order'); return; }
       }
       const b = this.buildingAt(e.clientX, e.clientY);
@@ -151,7 +151,7 @@ export class Input {
     }
     if (o === 'mount') for (const u of sel) {
       if (u.type === 'squad') { if (u.mounted) u.dismount(); else if (u.carrier && !u.carrier.destroyed && !u.carrier.passengers) u.orderMount(u.carrier); }
-      else if (u.kind === 'btr' && u.passengers) u.passengers.dismount();
+      else if ((u.kind === 'btr' || u.kind === 'ifv') && u.passengers) u.passengers.dismount();
     }
     if (o === 'resupply') for (const u of sel) if (u.type === 'squad' && u.carrier && !u.carrier.destroyed && !u.mounted) { const p = u.carrier.pos; u.orderMove(p.x + 6, p.z + 6, null, 12, true); g.hud.alert(`${u.name} moving to ${u.carrier.name} to resupply`); }
     if (o === 'smoke') for (const u of sel) if (u.type === 'squad' && !u.mounted) {

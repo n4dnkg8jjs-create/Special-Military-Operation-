@@ -359,8 +359,8 @@ export class Combat {
     }
     return this._rocket.clone();
   }
-  fireTankGun(v, t, round) {
-    const g = this.g, W = WEAPONS.a46; v.firedT = 0;
+  fireTankGun(v, t, round, W = WEAPONS.a46) {
+    const g = this.g; v.firedT = 0;
     const from = v.muzzle ? v.muzzle.getWorldPosition(new THREE.Vector3()) : v.pos.clone().setY(2.3);
     const dir = new THREE.Vector3(); let tp;
     // target in building -> aim at his window panel
@@ -379,7 +379,23 @@ export class Combat {
     g.fx.muzzleBlastTank(from, dir);
     g.sfx('tankgun', v.pos); g.cam.addShake(Math.max(0, 0.6 - g.camDist(v.pos) / 250));
     g.fx.tracer(from, tp, 1600, [1, 0.8, 0.5]);
-    this.projectiles.push({ kind: round === 'ap' ? 'apfsds' : 'he', pos: from.clone(), target: tp, t, speed: round === 'ap' ? 1650 : 850, owner: v, side: v.side, weapon: W, occ, hit });
+    this.projectiles.push({ kind: round === 'ap' ? 'apfsds' : 'he', pos: from.clone(), target: tp, t, speed: round === 'ap' ? 1650 : W.projectile?.speed || 850, owner: v, side: v.side, weapon: W, occ, hit });
+  }
+  // vehicle-launched guided missile (TOW from the Bradley's launcher box, 9M117 through the BMP-3's 100 mm gun)
+  fireVehicleMissile(v, t, W) {
+    const g = this.g; v.firedT = 0;
+    const n = v.model?.getObjectByName((v.atgm?.fired || 1) % 2 ? 'atgm_muzzle_1' : 'atgm_muzzle_2') || v.muzzle;
+    const from = n ? n.getWorldPosition(new THREE.Vector3()) : v.pos.clone().setY(2.4);
+    const tp = this.targetPoint(t, B).clone(), d = from.distanceTo(tp);
+    const hit = Math.random() < 0.9 * Math.exp(-d / 4000) * (Math.abs(t.speed || 0) > 3 ? 0.85 : 1) * (v.opticsDamaged ? 0.6 : 1);
+    if (!hit) { tp.x += (Math.random() - .5) * 8; tp.z += (Math.random() - .5) * 8; tp.y = Math.max(0.2, tp.y + (Math.random() - .5) * 2); }
+    const dir = tp.clone().sub(from).normalize();
+    g.fx.muzzle(from, dir, 1.6); g.fx.light(from, 0xffc27a, 18, 10, 0.07);
+    for (let i = 0; i < 8; i++) g.fx.smoke.spawn({ x: from.x - dir.x * (0.5 + i * 0.5), y: from.y, z: from.z - dir.z * (0.5 + i * 0.5), vx: -dir.x * 5 + (Math.random() - .5) * 2, vy: 0.5, vz: -dir.z * 5 + (Math.random() - .5) * 2, life: 2.6, size0: 0.6, size1: 3, r: 0.78, g: 0.76, b: 0.72, a0: 0.5, a1: 0, drag: 1.8, wind: g.fx.wind });
+    g.sfx('rpg_launch', from, { gain: 1.2 });
+    const mesh = this.rocketMesh(); mesh.scale.setScalar(1.6); mesh.position.copy(from); mesh.lookAt(tp); g.scene.add(mesh);
+    this.projectiles.push({ kind: 'rpg', pos: from.clone(), last: from.clone(), target: tp, t, speed: W.projectile?.speed || 280, owner: v, side: v.side, weapon: W, trail: 0, age: 0, mesh, hit });
+    if (v.side === 'player') g.hud?.alert(`${v.name}: ${W.name.split(' (')[0]} launched at ${t.name}`);
   }
   fireVehicleGun(v, w, t, coax = false) {
     const g = this.g, W = WEAPONS[w.key]; v.firedT = 0;
@@ -396,7 +412,7 @@ export class Combat {
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.02; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }
     w.shots = (w.shots || 0) + 1;
     // BTR weapons trace every round; tank coax every 3rd
-    if (g.camDist(v.pos) < 500 && (v.kind === 'btr' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
+    if (g.camDist(v.pos) < 500 && (v.kind === 'btr' || v.kind === 'ifv' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
     if (W.type === 'autocannon') { // HE-frag 30 mm: every round bursts
       this.projectiles.push({ kind: 'he30', pos: from.clone(), target: end, t, speed: 960, owner: v, side: v.side, weapon: W, hit });
       return;
@@ -560,8 +576,8 @@ export class Combat {
     const msgs = [];
     // big shaped charges (ATGM, FPV warhead) through thin armour: the jet and blast wreck the compartment
     if (W.type === 'atgm' && r.residual > 250) {
-      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : 1);
-      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : 0.25)) { v.burning = 0.01; msgs.push('on fire'); }
+      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : v.kind === 'ifv' ? 1.35 : 1);
+      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25)) { v.burning = 0.01; msgs.push('on fire'); }
     }
     // an FPV warhead on the engine deck: engine wrecked, fuel and oil very often catch
     if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.5) { v.burning = 0.01; msgs.push('engine on fire'); }
@@ -575,6 +591,7 @@ export class Combat {
       if (part.gun) { v.gunDisabled = true; msgs.push('gun destroyed'); }
       if (part.optics) { v.opticsDamaged = true; msgs.push('sights damaged'); }
       if (part.ring) { v.turretJam = true; msgs.push('turret jammed'); }
+      if (part.atgm && !v.atgmDisabled) { v.atgmDisabled = true; msgs.push('ATGM launcher destroyed'); }
       if (part.troops && v.passengers) { g.passengerCasualties(v, k === 'ce' ? 0.35 : 0.22, owner); msgs.push('troop compartment hit'); }
     }
     if (!v.destroyed) {
@@ -600,6 +617,7 @@ export class Combat {
         if (!this.los(eye.x, eye.y, eye.z, u.pos.x, 1.5, u.pos.z, v, u)) continue;
         const sc = (u.kind === 'tank' ? 300 : 200) - d * 0.3 + (v.focus === u ? 200 : 0);
         if (v.kind === 'btr' && u.kind === 'tank') continue; // BTRs don't duel tanks
+        if (v.kind === 'ifv' && u.kind === 'tank' && (!v.atgm || v.atgm.ammo <= 0 || v.atgmDisabled)) continue;   // IFVs only with missiles
         if (sc > bs) { bs = sc; best = u; }
         continue;
       }

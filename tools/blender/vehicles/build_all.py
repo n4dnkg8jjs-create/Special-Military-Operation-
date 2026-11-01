@@ -1,6 +1,6 @@
 """Regenerate all vehicle GLBs + assets/vehicles/manifest.json.
 
-    cd <repo> && nice -n 10 python3 tools/blender/vehicles/build_all.py [btr82a btr80_ua t72b3 t72av_ua]
+    cd <repo> && nice -n 10 python3 tools/blender/vehicles/build_all.py [btr82a btr80_ua t72b3 t72av_ua bmp3 bradley_ua]
 
 Each vehicle builds in its own process (fresh bpy state).  ~1-1.5 min per vehicle on 2 cores
 (Cycles is used only for low-sample *data* bakes: position / normal / AO+edge, see vtex.py).
@@ -82,6 +82,19 @@ CONVENTIONS = {
                    'tools/blender/vehicles/preview.html?seats=1.'),
 }
 
+# IFVs (BMP-3 / M2A2 ODS-SA Bradley): data lives in ifv_data.py (no bpy), geometry in ifv.py.  ifv.py also merges its own
+# manifest entry and writes assets/vehicles/<name>_armor.json, so it can be run on its own.
+sys.path.insert(0, HERE)
+import ifv_data
+SCRIPTS.update({n: 'ifv.py' for n in ifv_data.STATIC})
+SOURCES.update(ifv_data.SOURCES)
+STATIC.update(ifv_data.STATIC)
+# Self-propelled artillery (2S19M2 Msta-S / 2S22 Bohdana): data + armour + game stats in arty_specs.py (no bpy), geometry in
+# msta.py / bohdana.py, which also merge their own manifest entries when run on their own.
+import arty_specs
+SCRIPTS.update(arty_specs.SCRIPTS)
+STATIC.update(arty_specs.STATIC)
+
 def main(names):
     os.makedirs(CACHE, exist_ok=True)
     for n in names:
@@ -114,10 +127,13 @@ def main(names):
         v['model_bbox_m'] = dict(min=info['bbox_lod0'][0], max=info['bbox_lod0'][1],
                                  size=[round(b - a, 3) for a, b in zip(*info['bbox_lod0'])])
         v['materials'] = info['materials']
-        for k in ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance'):
+        for k in ('track_link_pitch_m', 'track_length_m', 'track_links', 'ride_seats', 'ride_clearance') + ifv_data.INFO_KEYS:
             if k in info:
                 v[k] = info[k]
         v['hierarchy'] = info['hierarchy']
+        if n in arty_specs.SCRIPTS:
+            v = arty_specs.entry(n, info)
+            arty_specs.write_armor(n)
         man['vehicles'][n] = v
     with open(man_path, 'w') as f:
         json.dump(man, f, indent=1)

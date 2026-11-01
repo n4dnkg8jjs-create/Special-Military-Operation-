@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { WEAPONS } from '../config.js';
 import { ROADS, MAP_SIZE } from '../world/city.js';
 import { TUNING } from '../config.js';
 
 const ICONS = {
   squad: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/></g></svg>`,
   btr: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><ellipse cx="31" cy="20" rx="20" ry="9"/><circle cx="16" cy="38" r="1.6"/><circle cx="26" cy="38" r="1.6"/><circle cx="36" cy="38" r="1.6"/><circle cx="46" cy="38" r="1.6"/></g></svg>`,
+  ifv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
   tank: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
   atgm: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M18 30 L31 11 L44 30"/></g></svg>`,
   fpv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M15 16 Q23 26 31 18 Q39 26 47 16"/></g></svg>`,
@@ -171,7 +173,9 @@ export class HUD {
       html += row('Hull integrity', `${Math.max(0, Math.round(u.hp / u.def.hp * 100))}%`);
       html += row('Crew', `${Math.max(0, u.crew)}/3`);
       const w = u.weapons[0];
-      html += row('Main gun', u.kind === 'tank' ? `${w.ammo} rds (APFSDS ${w.ap} / HE-FRAG ${w.he})` : `${w.ammo} rds`);
+      html += row('Main gun', u.kind === 'tank' ? `${w.ammo} rds (APFSDS ${w.ap} / HE-FRAG ${w.he})` : `${WEAPONS[w.key]?.name || ''} · ${w.ammo} rds`);
+      if (u.gun100) html += row('100 mm', `${u.gun100.ammo} HE-Frag`);
+      if (u.atgm) html += row('ATGM', u.atgmDisabled ? 'launcher destroyed' : `${WEAPONS[u.atgm.key].name.split(' (')[0]} · ${u.atgm.ammo}`);
       html += row('Coax PKT', `${u.weapons[1].ammo}`);
       if (u.supply) html += row('Resupply stock', `${u.supply.rifle} rds · ${u.supply.rpg} rkt`);
       if (u.passengers) html += row('Carrying', u.passengers.name);
