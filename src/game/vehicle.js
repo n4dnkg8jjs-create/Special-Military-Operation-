@@ -145,6 +145,21 @@ export class Vehicle {
         : [[1.5, 1.85, -1.4, 1], [-1.5, 1.85, -1.4, -1], [0.7, 1.75, -2.6, 0], [-0.7, 1.75, -2.6, 0], [1.4, 1.75, -2.9, 1], [-1.4, 1.75, -2.9, -1]];
       for (const [x, y, z, side] of L) { const o = new THREE.Object3D(); o.position.set(x, y, z); o.rotation.y = side ? side * Math.PI / 2 : Math.PI; (this.hull || this.model).add(o); list.push({ obj: o, type: side ? 'edge' : 'deck' }); }
     }
+    // the rear-most row of deck seats: men there sit on the back edge facing the rear, legs over the stern, rather
+    // than facing the gun (re-seated on the hull's rear edge, sitting as on the side edges)
+    const deck = list.filter(st => st.type === 'deck');
+    if (deck.length) {
+      this.root.updateMatrixWorld(true);
+      const zs = deck.map(st => st.obj.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(this.root.matrixWorld).invert()).z), zMin = Math.min(...zs);
+      const box = new THREE.Box3(), inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert(), v = new THREE.Vector3();
+      (this.hull || this.model).traverse(o => { if (!o.isMesh || /_LOD1$|_wreck$/i.test(o.name) || !o.visible) return; const pa = o.geometry.attributes.position, step = Math.max(1, Math.floor(pa.count / 400)); for (let i = 0; i < pa.count; i += step) box.expandByPoint(v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv)); });
+      deck.forEach((st, k) => {
+        if (zs[k] > zMin + 0.25) return;
+        const p = st.obj.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+        const o = new THREE.Object3D(); o.position.set(p.x, p.y, Math.max(p.z - 0.6, box.min.z + 0.12)); o.rotation.y = Math.PI;
+        this.root.add(o); st.obj = o; st.type = 'edge';
+      });
+    }
     return this._seats = list;
   }
   seatCount() { return this.seats().length; }
@@ -188,6 +203,7 @@ export class Vehicle {
   halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; if (this.spg) this.spg.mission = null; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
+    this.animLids(dt);
     if (this.destroyed) { this.updateWreck(dt); return; }
     this.drive(dt);
     this.aimAndFire(dt);
@@ -421,23 +437,32 @@ export class Vehicle {
     const roles = out.map(c => CREW_ROLES.find(r => r.role.toLowerCase().includes(c.role === 'driver' ? 'driver' : c.role)) || CREW_ROLES[2]);
     const sq = new Squad(g, this.side, this.faction, `${this.name} crew`, 'crew', roles); sq.name = `${this.name} crew`;
     const right = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading)), fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-    // hatch_exit clips: put each man's root out from his hatch (see clip frame below), facing away from the vehicle,
-    // and stagger them (they go one after another through the hatches)
-    let hatches = this.kind === 'tank' ? { commander: [0.45, -0.3], gunner: [-0.45, -0.3], driver: [0, 2.6] } : { commander: [0.45, 2.6], driver: [-0.45, 2.6], gunner: [0, 1.2] };
-    // newer models carry hatch_<role> empties: use their real positions (vehicle-local x / z)
-    if (this.model.getObjectByName('hatch_commander')) {
-      this.root.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert(), hh = {};
-      for (const role of ['commander', 'gunner', 'driver']) { const e = this.model.getObjectByName('hatch_' + role); if (e) { const p = e.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv); hh[role] = [p.x, p.z]; } }
-      hatches = { ...hatches, ...hh };
-    }
+    // hatch_exit clips: each man's root goes out from his own hatch (hatch_<role> rim empties), facing away from the
+    // vehicle in the frame the hatch sits in — the turret's frame for turret hatches, so a traversed turret sends the
+    // commander / gunner out over the side the turret now faces — staggered one after another; the lid swings open
+    // (hatch_lid_<role>) as he pushes it
+    this.root.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+    const old = this.kind === 'tank' ? { commander: [0.45, -0.3], gunner: [-0.45, -0.3], driver: [0, 2.6] } : { commander: [0.45, 2.6], driver: [-0.45, 2.6], gunner: [0, 1.2] };
+    const frameOf = obj => { let p = obj; while (p && p !== this.root) { if (p === this.turret) return this.turret; p = p.parent; } return null; };
+    const lids = this.vman.hatch_lids || {};
     sq.soldiers.forEach((s, i) => {
-      const role = out[i].role, h = hatches[role] || [0, 0], side = h[0] < 0 || (h[0] === 0 && i % 2) ? -1 : 1;
-      const hx = this.pos.x + right.x * h[0] + fwd.x * h[1], hz = this.pos.z + right.z * h[0] + fwd.z * h[1];
+      const role = out[i].role, e = this.model.getObjectByName('hatch_' + role);
+      let hw, fr = right.clone(), ff = fwd.clone(), lx;
+      if (e) {
+        hw = e.getWorldPosition(new THREE.Vector3());
+        const T = frameOf(e);
+        if (T) { const q = T.getWorldQuaternion(new THREE.Quaternion()); fr = new THREE.Vector3(1, 0, 0).applyQuaternion(q).setY(0).normalize(); ff = new THREE.Vector3(0, 0, 1).applyQuaternion(q).setY(0).normalize(); const tp = T.getWorldPosition(new THREE.Vector3()); lx = (hw.x - tp.x) * fr.x + (hw.z - tp.z) * fr.z; }
+        else lx = hw.clone().applyMatrix4(inv).x;
+      } else { const h = old[role] || [0, 0]; hw = new THREE.Vector3(this.pos.x + right.x * h[0] + fwd.x * h[1], 0, this.pos.z + right.z * h[0] + fwd.z * h[1]); lx = h[0]; }
+      const side = lx < -0.05 || (Math.abs(lx) <= 0.05 && i % 2) ? -1 : 1;
       // clip frame: the tank hatch rim sits 1.92 m inboard and 0.25 m forward of the end root, the BTR rim 1.70 m inboard
       const tank = this.kind === 'tank', exitD = tank ? 1.92 : 1.70, aft = tank ? 0.25 : 0;
-      const [x, z] = g.nav.nearestFree(hx + right.x * side * exitD - fwd.x * aft, hz + right.z * side * exitD - fwd.z * aft, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
+      const [x, z] = g.nav.nearestFree(hw.x + fr.x * side * exitD - ff.x * aft, hw.z + fr.z * side * exitD - ff.z * aft, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(fr.x * side, fr.z * side);
       s.hatchWait = 0.6 + i * 1.4 + Math.random() * 0.5; s.inside = 'btr'; s.stance = 'stand';
       s.hatchClip = this.kind === 'btr' && hasClip('hatch_exit_btr') ? 'hatch_exit_btr' : hasClip('hatch_exit_tank') ? 'hatch_exit_tank' : 'hatch_exit';
+      const lid = Object.entries(lids).find(([, L]) => L.role === role);
+      if (lid) s.hatchOpen = () => this.openLid(lid[0], lid[1]);
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }
       s.sync();
     });
@@ -447,6 +472,16 @@ export class Vehicle {
     setTimeout(() => { if (!sq.destroyed) sq.orderMove(away.x, away.z, this.heading, 8, true); }, 2200);
     if (this.side === 'player') { g.playerUnits?.push(sq); g.hud?.rebuildCards(); g.hud?.alert(`${this.name}: ${out.length} crew bailed out`, 'bad'); }
     else g.commander?.adoptCrew?.(sq);
+  }
+  // swing a hatch lid open (manifest hatch_lids: hinge node, local axis, open angle)
+  openLid(name, L) {
+    const o = this.model.getObjectByName(name); if (!o) return;
+    (this.lidAnim ||= []).push({ o, ax: L.axis || 'x', from: o.rotation[L.axis || 'x'], to: L.open, t: 0 });
+  }
+  animLids(dt) {
+    if (!this.lidAnim?.length) return;
+    for (const a of this.lidAnim) { a.t = Math.min(1, a.t + dt / 0.45); const e = 1 - (1 - a.t) ** 3; a.o.rotation[a.ax] = a.from + (a.to - a.from) * e; }
+    this.lidAnim = this.lidAnim.filter(a => a.t < 1);
   }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;

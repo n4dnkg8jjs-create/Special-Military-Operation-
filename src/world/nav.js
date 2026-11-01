@@ -217,7 +217,7 @@ export class NavGrid {
       for (const o of l) {
         if (seen.has(o) || o.dead || (o.smokeUntil && o.smokeUntil < (globalThis.__gameTime || 0)) || (ignore && (o === ignore || o.ref === ignore)) || (ignore2 && (o === ignore2 || o.ref === ignore2))) continue; seen.add(o);
         const t = segRect(ax, az, bx, bz, o); if (t === null) continue;
-        const y = ay + (by - ay) * t; if (y >= o.h) continue;
+        const y = ay + (by - ay) * t; if (y >= o.h || (o.y0 && y < o.y0 && ay + (by - ay) * segT1 < o.y0)) continue;   // over it, or under a tree crown
         if (o.foliage) {
           // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
           const L = Math.hypot(bx - ax, bz - az), inside = (segT1 - t) * L;

@@ -210,6 +210,17 @@ export class Squad {
     const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
     const slots = this.formationSlots(back.x, back.z, this.dmFacing ?? v.heading, 18), i = this.soldiers.indexOf(s);
     const sl = slots[i % slots.length]; s.goal = sl; s.goalHeading = this.dmFacing ?? v.heading;
+    // Bradley: he starts inside the troop compartment and walks out down the lowered ramp
+    const ex = v.def.asset === 'bradley_ua' && s.dmKind !== 'jump' && v.model.getObjectByName('exit_rear');
+    if (ex) {
+      v.root.updateMatrixWorld(true);
+      const E = ex.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), r = new THREE.Vector3(f.z, 0, -f.x), lat = (((s.dmI ?? 0) % 3) - 1) * 0.35;
+      const at = k => [E.x + f.x * k + r.x * lat, E.z + f.z * k + r.z * lat];
+      const inside = at(3.4); s.pos.set(inside[0], 0.62, inside[1]); s.heading = v.heading + Math.PI;
+      s.rampWalk = { bx: E.x, bz: E.z, fx: f.x, fz: f.z, y0: 0.62, len: 1.9 };
+      s.path = [at(1.9), at(0), at(-1.6), sl]; s.pathI = 0; s.pathReq = null; s.speedMul = 0.8; s.stance = 'crouch';
+      return;
+    }
     s.pathDelay = s.jumpT || 0; g.requestPath(s, s.pos.x, s.pos.z, sl[0], sl[1], 0.45);
   }
   // ride on top of the vehicle (tank/BTR desant). Overflow rides inside.
@@ -410,7 +421,7 @@ export class Squad {
   }
   updateSoldier(s, dt) {
     const g = this.game;
-    if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchT = clipDuration(s.hatchClip || 'hatch_exit', 2.7); g.sfx('hatch', s.pos); } else { s.sync(); return; } }
+    if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchOpen?.(); s.hatchOpen = null; s.hatchT = clipDuration(s.hatchClip || 'hatch_exit', 2.7); g.sfx('hatch', s.pos); } else { s.sync(); return; } }
     // waiting for his turn to get off the carrier: stays on his seat (riders, carried along) or inside
     if (s.dmWait != null) {
       const v = s.dmVeh;
@@ -496,7 +507,7 @@ export class Squad {
     // separation from squadmates & vehicles (never shoves anyone into a wall)
     const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
     for (const o of this.soldiers) { if (o === s || !o.alive || o.inside) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
-    for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
+    if (!s.rampWalk) for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
     // already inside a blocked cell (pushed, collapsed rubble, spawned badly): step out to the nearest free spot
     if (!free(s.pos.x, s.pos.z)) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 0.45, 8); s.pos.x = fx; s.pos.z = fz; if (s.goal) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } }
     const nx = s.pos.x + s.vel.x * dt, nz = s.pos.z + s.vel.z * dt;
@@ -523,6 +534,10 @@ export class Squad {
     const c = this.game.city, gh = c.groundHeight;
     if (!gh) { s.pos.y = 0; return; }
     let y = gh(s.pos.x, s.pos.z);
+    if (s.rampWalk) {   // walking out of an IFV: compartment floor, then down the ramp
+      const R = s.rampWalk, t = (s.pos.x - R.bx) * R.fx + (s.pos.z - R.bz) * R.fz;
+      if (t < -0.4) s.rampWalk = null; else { s.pos.y = Math.max(y, R.y0 * THREE.MathUtils.clamp(t / R.len, 0, 1)); return; }
+    }
     if (y < -0.8 && !moving) {
       const ti = c.trenchInfo?.(s.pos.x, s.pos.z);
       const firing = s.target || (this.game.time - (s.lastShotT ?? -99) < 2) || (this.fireAt && !this.holdFire);

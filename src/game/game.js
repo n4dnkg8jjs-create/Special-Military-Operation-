@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { vegetationLOS } from '../world/vegetation.js';
 import { Renderer } from '../engine/renderer.js';
 import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
@@ -44,6 +45,7 @@ export class Game {
     if (MAP.fog && this.scene.fog) this.scene.fog.density = MAP.fog;
     try { this.city.build(); } finally { this.genRandom = Math.random; }
     this.nav = this.city.nav;
+    this.vegOcc = vegetationLOS(this.nav);
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
     this.combat = new Combat(this);

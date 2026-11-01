@@ -73,7 +73,8 @@ export class Commander {
       const c = t.center(); const err = t === pg ? 40 : t.type === 'vehicle' ? 30 : 22;
       // our own howitzer takes the mission if it can; otherwise divisional fire from off the map
       const own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
-      if (own) { own.fireAt = { p: new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err) }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
+      const ap = new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
+      if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
       g.callStrike(c.x + (Math.random() - .5) * err, c.z + (Math.random() - .5) * err, 4 + Math.floor(Math.random() * 3), 24, 'enemy', 3, Math.random() < 0.25 ? 'arty' : 'mortar');
       g.hud?.alert('Incoming artillery!', 'bad');
     }

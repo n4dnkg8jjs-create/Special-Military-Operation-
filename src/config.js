@@ -115,14 +115,14 @@ export const VEHICLES = {
     kind: 'spg', asset: 'msta_s', hp: 1100, speed: 8.5, accel: 1.8, turnRate: 0.55, radius: 2.4, length: 7.2, width: 3.5, height: 3.0,
     armor: { front: { ke: 30, ce: 30 }, side: { ke: 19, ce: 19 }, rear: { ke: 15, ce: 15 }, top: { ke: 15, ce: 15 } },
     passengers: 0, seats: 0, crew: 5, turretSpeed: 8 * Math.PI / 180, elevSpeed: 5 * Math.PI / 180, wheeled: false,
-    gun: 'g2a64', mg: 'kord', ammo: 50, caliber: '152 mm', salvo: 4, interval: 6, cool: 26, deployT: 60, packT: 60, travelPitch: -3.5 * Math.PI / 180, arc: 0, cep: 12, power: 2.7,
+    gun: 'g2a64', mg: 'kord', ammo: 50, caliber: '152 mm', salvo: 4, interval: 6, cool: 26, deployT: 60, packT: 60, travelPitch: -3.5 * Math.PI / 180, arc: 0, cep: 12, power: 2.7, minRange: 6500, directRange: 4000,
   },
   // 2S22 Bohdana: 28 t KrAZ 6x6, 5 crew, armoured cab only (7.62 AP at 30 m), 20 rounds, 4-6 rpm, 1.5 min into / out of action
   spg_ua: {
     kind: 'spg', asset: 'bohdana', hp: 700, speed: 10.5, accel: 2.4, turnRate: 0.5, radius: 2.3, length: 9.0, width: 2.7, height: 3.0,
     armor: { front: { ke: 14, ce: 14 }, side: { ke: 12, ce: 12 }, rear: { ke: 6, ce: 6 }, top: { ke: 6, ce: 6 } },
     passengers: 0, seats: 0, crew: 5, turretSpeed: 5 * Math.PI / 180, elevSpeed: 4 * Math.PI / 180, wheeled: true,
-    gun: 'b155', mg: null, ammo: 20, caliber: '155 mm', salvo: 3, interval: 12, cool: 30, deployT: 90, packT: 90, travelPitch: 0, arc: 30 * Math.PI / 180, spades: true, cep: 10, power: 2.8,
+    gun: 'b155', mg: null, ammo: 20, caliber: '155 mm', salvo: 3, interval: 12, cool: 30, deployT: 90, packT: 90, travelPitch: 0, arc: 30 * Math.PI / 180, spades: true, cep: 10, power: 2.8, minRange: 780, directRange: 2000,
   },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,

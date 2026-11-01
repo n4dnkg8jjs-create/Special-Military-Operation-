@@ -176,7 +176,8 @@ export class HUD {
       const w = u.weapons[0];
       if (u.kind === 'spg') {
         html += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
-        html += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C) any point, no line of sight needed`);
+        html += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C)`);
+        html += row('Range', `indirect from ${u.def.minRange >= 1000 ? (u.def.minRange / 1000).toFixed(1) + ' km' : u.def.minRange + ' m'} · direct fire (line of sight) to ${(u.def.directRange / 1000).toFixed(1)} km`);
         html += row('Into / out of action', `${u.def.deployT} s / ${u.def.packT} s${u.def.arc ? ' · ±30° sector' : ' · 360° turret'}`);
         if (u.def.mg) html += row('Kord 12.7 mm', `${u.weapons[1].ammo}`);
         this.info.innerHTML = html; return;

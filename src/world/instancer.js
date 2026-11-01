@@ -8,7 +8,10 @@ const CELL = 90;
 // single instanced mesh draws instead of the k*k per-cell ones (cuts the overview draw calls of trees ~k*k-fold).
 export const LODS = [];
 export const GROUPS = [];
+// every placement, by template, so game code can derive gameplay data (e.g. vegetation line-of-sight occluders)
+export const PLACED = [];
 export function instance(scene, template, matrices, opts = {}) {
+  PLACED.push({ template, matrices, opts });
   // group placements by spatial cell so each InstancedMesh can be frustum/shadow culled
   const cells = new Map(), v = new THREE.Vector3();
   matrices.forEach((M, i) => { v.setFromMatrixPosition(M); const k = Math.floor(v.x / CELL) + ',' + Math.floor(v.z / CELL); (cells.get(k) || cells.set(k, []).get(k)).push(i); });

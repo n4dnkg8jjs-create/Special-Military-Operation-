@@ -5,7 +5,7 @@ import { WEAPONS, TUNING } from '../config.js';
 import { angDiff } from './squad.js';
 import { initArmor, resolveHit } from './armor.js';
 
-const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3();
+const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), C2 = new THREE.Vector3();
 const rf = (a, b) => a + Math.random() * (b - a);
 const TRACER = { RU: [0.62, 1.0, 0.34], UA: [1.0, 0.42, 0.14] }; // green-yellow / orange-red burning tracer compound
 
@@ -453,7 +453,21 @@ export class Combat {
         if (p.fuse >= Math.max(tot, 3.2)) { this.projectiles.splice(i, 1); this.explode(p.target.clone().setY(Math.max(0.2, p.target.y)), 0.45, p.owner, [50, 140], 6); }
         continue;
       }
-      // obstruction (building facades) for rockets & HE
+      // rockets & HE fly through the world: walls, terrain (trench lips, rubble, rises) and tree crowns / bushes stop
+      // them where they are, not where the target is. The firer's own building is ignored for the first metres (he
+      // fires out of a window), the target's building is a facade it bursts on.
+      if (p.kind === 'rpg' || p.kind === 'he' || p.kind === 'he30') {
+        const nx = dist <= step ? to : C2.copy(p.pos).addScaledVector(dir, step / dist);
+        p.flown = (p.flown || 0) + Math.min(step, dist);
+        const own = p.flown < 5 ? (p.owner?.squad?.building || p.owner?.bld || null) : null;
+        const occ = g.nav.occluded(p.pos.x, p.pos.y, p.pos.z, nx.x, nx.y, nx.z, own, null);
+        if (occ) {
+          this.projectiles.splice(i, 1); if (p.mesh) { g.scene.remove(p.mesh); p.mesh = null; }
+          const at = occ.ref?.panels ? this.facadePoint(occ, p.pos, nx) : p.pos.clone().lerp(nx, 0.5);
+          p.occ = null;   // resolved here: burst at this point
+          this.impact(p, at); continue;
+        }
+      }
       if (dist <= step) { this.projectiles.splice(i, 1); if (p.mesh) { g.scene.remove(p.mesh); p.mesh = null; } this.impact(p, to.clone()); continue; }
       p.pos.addScaledVector(dir.normalize(), step);
     }
@@ -468,7 +482,7 @@ export class Combat {
     }
     if (p.kind === 'he' || p.kind === 'rpg' || p.kind === 'he30') {
       // if a building is in the way, burst on the facade
-      if (p.occ === undefined) p.occ = g.nav.occluded(p.owner.pos.x, 2, p.owner.pos.z, at.x, at.y, at.z, p.owner.squad?.building || null, p.t && p.t.type !== 'vehicle' && p.t.inBuilding ? p.t.bld : null);
+      if (p.occ === undefined && !p.flown) p.occ = g.nav.occluded(p.owner.pos.x, 2, p.owner.pos.z, at.x, at.y, at.z, p.owner.squad?.building || null, p.t && p.t.type !== 'vehicle' && p.t.inBuilding ? p.t.bld : null);
       if (p.occ && p.occ.ref?.panels) at = this.facadePoint(p.occ, p.owner.pos, at);
       if (p.t && p.t.type === 'vehicle' && p.hit !== false && at.distanceTo(p.t.pos) < p.t.def.length * 0.6 && p.kind === 'rpg') {
         this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ce', p.owner, false, at);
