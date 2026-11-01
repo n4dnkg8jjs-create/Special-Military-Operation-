@@ -185,7 +185,7 @@ HELMETS = {
     'altyn': dict(rim=(14, -34, -30), scale=(1.09, 1.05, 1.08), off=0.040, cover='fabric', band=False, nvg=False, rails=False),
     # FAST high-cut: squarer shell (superellipse in plan), flattish crown, rim cut high above the ears with a sharp notch at the
     # temples, low at the brow and nape; bare ranger-green shell, ARC side rails, NVG shroud, velcro, shock cord, counterweight
-    'fast_hc': dict(rim_pts=((0, -5), (40, -5), (52, -4), (58, 2), (64, 12), (70, 14), (112, 14), (120, 10), (127, -4), (134, -16),
+    'fast_hc': dict(rim_pts=((0, -5), (44, -5), (56, -4), (62, 0), (68, 5), (74, 6.5), (106, 6.5), (113, 3), (120, -6), (130, -17),
                              (150, -27), (180, -31)),
                     scale=(1.04, 1.02, 1.05), off=0.031, sq=2.5, cover=None, shell_mat='ranger_gear', band=False, nvg=False,
                     rails=False, arc=True, shroud=True, velcro=True, cord=True, counterweight=True, naz=120, flare0=0.0, cw_el=-10),
@@ -215,7 +215,7 @@ def rim_el(az, rim):
     return f * w_f + s * w_s + b * w_b
 
 
-def helmet(kind, c, r, mats, fac):
+def helmet(kind, c, r, mats, fac, trees=None):
     H = HELMETS[kind]
     m = dict(mats)
     if H.get('shell_mat'):
@@ -317,12 +317,12 @@ def helmet(kind, c, r, mats, fac):
     if H.get('arc'):
         # ARC side rails: straight polymer rails along the top of the ear cut-out, raised ~9 mm, end stops + screws
         for sgn in (1, -1):
-            a0, a1 = sorted((sgn * np.radians(68), sgn * np.radians(116)))
-            out.append(strip(a0, a1, np.radians(15.5), np.radians(22.5), 0.0005, 0.009, m['hardware'], n=20))
-            for a in (68, 116):
-                out.append(PO.local_part(PO.rbox(0.008, 0.014, 0.006, 0.002, 1), frame(sgn * np.radians(a), np.radians(19), 0.006), m['hardware'], 'hard'))
+            a0, a1 = sorted((sgn * np.radians(70), sgn * np.radians(112)))
+            out.append(strip(a0, a1, np.radians(9.0), np.radians(15.5), 0.0005, 0.009, m['hardware'], n=20))
+            for a in (70, 112):
+                out.append(PO.local_part(PO.rbox(0.008, 0.014, 0.006, 0.002, 1), frame(sgn * np.radians(a), np.radians(12.2), 0.006), m['hardware'], 'hard'))
             for a in (80, 104):
-                out.append(PO.local_part(PO.rbox(0.007, 0.007, 0.003, 0.0015, 1), frame(sgn * np.radians(a), np.radians(19), 0.0095), m['hardware'], 'hard'))
+                out.append(PO.local_part(PO.rbox(0.007, 0.007, 0.003, 0.0015, 1), frame(sgn * np.radians(a), np.radians(12.2), 0.0095), m['hardware'], 'hard'))
     if H.get('shroud'):
         # NVG shroud on the front face just above the brow: flat plate, mount recess, 3 screws
         out.append(PO.local_part(PO.rbox(0.070, 0.044, 0.006, 0.010, 2), frame(0.0, np.radians(8), 0.0) @ PO.T(0, 0, 0.003), m['hardware'], 'hard'))
@@ -334,13 +334,13 @@ def helmet(kind, c, r, mats, fac):
         out.append(strip(np.radians(-32), np.radians(32), np.radians(46), np.radians(70), 0.0006, 0.0024, m['webbing']))
         for sgn in (1, -1):
             a0, a1 = sorted((sgn * np.radians(70), sgn * np.radians(114)))
-            out.append(strip(a0, a1, np.radians(30), np.radians(40), 0.0006, 0.0022, m['webbing']))
+            out.append(strip(a0, a1, np.radians(26), np.radians(36), 0.0006, 0.0022, m['webbing']))
         out.append(strip(np.radians(154), np.radians(206), np.radians(8), np.radians(22), 0.0006, 0.0022, m['webbing']))
     if H.get('cord'):
         # shock cords from the shroud along the sides (between rails and side velcro) to the back
         for sgn in (1, -1):
             a0, a1 = sorted((sgn * np.radians(22), sgn * np.radians(150)))
-            out.append(strip(a0, a1, np.radians(25.5), np.radians(27.3), 0.002, 0.0055, m['hardware'], n=34))
+            out.append(strip(a0, a1, np.radians(20.0), np.radians(21.8), 0.002, 0.0055, m['hardware'], n=34))
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.085, 0.055, 0.028, 0.01, 2), frame(np.pi, np.radians(H.get('cw_el', 5)), 0.0) @ PO.T(0, 0.0, 0.014), m['fabric']))
     if H.get('goggles'):
@@ -356,8 +356,70 @@ def helmet(kind, c, r, mats, fac):
             Fm = frame(sgn * np.radians(17), np.radians(16), 0.004)
             out.append(PO.local_part(PO.rbox(0.072, 0.05, 0.022, 0.012, 2), Fm @ PO.T(0, 0, 0.011), m['hardware'], 'hard'))
             out.append(PO.local_part(PO.rbox(0.064, 0.042, 0.006, 0.01, 2), Fm @ PO.T(0, 0, 0.022), 'goggle_lens', 'hard'))
+    if trees is not None:
+        out += chin_strap(c, rim_fn, on, m, trees, H)
     for p in out:
         p['group'] = 'helmet'
+    return out
+
+
+def chin_strap(c, rim_fn, on, m, trees, H):
+    """retention harness: front + rear strap from inside the rim on each side, joining below the ear, along the jaw to a chin
+    cup.  The path is projected onto the skin (rays from the head centre into the head meshes of all body variants) and kept
+    4 mm off it, so it lies on cheeks / jaw without cutting in."""
+    def skin(d):
+        d = d / np.linalg.norm(d); best = 0.0
+        for t in trees:
+            o = c + d * 0.25
+            h = t.ray_cast(Vector(o), Vector(-d), 0.25)          # from outside inward: first hit = outer skin
+            if h[0] is not None:
+                best = max(best, 0.25 - h[3])
+        return best if best > 0 else 0.11
+    az_f, az_b = (np.radians(66), np.radians(116)) if H.get('rim_pts') else (np.radians(70), np.radians(112))
+    def path(p0, d1, d2, n=10):
+        """from point p0 (helmet) through skin directions d1 -> d2: radius = max(skin + 4 mm, straight line)"""
+        pts = []
+        dirs = [d1 + (d2 - d1) * u for u in np.linspace(0, 1, n)]
+        r0 = np.linalg.norm(p0 - c); a0 = (p0 - c) / r0
+        for k, u in enumerate(np.linspace(0, 1, 6)):            # helmet rim -> first skin point
+            d = a0 * (1 - u) + (dirs[0] / np.linalg.norm(dirs[0])) * u; d /= np.linalg.norm(d)
+            rr = max(skin(d) + 0.004, r0 * (1 - u) + (skin(dirs[0]) + 0.004) * u)
+            pts.append(c + d * rr)
+        for d in dirs[1:]:
+            dn = d / np.linalg.norm(d); pts.append(c + dn * (skin(dn) + 0.004))
+        return np.array(pts)
+    def ribbon(pts, w, mat):
+        t = np.gradient(pts, axis=0); t /= np.linalg.norm(t, axis=1, keepdims=True)
+        nn = pts - c; nn /= np.linalg.norm(nn, axis=1, keepdims=True)
+        sd = np.cross(t, nn); sd /= np.linalg.norm(sd, axis=1, keepdims=True)
+        L0 = pts - sd * w / 2; L1 = pts + sd * w / 2
+        V = np.concatenate([L0, L1, L0 + nn * 0.0018, L1 + nn * 0.0018]); n_ = len(pts)
+        tri = []
+        for i in range(n_ - 1):
+            a, b, cc, d = i, i + 1, n_ + i + 1, n_ + i
+            for off in (0, 2 * n_):
+                A, B, C, D = a + off, b + off, cc + off, d + off
+                tri += [[A, B, C], [A, C, D], [A, C, B], [A, D, C]]
+        uvs = np.concatenate([np.stack([np.linspace(0, 1, n_), np.full(n_, v)], 1) for v in (0, 0.05, 0, 0.05)])
+        q = G.part(V, np.asarray(tri), mat, uvs)
+        q['nrm'] = np.concatenate([nn, nn, nn, nn]); return q
+    out = []
+    for sgn in (1, -1):
+        fa, _ = on(sgn * az_f, rim_fn(sgn * az_f) + np.radians(1.5), -0.007)
+        ra, _ = on(sgn * az_b, rim_fn(sgn * az_b) + np.radians(1.5), -0.007)
+        J = np.array([sgn * 0.95, -0.55, 0.12]); K = np.array([sgn * 0.55, -0.85, 0.40]); C_ = np.array([sgn * 0.08, -0.80, 0.60])
+        out.append(ribbon(path(np.asarray(fa).reshape(3), np.array([sgn * 0.90, -0.30, 0.30]), J, 6), 0.014, m['webbing']))
+        out.append(ribbon(path(np.asarray(ra).reshape(3), np.array([sgn * 0.85, -0.25, -0.30]), J, 6), 0.014, m['webbing']))
+        jaw = np.array([c + (d / np.linalg.norm(d)) * (skin(d / np.linalg.norm(d)) + 0.004) for d in [J + (K - J) * u for u in np.linspace(0, 1, 7)] + [K + (C_ - K) * u for u in np.linspace(0, 1, 7)[1:]]])
+        out.append(ribbon(jaw, 0.016, m['webbing']))
+        # buckle at the junction below the ear
+        jn = J / np.linalg.norm(J); jp = c + jn * (skin(jn) + 0.006)
+        up = np.array([0, 1.0, 0]) - jn * jn[1]; up /= np.linalg.norm(up)
+        out.append(PO.local_part(PO.rbox(0.020, 0.024, 0.005, 0.002, 1), PO.mat4(jp, np.cross(up, jn), up, jn), m['hardware'], 'hard'))
+    # chin cup
+    cd = np.array([0, -0.80, 0.60]); cd /= np.linalg.norm(cd); cp = c + cd * (skin(cd) + 0.006)
+    up = np.array([0, 0, 1.0]) - cd * cd[2]; up /= np.linalg.norm(up)
+    out.append(PO.local_part(PO.rbox(0.046, 0.030, 0.007, 0.010, 2), PO.mat4(cp, np.cross(up, cd), up, cd), m['webbing'], 'hard'))
     return out
 
 

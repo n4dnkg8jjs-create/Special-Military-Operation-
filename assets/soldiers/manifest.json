@@ -101,7 +101,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 17388488,
+  "size_bytes": 17791416,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -113,8 +113,8 @@
    "pouches_front": 1888,
    "pouches_side": 1036,
    "pouches_back": 508,
-   "helmet_A": 1816,
-   "helmet_B": 2376,
+   "helmet_A": 2524,
+   "helmet_B": 3084,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -127,31 +127,31 @@
    "pouches_assault": 2416,
    "elbowpads": 568,
    "backpack_assault": 1080,
-   "helmet_assault_A": 1816,
-   "helmet_assault_B": 1512,
+   "helmet_assault_A": 2524,
+   "helmet_assault_B": 2220,
    "headset": 252,
-   "balaclava_A": 2089,
-   "balaclava_B": 2089,
-   "balaclava_C": 2086,
-   "combo_0": 22426,
+   "balaclava_A": 2607,
+   "balaclava_B": 2607,
+   "balaclava_C": 2593,
+   "combo_0": 23134,
    "combo_0_tape": 840,
-   "combo_1": 24820,
+   "combo_1": 25528,
    "combo_1_tape": 840,
-   "combo_2": 23650,
+   "combo_2": 24358,
    "combo_2_tape": 1120,
-   "combo_3": 24206,
+   "combo_3": 24914,
    "combo_3_tape": 840,
-   "combo_4": 24748,
+   "combo_4": 25456,
    "combo_4_tape": 1120,
-   "combo_5": 23518,
+   "combo_5": 24226,
    "combo_5_tape": 840,
-   "assault_combo_0": 28805,
+   "assault_combo_0": 30031,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 27328,
+   "assault_combo_1": 28036,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 28807,
+   "assault_combo_2": 30022,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 26313,
+   "assault_combo_3": 27539,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 19743,
    "crew_combo_0_tape": 840,
@@ -171,8 +171,8 @@
    "pouches_front_LOD1": 527,
    "pouches_side_LOD1": 307,
    "pouches_back_LOD1": 172,
-   "helmet_A_LOD1": 507,
-   "helmet_B_LOD1": 663,
+   "helmet_A_LOD1": 706,
+   "helmet_B_LOD1": 861,
    "armband_L_LOD1": 77,
    "kneepads_LOD1": 198,
    "legband_L_LOD1": 78,
@@ -185,31 +185,31 @@
    "pouches_assault_LOD1": 693,
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 333,
-   "helmet_assault_A_LOD1": 507,
-   "helmet_assault_B_LOD1": 422,
+   "helmet_assault_A_LOD1": 706,
+   "helmet_assault_B_LOD1": 619,
    "headset_LOD1": 70,
-   "balaclava_A_LOD1": 583,
-   "balaclava_B_LOD1": 584,
-   "balaclava_C_LOD1": 583,
-   "combo_0_LOD1": 6278,
+   "balaclava_A_LOD1": 729,
+   "balaclava_B_LOD1": 728,
+   "balaclava_C_LOD1": 725,
+   "combo_0_LOD1": 6476,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 6949,
+   "combo_1_LOD1": 7147,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6622,
+   "combo_2_LOD1": 6819,
    "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 6776,
+   "combo_3_LOD1": 6975,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 6929,
+   "combo_4_LOD1": 7127,
    "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 6585,
+   "combo_5_LOD1": 6783,
    "combo_5_tape_LOD1": 336,
-   "assault_combo_0_LOD1": 8064,
+   "assault_combo_0_LOD1": 8408,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7651,
+   "assault_combo_1_LOD1": 7849,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 8065,
+   "assault_combo_2_LOD1": 8406,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7367,
+   "assault_combo_3_LOD1": 7710,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5527,
    "crew_combo_0_tape_LOD1": 336,
@@ -230,7 +230,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 24897,
+  "default_config_tris": 25605,
   "materials_by_node": {
    "body_A": [
     "emr_camo",
@@ -331,7 +331,8 @@
     "gear_hardware"
    ],
    "helmet_assault_B": [
-    "altyn_steel"
+    "altyn_steel",
+    "gear_hardware"
    ],
    "headset": [
     "radio_black"
@@ -522,7 +523,8 @@
     "gear_hardware"
    ],
    "helmet_assault_B_LOD1": [
-    "altyn_steel"
+    "altyn_steel",
+    "gear_hardware"
    ],
    "headset_LOD1": [
     "radio_black"
@@ -1986,7 +1988,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 22426,
+    "tris": 23134,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -2022,7 +2024,7 @@
      "legband_R",
      "armor_arms"
     ],
-    "tris": 24820,
+    "tris": 25528,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -2059,7 +2061,7 @@
      "legband_L",
      "armor_groin"
     ],
-    "tris": 23650,
+    "tris": 24358,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -2095,7 +2097,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 24206,
+    "tris": 24914,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -2133,7 +2135,7 @@
      "armor_groin",
      "armor_arms"
     ],
-    "tris": 24748,
+    "tris": 25456,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -2168,7 +2170,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 23518,
+    "tris": 24226,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -2213,7 +2215,7 @@
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 28805,
+    "tris": 30031,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -2254,7 +2256,7 @@
      "armor_arms",
      "headset"
     ],
-    "tris": 27328,
+    "tris": 28036,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -2297,7 +2299,7 @@
      "balaclava_C",
      "backpack_assault"
     ],
-    "tris": 28807,
+    "tris": 30022,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -2337,7 +2339,7 @@
      "armor_groin",
      "balaclava_A"
     ],
-    "tris": 26313,
+    "tris": 27539,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -2469,7 +2471,7 @@
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 18716660,
+  "size_bytes": 19150328,
   "mesh_nodes_tris": {
    "body_A": 10513,
    "body_B": 10513,
@@ -2481,8 +2483,8 @@
    "pouches_front": 1092,
    "pouches_side": 952,
    "pouches_back": 232,
-   "helmet_A": 3136,
-   "helmet_B": 7920,
+   "helmet_A": 3844,
+   "helmet_B": 8628,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -2495,31 +2497,31 @@
    "pouches_assault": 2252,
    "elbowpads": 568,
    "backpack_assault": 1080,
-   "helmet_assault_A": 7920,
-   "helmet_assault_B": 2160,
+   "helmet_assault_A": 8628,
+   "helmet_assault_B": 2868,
    "headset": 252,
-   "balaclava_A": 2089,
-   "balaclava_B": 2089,
-   "balaclava_C": 2086,
-   "combo_0": 22585,
+   "balaclava_A": 2607,
+   "balaclava_B": 2607,
+   "balaclava_C": 2593,
+   "combo_0": 23293,
    "combo_0_tape": 840,
-   "combo_1": 28353,
+   "combo_1": 29061,
    "combo_1_tape": 840,
-   "combo_2": 23889,
+   "combo_2": 24597,
    "combo_2_tape": 1120,
-   "combo_3": 28313,
+   "combo_3": 29021,
    "combo_3_tape": 840,
-   "combo_4": 24913,
+   "combo_4": 25621,
    "combo_4_tape": 1120,
-   "combo_5": 27705,
+   "combo_5": 28413,
    "combo_5_tape": 840,
-   "assault_combo_0": 33265,
+   "assault_combo_0": 33973,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 25664,
+   "assault_combo_1": 26890,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 33369,
+   "assault_combo_2": 34077,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 27600,
+   "assault_combo_3": 28826,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 19743,
    "crew_combo_0_tape": 840,
@@ -2539,8 +2541,8 @@
    "pouches_front_LOD1": 384,
    "pouches_side_LOD1": 313,
    "pouches_back_LOD1": 96,
-   "helmet_A_LOD1": 877,
-   "helmet_B_LOD1": 2216,
+   "helmet_A_LOD1": 1324,
+   "helmet_B_LOD1": 2600,
    "armband_L_LOD1": 77,
    "kneepads_LOD1": 198,
    "legband_L_LOD1": 78,
@@ -2553,31 +2555,31 @@
    "pouches_assault_LOD1": 628,
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 332,
-   "helmet_assault_A_LOD1": 2216,
-   "helmet_assault_B_LOD1": 602,
+   "helmet_assault_A_LOD1": 2600,
+   "helmet_assault_B_LOD1": 1139,
    "headset_LOD1": 70,
-   "balaclava_A_LOD1": 583,
-   "balaclava_B_LOD1": 584,
-   "balaclava_C_LOD1": 583,
-   "combo_0_LOD1": 6323,
+   "balaclava_A_LOD1": 729,
+   "balaclava_B_LOD1": 728,
+   "balaclava_C_LOD1": 725,
+   "combo_0_LOD1": 6522,
    "combo_0_tape_LOD1": 336,
-   "combo_1_LOD1": 7937,
+   "combo_1_LOD1": 8137,
    "combo_1_tape_LOD1": 336,
-   "combo_2_LOD1": 6687,
+   "combo_2_LOD1": 6886,
    "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 7926,
+   "combo_3_LOD1": 8124,
    "combo_3_tape_LOD1": 336,
-   "combo_4_LOD1": 6974,
+   "combo_4_LOD1": 7172,
    "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 7757,
+   "combo_5_LOD1": 7955,
    "combo_5_tape_LOD1": 336,
-   "assault_combo_0_LOD1": 9314,
+   "assault_combo_0_LOD1": 9511,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 7185,
+   "assault_combo_1_LOD1": 7528,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 9343,
+   "assault_combo_2_LOD1": 9541,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7727,
+   "assault_combo_3_LOD1": 8071,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5527,
    "crew_combo_0_tape_LOD1": 336,
@@ -2598,7 +2600,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 24717,
+  "default_config_tris": 25425,
   "materials_by_node": {
    "body_A": [
     "eye",
@@ -2653,6 +2655,7 @@
    ],
    "helmet_A": [
     "coyote_webbing",
+    "gear_hardware",
     "mm14_gear"
    ],
    "helmet_B": [
@@ -2712,6 +2715,7 @@
     "ranger_gear"
    ],
    "helmet_assault_B": [
+    "coyote_webbing",
     "gear_hardware",
     "goggle_lens",
     "multicam_gear"
@@ -2859,6 +2863,7 @@
    ],
    "helmet_A_LOD1": [
     "coyote_webbing",
+    "gear_hardware",
     "mm14_gear"
    ],
    "helmet_B_LOD1": [
@@ -2918,6 +2923,7 @@
     "ranger_gear"
    ],
    "helmet_assault_B_LOD1": [
+    "coyote_webbing",
     "gear_hardware",
     "goggle_lens",
     "multicam_gear"
@@ -4390,7 +4396,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 22585,
+    "tris": 23293,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -4425,7 +4431,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 28353,
+    "tris": 29061,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -4462,7 +4468,7 @@
      "legband_L",
      "armor_groin"
     ],
-    "tris": 23889,
+    "tris": 24597,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -4498,7 +4504,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 28313,
+    "tris": 29021,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -4536,7 +4542,7 @@
      "armor_groin",
      "armor_arms"
     ],
-    "tris": 24913,
+    "tris": 25621,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -4571,7 +4577,7 @@
      "armband_R",
      "legband_R"
     ],
-    "tris": 27705,
+    "tris": 28413,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -4615,7 +4621,7 @@
      "headset",
      "backpack_assault"
     ],
-    "tris": 33265,
+    "tris": 33973,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -4656,7 +4662,7 @@
      "headset",
      "balaclava_B"
     ],
-    "tris": 25664,
+    "tris": 26890,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -4698,7 +4704,7 @@
      "headset",
      "backpack_assault"
     ],
-    "tris": 33369,
+    "tris": 34077,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -4741,7 +4747,7 @@
      "balaclava_A",
      "backpack_assault"
     ],
-    "tris": 27600,
+    "tris": 28826,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",

@@ -235,19 +235,68 @@ def headset(c, r, fac):
 
 
 def balaclava(R, vn, fac):
-    """knitted balaclava over the head with an eye slot: offset copy of the head mesh (same skin weights)"""
+    """knitted balaclava over the head: offset copy of the head mesh (same skin weights) with a clean eye slot - the triangles are
+    clipped along a smooth rounded-rectangle line (no saw-tooth of whole dropped triangles) and the slot edge gets a knit hem that
+    turns in to the skin, so no gap or skin shows at the edge"""
     v = R['variants'][vn]; H = R['head']
     lm = v['lm']
-    P = v['head_pos'] + v['head_nrm'] * 0.0035
-    T = H['tri']
+    P0 = v['head_pos']; N0 = v['head_nrm']
+    P = P0 + N0 * 0.0035
+    T = H['tri']; UV = H['uv'] * 4.0; W = np.asarray(H['W'], float)
     ec = (lm['eyeL'] + lm['eyeR']) / 2
-    Pc = P[T].mean(1)
-    # drop the eye slot (front, at eye height) and anything at/below the lower neck
-    slot = (np.abs(Pc[:, 1] - ec[1]) < 0.021) & (np.abs(Pc[:, 0]) < 0.062) & (Pc[:, 2] > ec[2] - 0.035)
-    low = Pc[:, 1] < lm['neck'][1] - 0.02 if 'neck' in lm else np.zeros(len(T), bool)
-    keep = ~(slot | low)
-    Tk = T[keep]
-    used = np.unique(Tk); remap = -np.ones(len(P), int); remap[used] = np.arange(len(used))
+    a_, b_, ex = 0.060, 0.0175, 4.0
+    def fval(Q):                     # > 0 = keep (outside the slot); slot only on the face
+        d = (np.abs((Q[:, 0] - ec[0]) / a_) ** ex + np.abs((Q[:, 1] - ec[1] - 0.002) / b_) ** ex) ** (1 / ex) - 1.0
+        return np.where(Q[:, 2] > ec[2] - 0.035, d, 1.0)
+    f = fval(P0)
+    low = P0[:, 1] < lm['neck'][1] - 0.02 if 'neck' in lm else np.zeros(len(P0), bool)
+    pos = [P]; nrm = [N0]; uv = [UV]; ww = [W]; base = len(P)
+    split = {}
+    def cut(i, j):
+        k = (min(i, j), max(i, j))
+        if k not in split:
+            t = f[i] / (f[i] - f[j])
+            pos.append(((1 - t) * P[i] + t * P[j])[None]); n_ = (1 - t) * N0[i] + t * N0[j]; nrm.append((n_ / np.linalg.norm(n_))[None])
+            uv.append(((1 - t) * UV[i] + t * UV[j])[None]); ww.append(((1 - t) * W[i] + t * W[j])[None])
+            split[k] = base + len(split)
+        return split[k]
+    tris = []; segs = []
+    for tri in T:
+        if low[tri].any():
+            continue
+        inside = f[tri] > 0
+        if inside.all():
+            tris.append(tri); continue
+        if not inside.any():
+            continue
+        # Sutherland-Hodgman against f > 0
+        poly = []; cutp = []
+        for e in range(3):
+            i, j = tri[e], tri[(e + 1) % 3]
+            if f[i] > 0:
+                poly.append(i)
+            if (f[i] > 0) != (f[j] > 0):
+                c_ = cut(i, j); poly.append(c_); cutp.append(c_)
+        for k in range(1, len(poly) - 1):
+            tris.append([poly[0], poly[k], poly[k + 1]])
+        if len(cutp) == 2:
+            segs.append(cutp)
+    pos = np.concatenate(pos); nrm = np.concatenate(nrm); uv = np.concatenate(uv); ww = np.concatenate(ww)
+    # hem: each slot-edge segment gets a strip turned in toward the skin (both windings: seen from either side)
+    nb = len(pos); hp, hn, hu, hw = [], [], [], []
+    hem_of = {}
+    for sg in segs:
+        for vi in sg:
+            if vi not in hem_of:
+                hem_of[vi] = nb + len(hem_of)
+                hp.append(pos[vi] - nrm[vi] * 0.0042); hn.append(nrm[vi]); hu.append(uv[vi]); hw.append(ww[vi])
+    for i, j in segs:
+        a2, b2 = hem_of[i], hem_of[j]
+        tris += [[i, j, b2], [i, b2, a2], [i, b2, j], [i, a2, b2]]
+    if hp:
+        pos = np.concatenate([pos, hp]); nrm = np.concatenate([nrm, hn]); uv = np.concatenate([uv, hu]); ww = np.concatenate([ww, hw])
+    tris = np.asarray(tris, int)
+    used = np.unique(tris); remap = -np.ones(len(pos), int); remap[used] = np.arange(len(used))
     mat = 'balaclava_ru' if fac == 'ru' else 'balaclava_ua'
-    p = dict(pos=P[used], tri=remap[Tk], mat=mat, uv=H['uv'][used] * 4.0, nrm=v['head_nrm'][used], W=H['W'][used], group='balaclava_' + vn)
+    p = dict(pos=pos[used], tri=remap[tris], mat=mat, uv=uv[used], nrm=nrm[used], W=ww[used], group='balaclava_' + vn)
     return p

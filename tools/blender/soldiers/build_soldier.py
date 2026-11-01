@@ -186,7 +186,7 @@ def make_gear(R, fac, env, which=None):
     c, r = head_fit(R)
     hA, hB = ('6b47', '6b47_goggles') if fac == 'ru' else ('pasgt', 'fast_hc')     # UA: standard-issue PASGT-type kaska / FAST high-cut
     for kind, nm in ((hA, 'helmet_A'), (hB, 'helmet_B')):
-        for q in K.helmet(kind, c, r, mm, fac):
+        for q in K.helmet(kind, c, r, mm, fac, trees=env.trees):
             q['group'] = nm; parts.append(q)
     sk = R['skel']; J = lambda n: sk.head[sk.idx[n]]
     for sd, sx in (('Left', 1), ('Right', -1)):
@@ -205,7 +205,7 @@ def make_gear(R, fac, env, which=None):
     hA2, hB2 = ('6b47', 'altyn') if fac == 'ru' else ('fast_hc', 'mich')
     amm = dict(mm, fabric='altyn_steel', webbing='altyn_steel') if fac == 'ru' else mm
     for kind, nm, ms in ((hA2, 'helmet_assault_A', mm), (hB2, 'helmet_assault_B', amm if fac == 'ru' else mm)):
-        for q in K.helmet(kind, c, r, ms, fac):
+        for q in K.helmet(kind, c, r, ms, fac, trees=env.trees):
             q['group'] = nm; parts.append(q)
     parts += AT.headset(c, r, fac)
     for vn in 'ABC':
