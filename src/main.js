@@ -20,7 +20,7 @@ async function start(opts) {
   if (opts.campaign) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
     const C = opts.campaign, b = document.createElement('button');
     b.textContent = 'WITHDRAW'; b.title = 'Pull the task group out: the battle counts as lost, survivors are saved';
-    Object.assign(b.style, { position: 'fixed', right: '14px', top: '34px', zIndex: 20, background: '#3a2a22', color: '#e6d2c0', border: '1px solid #7a4a3a', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', letterSpacing: '1px' });
+    Object.assign(b.style, { position: 'fixed', right: '14px', top: '104px', zIndex: 20, background: '#3a2a22', color: '#e6d2c0', border: '1px solid #7a4a3a', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', letterSpacing: '1px' });
     b.onclick = () => { if (game.over || !confirm('Withdraw the task group from the battle?')) return; game.over = true; game.result = { win: false, title: 'WITHDRAWN', why: `The task group pulled back from ${C.sectorName}.` }; hud.showEnd(game.result); };
     document.body.appendChild(b);
     setTimeout(() => hud.alert(`${C.mode === 'attack' ? 'Attack' : 'Defend'}: ${C.sectorName} — ${C.mode === 'attack' ? 'take the objectives from the dug-in enemy' : 'hold the objectives against the enemy attack'}`, 'good'), 1500);
