@@ -29,6 +29,7 @@ export class Commander {
     this.army = [];
     const lay = MAP.ai.army;
     for (const [x, z, kind, obj] of lay) {
+      if (kind === 'spg') { const v = g.makeVehicle('enemy', 'spg', x, z, N); v.name = `Enemy ${g.enemyFaction.spgName}`; this.army.push({ kind: 'spg', v, obj, state: 'emplaced', t: 3 }); this.spg = v; continue; }
       if (kind === 'tank') { const v = g.makeVehicle('enemy', 'tank', x, z, N); this.army.push({ kind: 'tank', v, obj, state: 'move', t: 2, home: OVERWATCH[obj][0] }); continue; }
       if (kind === 'mech' || kind === 'imech') { const v = g.makeVehicle('enemy', kind === 'imech' ? 'ifv' : 'btr', x, z, N); const s = g.makeSquad('enemy', x, z + 6, N, 'Enemy squad'); s.board(v, true); this.army.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() }); continue; }
       if (kind === 'atgm' || kind === 'fpv') { const s = g.makeSquad('enemy', x, z, N, kind === 'atgm' ? `Enemy ${g.enemyFaction.id === 'RU' ? 'Kornet' : 'Stugna'} team` : 'Enemy FPV team', kind); this.army.push({ kind, sq: s, obj, state: 'move', t: 2 }); continue; }
@@ -65,8 +66,13 @@ export class Commander {
       this.artT = 70 + Math.random() * 55;
       const targets = g.unitsOf('player').filter(u => (u.type === 'squad' && !u.mounted) || u.type === 'vehicle');
       targets.sort((a, b) => this.clusterScore(b) - this.clusterScore(a));
-      const t = targets[0]; if (!t) return;
-      const c = t.center(); const err = t.type === 'vehicle' ? 30 : 22;
+      // counter-battery: a player howitzer that has been firing gives its position away (sound ranging / radar)
+      const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 90);
+      const t = pg && Math.random() < 0.5 ? pg : targets[0]; if (!t) return;
+      const c = t.center(); const err = t === pg ? 40 : t.type === 'vehicle' ? 30 : 22;
+      // our own howitzer takes the mission if it can; otherwise divisional fire from off the map
+      const own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
+      if (own) { own.fireAt = { p: new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err) }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
       g.callStrike(c.x + (Math.random() - .5) * err, c.z + (Math.random() - .5) * err, 4 + Math.floor(Math.random() * 3), 24, 'enemy', 3, Math.random() < 0.25 ? 'arty' : 'mortar');
       g.hud?.alert('Incoming artillery!', 'bad');
     }
@@ -121,6 +127,7 @@ export class Commander {
   friendsNear(p, r) { let n = 0; for (const u of this.g.unitsOf('enemy')) if (u.type === 'squad' && !u.mounted && u.center().distanceTo(p) < r) n++; return n; }
   think(b) {
     const g = this.g;
+    if (b.kind === 'spg') return this.thinkSpg(b);
     if (b.kind === 'tank' || b.kind === 'vdefend') return this.thinkVehicle(b);
     const sq = b.sq;
     if (sq.destroyed) { b.dead = true; if (b.v && !b.v.destroyed) b.v.orderMove(...this.stagingFor(b.obj)); return; }
@@ -279,6 +286,22 @@ export class Commander {
     let best = null, bd = r;
     for (const bl of this.g.city.buildings) { if (bl.collapsedAll) continue; const [lx, lz] = bl.toLocal(c.x, c.z); const d = Math.max(0, Math.abs(lx) - bl.L / 2) + Math.max(0, Math.abs(lz) - bl.D / 2); if (d < bd && bl.slots.some(s => !s.occupant && !s.panel.gone) && !bl.slots.some(s => s.occupant && s.occupant.squad.side !== sq.side)) { bd = d; best = bl; } }
     return best;
+  }
+  // the enemy howitzer: stays emplaced in the rear; after firing it sometimes relocates ("shoot and scoot") to dodge
+  // counter-battery fire, especially when a player howitzer is around
+  thinkSpg(b) {
+    const v = b.v, g = this.g; if (v.destroyed) { b.dead = true; return; }
+    const S = v.spg;
+    if (b.state === 'emplaced' && S.missions > (b.seen ?? 0)) {
+      b.seen = S.missions;
+      const threat = g.vehicles.some(o => o.side === 'player' && o.kind === 'spg' && !o.destroyed) ? 0.55 : 0.25;
+      if (!S.mission && Math.random() < threat) {
+        b.home ??= [v.pos.x, v.pos.z];
+        const a = Math.random() * Math.PI * 2, r = 35 + Math.random() * 35;
+        const [x, z] = g.nav.nearestFree(b.home[0] + Math.cos(a) * r, b.home[1] + Math.sin(a) * r * 0.5, 2.4, 30);
+        v.orderMove(x, z, 0, false); b.state = 'relocating';
+      }
+    } else if (b.state === 'relocating' && !v.path && S.state !== 'packing') b.state = 'emplaced';
   }
   thinkVehicle(b) {
     const v = b.v; if (v.destroyed) { b.dead = true; return; }

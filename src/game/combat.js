@@ -486,6 +486,7 @@ export class Combat {
   }
   // ---------------------------------------------------------------- explosions
   explode(at, power, owner, dmgRange, radius) {
+    if (globalThis.__hitlog) console.warn(`EXPL ${at.x.toFixed(0)},${at.z.toFixed(0)} p=${power} by ${owner?.name} t=${this.g.time.toFixed(1)}`);
     const g = this.g;
     at.y = Math.max(0.1, at.y);
     const b = g.city.buildingAt(at.x, at.z, 1.2);
@@ -550,6 +551,7 @@ export class Combat {
   // Hit-location armour model (armor.js): which plate was struck, at what obliquity, ERA, penetration vs
   // effective thickness, then what lies behind the armour along the round's path.
   hitVehicle(v, W, fromPos, kind, owner, top = false, at = null) {
+    if (globalThis.__hitlog) console.warn(`HIT ${v.name} by ${owner?.name} ${W?.name} kind=${kind} t=${this.g.time.toFixed(1)}`);
     if (v.destroyed) return;
     const g = this.g;
     if (!v.zones) initArmor(v);
@@ -635,7 +637,7 @@ export class Combat {
         break; // one LOS-checked soldier per squad is enough
       }
     }
-    v.target = best; v.coaxTarget = bestInf && bi < 500 ? bestInf : null;
+    v.target = v.kind === 'spg' ? null : best; v.coaxTarget = bestInf && bi < 500 ? bestInf : null;
     if (v.target && v.target.type !== 'vehicle' && v.kind === 'tank' && v.target.squad && !v.target.inBuilding && v.weapons[0].he < 6) v.target = null; // save HE for buildings
   }
 }

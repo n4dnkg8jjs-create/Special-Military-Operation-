@@ -25,6 +25,17 @@ Environment asset pipeline (run from this folder, Blender 5.2 bpy module, `nice 
                                       The game must normalise variants with the <type>_intact offset: buildKit base-name regex
                                       /_(intact|damaged|holed|destroyed)(_v\d+)?$/ (test_section.py already does).
   python3 build_rubble.py          -> assets/env/rubble_1..6.glb (needs kit atlas + ground textures)
+  python3 build_rubble.py rubble_7 rubble_9  -> rebuild only those piles (rubble_7..12 = second set: big panel-slab heap,
+                                      red-brick house collapse, mixed debris, slab ramp, wide low scatter, silicate-brick heap);
+                                      then gltf-transform webp --quality 88 on the rebuilt files.  The game rasterises every pile
+                                      into a height map (src/world/terrain.js templateHeights) -> city.groundHeight(x, z).
+  python3 build_fortifications.py  -> assets/env/fortifications.glb (+ manifest 'fortifications'), then ./optimize_fortifications.sh
+                                      (WebP + quantize, ~4.7 MB).  Dressing for the trenches that terrain.js cuts into the ground:
+                                      revet_boards / revet_wattle / revet_logs (1 m wall panels, top at y=0, face +Z, scaled by the
+                                      game), duckboard, sandbag_row, dugout_roof (earth-covered log roof + timbered doorway down to
+                                      y=-1.7), mg_nest_roof, dragon_tooth(_b), ammo_crates; plus tree_*_mid mid-distance LODs of the
+                                      farmland trees (build_forest_lods.py, same seeds as farmland.glb) used 58..210 m (windbreaks) /
+                                      12..175 m (forest).  Uses the cached farmland atlases.
   python3 build_trees.py           -> assets/env/trees.glb
   python3 build_wires.py           -> assets/env/wires.glb
   python3 build_props.py           -> assets/env/props.glb (then WebP the textures: gltf-transform webp --quality 88; NO

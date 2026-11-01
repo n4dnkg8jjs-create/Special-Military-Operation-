@@ -89,7 +89,7 @@ export class Game {
     let bn = 1, tn = 1, in_ = 1;
     for (const [x, z, kind, sqName] of lineup) {
       const v = this.makeVehicle('player', kind, x, z, N);
-      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : kind === 'ifv' ? `${pf.ifvName} #${in_++}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
+      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : kind === 'ifv' ? `${pf.ifvName} #${in_++}` : kind === 'spg' ? `${pf.spgName}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
       this.playerUnits.push(v);
       if (sqName) {
         const sq = this.makeSquad('player', x, z + 6, N, sqName, kind === 'tank' ? 'assault' : 'mech'); sq.name = sqName;
@@ -215,13 +215,17 @@ export class Game {
   updateStrikes() {
     for (let i = this.strikes.length - 1; i >= 0; i--) {
       const s = this.strikes[i];
-      if (!s.whistled && this.time > s.t - 1.4) { s.whistled = true; this.sfx('incoming_whistle', new THREE.Vector3(s.x, 20, s.z), { delay: false }); }
+      if (!s.whistled && this.time > s.t - (s.caliber === 'spg' ? 2.3 : 1.4)) { s.whistled = true; this.sfx(s.caliber === 'spg' ? 'shell_incoming' : 'incoming_whistle', new THREE.Vector3(s.x, 20, s.z), { delay: false }); }
       if (this.time >= s.t) {
         this.strikes.splice(i, 1);
         const at = new THREE.Vector3(s.x, 0.1, s.z);
         // rounds landing on a building hit the roof/top floor
         const b = this.city.buildingAt(s.x, s.z, 0); if (b) at.y = b.floors * this.assets.kit.H - 0.5;
-        this.combat.explode(at, s.caliber === 'arty' ? 2.2 : 1.3, null, s.caliber === 'arty' ? [120, 320] : [80, 220], s.caliber === 'arty' ? 11 : 8);
+        if (s.caliber === 'spg') {   // 152 / 155 mm HE-Frag: ~6-7 kg of explosive, lethal radius well beyond a mortar's
+          this.combat.explode(at, s.power || 2.7, s.owner || null, [170, 420], 15);
+          if (!b) for (let k = 0; k < 2; k++) this.fx.vehicleDust(at, 16);
+          for (const v of this.vehicles) if (!v.destroyed && v.pos.distanceTo(at) < 7) { v.hp -= (7 - v.pos.distanceTo(at)) * (v.kind === 'tank' ? 25 : 70); if (v.hp <= 0) v.knockOut(false); else if (v.pos.distanceTo(at) < 3 && Math.random() < 0.5) { v.immob.track = true; v.immobile = true; } }
+        } else this.combat.explode(at, s.caliber === 'arty' ? 2.2 : 1.3, null, s.caliber === 'arty' ? [120, 320] : [80, 220], s.caliber === 'arty' ? 11 : 8);
       }
     }
   }

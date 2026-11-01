@@ -1,7 +1,8 @@
 """Builds assets/env/rubble_1..6.glb: piles of actual broken panel fragments, floor slabs, bricks, rebar, wood,
 insulation, furniture bits on a low dust mound. Shared 1024^2 debris atlas = half-res kit atlas whose top two
 facade rows are replaced by rubble ground / silicate brick / plank textures.
-Run: cd tools/blender/env && nice -n 10 python3 build_rubble.py
+Run: cd tools/blender/env && nice -n 10 python3 build_rubble.py [rubble_7 rubble_8 ...]   (names = rebuild only those)
+     then WebP the textures like tools/optimize_assets.sh (gltf-transform webp --quality 88)
 """
 import os, sys, math
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
@@ -271,9 +272,24 @@ def main():
         ('rubble_4', 44, 2.0, 0.22, 1, 60, 40, dict(red_frac=0.2, flat=3.0, extras=('wood', 'frame', 'insulation'))),
         ('rubble_5', 55, 1.8, 0.2, 1, 30, 10, dict(slab_kinds=('panel',), flat=3.0, big=(2.6, 2.0), extras=('wood',))),
         ('rubble_6', 66, 1.8, 0.1, 0, 20, 90, dict(red_frac=0.3, flat=4.0, extras=('wood',))),
+        # second set (2026-11): bigger collapse heaps vehicles climb over, brick house collapses, mixed debris, slab ramp
+        ('rubble_7', 77, 4.3, 1.75, 11, 130, 25, dict(red_frac=0.1, slab_kinds=('panel', 'panel', 'floor'), flat=1.35, big=None, extras=('radiator', 'frame', 'wood', 'insulation', 'rag'))),
+        ('rubble_8', 88, 3.8, 1.35, 1, 45, 270, dict(red_frac=0.85, slab_kinds=('floor',), flat=1.5, extras=('wood', 'insulation', 'frame', 'chair'))),
+        ('rubble_9', 99, 3.0, 0.9, 3, 85, 75, dict(red_frac=0.4, flat=1.8, extras=('radiator', 'frame', 'wood', 'insulation', 'rag', 'chair'))),
+        ('rubble_10', 101, 3.4, 0.65, 2, 60, 30, dict(slab_kinds=('floor',), flat=2.2, big=(3.0, 2.3), extras=('wood', 'rag'))),
+        ('rubble_11', 111, 3.6, 0.3, 2, 115, 35, dict(red_frac=0.25, flat=3.5, extras=('wood', 'frame', 'insulation'))),
+        ('rubble_12', 121, 3.2, 1.1, 2, 50, 210, dict(red_frac=0.08, slab_kinds=('panel',), flat=1.6, extras=('wood', 'insulation', 'radiator'))),
     ]
+    only = [a for a in sys.argv[1:]]
     info = {}
+    import json
+    old = json.load(open(os.path.join(REPO, 'assets', 'env', 'manifest.json'))).get('rubble', {}).get('files', {})
     for name, seed, R_, H_, ns, nc, nb, kw in specs:
+        files.append(name)
+        if only and name not in only:
+            if name in old:
+                info[name] = old[name]
+            continue
         reset_scene()
         mat = make_material('debris', *paths)
         mb = build_pile(name, seed, R_, H_, ns, nc, nb, **kw)
@@ -285,11 +301,14 @@ def main():
         mn, mx = mb.bounds()
         info[name] = {'tris': mb.tris(), 'bbox_min': [round(float(v), 2) for v in mn], 'bbox_max': [round(float(v), 2) for v in mx], 'bytes': size}
         print(name, mb.tris(), 'tris', round(size / 1e6, 2), 'MB', np.round(mn, 2), np.round(mx, 2))
-        files.append(name)
     update_manifest('rubble_files', files)
     update_manifest('rubble', {'notes': 'origin = ground centre of the pile, +Y up. One mesh per file, material "debris" (1024^2 atlas). '
                                'rubble_1 big panel-fragment pile, rubble_2 brick-heavy pile, rubble_3 collapsed floor slabs "tent", '
-                               'rubble_4 low street debris, rubble_5 loose panel slab with rebar, rubble_6 brick scatter.', 'files': info})
+                               'rubble_4 low street debris, rubble_5 loose panel slab with rebar, rubble_6 brick scatter, '
+                               'rubble_7 big panel-slab collapse heap (~1.8 m, vehicles climb it), rubble_8 red-brick house collapse heap, '
+                               'rubble_9 mixed household debris pile, rubble_10 floor-slab ramp on a low mound, rubble_11 wide low concrete '
+                               'scatter, rubble_12 silicate-brick heap. The game rasterises each pile into a height map '
+                               '(src/world/terrain.js templateHeights) so vehicles drive up and over it.', 'files': info})
 
 
 if __name__ == '__main__':

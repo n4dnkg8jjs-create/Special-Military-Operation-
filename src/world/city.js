@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
 import { Building, KitPool } from './buildings.js';
 import { instance, trs } from './instancer.js';
+import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { MAPS } from './maps.js';
@@ -26,13 +27,49 @@ export class City {
     this.scene = scene; this.assets = assets; this.quality = quality;
     this.rng = mulberry(7031);
     this.nav = new NavGrid(MAP_SIZE, 1);
+    this.terrain = new Terrain(MAP_SIZE, this.nav, () => this.rng()); this.nav.terrain = this.terrain;
     this.buildings = []; this.dynamic = new THREE.Group(); scene.add(this.dynamic);
     this.burning = []; this.wrecks = [];
+    this.groundHeight = this.groundHeight.bind(this);
+  }
+  // ================================================================ placement footprints (anti-clipping)
+  // Every solid prop / tree trunk registers an oriented box; later placements are refused if they would intersect one.
+  solidAdd(x, z, hx, hz, ry = 0, kind = '') {
+    const o = { x, z, hx, hz, c: Math.cos(ry), s: Math.sin(ry), kind }, g = this._solids ||= new Map(), r = Math.hypot(hx, hz);
+    for (let i = Math.floor((x - r) / 8); i <= Math.floor((x + r) / 8); i++) for (let j = Math.floor((z - r) / 8); j <= Math.floor((z + r) / 8); j++) { const k = i * 4096 + j; (g.get(k) || g.set(k, []).get(k)).push(o); }
+    return o;
+  }
+  solidHit(x, z, hx, hz, ry = 0, pad = 0.1, ignore = null) {
+    const g = this._solids; if (!g) return false;
+    const c2 = Math.cos(ry), s2 = Math.sin(ry), r = Math.hypot(hx, hz) + pad;
+    for (let i = Math.floor((x - r) / 8); i <= Math.floor((x + r) / 8); i++) for (let j = Math.floor((z - r) / 8); j <= Math.floor((z + r) / 8); j++) for (const b of g.get(i * 4096 + j) || []) {
+      if (ignore && ignore(b.kind)) continue;
+      const dx = x - b.x, dz = z - b.z; let sep = false;
+      for (const [ax, az] of [[b.c, -b.s], [b.s, b.c], [c2, -s2], [s2, c2]]) {
+        const d = Math.abs(dx * ax + dz * az), ra = b.hx * Math.abs(b.c * ax - b.s * az) + b.hz * Math.abs(b.s * ax + b.c * az), rb = hx * Math.abs(c2 * ax - s2 * az) + hz * Math.abs(s2 * ax + c2 * az);
+        if (d > ra + rb + pad) { sep = true; break; }
+      }
+      if (!sep) return true;
+    }
+    return false;
+  }
+  // ================================================================ ground relief API (for soldier / vehicle Y)
+  // Height of the walkable ground (m) at world (x, z): 0 on the flat, negative on trench / ditch floors (-1.1 firing
+  // cells, -1.55 communication trenches, -1.7 fire trenches, down to -2.6 in an AT ditch), positive on parapets, dugout
+  // roofs and rubble piles (up to ~2.5 m on a big collapse heap). O(1): one sparse-tile lookup + bilinear (0.4 m grid).
+  groundHeight(x, z) { return this.terrain.heightAt(x, z); }
+  groundNormal(x, z, out) { return this.terrain.normalAt(x, z, out); }
+  // null, or { depth, floor, fireY, front:[fx,fz]|null, kind } when (x, z) is inside a trench / firing cell / passage.
+  // fireY = feet height for a man firing over the parapet from here (firing step), front = the direction it faces.
+  trenchInfo(x, z) {
+    const S = this.terrain.cutSDF(x, z), q = this.terrain._q; if (S >= 0 || !q) return null;
+    return { depth: q.depth, floor: -q.depth, fireY: -Math.min(q.depth, 1.12), front: q.front, kind: q.kind };
   }
   build() {
     this.lots = (MAP.yards?.lots || []).map(l => [...l]);
     this.ground(); this.roads();
     this.placeBuildings();
+    this.fortifications();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences();
     this.craters(); this.paintGround(); this.skyline();
@@ -49,16 +86,22 @@ export class City {
   // Ground: one large plane with a splat-mapped shader (dry grass, worn paths, rubble/gravel, mud)
   // and anti-tiling (two rotated samples blended by noise + macro tint), painted from the layout.
   ground() {
-    const S = MAP_SIZE + 1400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const S = this.groundS = MAP_SIZE + 1400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const ground = new THREE.Mesh(g, this.groundMat(false)); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
+    this.groundMesh = ground;
+  }
+  groundMat(terrain) {
+    const S = this.groundS;
     const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t; };
-    const nrm = T.dirt?.normalMap ? T.dirt.normalMap.clone() : null; if (nrm) { nrm.needsUpdate = true; nrm.repeat.set(S / 6, S / 6); }
+    const nrm = this._gNrm ||= (T.dirt?.normalMap ? (() => { const n = T.dirt.normalMap.clone(); n.needsUpdate = true; n.repeat.set(S / 6, S / 6); return n; })() : null);
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, normalMap: nrm, normalScale: new THREE.Vector2(0.8, 0.8) });
-    const U = this.groundUniforms = { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE } };
+    m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'city_terrain' : 'city_ground';
+    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() } };
     m.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tSplat; uniform float splatSize;
+        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tSplat, tHole; uniform float splatSize;
         float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
         vec3 tile(sampler2D t, vec2 p){ // anti-tiling: second sample rotated/offset, blended by low-frequency noise
@@ -67,6 +110,10 @@ export class City {
           return mix(texture2D(t, p).rgb, texture2D(t, q).rgb, smoothstep(0.38, 0.62, n)); }`)
         .replace('#include <map_fragment>', `
           vec2 wp = vWPos.xz;
+          #ifdef GROUND_HOLE
+            vec2 huv = wp / splatSize + 0.5;
+            if (huv.x > 0.0 && huv.y > 0.0 && huv.x < 1.0 && huv.y < 1.0 && texture2D(tHole, huv).r > 0.5) discard;
+          #endif
           vec2 wob = vec2(vn(wp * 0.21) - 0.5, vn(wp * 0.21 + 31.0) - 0.5) * 2.2;   // break up blurred mask edges
           vec4 sp = texture2D(tSplat, clamp((wp + wob) / splatSize + 0.5, 0.002, 0.998));
           float outside = smoothstep(splatSize * 0.5 - 6.0, splatSize * 0.5 + 4.0, max(abs(wp.x), abs(wp.y)));
@@ -89,10 +136,59 @@ export class City {
           col = mix(col, rub, wr);
           col = mix(col, dirt * vec3(0.5, 0.46, 0.42), wm * 0.85);       // wet mud / scorched
           col *= 0.86 + 0.28 * (vn(wp * 0.015) * 0.6 + vn(wp * 0.06) * 0.4); // macro variation
+          #ifdef TERRAIN_MESH
+            float tdep = smoothstep(0.05, 0.55, -vWPos.y);
+            col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
+          #endif
           diffuseColor.rgb *= col;`);
     };
-    const ground = new THREE.Mesh(g, m); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
-    this.groundMesh = ground;
+    return m;
+  }
+  // ================================================================ field fortifications (MAP.fortifications -> terrain.js)
+  fortifications() {
+    const T = this.terrain, R = this.rng;
+    T.roadTest = (x, z, pad) => onRoad(x, z, pad);
+    T.keepOut = (x, z) => this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 4 && Math.abs(lz) < b.D / 2 + 4; }) || !!(this.inVillage && this.inVillage(x, z, 1)) || !!(this.inFarm && this.inFarm(x, z, 3)) || !!(this.inFarmstead && this.inFarmstead(x, z, 2));
+    for (const f of MAP.fortifications || []) {
+      if (f.type === 'fire') {
+        const res = T.fireTrench(f.base, { front: f.front, style: f.style, revet: f.revet, leg: f.leg, amp: f.amp, bayEvery: f.bays, depth: f.depth, sys: f });
+        const at = fr => { // trench point nearest to a fraction along the baseline
+          const B = f.base, L = B.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - B[i][0], p[1] - B[i][1]), 0); let d = fr * L, i = 0;
+          while (i < B.length - 2 && d > Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1])) { d -= Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1]); i++; }
+          const sl = Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1]) || 1, x = B[i][0] + (B[i + 1][0] - B[i][0]) * d / sl, z = B[i][1] + (B[i + 1][1] - B[i][1]) * d / sl;
+          let best = null, bd = 1e9; for (const p of res.pts) { const dd = Math.hypot(p[0] - x, p[1] - z); if (dd < bd && T.cutSDF(p[0], p[1]) < -0.2) { bd = dd; best = p; } } return best;
+        };
+        // dugouts hang off the rear-most trench vertex near the requested spot; the roof must sit clear of every cut
+        const rear = fr => { const p0 = at(fr); if (!p0) return null; let best = null, bv = 1e9; for (const p of res.pts) { if (Math.hypot(p[0] - p0[0], p[1] - p0[1]) > 7 || T.cutSDF(p[0], p[1]) > -0.2) continue; const v = p[0] * f.front[0] + p[1] * f.front[1]; if (v < bv) { bv = v; best = p; } } return best || p0; };
+        for (const fr of f.dug || []) {
+          const p = rear(fr); if (!p) continue; const bx = -f.front[0], bz = -f.front[1], sx = -bz, sz = bx, d0 = res.w + 0.1, cx = p[0] + bx * (d0 + 3.2 + 2.5), cz = p[1] + bz * (d0 + 3.2 + 2.5);
+          const clear = [[-2.4, -2.5], [2.4, -2.5], [-2.4, 2.5], [2.4, 2.5], [0, 0]].every(([u, v]) => { const x = cx + sx * u + bx * v, z = cz + sz * u + bz * v; return T.cutSDF(x, z) > 0.4 && !onRoad(x, z, 2) && !T.keepOut(x, z); });
+          if (!clear) continue;
+          T.dugout(p[0] + bx * d0, p[1] + bz * d0, bx, bz, { sys: f, revet: 'logs' });
+        }
+        for (const fr of f.mg || []) {
+          const p = at(fr); if (!p) continue; let best = null, bd = 1e9;
+          for (const b of res.bays) { const d = Math.hypot(b.tag.x - p[0], b.tag.z - p[1]); if (d < bd && !b.covered) { bd = d; best = b; } }
+          if (best && bd < 25) T.mgNest(best);
+        }
+      } else if (f.type === 'comm') T.commTrench(f.pts, { revet: f.revet || 'boards', style: f.style, sys: f });
+      else if (f.type === 'ditch') T.antitankDitch(f.pts, { bermSide: f.bermSide });
+      else if (f.type === 'teeth') T.dragonTeeth(f.pts, { rows: f.rows });
+    }
+    const wall = this.wallMat();
+    T.finalize({ scene: this.scene, matTop: this.groundMat(true), matWall: wall, groundS: this.groundS });
+    this.groundUniforms.tHole.value = T.mask;
+    // dressing pieces (fortifications.glb, procedural stand-ins otherwise)
+    const g = this.assets.gltf.fortifications, cull = { revet_boards: 330, revet_wattle: 330, revet_logs: 330, duckboard: 240, sandbag_row: 420, ammo_crates: 200, dragon_tooth: 1100, dragon_tooth_b: 1100, dugout_roof: 1100, mg_nest_roof: 900 };
+    for (const [name, mats] of T.dress) {
+      const t = g?.scene.getObjectByName(name) || fortFallback(name); if (!t) continue;
+      instance(this.scene, t, mats, { cullDist: cull[name] || 600, shadows: !/duckboard|ammo/.test(name) });
+    }
+  }
+  wallMat() {
+    const T = this.assets.tex.dirt || {}, p = { color: 0x8c7c6a, roughness: 1 };
+    for (const k of ['map', 'normalMap']) if (T[k]) { p[k] = T[k].clone(); p[k].needsUpdate = true; p[k].wrapS = p[k].wrapT = THREE.RepeatWrapping; }
+    return new THREE.MeshStandardMaterial(p);
   }
   // value-noise helper for painting
   noise2(x, z, s) { const h = (a, b) => { const t = Math.sin(a * 127.1 + b * 311.7 + s * 17.3) * 43758.5453; return t - Math.floor(t); }; const i = Math.floor(x), j = Math.floor(z), f = x - i, g = z - j, u = f * f * (3 - 2 * f), v = g * g * (3 - 2 * g); return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - v) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * v; }
@@ -102,12 +198,14 @@ export class City {
     const toPx = (x, z) => [(x + o) * k, (z + o) * k];
     const R = this.rng;
     // rubble/gravel around blocks, rubble piles and craters
-    const rub = layer(), rx = rub.getContext('2d'); rx.filter = `blur(${5 * k}px)`; rx.fillStyle = '#fff';
+    // shapes drawn sharp, every layer blurred once at the end (per-shape canvas filters are very slow in software GL)
+    const blurred = (src, px) => { const c = layer(), x = c.getContext('2d'); x.filter = `blur(${px}px)`; x.drawImage(src, 0, 0); return x; };
+    const rub = layer(), rx = rub.getContext('2d'); rx.fillStyle = '#fff';
     for (const b of this.buildings) { rx.save(); rx.translate(...toPx(b.x, b.z)); rx.rotate(-b.rot); rx.globalAlpha = 0.22 + R() * 0.15; rx.fillRect((-b.L / 2 - 3.5) * k, (-b.D / 2 - 3.5) * k, (b.L + 7) * k, (b.D + 7) * k); rx.restore(); }
     rx.globalAlpha = 0.6; const v = new THREE.Vector3();
     for (const list of this.rubbleInstances || []) for (const M of list) { v.setFromMatrixPosition(M); rx.beginPath(); for (let i = 0; i <= 10; i++) { const a = i / 10 * 6.28, rr = 2.2 + R() * 2.2; const [a1, b1] = toPx(v.x + Math.cos(a) * rr, v.z + Math.sin(a) * rr); i ? rx.lineTo(a1, b1) : rx.moveTo(a1, b1); } rx.fill(); }
     // worn paths: each entrance to the nearest road edge, plus along the courtyard face
-    const pth = layer(), px = pth.getContext('2d'); px.filter = `blur(${1.2 * k}px)`; px.strokeStyle = '#fff'; px.lineCap = 'round';
+    const pth = layer(), px = pth.getContext('2d'); px.strokeStyle = '#fff'; px.lineCap = 'round';
     for (const b of this.buildings) {
       px.lineWidth = 2.4 * k; px.globalAlpha = 0.8;
       for (const e of b.entrances) {
@@ -117,7 +215,7 @@ export class City {
       if (b.entrances.length > 1) { px.lineWidth = 3 * k; px.globalAlpha = 0.6; px.beginPath(); px.moveTo(...toPx(b.entrances[0].x, b.entrances[0].z)); for (const e of b.entrances) px.lineTo(...toPx(e.x, e.z)); px.stroke(); }
     }
     // mud: craters only (scorched, churned)
-    const mud = layer(), mx = mud.getContext('2d'); mx.filter = `blur(${2 * k}px)`; mx.fillStyle = '#fff';
+    const mud = layer(), mx = mud.getContext('2d'); mx.fillStyle = '#fff';
     const cm = this.craterMesh, M = new THREE.Matrix4(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
     const blob = (ctx, x, z, r, alpha) => { ctx.globalAlpha = alpha; ctx.beginPath(); const n = 14, ph = R() * 6.28; for (let i = 0; i <= n; i++) { const a = i / n * 6.28, rr = r * (0.55 + 0.45 * this.noise2(Math.cos(a + ph) * 2 + x, Math.sin(a + ph) * 2 + z, 9) + (R() - .5) * 0.25); const [px2, pz2] = toPx(x + Math.cos(a) * rr, z + Math.sin(a) * rr); i ? ctx.lineTo(px2, pz2) : ctx.moveTo(px2, pz2); } ctx.fill(); };
     if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); blob(mx, v.x, v.z, sc.x * 0.6, 0.5); blob(rx, v.x, v.z, sc.x * 0.9, 0.25); }
@@ -135,7 +233,7 @@ export class City {
     for (const [x, z, r, rot] of this.dirtYards || []) { lx.save(); lx.translate(...toPx(x, z)); lx.rotate(-rot); lx.fillRect(-r * k, -r * 0.7 * k, r * 2 * k, r * 1.4 * k); lx.restore(); }
     lx.globalCompositeOperation = 'source-over';
     const lawnB = layer(), lb = lawnB.getContext('2d'); lb.filter = `blur(${2.2 * k}px)`; lb.drawImage(lawn, 0, 0);
-    const g1 = rx.getImageData(0, 0, N, N).data, g2 = px.getImageData(0, 0, N, N).data, g3 = mx.getImageData(0, 0, N, N).data, g4 = lb.getImageData(0, 0, N, N).data;
+    const g1 = blurred(rub, 5 * k).getImageData(0, 0, N, N).data, g2 = blurred(pth, 1.2 * k).getImageData(0, 0, N, N).data, g3 = blurred(mud, 2 * k).getImageData(0, 0, N, N).data, g4 = lb.getImageData(0, 0, N, N).data;
     const out = new Uint8Array(N * N * 4);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = i / k - o, z = j / k - o, p = (j * N + i) * 4;
@@ -191,7 +289,8 @@ export class City {
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
       if (gw < 0.35 || this.rng() > gw) continue;
       if (onRoad(px, pz, SIDEWALK + 0.4) || (this.lots || []).some(l => px > l[0] && px < l[2] && pz > l[1] && pz < l[3])) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
-      const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
+      if (this.terrain.cutSDF(px, pz) < 0.9) continue;
+      const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, this.terrain.heightAt(px, pz) - 0.03, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
       cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08));
     }
     // the lawns carry on past the playable edge (thinner, patchy) so the grass doesn't stop on a line
@@ -342,7 +441,7 @@ export class City {
   rubbleTemplates() {
     if (this._rt) return this._rt;
     const keys = this.assets.rubbleKeys || [];
-    this._rt = keys.map(k => this.assets.gltf[k].scene);
+    this._rt = keys.map(k => { const sc = this.assets.gltf[k].scene; sc.userData.key = k; return sc; });
     if (!this._rt.length) {
       // fallback: chunky pile of broken slabs
       const m = new THREE.MeshStandardMaterial({ color: 0x8e887d, roughness: 0.95, flatShading: true });
@@ -357,15 +456,24 @@ export class City {
     for (const t of this._rt) { const b = new THREE.Box3().setFromObject(t); t.userData.r = Math.max(b.max.x - b.min.x, b.max.z - b.min.z) / 2; t.userData.h = b.max.y; }
     return this._rt;
   }
+  // rubble pools by role (keys from assets/env/manifest.json rubble files); missing ones fall back to the whole set
+  rubblePool(kind) {
+    const T = this.rubbleTemplates(), want = { fan: [4, 5, 6, 9, 11], heap: [1, 3, 7, 9, 10, 12], street: [4, 6, 11, 5], brick: [2, 8, 12, 6], house: [1, 2, 8, 12] }[kind];
+    const l = want ? T.filter(t => want.some(n => t.userData.key === 'rubble_' + n)) : [];
+    return l.length ? l : T;
+  }
   rubbleAndDebris() {
-    const T = this.rubbleTemplates(), place = T.map(() => []);
-    const add = (x, z, s, ry, own = null) => {
+    const T = this.rubbleTemplates(), place = new Map(), REF = 3.4;
+    // s = size relative to a 3.4 m-radius pile; each template is scaled to that footprint
+    const add = (x, z, s, ry, own = null, kind = 'fan') => {
       if (onRoad(x, z, -1) && this.rng() < 0.5) s *= 0.6;
-      const k0 = Math.floor(this.rng() * T.length), rr = T[k0].userData.r * s;
+      const pool = this.rubblePool(kind), t = pool[Math.floor(this.rng() * pool.length)], sc = s * REF / Math.max(1.5, t.userData.r), rr = t.userData.r * sc;
       if (this.buildings.some(b => b !== own && (() => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + rr * 0.7 && Math.abs(lz) < b.D / 2 + rr * 0.7; })())) return;
-      const k = k0; place[k].push(trs(x, 0, z, ry, s));
-      const r = rr;
-      this.nav.circle(x, z, r * 0.65, r * s > 2.5 ? 7 : 4, true);
+      if (this.terrain.cutSDF(x, z) < rr + 1) return;
+      const M = trs(x, 0, z, ry, sc); (place.get(t) || place.set(t, []).get(t)).push(M); this.terrain.stamp(t, M);
+      // passable for everyone, slow; big heaps give low cover (vehicles climb them: see groundHeight)
+      const top = t.userData.h * sc;
+      this.nav.circle(x, z, rr * 0.65, top > 1.1 ? 7 : top > 0.5 ? 5 : 3, true);
     };
     for (const b of this.buildings) {
       // debris fans under destroyed/holed panels
@@ -373,33 +481,33 @@ export class City {
         if (p.state < 2 || p.floor > 3) continue;
         if (p.state === 2 && this.rng() < 0.6) continue;
         const c = b.panelCenter(p), o = b.outward(p);
-        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = T[0].userData.r * sc * 0.42 + this.rng() * 0.5;
-        add(c.x + o.x * off, c.z + o.z * off, sc, this.rng() * 6.28, b);
+        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = REF * sc * 0.42 + this.rng() * 0.5;
+        add(c.x + o.x * off, c.z + o.z * off, sc, this.rng() * 6.28, b, /brick/.test(b.kind) ? (this.rng() < 0.6 ? 'brick' : 'fan') : 'fan');
       }
       if (b.pancaked) for (let c = b.pancaked[0]; c <= b.pancaked[1]; c++) for (let k = 0; k < 3; k++) {
         const w = b.toWorld(-b.L / 2 + (c + 0.5) * this.assets.kit.W + (this.rng() - .5) * 3, 0, (this.rng() - .5) * b.D * 1.4);
-        add(w.x, w.z, 1.6 + this.rng() * 0.9, this.rng() * 6.28);
+        add(w.x, w.z, 1.6 + this.rng() * 0.9, this.rng() * 6.28, null, 'heap');
       }
       if (b.collapsedCorner) for (let k = 0; k < 3; k++) {
         const ex = (b.collapsedCorner === 'right' ? 1 : -1) * (b.L / 2 + 2 + this.rng() * 3);
-        const w = b.toWorld(ex, 0, (this.rng() - .5) * b.D); add(w.x, w.z, 1.0 + this.rng() * 0.7, this.rng() * 6.28);
+        const w = b.toWorld(ex, 0, (this.rng() - .5) * b.D); add(w.x, w.z, 1.0 + this.rng() * 0.7, this.rng() * 6.28, null, /brick/.test(b.kind) ? 'brick' : 'heap');
       }
     }
-    // scattered debris on streets
     // loose debris lies along the foot of the walls it fell from, not in the middle of yards
     for (let i = 0; i < (this.streetDebris ?? 18) && this.buildings.length; i++) {
-      const b = this.buildings[Math.floor(this.rng() * this.buildings.length)], side = Math.floor(this.rng() * 4), s = 0.35 + this.rng() * 0.4, rr = T[0].userData.r * s * 0.45;
+      const b = this.buildings[Math.floor(this.rng() * this.buildings.length)], side = Math.floor(this.rng() * 4), s = 0.35 + this.rng() * 0.4, rr = REF * s * 0.45;
       const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
-      add(w.x, w.z, s, this.rng() * 6.28, b);
+      add(w.x, w.z, s, this.rng() * 6.28, b, 'street');
     }
-    T.forEach((t, k) => place[k].length && instance(this.scene, t, place[k]));
-    this.rubbleInstances = place;
+    for (const [t, l] of place) instance(this.scene, t, l);
+    this.rubbleInstances = [...place.values()];
   }
   // Dynamic rubble when panels are destroyed during play.
   spawnRubble(x, z, s) {
-    const T = this.rubbleTemplates(); const t = T[Math.floor(Math.random() * T.length)].clone();
+    const T = this.rubbleTemplates(), tp = T[Math.floor(Math.random() * T.length)], t = tp.clone();
     t.position.set(x, -0.6 * s, z); t.rotation.y = Math.random() * 6.28; t.scale.setScalar(s); t.userData.rise = 0.6 * s;
     this.dynamic.add(t); this.nav.circle(x, z, t.userData.r * s * 0.6, 4, true);
+    this.terrain.stamp(tp, trs(x, 0, z, t.rotation.y, s));
     return t;
   }
   // ---------------------------------------------------------------- vegetation
@@ -435,14 +543,16 @@ export class City {
     for (let i = 0; i < 110; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); if (!onRoad(x, z, 4)) spots.push([x, z]); }
     const by = {}, inLot = (x, z) => (this.lots || []).some(l => x > l[0] - 2 && x < l[2] + 2 && z > l[1] - 2 && z < l[3] + 2);
     for (const [x, z] of spots) {
-      if (inLot(x, z)) continue;
+      if (inLot(x, z) || this.terrain.cutSDF(x, z) < 2) continue;
       const i = this.nav.idx(x, z); if (i < 0 || this.nav.cost[i] === BLOCK) continue;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 3 && Math.abs(lz) < b.D / 2 + 3; })) continue;
+      if (this.solidHit(x, z, 0.45, 0.45, 0, 0.3)) continue;
       const roll = this.rng();
       const type = roll < 0.12 && T.leafy ? 'leafy' : roll < 0.22 && T.stump ? 'stump' : roll < 0.27 && T.fallen ? 'fallen' : 'bare';
       const list = T[type]; const k = Math.floor(this.rng() * list.length);
       (by[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, this.rng() * 6.28, 0.85 + this.rng() * 0.35));
       this.nav.circle(x, z, type === 'fallen' ? 1.2 : 0.5, type === 'fallen' ? 5 : BLOCK, true);
+      this.solidAdd(x, z, type === 'fallen' ? 1.2 : 0.4, type === 'fallen' ? 1.2 : 0.4, 0, 'tree');
     }
     for (const v of Object.values(by)) instance(this.scene, v.t, v.m);
   }
@@ -460,7 +570,8 @@ export class City {
       const n = Math.floor(Math.hypot(x1 - x0, z1 - z0) / step), mats = [], att = attachOf(tpl), tops = [];
       for (let i = 0; i <= n; i++) {
         const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
-        if (onRoad(x, z, -0.5)) { tops.push(null); continue; }
+        if (onRoad(x, z, -0.5) || this.solidHit(x, z, 1.0, 0.25, rotY, 0.1)) { tops.push(null); continue; }
+        this.solidAdd(x, z, 0.25, 0.25, 0, 'pole');
         const broken = this.rng() < 0.12, tilt = broken ? (this.rng() - .5) * 0.5 : (this.rng() - .5) * 0.04;
         const M = trs(x, 0, z, rotY, 1, tilt, (this.rng() - .5) * 0.05); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK);
@@ -499,7 +610,11 @@ export class City {
     const placeList = {};
     const put = (type, x, z, ry, s = 1, navR = 1.5, cost = 6) => {
       const list = T[type]; if (!list) return;
-      const k = Math.floor(this.rng() * list.length); (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, ry, s));
+      if (this.terrain.cutSDF(x, z) < 3) return;
+      const k = Math.floor(this.rng() * list.length), bb0 = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]), ex = (bb0.max.x - bb0.min.x) / 2 * s, ez = (bb0.max.z - bb0.min.z) / 2 * s;
+      if (navR && this.solidHit(x, z, ex, ez, ry, 0.1)) return;
+      if (navR) this.solidAdd(x, z, ex, ez, ry, type);
+      (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, ry, s));
       if (navR) { const bb = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]); const sx = (bb.max.x - bb.min.x) / 2 * s, sz = (bb.max.z - bb.min.z) / 2 * s; this.nav.rect(x, z, sx, sz, ry, cost, 0.2); for (let a = 0; a < 1; a++) { const idx = this.nav.idx(x, z); if (idx >= 0) this.nav.low[idx] = 1; } }
     };
     // a handful of shot-up wrecks on the arterials (not a scrapyard on every kerb)
@@ -549,10 +664,13 @@ export class City {
       const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); const hx = (bb.max.x - bb.min.x) / 2 * s, hz = (bb.max.z - bb.min.z) / 2 * s;
       // refuse placements on roads or overlapping blocked cells
       if (onRoad(x, z, Math.max(hx, hz) * 0.6)) return false;
+      if (this.terrain.cutSDF(x, z) < Math.max(hx, hz) + 0.8) return false;
       const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] === BLOCK) return false;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + hx + 1 && Math.abs(lz) < b.D / 2 + hz + 1; })) return false;
-      const M = trs(x, 0, z, ry, s);
       const crush = type === 'fenceH' || type === 'bench' || type === 'bin' ? 'any' : type === 'po2' ? 'tank' : null;
+      if (this.solidHit(x, z, hx, hz, ry, 0.1, crush ? (k => k === 'fence') : null)) return false;
+      this.solidAdd(x, z, hx, hz, ry, crush ? 'fence' : type);
+      const M = trs(x, 0, z, ry, s);
       if (crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush, type }); if (cost) this.nav.rect(x, z, hx, hz, ry, crush === 'any' ? Math.min(cost, 3) : cost, 0.15); return true; }
       (place[type + k] ||= { t, m: [] }).m.push(M);
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
@@ -598,7 +716,11 @@ export class City {
     const mput = (n, x, z, ry, { cost = BLOCK, road = true, occ = false } = {}) => {
       const t = tpl(n); if (!t) return false; const bb = t.userData.bb, hx = (bb.max.x - bb.min.x) / 2, hz = (bb.max.z - bb.min.z) / 2;
       if (road && onRoad(x, z, Math.min(hx, hz) * 0.8)) return false;
+      if (this.terrain.cutSDF(x, z) < Math.max(hx, hz) + 0.8) return false;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + Math.max(hx, hz) * 0.7 && Math.abs(lz) < b.D / 2 + Math.max(hx, hz) * 0.7; })) return false;
+      const fx = /lamp/.test(n) ? 0.3 : hx, fz = /lamp/.test(n) ? 0.3 : hz; // lamps: only the post matters
+      if (this.solidHit(x, z, fx, fz, ry, 0.1)) return false;
+      this.solidAdd(x, z, fx, fz, ry, n);
       (place[n] ||= { t, m: [] }).m.push(trs(x, 0, z, ry));
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
       if (occ) this.nav.addOccluder(x, z, hx * 0.95, hz * 0.95, ry, (bb.max.y - bb.min.y) * 0.8, null);
@@ -634,7 +756,7 @@ export class City {
     // euro-bin pads by the block entrances (one per block)
     for (const b of this.buildings) { const e = b.entrances[Math.floor(R() * b.entrances.length)]; if (!e || b.kind === 'tower' && R() < 0.5) continue; const o = b.toWorld(0, 0, 0); const dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; mput('waste_pad', e.x + dx / d * 7 + (R() - .5) * 6, e.z + dz / d * 7, b.rot, { cost: 6 }); }
     // wartime: checkpoints on the arterial entries, anti-drone netting over the approaches to the crossroads
-    for (const [x, z, r] of [[85, -182, 0], [85, 182, 0], [-190, 0, Math.PI / 2], [190, 0, Math.PI / 2]]) mput('checkpoint_blocks', x + (r ? 0 : 3.5), z, r, { road: false, cost: 7 });
+    for (const [x, z, r] of [[85, -182, 0], [85, 182, 0], [-190, 0, Math.PI / 2], [190, 0, Math.PI / 2]]) mput('checkpoint_blocks', x, z, r, { road: false, cost: 7 });
     // sandbagged ground-floor windows on the school, kindergartens and the avenue frontage
     const swin = tpl('window_sandbags');
     if (swin) for (const b of this.buildings) {
@@ -733,11 +855,12 @@ export class City {
     const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
     this.craterCap = MAP.kind === 'rural' ? 1400 : 400; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
-    for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40); this.addCrater(x, z, 2 + this.rng() * 4); }
+    for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40), sz = 2 + this.rng() * 4; if (this.terrain.cutSDF(x, z) < sz + 2) continue; this.addCrater(x, z, sz); }
     if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
   }
   addCrater(x, z, size) {
     if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size]); return; }
+    if (this.terrain && this.terrain.cutSDF(x, z) < size * 0.5) return; // decal would float over a trench
     const c = this.craterMesh; if (c.count >= this.craterCap) return;
     c.setMatrixAt(c.count++, trs(x, 0.07 + c.count * 0.0004, z, Math.random() * 6.28, size)); c.instanceMatrix.needsUpdate = true;
   }
@@ -853,7 +976,7 @@ export class City {
     const n = Math.max(1, Math.round(hx * 2 / 13));
     for (let i = 0; i < n; i++) {
       const p = b.toWorld(-b.L / 2 + (a + (i + 0.5) * (c - a + 1) / n) * W, 0, (Math.random() - .5) * 2);
-      if (pile) { const m = pile.clone(); m.position.set(p.x, -4, p.z); m.rotation.y = b.rot + (Math.random() < .5 ? 0 : Math.PI); m.userData.rise = 4; m.scale.setScalar(Math.min(1.2, b.floors / 6 + 0.4)); this.dynamic.add(m); }
+      if (pile) { const m = pile.clone(); m.position.set(p.x, -4, p.z); m.rotation.y = b.rot + (Math.random() < .5 ? 0 : Math.PI); m.userData.rise = 4; m.scale.setScalar(Math.min(1.2, b.floors / 6 + 0.4)); this.dynamic.add(m); this.terrain.stamp(pile, trs(p.x, 0, p.z, m.rotation.y, m.scale.x)); }
       else for (let k = 0; k < 3; k++) this.spawnRubble(p.x + (Math.random() - .5) * 8, p.z + (Math.random() - .5) * 8, 1.5 + Math.random());
     }
     this.cutFaces(b, a, c);
@@ -934,4 +1057,22 @@ export function craterTexture() {
   x.fill();
   for (let i = 0; i < 26; i++) { const a = Math.random() * 6.28; x.strokeStyle = `rgba(20,17,14,${0.15 + Math.random() * 0.25})`; x.lineWidth = 1 + Math.random() * 3; x.beginPath(); x.moveTo(128 + Math.cos(a) * 50, 128 + Math.sin(a) * 50); x.lineTo(128 + Math.cos(a) * (80 + Math.random() * 40), 128 + Math.sin(a) * (80 + Math.random() * 40)); x.stroke(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+function blackTex() { const t = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat); t.needsUpdate = true; return t; }
+// procedural stand-ins for fortifications.glb pieces (same conventions, see tools/blender/env/build_fortifications.py)
+const _fm = {};
+function fm(c) { return (_fm[c] ||= new THREE.MeshStandardMaterial({ color: c, roughness: 0.95 })); }
+function fbox(g, w, h, d, c, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fm(c)); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); }
+function fortFallback(name) {
+  const g = new THREE.Group();
+  if (/^revet/.test(name)) { fbox(g, 1, 1, 0.04, /logs/.test(name) ? 0x5a4a3a : /wattle/.test(name) ? 0x6b5a40 : 0x7a6a55, 0, -0.5, -0.01); }
+  else if (name === 'duckboard') fbox(g, 1.2, 0.08, 0.6, 0x6e604c, 0, 0.04, 0);
+  else if (name === 'sandbag_row') fbox(g, 1.3, 0.3, 0.42, 0x8a7d5e, 0, 0.15, 0);
+  else if (name === 'dugout_roof') { fbox(g, 4.6, 0.6, 4.8, 0x4f4636, 0, 0.3, 0); fbox(g, 1.6, 1.9, 0.2, 0x4b3d2e, 0, -0.85, 2.45); }
+  else if (name === 'mg_nest_roof') fbox(g, 2.3, 0.3, 2.1, 0x4b3d2e, 0, 0.55, -0.1);
+  else if (/^dragon_tooth/.test(name)) { const m = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.0, 4), fm(0x9a958a)); m.position.y = 0.5; m.rotation.y = Math.PI / 4; m.castShadow = m.receiveShadow = true; g.add(m); }
+  else if (name === 'ammo_crates') fbox(g, 0.66, 0.3, 0.36, 0x4c5236, 0, 0.15, 0);
+  else return null;
+  return g;
 }

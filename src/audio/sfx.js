@@ -82,6 +82,9 @@ export class Audio {
     def('track_clank', { gain: 0.3, loop: true, refDistance: 10 }, [() => buf(1, (t) => { const ph = (t * 9) % 1; return noise() * Math.exp(-ph / 0.02) * 0.9; })]);
     def('turret_traverse', { gain: 0.2, loop: true, refDistance: 6 }, [() => buf(1, (t) => Math.sin(2 * Math.PI * 180 * t) * 0.3 + Math.sin(2 * Math.PI * 360 * t) * 0.15)]);
     def('fire_loop', { gain: 0.3, loop: true, refDistance: 8 }, [() => buf(3, (t, st) => lp(st, noise(), 0.08) * 0.8 + (Math.random() < 0.002 ? 1 : 0))]);
+    // 152/155 mm howitzer: a deep, long concussion with a rolling echo; heard across the whole map
+    def('howitzer', { gain: 1, refDistance: 60 }, [() => buf(4.5, (t, st) => { const n = noise(); st.b = (st.b || 0) + (n - (st.b || 0)) * 0.006; return lp(st, n, 0.06) * Math.exp(-t / 0.12) * 3.2 + Math.sin(2 * Math.PI * 27 * t) * Math.exp(-t / 0.35) * 1.6 + st.b * Math.exp(-t / 1.4) * 14 + st.b * Math.exp(-Math.max(0, t - 1.1) / 0.9) * (t > 1.1 ? 6 : 0); })]);
+    def('shell_incoming', { gain: 0.55, refDistance: 60 }, [() => buf(2.4, (t) => { const f = 900 - 420 * t; return (Math.sin(2 * Math.PI * f * t) * 0.25 + (Math.random() * 2 - 1) * 0.35) * Math.min(1, t * 1.5) * (0.4 + t * 0.3); })]);
     def('incoming_whistle', { gain: 0.45, refDistance: 40 }, [() => buf(1.6, (t) => Math.sin(2 * Math.PI * (1400 - 600 * t) * t) * Math.min(1, t * 2) * 0.4)]);
     def('collapse', { gain: 0.9, refDistance: 30 }, [boom(2.5, 25)]);
     def('debris', { gain: 0.4, refDistance: 12 }, [() => buf(1.5, (t, st) => (Math.random() < 0.02 ? noise() : 0) * Math.exp(-t / 0.8) + lp(st, noise(), 0.1) * Math.exp(-t / 0.5) * 0.3)]);

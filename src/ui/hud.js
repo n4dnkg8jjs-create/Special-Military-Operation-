@@ -9,6 +9,7 @@ const ICONS = {
   ifv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
   tank: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
   atgm: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M18 30 L31 11 L44 30"/></g></svg>`,
+  spg: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><circle cx="31" cy="17" r="4" fill="currentColor"/><rect x="16" y="25" width="30" height="6" rx="3"/></g></svg>`,
   fpv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M15 16 Q23 26 31 18 Q39 26 47 16"/></g></svg>`,
 };
 
@@ -83,8 +84,8 @@ export class HUD {
     this.cards.innerHTML = ''; this.cards.className = 'roster' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
     const units = this.g.playerUnits.filter(u => !(u.type === 'squad' && u.crew && u.destroyed));
-    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
-    const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'CREWS'];
+    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
+    const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'CREWS'];
     const head = document.createElement('div'); head.className = 'rhead';
     head.innerHTML = `<span>ORDER OF BATTLE</span><span class="rbtn" title="Fold (Tab)">${this.rosterMini ? '▸' : '◂'}</span>`;
     head.querySelector('.rbtn').addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
@@ -171,8 +172,15 @@ export class HUD {
     } else {
       html += row('Condition', u.moraleState());
       html += row('Hull integrity', `${Math.max(0, Math.round(u.hp / u.def.hp * 100))}%`);
-      html += row('Crew', `${Math.max(0, u.crew)}/3`);
+      html += row('Crew', `${Math.max(0, u.crew)}/${u.def.crew || 3}`);
       const w = u.weapons[0];
+      if (u.kind === 'spg') {
+        html += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
+        html += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C) any point, no line of sight needed`);
+        html += row('Into / out of action', `${u.def.deployT} s / ${u.def.packT} s${u.def.arc ? ' · ±30° sector' : ' · 360° turret'}`);
+        if (u.def.mg) html += row('Kord 12.7 mm', `${u.weapons[1].ammo}`);
+        this.info.innerHTML = html; return;
+      }
       html += row('Main gun', u.kind === 'tank' ? `${w.ammo} rds (APFSDS ${w.ap} / HE-FRAG ${w.he})` : `${WEAPONS[w.key]?.name || ''} · ${w.ammo} rds`);
       if (u.gun100) html += row('100 mm', `${u.gun100.ammo} HE-Frag`);
       if (u.atgm) html += row('ATGM', u.atgmDisabled ? 'launcher destroyed' : `${WEAPONS[u.atgm.key].name.split(' (')[0]} · ${u.atgm.ammo}`);

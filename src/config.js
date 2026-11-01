@@ -4,12 +4,12 @@
 export const FACTIONS = {
   UA: {
     id: 'UA', name: 'Ukraine', tape: 0xf2c81a, tapeName: 'yellow',
-    soldierAsset: 'soldier_ua', btrAsset: 'btr80_ua', tankAsset: 't72av_ua', ifvAsset: 'bradley_ua', ifvName: 'M2A2 Bradley',
+    soldierAsset: 'soldier_ua', btrAsset: 'btr80_ua', tankAsset: 't72av_ua', ifvAsset: 'bradley_ua', ifvName: 'M2A2 Bradley', spgAsset: 'bohdana', spgName: '2S22 Bohdana',
     btrName: 'BTR-80', tankName: 'T-72AV', squadName: 'Mech. Inf. Squad', color: '#f2c81a',
   },
   RU: {
     id: 'RU', name: 'Russia', tape: 0xf4f4ee, tapeName: 'white',
-    soldierAsset: 'soldier_ru', btrAsset: 'btr82a', tankAsset: 't72b3', ifvAsset: 'bmp3', ifvName: 'BMP-3',
+    soldierAsset: 'soldier_ru', btrAsset: 'btr82a', tankAsset: 't72b3', ifvAsset: 'bmp3', ifvName: 'BMP-3', spgAsset: 'msta_s', spgName: '2S19M2 Msta-S',
     btrName: 'BTR-82A', tankName: 'T-72B3', squadName: 'Motor Rifle Squad', color: '#f4f4ee',
   },
 };
@@ -27,6 +27,10 @@ export const WEAPONS = {
   a72:    { name: '2A72 30 mm', type: 'autocannon', range: 900, rof: 330, burst: [3, 6], burstGap: [0.9, 1.8], mag: 300, reload: 0, dmg: [90, 140], pen: 30, blast: 2.2, spread: 1.6, sound: 'cannon30', tracerEvery: 1 },
   kpvt:   { name: 'KPVT 14.5 mm', type: 'hmg', range: 800, rof: 600, burst: [4, 8], burstGap: [0.8, 1.6], mag: 500, reload: 0, dmg: [70, 120], pen: 30, spread: 2.0, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
   pkt:    { name: 'PKT 7.62 mm', type: 'mg', range: 600, rof: 700, burst: [6, 14], burstGap: [0.6, 1.4], mag: 2000, reload: 0, dmg: [35, 80], pen: 8, spread: 2.8, sound: 'mg', tracerEvery: 3, suppress: 2.0 },
+  kord:   { name: 'Kord 12.7 mm (remote mount)', type: 'hmg', range: 900, rof: 650, burst: [4, 8], burstGap: [0.8, 1.6], mag: 300, reload: 0, dmg: [70, 120], pen: 20, spread: 2.2, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
+  // howitzers (fire missions only, see artillery.js): range = max with standard / extended-range HE
+  g2a64:  { name: '2A64 152 mm L/47 howitzer', type: 'howitzer', range: 24700, rof: 6, dmg: [160, 400], pen: 60, blast: 14 },
+  b155:   { name: '155 mm L/52 howitzer', type: 'howitzer', range: 42000, rof: 5, dmg: [170, 420], pen: 60, blast: 15 },
   pm:     { name: 'PM 9 mm (pistol)', type: 'pistol', range: 60, rof: 140, burst: [1, 2], burstGap: [0.35, 0.9], mag: 8, reload: 2.2, dmg: [22, 50], pen: 2, spread: 5, sound: 'rifle', tracerEvery: 99 },
   // ATGM teams (tripod, SACLOS): tandem HEAT, long range. FPV: RPG-7 warhead strapped to a quadcopter.
   kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
@@ -104,6 +108,21 @@ export const VEHICLES = {
     kind: 'ifv', asset: 'bradley_ua', hp: 1250, speed: 10.5, accel: 2.4, turnRate: 0.7, radius: 2.2, length: 6.6, width: 3.6, height: 2.6,
     armor: { front: { ke: 75, ce: 90 }, side: { ke: 55, ce: 70 }, rear: { ke: 35, ce: 50 }, top: { ke: 15, ce: 20 } },
     passengers: 6, seats: 6, supply: { rifle: 1200, rpg: 4, mg: 400 }, turretSpeed: 1.0, wheeled: false, atgm: 'tow2', atgmAmmo: 7, main: 'm242', mainAmmo: 900,
+  },
+  // self-propelled howitzers (assets/vehicles/manifest.json msta_s.game / bohdana.game; armour from <asset>_armor.json)
+  // 2S19M2: 42 t, 5 crew, 15 mm welded steel hull/turret, 50 rounds, 10 rpm burst / 6 normal, 1-2 min into action
+  spg_ru: {
+    kind: 'spg', asset: 'msta_s', hp: 1100, speed: 8.5, accel: 1.8, turnRate: 0.55, radius: 2.4, length: 7.2, width: 3.5, height: 3.0,
+    armor: { front: { ke: 30, ce: 30 }, side: { ke: 19, ce: 19 }, rear: { ke: 15, ce: 15 }, top: { ke: 15, ce: 15 } },
+    passengers: 0, seats: 0, crew: 5, turretSpeed: 8 * Math.PI / 180, elevSpeed: 5 * Math.PI / 180, wheeled: false,
+    gun: 'g2a64', mg: 'kord', ammo: 50, caliber: '152 mm', salvo: 4, interval: 6, cool: 26, deployT: 60, packT: 60, travelPitch: -3.5 * Math.PI / 180, arc: 0, cep: 12, power: 2.7,
+  },
+  // 2S22 Bohdana: 28 t KrAZ 6x6, 5 crew, armoured cab only (7.62 AP at 30 m), 20 rounds, 4-6 rpm, 1.5 min into / out of action
+  spg_ua: {
+    kind: 'spg', asset: 'bohdana', hp: 700, speed: 10.5, accel: 2.4, turnRate: 0.5, radius: 2.3, length: 9.0, width: 2.7, height: 3.0,
+    armor: { front: { ke: 14, ce: 14 }, side: { ke: 12, ce: 12 }, rear: { ke: 6, ce: 6 }, top: { ke: 6, ce: 6 } },
+    passengers: 0, seats: 0, crew: 5, turretSpeed: 5 * Math.PI / 180, elevSpeed: 4 * Math.PI / 180, wheeled: true,
+    gun: 'b155', mg: null, ammo: 20, caliber: '155 mm', salvo: 3, interval: 12, cool: 30, deployT: 90, packT: 90, travelPitch: 0, arc: 30 * Math.PI / 180, spades: true, cep: 10, power: 2.8,
   },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,

@@ -6,6 +6,7 @@ import { initArmor } from './armor.js';
 import { hasClip } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
+import { SpgMixin } from './artillery.js';
 
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
@@ -48,14 +49,16 @@ export function charObject(o, u) { const cache = new Map(), f = m => cache.get(m
 export class Vehicle {
   constructor(game, side, faction, kind) {
     this.game = game; this.id = NEXT++; this.side = side; this.faction = faction; this.kind = kind; this.type = 'vehicle';
-    this.def = VEHICLES[kind === 'ifv' ? `ifv_${faction.id.toLowerCase()}` : kind];
-    this.name = kind === 'btr' ? faction.btrName : kind === 'ifv' ? faction.ifvName : faction.tankName;
+    this.def = VEHICLES[kind === 'ifv' || kind === 'spg' ? `${kind}_${faction.id.toLowerCase()}` : kind];
+    this.name = kind === 'btr' ? faction.btrName : kind === 'ifv' ? faction.ifvName : kind === 'spg' ? faction.spgName : faction.tankName;
     this.hp = this.def.hp; this.pos = new THREE.Vector3(); this.heading = 0; this.speed = 0; this.path = null; this.pathI = 0;
     this.turretYaw = 0; this.gunPitch = 0; this.target = null; this.coaxTarget = null;
     this.destroyed = false; this.immobile = false; this.gunDisabled = false; this.burning = 0; this.crew = 3;
     this.passengers = null; this.selected = false; this.spotted = side === 'player'; this.morale = 100;
     this.holdFire = false; this.stats = { kills: 0 };
-    this.weapons = kind === 'ifv'
+    this.weapons = kind === 'spg'
+      ? [{ key: this.def.gun, ammo: this.def.ammo, cd: 0 }, { key: this.def.mg || 'pkt', ammo: this.def.mg ? 300 : 0, cd: 0, burst: 0, coax: true }]
+      : kind === 'ifv'
       ? [{ key: this.def.main, ammo: this.def.mainAmmo, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2200, cd: 0, burst: 0, coax: true }]
       : kind === 'btr'
       ? [{ key: faction.id === 'RU' ? 'a72' : 'kpvt', ammo: 0, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }]
@@ -69,15 +72,16 @@ export class Vehicle {
     if (kind === 'tank') this.cage = 0.55;
     else if (kind === 'btr' && !this.fallback && this.turret && Math.random() < 0.35) this.addCage();
     this.immob = {}; initArmor(this);
+    if (kind === 'spg') { this.spgInit(); if (this.crewList && this.def.crew > 3) this.crewList.push({ role: 'loader', hp: 100 }, { role: 'loader', hp: 100 }); this.crew = this.crewList?.length ?? 3; }
     this.thinkT = Math.random();
   }
   get alive() { return !this.destroyed; }
   get effective() { return !this.destroyed; }
   center(out = new THREE.Vector3()) { return out.copy(this.pos); }
-  ammoFrac() { const w = this.weapons[0]; return w.ammo / (this.kind === 'tank' ? 39 : this.kind === 'ifv' ? this.def.mainAmmo : WEAPONS[w.key].mag); }
-  moraleState() { return this.destroyed ? 'DESTROYED' : this.burning ? 'ON FIRE' : this.immobile ? 'IMMOBILISED' : this.gunDisabled ? 'GUN DAMAGED' : this.crew < 3 ? 'CREW HIT' : 'OPERATIONAL'; }
+  ammoFrac() { const w = this.weapons[0]; return w.ammo / (this.kind === 'tank' ? 39 : this.kind === 'ifv' ? this.def.mainAmmo : this.kind === 'spg' ? this.def.ammo : WEAPONS[w.key].mag); }
+  moraleState() { return this.destroyed ? 'DESTROYED' : this.burning ? 'ON FIRE' : this.immobile ? 'IMMOBILISED' : this.gunDisabled ? 'GUN DAMAGED' : this.crew < (this.def.crew || 3) ? 'CREW HIT' : this.kind === 'spg' ? this.spgStatus() : 'OPERATIONAL'; }
   build() {
-    const A = this.game.assets, key = this.kind === 'btr' ? this.faction.btrAsset : this.kind === 'ifv' ? this.faction.ifvAsset : this.faction.tankAsset, g = A.gltf[key];
+    const A = this.game.assets, key = this.kind === 'btr' ? this.faction.btrAsset : this.kind === 'ifv' ? this.faction.ifvAsset : this.kind === 'spg' ? this.faction.spgAsset : this.faction.tankAsset, g = A.gltf[key];
     this.assetKey = key; this.vman = A.manifest?.vehicles?.vehicles?.[key] || {};
     const root = this.root = new THREE.Group();
     if (g) { this.model = g.scene.clone(true); }
@@ -181,7 +185,7 @@ export class Vehicle {
     this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'btr' ? 1.8 : 2.0, true);
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
-  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; }
+  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; if (this.spg) this.spg.mission = null; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     if (this.destroyed) { this.updateWreck(dt); return; }
@@ -207,7 +211,7 @@ export class Vehicle {
   drive(dt) {
     const def = this.def;
     let targetSpeed = 0, turn = 0;
-    if (this.path && this.pathI < this.path.length && !this.immobile) {
+    if (this.path && this.pathI < this.path.length && !this.immobile && !this.spgHold) {
       const wp = this.path[this.pathI];
       const dx = wp[0] - this.pos.x, dz = wp[1] - this.pos.z, d = Math.hypot(dx, dz);
       const last = this.pathI === this.path.length - 1;
@@ -225,7 +229,7 @@ export class Vehicle {
     if (this.crew < 2) targetSpeed *= 0.5;
     // stuck recovery: back up with opposite lock for a moment, then replan
     if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, true); }
-    else if (this.path && !this.immobile) {
+    else if (this.path && !this.immobile && !this.spgHold) {
       this.wdT = (this.wdT || 0) + dt;
       if (this.wdT > 3) { const moved = this.wdP ? Math.hypot(this.pos.x - this.wdP[0], this.pos.z - this.wdP[1]) : 9; this.wdP = [this.pos.x, this.pos.z]; this.wdT = 0; if (moved < 1.2) { this.reverseT = 1.6; this.revTurn = Math.sign(turn || 1); } }
     } else { this.wdT = 0; this.wdP = null; }
@@ -253,6 +257,7 @@ export class Vehicle {
     if (this.stunT > 0) { this.stunT -= dt; return; }
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.6; this.game.combat.vehicleTargets(this); }
+    if (this.kind === 'spg') { for (const w of this.weapons) w.cd -= dt; this.spgUpdate(dt); return; }
     const main = this.weapons[0], t = this.target;
     const gp = !t && !this.holdFire ? this.game.combat.groundPoint(this) : null;     // fire-at-ground order
     // turret slew
@@ -366,7 +371,7 @@ export class Vehicle {
     g.fx.exhaust(ex, load);
     g.fx.vehicleDust(this.pos, Math.abs(this.speed));
     // engine audio
-    if (!this.engine && g.audio.ok && g.camDist(this.pos) < 260) { const k = this.kind === 'btr' ? 'btr_engine' : 'tank_engine'; this.engine = g.audio.loop(k + '_idle', this.pos, 0.7); this.engineDrive = g.audio.loop(k + '_drive', this.pos, 0); if (this.kind === 'tank') this.tracks = g.audio.loop('track_clank', this.pos, 0); }
+    if (!this.engine && g.audio.ok && g.camDist(this.pos) < 260) { const k = this.def.wheeled ? 'btr_engine' : 'tank_engine'; this.engine = g.audio.loop(k + '_idle', this.pos, 0.7); this.engineDrive = g.audio.loop(k + '_drive', this.pos, 0); if (!this.def.wheeled) this.tracks = g.audio.loop('track_clank', this.pos, 0); }
     if (this.engine) {
       const s = Math.abs(this.speed) / this.def.speed;
       this.engine.set(this.pos, 0.8 * (1 - s * 0.6), 1 + s * 0.15);
@@ -378,7 +383,7 @@ export class Vehicle {
   sync() {
     const r = this.root; r.position.copy(this.pos); r.rotation.set(this.pitch || 0, this.heading, this.roll || 0, 'YXZ');
     if (this.turret) this.turret.rotation.y = this.baseTurretRot + this.turretYaw;
-    if (this.gun) { this.recoil = Math.max(0, (this.recoil || 0) - 0.05); this.gun.rotation.x = this.baseGunRot - this.gunPitch; this.gun.position.z = (this.gunBaseZ ??= this.gun.position.z) - (this.recoil || 0) * (this.kind === 'tank' ? 0.3 : 0.05); }
+    if (this.gun) { this.recoil = Math.max(0, (this.recoil || 0) - 0.05); this.gun.rotation.x = this.baseGunRot - this.gunPitch; this.gun.position.z = (this.gunBaseZ ??= this.gun.position.z) - (this.recoil || 0) * (this.kind === 'tank' ? 0.3 : this.kind === 'spg' ? 0.7 : 0.05); }
     const d = this.dist || 0;
     for (const w of this.wheels) w.rotation.x = d / 0.56;
     const rg = this.vman.running_gear_radii_m || {};
@@ -464,3 +469,4 @@ export class Vehicle {
     this.root.visible = true;
   }
 }
+Object.defineProperties(Vehicle.prototype, Object.getOwnPropertyDescriptors(SpgMixin));   // keeps the spgHold getter a getter

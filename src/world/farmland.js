@@ -7,8 +7,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
 // two villages strung along their roads, a kolkhoz farm, cratered everywhere.
 // Field grid: boundaries follow the windbreaks and tracks in maps.js.
-const XS = [-452, -395, -359.5, -124.5, -20, 10, 103.5, 180, 224.5, 359.5, 390, 452];
-const ZS = [-452, -335, -294.5, -175, -143.5, -22, 63.5, 190, 305.5, 335, 452];
+const XS = [-702, -640, -559.5, -395, -359.5, -124.5, -20, 10, 103.5, 180, 224.5, 359.5, 390, 559, 702];
+const ZS = [-702, -560, -509.5, -335, -294.5, -175, -143.5, -22, 63.5, 190, 305.5, 335, 401, 545, 702];
 const T_PLOW = 0, T_STUB = 1, T_FALLOW = 2, T_SUN = 3, T_CORN = 4;
 
 export class Farmland extends City {
@@ -16,23 +16,29 @@ export class Farmland extends City {
     super(scene, assets, quality);
     this.rng = mulberry(4417);
     this.streetDebris = 0; this.noOuterGrass = true;
-    this.grassMax = quality === 'low' ? 30000 : quality === 'medium' ? 60000 : 85000; this.grassCull = 260;
-    this.nav.maxIter = 320000;
+    this.grassMax = quality === 'low' ? 48000 : quality === 'medium' ? 90000 : 130000; this.grassCull = 260;
+    this.nav.maxIter = 700000;
     this.CS = 2; this.CN = Math.ceil(MAP_SIZE / this.CS); this.conceal = new Uint8Array(this.CN * this.CN).fill(255);
     this.place = {};
   }
   build() {
-    this.layoutFields();
-    this.ground(); this.roads();
-    this.placeBuildings();
-    this.farm(); this.villages(); this.treelines();
-    this.rubbleAndDebris();
-    this.poles(); this.props(); this.defences();
-    this.crops();
-    this.flush();
-    this.craters(); this.paintGround(); this.skyline();
-    this.buildCrushables();
-    this.nav.finalize();
+    const times = this.buildTimes = {}, step = (k, f) => { const t = performance.now(); f(); times[k] = Math.round(performance.now() - t); };
+    step('fields', () => this.layoutFields());
+    step('ground', () => { this.ground(); this.roads(); });
+    step('buildings', () => this.placeBuildings());
+    step('fortifications', () => this.fortifications());   // cut into the ground first: everything placed later keeps clear of it
+    step('farm', () => { this.farm(); this.farmstead(); this.villages(); });
+    step('forest', () => this.forest());
+    step('treelines', () => this.treelines());
+    step('rubble', () => this.rubbleAndDebris());
+    step('props', () => { this.poles(); this.props(); this.defences(); });
+    step('crops', () => this.crops());
+    step('flush', () => this.flush());
+    step('craters', () => this.craters());
+    step('paint', () => this.paintGround());
+    step('skyline', () => this.skyline());
+    step('crush', () => this.buildCrushables());
+    step('nav', () => this.nav.finalize());
   }
   // ---------------------------------------------------------------- helpers
   concealAt(x, z) { const i = Math.floor((x + MAP_SIZE / 2) / this.CS), j = Math.floor((z + MAP_SIZE / 2) / this.CS); if (i < 0 || j < 0 || i >= this.CN || j >= this.CN) return 1; return this.conceal[j * this.CN + i] / 255; }
@@ -49,18 +55,28 @@ export class Farmland extends City {
   overlapsBuilding(x, z, hx, hz, pad = 1) { return this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + hx + pad && Math.abs(lz) < b.D / 2 + hz + pad; }); }
   inVillage(x, z, pad = 0) {
     for (const v of MAP.villages) {
-      if (v.street === 'x') { if (x > v.from - pad && x < v.to + pad && z > v.z0 - v.depth - pad && z < v.z1 + v.depth + pad) return v; }
-      else if (z > v.from - pad && z < v.to + pad && x > v.x0 - v.depth - pad && x < v.x1 + v.depth + pad) return v;
+      const lo = v.side === 1 ? 0 : v.depth + pad, hi = v.side === -1 ? 0 : v.depth + pad;
+      if (v.street === 'x') { if (x > v.from - pad && x < v.to + pad && z > v.z0 - lo && z < v.z1 + hi) return v; }
+      else if (z > v.from - pad && z < v.to + pad && x > v.x0 - lo && x < v.x1 + hi) return v;
     }
     return null;
   }
+  inForest(x, z, pad = 0, ignoreClearings = false) {
+    const F = MAP.forest; if (!F) return false;
+    // ragged edge: +-7 m of noise along the outline
+    const e = (this.noise2(x / 23, z / 23, 31) - 0.5) * 14;
+    if (x < F.x0 - pad + e || x > F.x1 + pad - e || z < F.z0 - pad + e || z > F.z1 + pad - e) return false;
+    if (!ignoreClearings) for (const [cx, cz, r] of F.clearings) if (Math.hypot(x - cx, z - cz) < r + (this.noise2(x / 9, z / 9, 33) - 0.5) * 8 - pad) return false;
+    return true;
+  }
+  inFarmstead(x, z, pad = 0) { const f = MAP.farmstead; return !!f && x > f.x - 40 - pad && x < f.x + 42 + pad && z > f.z - 30 - pad && z < f.z + 24 + pad; }
   inFarm(x, z, pad = 0) { const f = MAP.farm; return Math.abs(x - f.x) < 95 + pad && Math.abs(z - f.z) < 62 + pad; }
   // template lookup in farmland.glb (or city/trees/props.glb), with a procedural stand-in so the map always builds
   tpl(name) {
     this._tpl ||= {};
     if (name in this._tpl) return this._tpl[name];
     let t = null;
-    for (const k of ['farmland', 'city', 'trees', 'props']) { const g = this.assets.gltf[k]; const o = g?.scene.getObjectByName(name); if (o) { t = o; break; } }
+    for (const k of ['farmland', 'fortifications', 'city', 'trees', 'props']) { const g = this.assets.gltf[k]; const o = g?.scene.getObjectByName(name); if (o) { t = o; break; } }
     // until farmland.glb has its own windbreak trees, borrow the detailed city trees (never blobs up close)
     const alias = { tree_acacia_leafy: 'leafy_summer_chestnut', tree_oak_leafy: 'leafy_summer_chestnut', tree_walnut_leafy: 'leafy_summer_chestnut', tree_poplar_leafy: 'leafy_summer_birch', tree_acacia_shelled: 'tree_chestnut_broken' };
     if (!t && alias[name]) { const o = this.assets.gltf.trees?.scene.getObjectByName(alias[name]); if (o) t = o; }
@@ -68,6 +84,15 @@ export class Farmland extends City {
     if (t) { t.userData.bb = new THREE.Box3().setFromObject(t); }
     return (this._tpl[name] = t);
   }
+  // overlap with the placed village houses only (fences, yard props): City.solidHit restricted to kind 'house'
+  houseHit(x, z, hx, hz, ry = 0, pad = 0.3) { return this.solidHit(x, z, hx, hz, ry, pad, k => k !== 'house'); }
+  houseNear(x, z, ry = 0) { return this.solidHit(x, z, 1.5, 0.12, ry, 0.15, k => k === 'fence'); }
+  teethNear(x, z, r = 3) {
+    if (!this._teeth) { this._teeth = new Map(); for (const [tx, tz] of this.terrain.teeth || []) { const k = Math.floor(tx / 8) * 4096 + Math.floor(tz / 8); (this._teeth.get(k) || this._teeth.set(k, []).get(k)).push([tx, tz]); } }
+    for (let i = Math.floor((x - r) / 8); i <= Math.floor((x + r) / 8); i++) for (let j = Math.floor((z - r) / 8); j <= Math.floor((z + r) / 8); j++) for (const [tx, tz] of this._teeth.get(i * 4096 + j) || []) if (Math.abs(tx - x) < r && Math.abs(tz - z) < r) return true;
+    return false;
+  }
+  hasTpl(name) { for (const k of ['farmland', 'fortifications']) if (this.assets.gltf[k]?.scene.getObjectByName(name)) return true; return false; }
   hasReal(name) { return !!this.assets.gltf.farmland?.scene.getObjectByName(name); }
   // queue an instanced placement; nav footprint, optional occluder, crushable fences
   put(name, x, z, ry = 0, o = {}) {
@@ -78,10 +103,15 @@ export class Farmland extends City {
       const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] === BLOCK) return false;
       if (this.overlapsBuilding(x, z, hx, hz, 0.5)) return false;
     }
-    const M = trs(x, o.y || 0, z, ry, s, o.rx || 0, o.rz || 0);
+    if (o.trench !== false && this.terrain.cutSDF(x, z) < Math.min(Math.max(hx, hz), 6) * 0.85 + 0.5) return false;   // never into a trench
+    // nor into another solid prop / trunk (houses, sheds, wells, cars, trees: see City.solidAdd)
+    const tree = !!o.circle && /tree|leafy/.test(name), house = /^(house_|church)/.test(name), fx = tree ? 0.4 : house ? hx + 0.2 : hx * 0.95, fz = tree ? 0.4 : house ? hz + 0.2 : hz * 0.95;
+    if (o.check !== false && !o.crush && this.solidHit(x, z, fx, fz, ry, tree ? 0.25 : 0.15)) return false;
+    if (o.cost !== 0 && !o.crush && !/bush|fallen|haybale/.test(name)) this.solidAdd(x, z, fx, fz, ry, house ? 'house' : tree ? 'tree' : name);
+    const M = trs(x, o.y ?? this.terrain.heightAt(x, z), z, ry, s, o.rx || 0, o.rz || 0);
     if (o.crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush: o.crush, type: o.crush === 'tank' ? 'po2' : 'fenceH' }); this.nav.rect(x, z, hx, hz, ry, o.crush === 'any' ? 3 : 7, 0.1); return true; }
     const key = name + (o.group || '');
-    (this.place[key] ||= { t, m: [], opts: o.inst || {}, lodName: o.lod }).m.push(M);
+    (this.place[key] ||= { t, m: [], opts: o.inst || {}, lodName: o.lod, midName: o.mid ?? (o.lod && this.hasTpl(name + '_mid') ? name + '_mid' : null) }).m.push(M);
     if (o.cost !== 0) {
       const ns = o.navScale || 1;
       if (o.circle) this.nav.circle(x, z, o.circle, o.cost ?? BLOCK, !!o.low);
@@ -91,10 +121,12 @@ export class Farmland extends City {
     return true;
   }
   flush() {
+    const p = new THREE.Vector3();
     for (const [, v] of Object.entries(this.place)) {
+      if (/tree|leafy|bush/.test(v.t.name || '')) v.m = v.m.filter(M => { p.setFromMatrixPosition(M); return this.terrain.cutSDF(p.x, p.z) > 1.2; });   // final guard: no trunk in a trench
       if (!v.m.length) continue;
-      const lod = v.lodName ? this.tpl(v.lodName) : null;
-      instance(this.scene, v.t, v.m, { ...v.opts, lod: lod || v.opts.lod });
+      const lod = v.lodName ? this.tpl(v.lodName) : null, mid = v.midName ? this.tpl(v.midName) : null;
+      instance(this.scene, v.t, v.m, { ...v.opts, lod: lod || v.opts.lod, ...(mid ? { mid, nearDist: 58, midShadows: true, lodShadows: false } : {}), ...(lod ? { coarse: 3 } : {}) });
     }
     this.place = {};
   }
@@ -113,14 +145,16 @@ export class Farmland extends City {
     const set = (x, z, t) => { this.fields[this.fieldIndex(x, z)].type = t; };
     set(-250, 250, T_SUN); set(60, 250, T_STUB); set(280, 250, T_SUN); set(-250, -80, T_SUN); set(280, -80, T_CORN); set(-80, -80, T_PLOW);
     set(-250, -240, T_STUB); set(280, -240, T_FALLOW); set(-60, 120, T_FALLOW); set(160, 120, T_SUN); set(-250, 400, T_FALLOW); set(-250, -400, T_FALLOW);
+    set(-250, 470, T_SUN); set(40, 470, T_CORN); set(300, 470, T_STUB); set(470, 470, T_SUN); set(-250, 620, T_STUB); set(60, 620, T_FALLOW); set(300, 620, T_STUB);
+    set(470, 250, T_CORN); set(470, -80, T_SUN); set(-500, -80, T_STUB); set(-500, -250, T_SUN); set(470, -420, T_STUB); set(-60, -420, T_PLOW); set(-480, 620, T_FALLOW);
     // pre-roll crater positions (artillery-churned belts along the windbreaks, scatter in the open)
     this.craterList = [];
     const tl = MAP.treelines;
-    for (let i = 0; i < 520; i++) {
+    for (let i = 0; i < 1250; i++) {
       let x, z;
       if (R() < 0.55) { const [a, b, c, d] = tl[Math.floor(R() * tl.length)]; const f = R(); const off = (R() - .5) * 60; x = a + (c - a) * f + (b === d ? 0 : off); z = b + (d - b) * f + (b === d ? off : 0); }
       else { x = (R() - .5) * (MAP_SIZE - 30); z = (R() - .5) * (MAP_SIZE - 30); }
-      if (Math.abs(z) > 372 && R() < 0.8) continue; // staging grounds mostly clean
+      if (Math.abs(z) > 600 && R() < 0.85) continue; // staging grounds mostly clean
       if (onRoad(x, z, 2)) continue;
       const big = R() < 0.12;
       this.craterList.push([x, z, big ? 5 + R() * 4 : 1.6 + R() * 3]);
@@ -129,12 +163,19 @@ export class Farmland extends City {
   nearCrater(x, z, pad = 0.6) { for (const [cx, cz, s] of this.craterList) if (Math.abs(cx - x) < s && Math.abs(cz - z) < s && Math.hypot(cx - x, cz - z) < s * pad) return true; return false; }
   // ---------------------------------------------------------------- ground
   ground() {
-    const S = MAP_SIZE + 900, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const S = this.groundS = MAP_SIZE + 900, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
+    const ground = new THREE.Mesh(g, this.groundMat(false)); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
+    this.groundMesh = ground;
+  }
+  // ground shader; terrain = the trench / relief mesh variant (no hole discard, darker damp soil below the surface)
+  groundMat(terrain) {
+    const S = this.groundS;
     const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t || null; };
-    const nrm = T.dirt?.normalMap ? T.dirt.normalMap.clone() : null; if (nrm) { nrm.needsUpdate = true; nrm.repeat.set(S / 6, S / 6); }
+    const nrm = this._gNrm ||= (T.dirt?.normalMap ? (() => { const n = T.dirt.normalMap.clone(); n.needsUpdate = true; n.repeat.set(S / 6, S / 6); return n; })() : null);
     const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, normalMap: nrm, normalScale: new THREE.Vector2(0.7, 0.7) });
+    m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'farm_terrain' : 'farm_ground';
     const has = { PLOW: !!tex('plowed'), STUB: !!tex('stubble'), FALLOW: !!tex('fallow') };
-    const U = this.groundUniforms = { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tPlow: { value: tex('plowed') || tex('dirt') }, tStub: { value: tex('stubble') || tex('dirt') }, tFallow: { value: tex('fallow') || tex('grass') || tex('dirt') }, tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAP_SIZE } };
+    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tPlow: { value: tex('plowed') || tex('dirt') }, tStub: { value: tex('stubble') || tex('dirt') }, tFallow: { value: tex('fallow') || tex('grass') || tex('dirt') }, tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() } };
     m.onBeforeCompile = sh => {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
@@ -142,7 +183,7 @@ export class Farmland extends City {
         ${has.PLOW ? '#define HAS_PLOW' : ''}
         ${has.STUB ? '#define HAS_STUB' : ''}
         ${has.FALLOW ? '#define HAS_FALLOW' : ''}
-        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tPlow, tStub, tFallow, tSplat, tRows; uniform float splatSize;
+        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tPlow, tStub, tFallow, tSplat, tRows, tHole; uniform float splatSize;
         float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
         vec3 tile(sampler2D t, vec2 p){
@@ -154,6 +195,10 @@ export class Farmland extends City {
           return mix(texture2D(t, p).rgb, texture2D(t, p + vec2(0.0, 0.43)).rgb, smoothstep(0.35, 0.65, n)); }`)
         .replace('#include <map_fragment>', `
           vec2 wp = vWPos.xz;
+          #ifdef GROUND_HOLE
+            vec2 huv = wp / splatSize + 0.5;
+            if (huv.x > 0.0 && huv.y > 0.0 && huv.x < 1.0 && huv.y < 1.0 && texture2D(tHole, huv).r > 0.5) discard;
+          #endif
           vec2 wob = vec2(vn(wp * 0.15) - 0.5, vn(wp * 0.15 + 31.0) - 0.5) * 4.0;
           vec2 suv = clamp((wp + wob) / splatSize + 0.5, 0.001, 0.999);
           vec4 sp = texture2D(tSplat, suv);
@@ -193,20 +238,26 @@ export class Farmland extends City {
           col = mix(col, stub, smoothstep(0.0, 1.0, clamp(sp.b * 1.6 - 0.3 + (fine - 0.5) * 0.3, 0.0, 1.0)));
           col = mix(col, dirt * vec3(1.1, 1.05, 0.96), sp.a * 0.9);   // packed tracks, yards, verges
           col *= 0.88 + 0.24 * (vn(wp * 0.012) * 0.6 + vn(wp * 0.05) * 0.4);
+          #ifdef TERRAIN_MESH
+            float tdep = smoothstep(0.05, 0.55, -vWPos.y);
+            col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
+          #endif
           diffuseColor.rgb *= col;`);
     };
-    const ground = new THREE.Mesh(g, m); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
-    this.groundMesh = ground;
+    return m;
   }
   // splat: R fallow/grass, G ploughed soil, B stubble, A packed dirt; rows texture: field row direction
   paintGround() {
-    const N = 1536, k = N / MAP_SIZE, o = MAP_SIZE / 2, out = new Uint8Array(N * N * 4), R = this.rng;
+    const N = 1792, k = N / MAP_SIZE, o = MAP_SIZE / 2, out = new Uint8Array(N * N * 4), R = this.rng, pa = performance.now();
+    const TM = this.terrain.maskData, TN = this.terrain.maskN;
     const ttrack = ROADS.filter(r => r.type === 'track'), paved = ROADS.filter(r => r.type !== 'track');
     // per-pixel mask layers from canvas: verges/yards (A) and gardens (G)
     const layer = () => { const c = document.createElement('canvas'); c.width = c.height = N; return c; };
-    const yards = layer(), yx = yards.getContext('2d'); yx.filter = `blur(${1.5 * k}px)`; yx.fillStyle = '#fff';
-    const gard = layer(), gx = gard.getContext('2d'); gx.filter = `blur(${1.2 * k}px)`; gx.fillStyle = '#fff';
-    const verge = layer(), vx = verge.getContext('2d'); vx.filter = `blur(${3 * k}px)`; vx.strokeStyle = '#fff'; vx.lineCap = 'round';
+    // shapes are drawn sharp and each layer is blurred once at the end (a per-shape canvas filter costs minutes in software GL)
+    const blurred = (src, px) => { const c = layer(), x = c.getContext('2d'); x.filter = `blur(${px}px)`; x.drawImage(src, 0, 0); return x; };
+    const yards = layer(), yx = yards.getContext('2d'); yx.fillStyle = '#fff';
+    const gard = layer(), gx = gard.getContext('2d'); gx.fillStyle = '#fff';
+    const verge = layer(), vx = verge.getContext('2d'); vx.strokeStyle = '#fff'; vx.lineCap = 'round';
     const P = (x, z) => [(x + o) * k, (z + o) * k];
     for (const r of ttrack) { yx.globalAlpha = 0.75; yx.fillRect(...P(r.x0 - 1.5, r.z0 - 1.5), (r.x1 - r.x0 + 3) * k, (r.z1 - r.z0 + 3) * k); }
     for (const r of paved) { yx.globalAlpha = 0.55; yx.fillRect(...P(r.x0 - 3, r.z0 - 3), (r.x1 - r.x0 + 6) * k, (r.z1 - r.z0 + 6) * k); }
@@ -218,7 +269,9 @@ export class Farmland extends City {
     // wheel ruts / trampled lanes across fields
     yx.strokeStyle = '#fff'; yx.lineCap = 'round';
     for (let i = 0; i < 26; i++) { const x0 = (R() - .5) * MAP_SIZE, z0 = (R() - .5) * MAP_SIZE, a = Math.floor(R() * 4) * Math.PI / 2 + (R() - .5) * 0.5, L = 60 + R() * 160; yx.globalAlpha = 0.35 + R() * 0.25; yx.lineWidth = 2.6 * k; yx.beginPath(); yx.moveTo(...P(x0, z0)); yx.quadraticCurveTo(...P(x0 + Math.cos(a) * L * 0.5 + (R() - .5) * 30, z0 + Math.sin(a) * L * 0.5 + (R() - .5) * 30), ...P(x0 + Math.cos(a) * L, z0 + Math.sin(a) * L)); yx.stroke(); }
-    const Y = yx.getImageData(0, 0, N, N).data, G = gx.getImageData(0, 0, N, N).data, V = vx.getImageData(0, 0, N, N).data;
+    const pt = this.paintTimes = {}, p0 = performance.now(); pt.draw = 0;
+    const Y = blurred(yards, 1.5 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.2 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data;
+    pt.read = Math.round(performance.now() - p0); pt.layers = Math.round(p0 - pa);
     const nx = XS.length - 1;
     for (let j = 0; j < N; j++) {
       const z = j / k - o;
@@ -237,9 +290,15 @@ export class Farmland extends City {
         r = Math.max(r * (1 - ver), ver * (0.85 + n2 * 0.3)); g *= 1 - ver; b *= 1 - ver;
         if (gd > 0) { g = Math.max(g * (1 - gd), gd * (0.75 + n2 * 0.3)); r *= 1 - gd * 0.7; b *= 1 - gd; }
         a = Math.max(a, yd); r *= 1 - yd * 0.6; g *= 1 - yd * 0.8; b *= 1 - yd * 0.8;
+        const fm = this.forestMask ? this.forestMask[Math.floor((z + o) / 4) * this.forestMN + Math.floor((x + o) / 4)] : 0;
+        if (fm === 1) { r = 0.6 + n2 * 0.3; g = 0; b = 0; a = Math.max(a, 0.25 + n1 * 0.3); }          // leaf litter under the stand
+        else if (fm === 2) { r = 0.85 + n2 * 0.2; g = 0; b = 0; a = Math.max(a * 0.5, Math.max(0, 0.3 - n1) * 0.6); } // grassy clearing
+        const ti = Math.floor(x + o), tj = Math.floor(z + o);
+        if (TM && ti >= 0 && tj >= 0 && ti < TN && tj < TN && TM[tj * TN + ti]) { g = Math.max(g, 0.55 + n2 * 0.3); r *= 0.4; b *= 0.2; a = Math.max(a, 0.25); } // fresh spoil
         out[p] = Math.min(255, r * 255); out[p + 1] = Math.min(255, g * 255); out[p + 2] = Math.min(255, b * 255); out[p + 3] = Math.min(255, a * 255);
       }
     }
+    pt.loop = Math.round(performance.now() - p0);
     const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
     this.groundUniforms.tSplat.value = t; this.splatData = out; this.splatN = N;
     // row direction (nearest-sampled)
@@ -247,7 +306,9 @@ export class Farmland extends City {
     for (let j = 0; j < RN; j++) for (let i = 0; i < RN; i++) { const f = this.fields[this.fieldIndex(i / rk - o, j / rk - o)]; rows[(j * RN + i) * 4] = f.rowsX ? 255 : 0; }
     const rt = new THREE.DataTexture(rows, RN, RN, THREE.RGBAFormat); rt.flipY = false; rt.magFilter = rt.minFilter = THREE.NearestFilter; rt.needsUpdate = true;
     this.groundUniforms.tRows.value = rt;
+    pt.rows = Math.round(performance.now() - p0);
     this.grassClumps();
+    pt.grass = Math.round(performance.now() - p0);
   }
   // ---------------------------------------------------------------- roads & tracks
   roads() {
@@ -295,31 +356,101 @@ export class Farmland extends City {
     this.yardRects = [[fx - 95, fz - 60, fx + 95, fz + 62, 0.8]];
     this.concealRect(fx - 95, fz - 60, fx + 95, fz + 62, 255);
   }
+  // ---------------------------------------------------------------- crossroads farmstead (objective D)
+  farmstead() {
+    const F = MAP.farmstead; if (!F) return;
+    const { x: fx, z: fz } = F, R = this.rng;
+    this.put('house_b', fx - 22, fz + 14, 0, { occ: 3.2 }); this.put('house_d', fx + 24, fz + 15, 0, { occ: 3.2 });
+    this.put('machine_shed', fx, fz - 16, 0, { cost: 6, navScale: 0.35 });
+    this.put('shed_wood', fx - 34, fz - 2, Math.PI / 2); this.put('shed_wood', fx + 36, fz - 4, -Math.PI / 2); this.put('outhouse', fx - 34, fz - 14, Math.PI / 2);
+    this.put('well_village', fx + 2, fz + 10, 0); this.put('woodpile', fx - 12, fz + 4, 0.1, { cost: 7, low: true });
+    this.put('tractor_mtz80_burnt', fx + 12, fz + 2, 2.4, { cost: BLOCK, low: true }); this.put('trailer_farm', fx - 4, fz + 1, 1.5, { cost: 6, low: true });
+    this.put('haystack', fx + 33, fz - 22, 1, { circle: 2.6, cost: BLOCK }); this.put('haystack', fx - 30, fz - 24, 2, { circle: 2.6, cost: BLOCK });
+    for (let i = 0; i < 5; i++) this.put(R() < 0.4 ? 'haybale_round_burnt' : 'haybale_round', fx + 18 + i * 2.3, fz - 3 + (R() - .5), R() * 0.3, { cost: 7, low: true });
+    for (const [x, z] of [[fx - 6, fz + 20], [fx + 38, fz + 8], [fx - 38, fz + 12]]) this.put('tree_walnut_leafy', x, z, R() * 6, { s: 0.9 + R() * 0.2, circle: 0.5, lod: this.tpl('tree_walnut_leafy_lod1') ? 'tree_walnut_leafy_lod1' : null, inst: { lodDist: 200, cullDist: 900 } });
+    // board fence along the track with a gate, wattle on the sides
+    for (let x = fx - 38; x <= fx + 39; x += 3) { if (Math.abs(x - fx + 2) < 2.5) { this.put('gate_village', x, fz + 21.5, 0, { crush: 'any', check: false }); continue; } if (R() < 0.15) continue; this.put('fence_wood_village', x, fz + 21.5, (R() - .5) * 0.05, { crush: 'any', check: false }); }
+    for (const sx of [-1, 1]) for (let z = fz - 27; z < fz + 20; z += 3) { if (R() < 0.25) continue; this.put('fence_wattle', fx + sx * 40.5, z, Math.PI / 2, { crush: 'any', check: false }); }
+    (this.yardRects ||= []).push([fx - 40, fz - 30, fx + 42, fz + 22, 0.8]);
+    this.concealRect(fx - 40, fz - 30, fx + 42, fz + 22, 190);
+  }
+  // ---------------------------------------------------------------- forest block: mixed broadleaf woodland
+  // oak / robinia / poplar canopy on a ~6.4 m jittered grid, hazel-elder-rose understorey (dense on the ecotone edge),
+  // shell-damaged trees along the edges facing the fields, deadfall; rides and clearings left open.
+  forest() {
+    const F = MAP.forest; if (!F) return;
+    const R = this.rng, half = MAP_SIZE / 2;
+    const MN = this.forestMN = Math.ceil(MAP_SIZE / 4), mask = this.forestMask = new Uint8Array(MN * MN);
+    for (let j = Math.floor((F.z0 - 20 + half) / 4); j < Math.ceil((F.z1 + 20 + half) / 4); j++) for (let i = Math.floor((F.x0 - 20 + half) / 4); i < Math.ceil((F.x1 + 20 + half) / 4); i++) { const x = i * 4 - half + 2, z = j * 4 - half + 2; if (this.inForest(x, z)) mask[j * MN + i] = 1; else if (this.inForest(x, z, 0, true)) mask[j * MN + i] = 2; }
+    const kinds = [['tree_oak_leafy', 0.38], ['tree_acacia_leafy', 0.3], ['tree_poplar_leafy', 0.12], ['tree_walnut_leafy', 0.06], ['tree_acacia_shelled', 0.14]];
+    const pick = (shell) => { if (R() < shell) return 'tree_acacia_shelled'; let r = R() * 0.86; for (const [n, w] of kinds) { if (n === 'tree_acacia_shelled') continue; if ((r -= w) < 0) return n; } return 'tree_oak_leafy'; };
+    const items = [], sp = 6.4;
+    for (let z = F.z0 - 12; z < F.z1 + 12; z += sp) for (let x = F.x0 - 12; x < F.x1 + 12; x += sp) {
+      const px = x + (R() - .5) * sp * 0.85, pz = z + (R() - .5) * sp * 0.85;
+      if (!this.inForest(px, pz) || onRoad(px, pz, 3.2) || this.terrain.cutSDF(px, pz) < 1.8) continue;
+      const edge = !this.inForest(px, pz, -10), front = (F.z1 - pz < 30) || (F.x1 - px < 30);
+      const n = pick(edge && front ? 0.4 : front ? 0.18 : 0.06), s = edge ? 0.72 + R() * 0.36 : 0.82 + R() * 0.5 * (0.6 + this.noise2(px / 40, pz / 40, 37));
+      items.push([n, trs(px, 0, pz, R() * 6.28, s)]); this.nav.circle(px, pz, 0.45, BLOCK);
+      if (R() < (edge ? 0.75 : 0.28)) { const bx = px + (R() - .5) * 4, bz = pz + (R() - .5) * 4; if (!onRoad(bx, bz, 2) && this.terrain.cutSDF(bx, bz) > 1.6) { items.push([R() < 0.55 ? 'bush_a' : 'bush_b', trs(bx, 0, bz, R() * 6.28, 0.8 + R() * 0.6)]); this.nav.circle(bx, bz, 1.0, 4); } }
+      if (R() < 0.025) { const fx2 = px + (R() - .5) * 5, fz2 = pz + (R() - .5) * 5; if (!onRoad(fx2, fz2, 3) && this.terrain.cutSDF(fx2, fz2) > 3) this.put('fallen_trunk', fx2, fz2, R() * 6, { cost: 5, low: true, check: false, inst: { cullDist: 420 } }); }
+    }
+    // ecotone fringe: young trees and scrub spilling 0-12 m out of the stand, thinning out into the field
+    for (let z = F.z0 - 16; z < F.z1 + 16; z += 3.2) for (let x = F.x0 - 16; x < F.x1 + 16; x += 3.2) {
+      const px = x + (R() - .5) * 2.6, pz = z + (R() - .5) * 2.6;
+      if (this.inForest(px, pz) || !this.inForest(px, pz, 12) || onRoad(px, pz, 3) || this.terrain.cutSDF(px, pz) < 2 || this.inVillage(px, pz, 4)) continue;
+      const near = this.inForest(px, pz, 5), r = R();
+      if (r < (near ? 0.3 : 0.12)) { items.push([R() < 0.5 ? 'bush_a' : 'bush_b', trs(px, 0, pz, R() * 6.28, 0.6 + R() * 0.7)]); this.nav.circle(px, pz, 0.9, 4); }
+      else if (r < (near ? 0.38 : 0.15)) { items.push([R() < 0.6 ? 'tree_acacia_leafy' : 'tree_oak_leafy', trs(px, 0, pz, R() * 6.28, 0.5 + R() * 0.3)]); this.nav.circle(px, pz, 0.35, BLOCK); }
+    }
+    this.forestInstancing(items);
+    // no vehicles through the stand (rides and clearings excepted), undergrowth slows infantry, heavy concealment
+    for (let z = F.z0 - 10; z < F.z1 + 10; z += 1) for (let x = F.x0 - 10; x < F.x1 + 10; x += 1) {
+      if (!this.inForest(x, z, -1.5) || onRoad(x, z, 0.5)) continue; const i = this.nav.idx(x, z); if (i < 0) continue;
+      this.nav.veh ||= new Uint8Array(this.nav.n * this.nav.n); this.nav.veh[i] = 2; if (this.nav.cost[i] < 2) this.nav.cost[i] = 2;
+    }
+    this.nav.vehDirty = true;
+    for (let z = F.z0 - 10; z < F.z1 + 10; z += 2) for (let x = F.x0 - 10; x < F.x1 + 10; x += 2) if (this.inForest(x, z)) this.concealRect(x, z, x + 1.9, z + 1.9, 70);
+    // line-of-sight: you see ~28 m into the wood (rows of foliage occluders)
+    for (let z = F.z0 - 8; z < F.z1 + 8; z += 16) {
+      let run = null; const close = (x1) => { if (run !== null && x1 - run > 8) { const o = this.nav.addOccluder((run + x1) / 2, z + 8, (x1 - run) / 2, 8, 0, 16, null); o.foliage = true; o.depth = 28; } run = null; };
+      for (let x = F.x0 - 10; x < F.x1 + 12; x += 4) { if (this.inForest(x, z + 8, 2)) { if (run === null) run = x; } else close(x); }
+      close(F.x1 + 12);
+    }
+  }
+  // per species: near (< 32 m) full model, mid (< 175 m) *_mid (bushes: lod1), far lod1 in 270 m blocks
+  forestInstancing(items) {
+    const by = new Map(), v = new THREE.Vector3();
+    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; (by.get(n) || by.set(n, []).get(n)).push(M); }
+    for (const [n, mats] of by) {
+      const mid = this.hasTpl(n + '_mid') ? this.tpl(n + '_mid') : null, lod = this.tpl(n + '_lod1');
+      instance(this.scene, this.tpl(n), mats, { lod, mid: mid || lod, nearDist: 12, lodDist: mid ? 175 : 70, cullDist: 1600, coarse: 3, midShadows: !/bush/.test(n), lodShadows: false });
+    }
+  }
   // ---------------------------------------------------------------- villages
   villages() {
     const R = this.rng; this.gardenRects ||= []; this.yardRects ||= [];
     const fences = ['fence_wattle', 'fence_wood_village'];
-    const houseNames = ['house_a', 'house_b', 'house_c', 'house_d', 'house_e'].filter(n => this.tpl(n));
+    const houseNames = ['house_a', 'house_b', 'house_c', 'house_d', 'house_e'].filter(n => this.tpl(n)); if (!houseNames.length) houseNames.push('shed_wood');
     const trees = ['tree_walnut_leafy', 'leafy_summer_chestnut', 'tree_acacia_leafy', 'leafy_summer_birch'];
     this.houseSpots = [];
     for (const v of MAP.villages) {
       const along = v.street === 'x';
-      for (let t = v.from + 12; t < v.to - 10; t += 22 + R() * 6) for (const side of [-1, 1]) {
+      for (let t = v.from + 12; t < v.to - 10; t += 22 + R() * 6) for (const side of v.side ? [v.side] : [-1, 1]) {
         if (R() < 0.1) continue;
         // local -> world: u along the street, w outward from the street edge
         const W = (u, w) => along ? [u, side < 0 ? v.z0 - w : v.z1 + w] : [side < 0 ? v.x0 - w : v.x1 + w, u];
         const face = along ? (side < 0 ? 0 : Math.PI) : (side < 0 ? Math.PI / 2 : -Math.PI / 2);
         const [hx, hz] = W(t + (R() - .5) * 3, 8.5 + R() * 2.5);
         if (this.overlapsBuilding(hx, hz, 12, 12, 0)) continue;
-        if (onRoad(hx, hz, 5)) continue;
+        if (onRoad(hx, hz, 5) || this.terrain.cutSDF(hx, hz) < 9) continue;
         const destroyed = R() < 0.18;
         if (!destroyed) { if (!this.put(houseNames[Math.floor(R() * houseNames.length)], hx, hz, face + (R() - .5) * 0.08, { occ: 3.2 })) continue; }
-        else { const rt = this.rubbleTemplates(); (this._houseRubble ||= []).push([rt[Math.floor(R() * rt.length)], trs(hx, 0, hz, R() * 6, 1.25 + R() * 0.4)]); this.nav.circle(hx, hz, 4.5, 6, true); }
+        else { const pool = this.rubblePool('house'); (this._houseRubble ||= []).push([pool[Math.floor(R() * pool.length)], trs(hx, 0, hz, R() * 6, 1.15 + R() * 0.35)]); this.nav.circle(hx, hz, 4.5, 6, true); this.solidAdd(hx, hz, 5.6, 5.6, 0, 'house'); }
         this.houseSpots.push([hx, hz, destroyed]);
         // street fence with a gate, side fences around the front yard
         const fn = fences[Math.floor(R() * 2)], fr = along ? 0 : Math.PI / 2;
-        for (let u = -10.5; u <= 10.5; u += 3) { if (R() < 0.22) continue; const [x, z] = W(t + u, 1.6); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0)) continue; if (Math.abs(u) < 2) { this.put('gate_village', x, z, fr, { crush: 'any', check: false }); continue; } this.put(fn, x, z, fr + (R() - .5) * 0.06, { crush: 'any', check: false }); }
-        for (const su of [-12, 12]) for (let w = 3.2; w < 20; w += 3) { if (R() < 0.3) continue; const [x, z] = W(t + su, w); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0)) continue; this.put(fn, x, z, fr + Math.PI / 2, { crush: 'any', check: false }); }
+        for (let u = -10.5; u <= 10.5; u += 3) { if (R() < 0.22) continue; const [x, z] = W(t + u, 1.6); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0) || this.terrain.cutSDF(x, z) < 2 || this.houseNear(x, z, fr)) continue; if (Math.abs(u) < 2) { this.put('gate_village', x, z, fr, { crush: 'any', check: false }); continue; } this.put(fn, x, z, fr + (R() - .5) * 0.06, { crush: 'any', check: false }); }
+        for (const su of [-12, 12]) for (let w = 3.2; w < 20; w += 3) { if (R() < 0.3) continue; const [x, z] = W(t + su, w); if (onRoad(x, z, 0.6) || this.overlapsBuilding(x, z, 1.6, 0.3, 0) || this.terrain.cutSDF(x, z) < 2 || this.houseNear(x, z, fr + Math.PI / 2)) continue; this.put(fn, x, z, fr + Math.PI / 2, { crush: 'any', check: false }); }
         // back yard: outbuildings, well, woodpile, then the vegetable garden and a fruit/walnut tree
         const yb = [['shed_wood', 22, 6], ['outhouse', 27, -7], ['woodpile', 20, -5], ['well_village', 18, 7], ['greenhouse_frame', 31, 4]];
         for (const [n, w, u] of yb) if (R() < (n === 'shed_wood' ? 0.85 : 0.5)) { const [x, z] = W(t + u + (R() - .5) * 2, w + (R() - .5) * 2); this.put(n, x, z, face + (R() < 0.5 ? 0 : Math.PI / 2), { cost: n === 'woodpile' ? 7 : BLOCK, low: n === 'woodpile' }); }
@@ -334,7 +465,7 @@ export class Farmland extends City {
       const [cx, cz] = along ? [v.from - 6, v.z1 + 4] : [v.x1 + 4, v.to + 6]; this.put('cross_roadside', cx, cz, along ? Math.PI : -Math.PI / 2, { circle: 0.4 });
       const [bx, bz] = along ? [(v.from + v.to) / 2 + 40, v.z0 - 4] : [v.x0 - 4, (v.from + v.to) / 2 - 30]; this.put('bus_stop_village', bx, bz, along ? 0 : Math.PI / 2, { roadPad: 0 });
     }
-    for (const [t, M] of this._houseRubble || []) instance(this.scene, t, [M]);
+    { const by = new Map(); for (const [t, M] of this._houseRubble || []) { (by.get(t) || by.set(t, []).get(t)).push(M); this.terrain.stamp(t, M); } for (const [t, l] of by) instance(this.scene, t, l); }
     // a church at the west end of Novomykolaivka, cars in the yards
     this.put('church_small', -300, 98, Math.PI, { occ: true });
     for (const [hx, hz, d] of this.houseSpots) if (!d && R() < 0.22) this.put(R() < 0.6 ? 'car_parked_lada' : 'car_vaz2107_burnt', hx + (R() - .5) * 10, hz + (R() < .5 ? 7 : -7), R() * 6, { cost: BLOCK });
@@ -352,17 +483,18 @@ export class Farmland extends City {
       for (let t = 2; t < L; t += 4.2 + R() * 2.4) {
         const cx = x0 + ux * t, cz = z0 + uz * t;
         if (Math.abs(cx) > MAP_SIZE / 2 - 3 || Math.abs(cz) > MAP_SIZE / 2 - 3) { close(); continue; }
-        if (onRoad(cx, cz, 7) || this.inVillage(cx, cz, 2) || this.inFarm(cx, cz, 4)) { close(); continue; }
+        if (onRoad(cx, cz, 7) || this.inVillage(cx, cz, 2) || this.inFarm(cx, cz, 4) || this.inFarmstead(cx, cz, 3) || this.inForest(cx, cz, 4)) { close(); continue; }
         if (gap > 0) { gap -= 5; close(); continue; }
         if (R() < 0.03) { gap = 6 + R() * 16; close(); continue; }
         if (!run) run = [t, t]; run[1] = t + 3;
         for (const off of [-3.4, 0.2, 3.6]) {
           const o2 = off + (R() - .5) * 1.4, px = cx + nx * o2 + ux * (R() - .5) * 2, pz = cz + nz * o2 + uz * (R() - .5) * 2;
-          if (off === 0.2 || R() < 0.12) { if (R() < 0.75) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 140, cullDist: 700, lodShadows: false } }); } continue; }
-          const n = pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 165, cullDist: 1200 } })) continue;
+          if (this.terrain.cutSDF(px, pz) < 1.6 || this.teethNear(px, pz) || this.solidHit(px, pz, 0.45, 0.45, 0, 0.3)) continue;
+          if (off === 0.2 || R() < 0.12) { if (R() < 0.75) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 90, cullDist: 700, lodShadows: false } }); } continue; }
+          const n = pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 210, cullDist: 1500 } })) continue;
         }
         // undergrowth litter & fallen limbs
-        if (R() < 0.05) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false });
+        if (R() < 0.05) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false, trench: true, inst: { cullDist: 420 } });
         this.concealRect(cx - 6.5 - Math.abs(ux) * 3, cz - 6.5 - Math.abs(uz) * 3, cx + 6.5 + Math.abs(ux) * 3, cz + 6.5 + Math.abs(uz) * 3, 105);
       }
       close();
@@ -383,10 +515,12 @@ export class Farmland extends City {
         const x = a + (R() - .5) * (f.type === T_FALLOW ? 3 : 0.5), z = b + (R() - .5) * (f.type === T_FALLOW ? 3 : 0.5);
         const pn = this.noise2(x / 26, z / 26, 11);
         if (pn < (f.type === T_FALLOW ? 0.45 : 0.22) || (pn < 0.35 && R() < 0.5)) continue; // trampled / burnt patches
-        if (onRoad(x, z, 2.5) || this.inVillage(x, z) || this.inFarm(x, z) || this.nearCrater(x, z, 0.9)) continue;
+        if (onRoad(x, z, 2.5) || this.inVillage(x, z) || this.inFarm(x, z) || this.inFarmstead(x, z) || this.inForest(x, z, 3) || this.nearCrater(x, z, 0.9)) continue;
+        if (this.terrain.cutSDF(x, z) < 1.4) continue;
         const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] !== 1) continue;
-        this.put(name, x, z, R() * 6.28, { s: 0.8 + R() * 0.45, cost: 0, check: false, inst, rx: (R() - .5) * 0.12, rz: (R() - .5) * 0.12 });
+        this.put(name, x, z, R() * 6.28, { s: 0.8 + R() * 0.45, cost: 0, check: false, trench: false, inst, rx: (R() - .5) * 0.12, rz: (R() - .5) * 0.12 });
       }
+      if (MAP.forest && f.x1 <= MAP.forest.x1 + 10 && f.x0 >= MAP.forest.x0 - 30 && f.z0 >= MAP.forest.z0 - 30 && f.z1 <= MAP.forest.z1 + 100) continue; // under the forest
       if (f.type !== T_FALLOW) this.concealRect(f.x0 + 6, f.z0 + 6, f.x1 - 6, f.z1 - 6, 140);
       else this.concealRect(f.x0 + 6, f.z0 + 6, f.x1 - 6, f.z1 - 6, 215);
     }
@@ -403,7 +537,7 @@ export class Farmland extends City {
       const n = Math.floor(Math.hypot(x1 - x0, z1 - z0) / 42), tops = [];
       for (let i = 0; i <= n; i++) {
         const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
-        if (onRoad(x, z, -0.5) || Math.abs(x) > MAP_SIZE / 2 - 4 || Math.abs(z) > MAP_SIZE / 2 - 4) { tops.push(null); continue; }
+        if (onRoad(x, z, -0.5) || Math.abs(x) > MAP_SIZE / 2 - 4 || Math.abs(z) > MAP_SIZE / 2 - 4 || this.solidHit(x, z, 1.0, 0.3, rotY, 0.2) || this.terrain.cutSDF(x, z) < 1.5) { tops.push(null); continue; }
         const broken = this.rng() < 0.15, M = trs(x, 0, z, rotY, 1, broken ? (this.rng() - .5) * 0.6 : (this.rng() - .5) * 0.05, (this.rng() - .5) * 0.06); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK); tops.push(broken ? null : att.map(a => a.clone().applyMatrix4(M)));
       }
@@ -417,39 +551,38 @@ export class Farmland extends City {
   props() {
     const T = this.templatesFrom('props', { car: /car|sedan|vaz|lada|zhiguli/i, bus: /bus(?!_?stop)|paz|minibus/i, hedgehog: /hedgehog/i, sandbag: /sandbag/i, tyre: /tyre|tire/i, crater: /crater/i });
     this.propT = T; const R = this.rng;
-    const one = (list, x, z, ry, cost = BLOCK) => { if (!list) return; const t = list[Math.floor(R() * list.length)]; const k = 'p_' + t.name; (this.place[k] ||= { t, m: [], opts: {} }).m.push(trs(x, 0, z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.2); };
+    const one = (list, x, z, ry, cost = BLOCK) => { if (!list) return; const t = list[Math.floor(R() * list.length)]; const k = 'p_' + t.name; (this.place[k] ||= { t, m: [], opts: {} }).m.push(trs(x, this.terrain.heightAt(x, z), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.2); };
     // burnt-out cars on the regional roads (shot up on the move), a bus at the village
     for (let i = 0; i < 14; i++) { const r = ROADS.filter(r => r.type !== 'track')[i % 2], horiz = (r.x1 - r.x0) > (r.z1 - r.z0); const t = R(), sd = R() < 0.5;
       const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd ? r.x0 + 1.2 : r.x1 - 1.2), z = horiz ? (sd ? r.z0 + 1.2 : r.z1 - 1.2) : r.z0 + t * (r.z1 - r.z0);
-      if (Math.abs(x) > BOUNDS - 10 || Math.abs(z) > BOUNDS - 10 || Math.abs(z) > 360) continue;
+      if (Math.abs(x) > BOUNDS - 10 || Math.abs(z) > BOUNDS - 10 || Math.abs(z) > 590 || this.terrain.cutSDF(x, z) < 6 || this.teethNear(x, z, 6) || this.inForest(x, z, 3)) continue;
       one(T.car, x + (horiz ? 0 : (sd ? -3 : 3) * R()), z + (horiz ? (sd ? -3 : 3) * R() : 0), (horiz ? Math.PI / 2 : 0) + (R() - .5) * 0.9); }
-    if (T.bus) one(T.bus, -60, 70.5, Math.PI / 2 + 0.2);
-    for (let i = 0; i < 30; i++) { const x = (R() - .5) * (MAP_SIZE - 80), z = (R() - .5) * 700, ci = this.nav.idx(x, z); if (ci >= 0 && this.nav.cost[ci] === 1 && !onRoad(x, z, 2) && T.tyre) one(T.tyre, x, z, R() * 6, 0); }
+    if (T.bus) one(T.bus, -60, 63.6, Math.PI / 2 + 0.12);
+    for (let i = 0; i < 55; i++) { const x = (R() - .5) * (MAP_SIZE - 80), z = (R() - .5) * (MAP_SIZE - 220), ci = this.nav.idx(x, z); if (ci >= 0 && this.nav.cost[ci] === 1 && !onRoad(x, z, 2) && T.tyre && this.terrain.cutSDF(x, z) > 4 && !this.inForest(x, z)) one(T.tyre, x, z, R() * 6, 0); }
   }
   // ---------------------------------------------------------------- field fortifications facing north
   defences() {
     const R = this.rng;
-    // trench line in front of Novomykolaivka and around the farm, sandbag nests, hedgehogs on the road
-    const trench = (x0, x1, z) => { for (let x = x0; x < x1; x += 6) { const zz = z + (Math.floor((x - x0) / 18) % 2 ? 1.6 : -1.6); this.put('trench_segment', x, zz, 0, { cost: 6, low: true, check: false }); } };
-    trench(-250, -96, 10); trench(205, 320, 42);
-    for (const [x, z] of [[-150, 13], [-210, 12], [-110, 12], [230, 44], [290, 44]]) this.put('dugout_entrance', x, z - 4, Math.PI, { cost: BLOCK });
-    for (const [x, z, r] of [[-175, 70.5, 0], [-160, 70.5, 0], [-120, 56, Math.PI], [255, 52, 0], [270, 52, 0], [210, 75, Math.PI / 2]]) this.putSandbag(x, z, r);
-    for (const [x0, z0, x1, z1] of [[-336, 56, -336, 71], [96, 40, 111, 40], [96, -60, 111, -60]]) for (let f = 0; f <= 1.001; f += 0.25) this.putProp('hedgehog', x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, R() * 3, BLOCK);
-    for (let i = 0; i < 6; i++) this.put('berm_earth', -300 + i * 120 + R() * 30, -360 + R() * 10, (R() - .5) * 0.3, { cost: 6, low: true });
-    for (let i = 0; i < 6; i++) this.put('berm_earth', -300 + i * 120 + R() * 30, 362 + R() * 10, Math.PI + (R() - .5) * 0.3, { cost: 6, low: true });
+    // (trenches, dugouts, MG nests, the AT ditch and dragon's teeth are cut into the ground by fortifications())
+    // sandbag nests at the objectives, hedgehog chicanes on the roads, vehicle berms in the staging grounds
+    for (const [x, z, r] of [[-175, 70.5, 0], [-160, 70.5, 0], [-120, 56, Math.PI], [255, 52, 0], [270, 52, 0], [210, 75, Math.PI / 2], [118, 395, 0], [96, 410, Math.PI / 2]]) this.putSandbag(x, z, r);
+    for (const [x0, z0, x1, z1] of [[-336, 56, -336, 71], [96, 40, 111, 40], [96, -60, 111, -60], [93, 414, 99, 414], [108, 386, 114, 386], [96, -318, 111, -318], [-366, -318, -353, -318], [353, -318, 366, -318]]) for (let f = 0; f <= 1.001; f += 0.25) this.putProp('hedgehog', x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, R() * 3, BLOCK);
+    for (let i = 0; i < 9; i++) this.put('berm_earth', -520 + i * 125 + R() * 30, -590 + R() * 10, (R() - .5) * 0.3, { cost: 6, low: true });
+    for (let i = 0; i < 9; i++) this.put('berm_earth', -520 + i * 125 + R() * 30, 596 + R() * 10, Math.PI + (R() - .5) * 0.3, { cost: 6, low: true });
     // concertina belts in front of the trenches
     const C = this.wireT?.concertina?.[0];
     if (C) { const bb = new THREE.Box3().setFromObject(C), len = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z), alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z), m = [];
       const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { if (R() < 0.15) continue; const f = (i + 0.5) / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
       /* no concertina wire */ }
   }
-  putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, 0, z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
+  putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; if (this.terrain.cutSDF(x, z) < 1.5) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, this.terrain.heightAt(x, z), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
   putSandbag(x, z, r) { this.putProp('sandbag', x, z, r, 7); const i = this.nav.idx(x, z); if (i >= 0) this.nav.low[i] = 1; }
   // ---------------------------------------------------------------- craters (pre-rolled in layoutFields)
   craters() {
     const mat = new THREE.MeshStandardMaterial({ roughness: 1, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     mat.map = craterTex(); const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
-    this.craterCap = 1400; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
+    this.craterList = this.craterList.filter(([x, z, s]) => this.terrain.cutSDF(x, z) > s + 3 && !this.terrain.relief(x, z, false) && !this.teethNear(x, z, s + 2) && !this.inFarmstead(x, z));
+    this.craterCap = 2800; this.craterMesh = new THREE.InstancedMesh(g, mat, this.craterCap); this.craterMesh.count = 0; this.craterMesh.receiveShadow = true; this.craterMesh.frustumCulled = false; this.scene.add(this.craterMesh);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     const T = this.propT?.crater, big = [];
     for (const [x, z, s] of this.craterList) {
@@ -457,7 +590,7 @@ export class Farmland extends City {
       if (s > 4.5 && T) { big.push(trs(x, 0, z, this.rng() * 6, s / 4.5)); this.nav.circle(x, z, s * 0.8, 3, true); }
       else if (s > 2.5) this.nav.circle(x, z, s * 0.5, 2, true);
     }
-    if (T && big.length) instance(this.scene, T[0], big);
+    if (T && big.length) instance(this.scene, T[0], big, { cullDist: 750 });
   }
   // distant tree belts and village roofs on the horizon instead of a city skyline
   skyline() {
@@ -474,10 +607,13 @@ export class Farmland extends City {
     const cols = ['#4a3f31', '#6b6141', '#4b5034', '#574a33', '#5d5739'];
     for (const f of this.fields) { x.fillStyle = cols[f.type]; x.fillRect((f.x0 + o) * k, (f.z0 + o) * k, (f.x1 - f.x0) * k, (f.z1 - f.z0) * k); }
     x.fillStyle = '#5e5643'; for (const g of this.gardenRects || []) x.fillRect((g[0] + o) * k, (g[1] + o) * k, (g[2] - g[0]) * k, (g[3] - g[1]) * k);
+    if (this.forestMask) { x.fillStyle = '#2b3a20'; const MN = this.forestMN; for (let j = 0; j < MN; j++) for (let i = 0; i < MN; i++) if (this.forestMask[j * MN + i] === 1) x.fillRect(i * 4 * k, j * 4 * k, Math.max(1, 4 * k + 0.5), Math.max(1, 4 * k + 0.5)); }
   }
   minimapOver(x, k, o) {
     x.strokeStyle = '#2d3f22'; x.lineWidth = Math.max(2, 10 * k); for (const [a, b, c, d] of MAP.treelines) { x.beginPath(); x.moveTo((a + o) * k, (b + o) * k); x.lineTo((c + o) * k, (d + o) * k); x.stroke(); }
     x.fillStyle = '#a89f8c'; for (const [hx, hz, d] of this.houseSpots || []) x.fillRect((hx + o) * k - 1.5, (hz + o) * k - 1.5, 3, 3);
+    x.fillStyle = '#2a2219'; for (const q of this.terrain.cuts) { x.beginPath(); q.pts.forEach((p, i) => i ? x.lineTo((p[0] + o) * k, (p[1] + o) * k) : x.moveTo((p[0] + o) * k, (p[1] + o) * k)); x.closePath(); x.fill(); }
+    x.strokeStyle = '#3a3128'; x.lineWidth = Math.max(1, 3 * k); for (const r of this.terrain.reliefs) if (r.type === 'ditch') { x.beginPath(); r.pts.forEach((p, i) => i ? x.lineTo((p[0] + o) * k, (p[1] + o) * k) : x.moveTo((p[0] + o) * k, (p[1] + o) * k)); x.stroke(); }
     const f = MAP.farm; x.fillStyle = '#9a9384'; x.fillRect((f.x - 30 + o) * k, (f.z - 33 + o) * k, 60 * k, 12 * k); x.fillRect((f.x - 30 + o) * k, (f.z + 22 + o) * k, 60 * k, 12 * k);
   }
 }
@@ -499,6 +635,7 @@ function box(w, h, d, c, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(new THR
 function cyl(r0, r1, h, c, x = 0, y = 0, z = 0, seg = 8) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg), M(c)); m.position.set(x, y + h / 2, z); return m; }
 function blob(r, c, x, y, z, sy = 1) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), M(c, { flatShading: true })); m.position.set(x, y, z); m.scale.y = sy; return m; }
 function fallbackTpl(name) {
+  if (!name) return null;
   const n = name.replace(/_lod1$/, '');
   const leaf = 0x56603a, bark = 0x4b4239;
   if (/poplar/.test(n)) return grp(cyl(0.15, 0.3, 6, bark), blob(2.2, leaf, 0, 11, 0, 4));
@@ -529,3 +666,5 @@ function fallbackTpl(name) {
   if (/dugout/.test(n)) return grp(box(2.4, 0.8, 2.6, 0x4f4233));
   return null;
 }
+
+function blackTex() { const t = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat); t.needsUpdate = true; return t; }

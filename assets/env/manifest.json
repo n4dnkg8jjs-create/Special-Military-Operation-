@@ -2091,10 +2091,16 @@
   "rubble_3",
   "rubble_4",
   "rubble_5",
-  "rubble_6"
+  "rubble_6",
+  "rubble_7",
+  "rubble_8",
+  "rubble_9",
+  "rubble_10",
+  "rubble_11",
+  "rubble_12"
  ],
  "rubble": {
-  "notes": "origin = ground centre of the pile, +Y up. One mesh per file, material \"debris\" (1024^2 atlas). rubble_1 big panel-fragment pile, rubble_2 brick-heavy pile, rubble_3 collapsed floor slabs \"tent\", rubble_4 low street debris, rubble_5 loose panel slab with rebar, rubble_6 brick scatter.",
+  "notes": "origin = ground centre of the pile, +Y up. One mesh per file, material \"debris\" (1024^2 atlas). rubble_1 big panel-fragment pile, rubble_2 brick-heavy pile, rubble_3 collapsed floor slabs \"tent\", rubble_4 low street debris, rubble_5 loose panel slab with rebar, rubble_6 brick scatter, rubble_7 big panel-slab collapse heap (~1.8 m, vehicles climb it), rubble_8 red-brick house collapse heap, rubble_9 mixed household debris pile, rubble_10 floor-slab ramp on a low mound, rubble_11 wide low concrete scatter, rubble_12 silicate-brick heap. The game rasterises each pile into a height map (src/world/terrain.js templateHeights) so vehicles drive up and over it.",
   "files": {
    "rubble_1": {
     "tris": 4927,
@@ -2179,6 +2185,90 @@
      2.1
     ],
     "bytes": 3198056
+   },
+   "rubble_7": {
+    "tris": 6514,
+    "bbox_min": [
+     -4.55,
+     -0.04,
+     -5.1
+    ],
+    "bbox_max": [
+     4.64,
+     1.99,
+     4.57
+    ],
+    "bytes": 3404376
+   },
+   "rubble_8": {
+    "tris": 7280,
+    "bbox_min": [
+     -4.09,
+     -0.12,
+     -4.11
+    ],
+    "bbox_max": [
+     4.1,
+     1.62,
+     3.8
+    ],
+    "bytes": 3526028
+   },
+   "rubble_9": {
+    "tris": 4466,
+    "bbox_min": [
+     -3.15,
+     -0.15,
+     -3.23
+    ],
+    "bbox_max": [
+     3.31,
+     1.26,
+     3.28
+    ],
+    "bytes": 3318456
+   },
+   "rubble_10": {
+    "tris": 2462,
+    "bbox_min": [
+     -3.51,
+     -0.09,
+     -4.08
+    ],
+    "bbox_max": [
+     4.28,
+     1.31,
+     3.58
+    ],
+    "bytes": 3174268
+   },
+   "rubble_11": {
+    "tris": 3379,
+    "bbox_min": [
+     -3.37,
+     -0.29,
+     -3.3
+    ],
+    "bbox_max": [
+     3.41,
+     0.78,
+     3.67
+    ],
+    "bytes": 3257756
+   },
+   "rubble_12": {
+    "tris": 6535,
+    "bbox_min": [
+     -3.42,
+     -0.5,
+     -3.38
+    ],
+    "bbox_max": [
+     3.33,
+     1.51,
+     3.31
+    ],
+    "bytes": 3455164
    }
   }
  },
@@ -4171,5 +4261,206 @@
   },
   "notes": "Two materials: farmland_atlas (2048^2 opaque, tools/blender/env/farmland_atlas.py, shares city_atlas regions/seeds for brick/slate/tin/wood/concrete) and farmland_foliage (2048^2 RGBA, alphaMode MASK 0.5, double sided, farmland_foliage.py: leaf clusters, twig sprays, far-LOD crown clumps, crop parts, wattle weave, greenhouse film). Every node is a top-level mesh, origin on the ground at the footprint centre, +Y up, metres, front = +Z; nodes are laid out on a grid in the file (farmland.js instancing ignores the layout transform). Foliage vertices carry bent normals (custom split normals, outward from the crown ellipsoid) and COLOR_0 (baked crown self-shadow); buildings / wrecks carry COLOR_0 for ground AO, soot and scorch, so materials load with vertexColors. Trees/bushes: each <name>_lod1 has the same origin and silhouette (trunk prism + crown clump cards on the dense far_* cells), 50-230 tris, meant for > ~190 m. Crops (sunflower_dead_clump, corn_dry_clump, weeds_tall_clump) are foliage-only alpha cards for heavy instancing. Linear pieces lie along +X centred on the origin: fence_wattle / fence_wood_village / gate_village 3.0 m, trench_segment 6.0 m (ends open so segments chain), berm_earth ~9 m. barn_kolkhoz(_damaged) 60.9 x 12.9 m, machine_shed 31 x 16 m (long axes X). trench_segment: dark floor at y=0.03 between revetted walls, parapets up to 0.62 m (+Z) / 0.45 m (-Z), sandbag lip on the +Z parapet. Vehicles face +Z.",
   "refs": "Photo record of Kharkiv / Kherson / Zaporizhzhia oblast farmland 2022-24: black locust (Robinia) + Lombardy poplar + oak shelterbelts (lesopolosa) with elder / dog-rose understory, shell-stripped half-dead acacias; kolkhoz cowsheds of white silicate brick with asbestos-slate roofs and plank end gates (many with caved-in roofs after shelling), open steel machinery sheds, corrugated grain bins with bucket elevators, Rozhnovsky water towers, MTZ-80/82 Belarus tractors, burnt SK-5 Niva combines in fields, 2PTS-4 trailers, round bales and traditional stogs, village yards with wattle (pleten) and picket fences, sheet-steel sunburst gates, concrete-ring wells with windlass roofs, Soviet mosaic bus shelters, roadside crosses with rushnyky, trench lines and dugouts with wattle / plank revetments and sandbag lips."
+ },
+ "fortifications": {
+  "file": "fortifications.glb",
+  "nodes": {
+   "tree_acacia_leafy_mid": {
+    "tris": 569,
+    "bbox_min": [
+     -6.6,
+     -0.22,
+     -3.29
+    ],
+    "bbox_max": [
+     1.7,
+     11.76,
+     5.75
+    ]
+   },
+   "tree_oak_leafy_mid": {
+    "tris": 708,
+    "bbox_min": [
+     -5.35,
+     -0.2,
+     -5.84
+    ],
+    "bbox_max": [
+     6.59,
+     11.19,
+     6.84
+    ]
+   },
+   "tree_walnut_leafy_mid": {
+    "tris": 617,
+    "bbox_min": [
+     -6.4,
+     -0.17,
+     -5.92
+    ],
+    "bbox_max": [
+     6.5,
+     9.97,
+     5.9
+    ]
+   },
+   "tree_acacia_shelled_mid": {
+    "tris": 376,
+    "bbox_min": [
+     -2.33,
+     -0.21,
+     -4.01
+    ],
+    "bbox_max": [
+     5.12,
+     11.11,
+     3.2
+    ]
+   },
+   "tree_poplar_leafy_mid": {
+    "tris": 534,
+    "bbox_min": [
+     -2.84,
+     -0.16,
+     -2.72
+    ],
+    "bbox_max": [
+     2.95,
+     20.41,
+     2.86
+    ]
+   },
+   "revet_boards": {
+    "tris": 82,
+    "bbox_min": [
+     -0.52,
+     -1.0,
+     -0.03
+    ],
+    "bbox_max": [
+     0.53,
+     0.07,
+     0.09
+    ]
+   },
+   "revet_wattle": {
+    "tris": 52,
+    "bbox_min": [
+     -0.52,
+     -1.0,
+     0.01
+    ],
+    "bbox_max": [
+     0.52,
+     0.09,
+     0.09
+    ]
+   },
+   "revet_logs": {
+    "tris": 156,
+    "bbox_min": [
+     -0.53,
+     -1.0,
+     -0.13
+    ],
+    "bbox_max": [
+     0.53,
+     0.14,
+     0.11
+    ]
+   },
+   "duckboard": {
+    "tris": 164,
+    "bbox_min": [
+     -0.6,
+     0.0,
+     -0.32
+    ],
+    "bbox_max": [
+     0.6,
+     0.08,
+     0.32
+    ]
+   },
+   "sandbag_row": {
+    "tris": 101,
+    "bbox_min": [
+     -0.67,
+     -0.01,
+     -0.21
+    ],
+    "bbox_max": [
+     0.77,
+     0.26,
+     0.23
+    ]
+   },
+   "dugout_roof": {
+    "tris": 2310,
+    "bbox_min": [
+     -2.52,
+     -1.72,
+     -2.5
+    ],
+    "bbox_max": [
+     2.54,
+     1.17,
+     2.57
+    ]
+   },
+   "mg_nest_roof": {
+    "tris": 1049,
+    "bbox_min": [
+     -1.15,
+     -1.1,
+     -1.24
+    ],
+    "bbox_max": [
+     1.16,
+     0.8,
+     1.36
+    ]
+   },
+   "dragon_tooth": {
+    "tris": 34,
+    "bbox_min": [
+     -0.6,
+     0.0,
+     -0.6
+    ],
+    "bbox_max": [
+     0.6,
+     1.08,
+     0.6
+    ]
+   },
+   "dragon_tooth_b": {
+    "tris": 58,
+    "bbox_min": [
+     -0.98,
+     -0.04,
+     -0.6
+    ],
+    "bbox_max": [
+     0.6,
+     0.86,
+     0.82
+    ]
+   },
+   "ammo_crates": {
+    "tris": 264,
+    "bbox_min": [
+     -0.38,
+     0.0,
+     -0.24
+    ],
+    "bbox_max": [
+     1.13,
+     0.61,
+     0.44
+    ]
+   }
+  },
+  "notes": "Builds assets/env/fortifications.glb: dressing for the field fortifications that src/world/terrain.js cuts INTO the\nground (trench walls / floors / parapets are the game's terrain mesh; these pieces only dress them).  Modelled on the\n2022-24 Ukrainian / Russian field works: board, wattle and log revetment held by driven stakes, pallet-style duckboards,\nsandbag lips on the firing cells, log-roofed earth-covered dugouts (blindazh) with a timbered doorway at the end of a\ndog-leg passage, covered MG positions, concrete \"dragon's teeth\" pyramids (pir\u0430\u043c\u0456\u0434\u043a\u0438) and ammo boxes.\nMaterials: farmland_atlas + farmland_foliage (same atlases / cache as farmland.glb, so they match the village set).\nConventions (metres, +Y up):\n  revet_boards / revet_wattle / revet_logs   wall panel 1.0 m along X (x -0.5..0.5), top edge at y=0, bottom at y=-1,\n                                              face in the plane z=0 looking +Z (into the trench).  The game scales it\n                                              (segment length, lip height + trench depth, 1).\n  duckboard        1.2 m along X, 0.62 m wide, origin on the trench floor.\n  sandbag_row      1.3 m along X, two courses, origin at the bottom centre; front (+Z) towards the enemy.\n  dugout_roof      earth-covered log roof 4.7 x 4.9 m (x +-2.35, z +-2.45) sitting on flat ground over the pit; the\n                   timbered doorway facade drops to y=-1.7 at z=+2.45 (the passage arrives from +Z).\n  mg_nest_roof     log roof on 4 posts over a firing cell, embrasure to +Z; origin at ground level, cell centre.\n  dragon_tooth(_b) concrete pyramid, base 1.2 m, 1.0 m tall (b: chipped, toppled-looking); origin base centre.\n  ammo_crates      a few wooden ammunition boxes, origin on the floor.\n  tree_*_mid       mid-distance LODs of the farmland.glb trees (build_forest_lods.py), same origins / crowns."
  }
 }

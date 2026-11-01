@@ -64,7 +64,7 @@ export class Input {
     const d = this.drag; this.drag = null; this.box.style.display = 'none'; this.hud.preview.count = 0;
     if (!d) return;
     if (d.btn === 0) {
-      if (this.mode === 'fireground') { const p = this.groundAt(e.clientX, e.clientY); if (p) { const sel = [...this.hud.selected]; for (const u of sel) { u.fireAt = { p: p.clone(), until: this.g.time + 30 }; u.target = null; } this.hud.groundMarker?.(p); this.g.hud.alert(`${sel.length > 1 ? sel.length + ' units' : sel[0]?.name} firing on the area for 30 s (X halts)`); this.g.sfx('ui_order'); } this.mode = null; document.body.style.cursor = ''; return; }
+      if (this.mode === 'fireground') { const p = this.groundAt(e.clientX, e.clientY); if (p) { const sel = [...this.hud.selected]; for (const u of sel) { u.fireAt = { p: p.clone(), until: this.g.time + 30 }; u.target = null; } this.hud.groundMarker?.(p); if (sel.some(u => u.kind !== 'spg')) this.g.hud.alert(`${sel.length > 1 ? sel.length + ' units' : sel[0]?.name} firing on the area for 30 s (X halts)`); this.g.sfx('ui_order'); } this.mode = null; document.body.style.cursor = ''; return; }
       if (this.mode === 'mortar') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerMortar(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; } return; }
       if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 8) {
         const x0 = Math.min(d.x, e.clientX), x1 = Math.max(d.x, e.clientX), y0 = Math.min(d.y, e.clientY), y1 = Math.max(d.y, e.clientY);

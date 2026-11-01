@@ -1,6 +1,7 @@
 // Navigation grid (1 m cells): A* pathfinding for infantry and vehicles, clearance map,
 // directional cover map, and segment occlusion against building footprints.
 export const BLOCK = 255;
+export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
   constructor() { this.k = []; this.v = []; }
@@ -26,6 +27,11 @@ export class NavGrid {
     this.cover = new Uint8Array(N);     // 8-direction cover bitmask
     this.low = new Uint8Array(N);       // 1 = low cover (rubble, sandbags, wrecks) vs 0 = wall
     this.road = new Uint8Array(N);      // 2 = paved road, 1 = dirt track (vehicles prefer and drive faster on them)
+    // set by Terrain when the map has field fortifications / rubble relief:
+    //   veh[i]    0 = any vehicle, 1 = wheeled vehicles can't cross (trench; tanks cross slowly), 2 = no vehicle (AT ditch,
+    //             dragon's teeth, dugout roofs, dense forest)
+    //   trench[i] trench / ditch floor depth in dm (0 = not in a cut); infantry there is in cover (coverFrom = 1)
+    this.veh = null; this.trench = null; this.clearV = null; this.clearT = null; this.terrain = null; this.terrainLOS = true;
     this.g = new Float32Array(N); this.from = new Int32Array(N); this.stamp = new Uint32Array(N); this.closed = new Uint32Array(N); this.gen = 1;
     this.occluders = []; // {cx,cz,hx,hz,cos,sin,h, ref}
     this.occGrid = new Map(); this.occCell = 24;
@@ -49,6 +55,18 @@ export class NavGrid {
       if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) { this.cost[i] = val; this.low[i] = low; } }
     }
   }
+  // vehicle restriction (max) inside an oriented rectangle, see this.veh
+  setVeh(cx, cz, hx, hz, rot, val) {
+    this.veh ||= new Uint8Array(this.n * this.n); this.vehDirty = true;
+    const c = Math.cos(rot), s = Math.sin(rot), r = Math.hypot(hx, hz);
+    for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
+      const dx = x - cx, dz = z - cz, lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) this.veh[i] = Math.max(this.veh[i], val); }
+    }
+  }
+  // can a vehicle stand / drive here? tracked = tanks (cross trenches), else wheeled (BTR)
+  vehPassable(x, z, tracked = false) { const i = this.idx(x, z); if (i < 0 || this.cost[i] === BLOCK) return false; if (!this.veh) return true; return this.veh[i] < (tracked ? 2 : 1); }
+  trenchDepth(x, z) { const i = this.idx(x, z); return i < 0 || !this.trench ? 0 : this.trench[i] / 10; }
   markRoad(x0, z0, x1, z1, v) {
     for (let z = z0; z <= z1; z += this.cell) for (let x = x0; x <= x1; x += this.cell) { const i = this.idx(x, z); if (i >= 0) this.road[i] = Math.max(this.road[i], v); }
   }
@@ -80,6 +98,7 @@ export class NavGrid {
     for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) { const k = j * n + i; let v = d[k]; if (!v) continue;
       if (i < n - 1) v = Math.min(v, d[k + 1] + a); if (j < n - 1) { v = Math.min(v, d[k + n] + a); if (i < n - 1) v = Math.min(v, d[k + n + 1] + b); if (i > 0) v = Math.min(v, d[k + n - 1] + b); } d[k] = v; }
     for (let i = 0; i < N; i++) d[i] *= this.cell;
+    if (this.veh && (this.vehDirty || !this.clearV)) { this.clearV = this.chamfer(i => this.cost[i] === BLOCK || this.veh[i] >= 1); this.clearT = this.chamfer(i => this.cost[i] === BLOCK || this.veh[i] >= 2); this.vehDirty = false; }
     const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
     for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
       const k = j * n + i; if (this.cost[k] === BLOCK) continue; let m = 0;
@@ -87,13 +106,28 @@ export class NavGrid {
       this.cover[k] = m;
     }
   }
+  // distance (dm, capped at 255) to the nearest cell matching blocked(i)
+  chamfer(blocked) {
+    const n = this.n, N = n * n, d = new Float32Array(N), INF = 1e6, b = Math.SQRT2;
+    for (let i = 0; i < N; i++) d[i] = blocked(i) ? 0 : INF;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = j * n + i; let v = d[k]; if (!v) continue;
+      if (i > 0) v = Math.min(v, d[k - 1] + 1); if (j > 0) { v = Math.min(v, d[k - n] + 1); if (i > 0) v = Math.min(v, d[k - n - 1] + b); if (i < n - 1) v = Math.min(v, d[k - n + 1] + b); } d[k] = v; }
+    for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) { const k = j * n + i; let v = d[k]; if (!v) continue;
+      if (i < n - 1) v = Math.min(v, d[k + 1] + 1); if (j < n - 1) { v = Math.min(v, d[k + n] + 1); if (i < n - 1) v = Math.min(v, d[k + n + 1] + b); if (i > 0) v = Math.min(v, d[k + n - 1] + b); } d[k] = v; }
+    const out = new Uint8Array(N); for (let i = 0; i < N; i++) out[i] = Math.min(255, Math.round(d[i] * this.cell * 10)); return out;
+  }
   // Cover value (0..1) at position against a threat direction (from pos towards threat).
+  // In a trench / ditch the soldier is below the lip: full cover from anything not right on top of him.
   coverFrom(x, z, tx, tz) {
-    const k = this.idx(x, z); if (k < 0) return 0; const m = this.cover[k]; if (!m) return 0;
+    const k = this.idx(x, z); if (k < 0) return 0;
+    if (this.trench && this.trench[k] >= 9 && (tx - x) ** 2 + (tz - z) ** 2 > 16) return 1;
+    const m = this.cover[k]; if (!m) return 0;
     const ang = Math.atan2(tz - z, tx - x); const q = ((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8;
     if (m & (1 << q)) return 1; if (m & (1 << ((q + 1) % 8)) || m & (1 << ((q + 7) % 8))) return 0.55; return 0;
   }
   passable(i, clearance) { return i >= 0 && this.cost[i] !== BLOCK && this.clear[i] >= clearance; }
+  // vehicle passability: also keeps the hull clear of trenches (wheeled) / ditches, teeth, forest (tracked)
+  passableV(i, clearance, tracked) { if (!this.passable(i, clearance)) return false; const cv = tracked ? this.clearT : this.clearV; return !cv || cv[i] >= clearance * 10 * 0.8; }
   nearestFree(x, z, clearance = 0.5, maxR = 30) {
     let i = this.idx(x, z); if (this.passable(i, clearance)) return [x, z];
     for (let r = 1; r <= maxR; r++) for (let a = 0; a < 16 + r * 4; a++) {
@@ -103,9 +137,12 @@ export class NavGrid {
     return [x, z];
   }
   // A* with octile heuristic. clearance in metres (infantry 0.45, BTR 1.9, tank 2.1). Returns [[x,z],...]
+  // vehicle: false (infantry) | true | 'wheeled' | 'tracked'. true = tracked when clearance >= 1.95 (tanks ask for 2.0+),
+  // else wheeled. Wheeled vehicles never enter trench cells; tracked ones cross trenches at a high cost.
   findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = this.maxIter || 120000) {
-    [sx, sz] = this.nearestFree(sx, sz, clearance, 6);
-    [tx, tz] = this.nearestFree(tx, tz, clearance, 40);
+    const tracked = vehicle === 'tracked' || (vehicle === true && clearance >= 1.95), vrest = !!vehicle && !!this.clearV;
+    if (vrest) { [sx, sz] = this.nearestFreeV(sx, sz, clearance, tracked, 8); [tx, tz] = this.nearestFreeV(tx, tz, clearance, tracked, 40); }
+    else { [sx, sz] = this.nearestFree(sx, sz, clearance, 6); [tx, tz] = this.nearestFree(tx, tz, clearance, 40); }
     const s = this.idx(sx, sz), t = this.idx(tx, tz); if (s < 0 || t < 0) return null;
     if (s === t) return [[tx, tz]];
     const n = this.n, gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed;
@@ -122,9 +159,10 @@ export class NavGrid {
       for (let q = 0; q < 8; q++) {
         const kk = k + D[q]; if (kk < 0 || kk >= n * n) continue;
         const kki = kk % n; if (Math.abs(kki - ki) > 1) continue;
-        if (!this.passable(kk, clearance)) continue;
-        if (q >= 4 && (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance))) continue;
+        if (vrest ? !this.passableV(kk, clearance, tracked) : !this.passable(kk, clearance)) continue;
+        if (q >= 4 && (vrest ? (!this.passableV(k + DX[q], clearance, tracked) || !this.passableV(k + DZ[q] * n, clearance, tracked)) : (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance)))) continue;
         let c = this.cost[kk]; if (vehicle && c > 1) c = c * 2.5; // rubble slows armour more
+        if (vrest && this.veh[kk] === 1) c += 12; // a tank crossing a trench: only when it saves a long detour
         if (vehicle) c *= this.road[kk] === 2 ? 0.8 : this.road[kk] === 1 ? 0.9 : 1.15; // prefer roads when they're roughly on the way
         // stay off walls: prefer cells with more clearance
         // vehicles keep off walls; infantry hug them (move along facades and fences, not across open ground)
@@ -135,11 +173,21 @@ export class NavGrid {
       }
     }
     const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
-    return this.smooth(raw.map(k => [this.cx(k), this.cz(k)]), clearance, best === t ? [tx, tz] : null, !vehicle);
+    this._pv = vrest ? tracked : null;
+    const out = this.smooth(raw.map(k => [this.cx(k), this.cz(k)]), clearance, best === t ? [tx, tz] : null, !vehicle);
+    this._pv = null; return out;
+  }
+  nearestFreeV(x, z, clearance, tracked, maxR = 30) {
+    let i = this.idx(x, z); if (this.passableV(i, clearance, tracked)) return [x, z];
+    for (let r = 1; r <= maxR; r++) for (let a = 0; a < 16 + r * 4; a++) {
+      const t = a / (16 + r * 4) * Math.PI * 2, px = x + Math.cos(t) * r * this.cell, pz = z + Math.sin(t) * r * this.cell;
+      i = this.idx(px, pz); if (this.passableV(i, clearance, tracked)) return [this.cx(i), this.cz(i)];
+    }
+    return [x, z];
   }
   lineFree(ax, az, bx, bz, clearance) {
-    const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5));
-    for (let i = 1; i < steps; i++) { const f = i / steps; if (!this.passable(this.idx(ax + (bx - ax) * f, az + (bz - az) * f), clearance)) return false; }
+    const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5)), pv = this._pv;
+    for (let i = 1; i < steps; i++) { const f = i / steps, k = this.idx(ax + (bx - ax) * f, az + (bz - az) * f); if (pv === null || pv === undefined ? !this.passable(k, clearance) : !this.passableV(k, clearance, pv)) return false; if (pv === false && this.veh[k] === 1) return false; }
     return true;
   }
   smooth(p, clearance, end, hug = false) {
@@ -157,8 +205,11 @@ export class NavGrid {
     return out;
   }
   // Does the segment a->b (3D) pass through any building volume? Returns the occluder or null.
+  // Foliage (tree belts, forest): you can see into / out of the edge but not through; the see-through depth is per
+  // occluder (o.depth, default 9 m with an end inside, 4.5 m crossing) and accumulates over consecutive belts / cells.
+  // Ground relief (trench lips, parapets, rubble mounds) also blocks when this.terrainLOS (returns TERRAIN_OCC).
   occluded(ax, ay, az, bx, by, bz, ignore, ignore2) {
-    const C = this.occCell, seen = new Set();
+    const C = this.occCell, seen = new Set(); let leaf = 0;
     const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / C) + 1;
     for (let s = 0; s <= steps; s++) {
       const f = s / steps, x = ax + (bx - ax) * f, z = az + (bz - az) * f;
@@ -171,11 +222,13 @@ export class NavGrid {
           // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
           const L = Math.hypot(bx - ax, bz - az), inside = (segT1 - t) * L;
           const endIn = t <= 0.0001 || segT1 >= 0.9999;
-          if (inside < (endIn ? 9 : 4.5)) continue;
+          leaf += inside;
+          if (leaf < (o.depth ? o.depth * (endIn ? 1 : 0.6) : endIn ? 9 : 4.5)) continue;
         }
         return o;
       }
     }
+    if (this.terrain && this.terrainLOS && this.terrain.segmentBlocked(ax, ay, az, bx, by, bz)) return TERRAIN_OCC;
     return null;
   }
 }
