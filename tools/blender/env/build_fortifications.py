@@ -25,6 +25,8 @@ Conventions (metres, +Y up):
                    the timbered doorway drops to y=-1.7 at z=+2.45 (the passage arrives from +Z).
   mg_nest_roof     crude log roof on 4 posts over a firing cell, embrasure to +Z; origin at ground level, cell centre.
   dragon_tooth(_b) concrete pyramid, base 1.2 m, 1.0 m tall (b: chipped, toppled-looking); origin base centre.
+  dragon_tooth_rubble  a tooth blown apart: broken stump, face slabs + lumps scattered ~2 m, bent rebar; origin base
+                   centre.  City.damageFortAt() swaps teeth to _b (damaged / toppled) and _rubble (destroyed).
   ammo_crates      a few wooden ammunition boxes, origin on the floor.
   tree_*_mid       mid-distance LODs of the farmland.glb trees (build_forest_lods.py), same origins / crowns.
 Run:  cd tools/blender/env && nice -n 10 python3 build_fortifications.py      (then ./optimize_fortifications.sh)
@@ -502,6 +504,40 @@ def dragon_tooth(name='dragon_tooth', seed=370, chipped=False):
     return mb
 
 
+def dragon_tooth_rubble(name='dragon_tooth_rubble', seed=375):
+    """A tooth blown apart by a heavy shell: the stump of the pyramid (broken top, 0.3-0.45 m), slabs of its faces
+    and lumps of concrete thrown around it, bent rebar of the lifting loop sticking out.  Origin base centre."""
+    mb = TMB(name); r = rng(seed)
+    b, t = 0.6, 0.13
+    half = lambda y: b - (b - t) * y
+    hs = [0.42, 0.3, 0.38, 0.27]                                       # broken top: corner heights
+    P0 = [(-b, 0, -b), (b, 0, -b), (b, 0, b), (-b, 0, b)]
+    sg = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+    P1 = [(sx * half(h) * r.uniform(0.85, 1.0), h, sz * half(h) * r.uniform(0.85, 1.0)) for (sx, sz), h in zip(sg, hs)]
+    reg = 'concrete'
+    for i in range(4):
+        a, c = P0[i], P0[(i + 1) % 4]; d, e = P1[(i + 1) % 4], P1[i]
+        G.quad(mb, [a, c, d, e], reg, ((0, 0), (1, 0), (0.85, 0.35), (0.15, 0.35)))
+    # fractured top: four facets to a low, off-centre point
+    ctr = (r.uniform(-0.08, 0.08), 0.22, r.uniform(-0.08, 0.08))
+    for i in range(4):
+        G.quad(mb, [P1[i], P1[(i + 1) % 4], ctr], reg, ((0.4, 0.4), (0.6, 0.4), (0.5, 0.55)))
+    # face slabs and lumps thrown out (half sunk in the churned ground)
+    for k in range(3):
+        a = r.uniform(0, 2 * PI); d = r.uniform(0.9, 1.6)
+        chunk(mb, (math.cos(a) * d, 0.05, math.sin(a) * d), (r.uniform(0.45, 0.65), 0.13, r.uniform(0.35, 0.5)), 910 + k, 'concrete',
+              rot=(r.uniform(-0.35, 0.35), r.uniform(0, PI), r.uniform(-0.35, 0.35)))
+    for k in range(9):
+        a = r.uniform(0, 2 * PI); d = r.uniform(0.55, 1.9); s = r.uniform(0.12, 0.34)
+        chunk(mb, (math.cos(a) * d, s * 0.25, math.sin(a) * d), (s * 1.3, s * 0.8, s), 920 + k, 'concrete')
+    # the lifting-loop rebar, bent over
+    for k, (x0, z0) in enumerate(((-0.07, 0.02), (0.08, -0.03))):
+        p0 = (x0, 0.18, z0); p1 = (x0 + r.uniform(-0.05, 0.05), 0.45, z0); p2 = (x0 + r.uniform(-0.3, 0.3), 0.5 + r.uniform(-0.05, 0.08), z0 + r.uniform(-0.3, 0.3))
+        cyl(mb, p0, p1, 0.012, 4, 'steel_rust'); cyl(mb, p1, p2, 0.012, 4, 'steel_rust')
+    tint(mb, lambda p: np.array([1.0, 0.94, 0.84]) * (0.62 + 0.3 * min(1.0, p[1] / 0.4)))   # dusty, soot-streaked
+    return mb
+
+
 def ammo_crates(name='ammo_crates', seed=380):
     mb = TMB(name); r = rng(seed)
     for i, (x, z, y, a) in enumerate(((0, 0, 0, 0.1), (0.05, 0.02, 0.31, -0.15), (0.72, 0.1, 0, 0.5))):
@@ -519,7 +555,7 @@ def items():
                          floor_pallet(), floor_planks(), sandbag_row(), sandbag_pile(), litter_a(), litter_b(), debris_conc(),
                          net_cover(), branch_cover(), tarp_cover(), net_drone(),
                          dugout_roof(), dugout_roof('dugout_roof_b', 575, netted=True), mg_nest_roof(),
-                         dragon_tooth(), dragon_tooth('dragon_tooth_b', 371, chipped=True), ammo_crates()]
+                         dragon_tooth(), dragon_tooth('dragon_tooth_b', 371, chipped=True), dragon_tooth_rubble(), ammo_crates()]
 
 
 def main():

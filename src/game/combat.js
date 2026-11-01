@@ -314,7 +314,7 @@ export class Combat {
     if (g.camDist(t.pos) < 120) g.fx.blood(this.targetPoint(t, C));
     if (t.hp <= 0) {
       // survivability: most non-head hits leave a man badly wounded (savable by a medic/evac) rather than dead
-      if (head || t.hp < -95 || (blast && Math.random() < 0.25)) { t.die(); g.onDeath(t, shooter, false); }
+      if (head || t.hp < -95 || (blast && Math.random() < 0.25)) { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut); t.target = null; t.path = null;
         if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
@@ -322,7 +322,7 @@ export class Combat {
         sq.onCasualty(t, false); g.stats[sq.side].wia++;
         if (g.camDist(t.pos) < 80) g.sfx('pain', t.pos);
         if (shooter) (shooter.squad || shooter).stats.kills += 0.5;
-      } else { t.die(); g.onDeath(t, shooter, false); }
+      } else { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
     } else if (t.hp < 55 && t.state === 'ok') {
       t.state = 'light'; t.hitT = 0.6; if (g.camDist(t.pos) < 60) g.sfx('pain', t.pos, { gain: 0.7 });
       sq.addMorale(-3);
@@ -542,6 +542,7 @@ export class Combat {
       if (power >= 1.5 && Math.random() < 0.3) this.hitVehicle(v, { pen: 40, dmg: [60, 120] }, at, 'ce', owner, true);
       else v.hp -= 20 * power * (1 - d / radius);
     }
+    if (!b && at.y < 3) g.city.damageFortAt?.(at.x, at.z, power, radius);   // dragon's teeth: big HE breaches the belt
     trenchBlast(g, at, power, owner);
   }
   damageBuilding(b, at, power) {

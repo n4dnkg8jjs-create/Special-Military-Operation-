@@ -1,6 +1,7 @@
 // Navigation grid (1 m cells): A* pathfinding for infantry and vehicles, clearance map,
 // directional cover map, and segment occlusion against building footprints.
 export const BLOCK = 255;
+export const TOOTH_R = 1.25;   // vehicle-blocking radius around a dragon's tooth (m)
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -62,6 +63,47 @@ export class NavGrid {
     for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
       const dx = x - cx, dz = z - cz, lx = dx * c - dz * s, lz = dx * s + dz * c;
       if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) this.veh[i] = Math.max(this.veh[i], val); }
+    }
+  }
+  // ---- dragon's teeth (breachable): a tooth blocks infantry on its own cell and every vehicle within TOOTH_R; the
+  // vehicle block is counted per cell (teethN) so removing one tooth only reopens the cells no other tooth covers,
+  // restoring what the cell held before (teethBase).  Call refreshArea() after removals (local clearance update).
+  addTooth(x, z) { this.toothStamp(x, z, 1); }
+  // destroyed tooth: its cell becomes concrete rubble (passable, slow, low cover), its vehicle block is lifted
+  removeTooth(x, z, rubbleCost = 4) { this.toothStamp(x, z, -1, rubbleCost); }
+  toothStamp(x, z, d, rubbleCost = 4) {
+    const N = this.n * this.n; this.veh ||= new Uint8Array(N);
+    const tn = this.teethN ||= new Map(), tb = this.teethBase ||= new Map(), cb = this.teethCost ||= new Map(), R = TOOTH_R, c = this.cell;
+    for (let zz = z - R - c; zz <= z + R + c; zz += c) for (let xx = x - R - c; xx <= x + R + c; xx += c) {
+      const i = this.idx(xx, zz); if (i < 0 || (this.cx(i) - x) ** 2 + (this.cz(i) - z) ** 2 > R * R) continue;
+      const k = tn.get(i) || 0;
+      if (d > 0) { if (!k) tb.set(i, this.veh[i]); tn.set(i, k + 1); this.veh[i] = Math.max(this.veh[i], 2); }
+      else if (k) { if (k > 1) tn.set(i, k - 1); else { tn.delete(i); this.veh[i] = tb.get(i) || 0; tb.delete(i); } }
+    }
+    const i = this.idx(x, z); if (i < 0) return;
+    if (d > 0) { if (!cb.has(i)) cb.set(i, this.cost[i]); this.cost[i] = BLOCK; }
+    else if (cb.has(i)) { this.cost[i] = Math.max(cb.get(i) === BLOCK ? 1 : cb.get(i), rubbleCost); this.low[i] = 1; cb.delete(i); }
+  }
+  // Local update of clearance (clear, clearV, clearT) and cover bits after cells changed inside the rect (cheap: a
+  // window padded by the 25.5 m clearance cap, the window border keeps its values as chamfer seeds -- exact for the
+  // chamfer metric as long as the change does not reach the border).
+  refreshArea(x0, z0, x1, z1, pad = 26) {
+    const n = this.n, c = this.cell, i0 = Math.max(0, Math.floor((x0 - pad + this.half) / c)), j0 = Math.max(0, Math.floor((z0 - pad + this.half) / c));
+    const i1 = Math.min(n - 1, Math.floor((x1 + pad + this.half) / c)), j1 = Math.min(n - 1, Math.floor((z1 + pad + this.half) / c)), W = i1 - i0 + 1, H = j1 - j0 + 1;
+    const d = new Float32Array(W * H), INF = 1e6, b = Math.SQRT2;
+    const run = (out, blocked, unit, cap) => {   // unit: stored value per cell step
+      for (let jj = 0; jj < H; jj++) for (let ii = 0; ii < W; ii++) { const k = (j0 + jj) * n + i0 + ii, e = ii === 0 || jj === 0 || ii === W - 1 || jj === H - 1; d[jj * W + ii] = blocked(k) ? 0 : e ? out[k] / unit : INF; }
+      for (let jj = 1; jj < H - 1; jj++) for (let ii = 1; ii < W - 1; ii++) { const k = jj * W + ii; let v = d[k]; if (!v) continue; v = Math.min(v, d[k - 1] + 1, d[k - W] + 1, d[k - W - 1] + b, d[k - W + 1] + b); d[k] = v; }
+      for (let jj = H - 2; jj > 0; jj--) for (let ii = W - 2; ii > 0; ii--) { const k = jj * W + ii; let v = d[k]; if (!v) continue; v = Math.min(v, d[k + 1] + 1, d[k + W] + 1, d[k + W + 1] + b, d[k + W - 1] + b); d[k] = v; }
+      for (let jj = 1; jj < H - 1; jj++) for (let ii = 1; ii < W - 1; ii++) { const k = (j0 + jj) * n + i0 + ii, v = d[jj * W + ii] * unit; out[k] = cap ? Math.min(cap, Math.round(v)) : v; }
+    };
+    run(this.clear, k => this.cost[k] === BLOCK, c, 0);
+    if (this.veh && this.clearV) { run(this.clearV, k => this.cost[k] === BLOCK || this.veh[k] >= 1, c * 10, 255); run(this.clearT, k => this.cost[k] === BLOCK || this.veh[k] >= 2, c * 10, 255); }
+    const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+    for (let j = Math.max(1, j0); j <= Math.min(n - 2, j1); j++) for (let i = Math.max(1, i0); i <= Math.min(n - 2, i1); i++) {
+      const k = j * n + i; if (this.cost[k] === BLOCK) { this.cover[k] = 0; continue; } let m = 0;
+      for (let q = 0; q < 8; q++) if (this.cost[(j + dirs[q][1]) * n + i + dirs[q][0]] >= 6) m |= 1 << q;
+      this.cover[k] = m;
     }
   }
   // can a vehicle stand / drive here? tracked = tanks (cross trenches), else wheeled (BTR)

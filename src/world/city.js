@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
 import { Building, KitPool } from './buildings.js';
-import { instance, trs } from './instancer.js';
+import { instance, trs, LODS } from './instancer.js';
 import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -149,6 +149,23 @@ export class City {
   // 'fire' (fire trench), 'comm' (communication trench), 'fox' (foxholes), 'mg' (machine-gun pit with log roof),
   // 'dug' (dugout), 'ditch' (AT ditch), 'teeth' (dragon's teeth).  Entries carrying the same `sp` form one trench
   // system (strongpoint) for the game; a 'fire' entry without `sp` is a system of its own.
+  //
+  // Game API:
+  //   city.trenchSystems            one entry per strongpoint / line, see trenchSystem()
+  //   city.groundHeight(x, z)       walkable height (trench floors, parapets, rubble), city.trenchInfo(x, z)
+  //   city.damageFortAt(x, z, power, radius = 0) -> number of dragon's teeth destroyed by this blast.
+  //       Call it for every explosion on the ground (combat.explode does).  power = explode()'s power (152 / 155 mm
+  //       2.7, mortar / arty 2.2, tank HE 2.0, light mortar 1.3, RPG 0.8, drone 0.65, grenade 0.45); radius = its
+  //       lethal radius (only caps the effect).  power >= 1.2: teeth within rD = 1.15 power - 0.1 m (tank HE 2.2 m,
+  //       152 mm 3.0 m) are destroyed, out to 1.45 rD damaged / toppled away from the blast (two such hits destroy);
+  //       0.6 <= power < 1.2 (RPG, drone, light shells): chips the one nearest tooth within 0.9 m (about three hits
+  //       destroy it); weaker blasts and vehicle tracks do nothing.  Destroyed teeth turn into dragon_tooth_rubble
+  //       (instanced, swapped in place), their cell becomes slow rubble for infantry and the vehicle block around them
+  //       is lifted (nav.removeTooth + a local clearance update), so armour can drive through a breach: one 152 mm
+  //       shell on a 3-row belt destroys ~7 teeth and opens a lane for tanks and BTRs; a tank HE round destroys ~4
+  //       (usually two are needed for a lane).  Cost: spatial-hash lookup (~0 ms when nothing is in range); the nav
+  //       update runs only when something was destroyed (2-3 ms, no full rebuild).  city.fortTeeth = the tooth
+  //       records ([x, z] + state 0 intact / 1 damaged / 2 destroyed, hp).
   fortifications() {
     const T = this.terrain, R = this.rng;
     T.roadTest = (x, z, pad) => onRoad(x, z, pad);
@@ -242,11 +259,96 @@ export class City {
     T.finalize({ scene: this.scene, matTop: this.trenchTopMat(), matWall: wall, groundS: this.groundS });
     this.groundUniforms.tHole.value = T.mask;
     // dressing pieces (fortifications.glb, procedural stand-ins otherwise)
-    const g = this.assets.gltf.fortifications, cull = { rv_pallet: 260, rv_sheet: 260, rv_ply: 260, rv_door: 260, rv_branches: 260, rv_logs: 260, rv_mesh: 300, floor_pallet: 170, floor_planks: 170, litter_a: 140, litter_b: 140, ammo_crates: 170, sandbag_row: 380, sandbag_pile: 380, debris_conc: 300, net_cover: 520, branch_cover: 480, tarp_cover: 480, net_drone: 420, dragon_tooth: 1100, dragon_tooth_b: 1100, dugout_roof: 1000, dugout_roof_b: 1000, mg_nest_roof: 850 };
+    const g = this.assets.gltf.fortifications, cull = { rv_pallet: 260, rv_sheet: 260, rv_ply: 260, rv_door: 260, rv_branches: 260, rv_logs: 260, rv_mesh: 300, floor_pallet: 170, floor_planks: 170, litter_a: 140, litter_b: 140, ammo_crates: 170, sandbag_row: 380, sandbag_pile: 380, debris_conc: 300, net_cover: 520, branch_cover: 480, tarp_cover: 480, net_drone: 420, dragon_tooth: 1100, dragon_tooth_b: 1100, dragon_tooth_rubble: 1100, dugout_roof: 1000, dugout_roof_b: 1000, mg_nest_roof: 850 };
     for (const [name, mats] of T.dress) {
       const t = g?.scene.getObjectByName(name) || fortFallback(name); if (!t) continue;
       instance(this.scene, t, mats, { cullDist: cull[name] || 400, shadows: !/floor_|litter|ammo|_cover|net_/.test(name) });
     }
+    this.buildTeeth(g, cull.dragon_tooth);
+  }
+  // ---------------------------------------------------------------- dragon's teeth (destroyable)
+  // Own instancing (instancer.js cells of 90 m, same LOD / cull list) with one slot list per variant per cell, so a
+  // tooth can switch variant in place: intact (dragon_tooth), damaged / toppled (dragon_tooth_b), destroyed
+  // (dragon_tooth_rubble).  Swap-remove keeps each InstancedMesh's count = its live instances.
+  buildTeeth(g, cullDist = 1100) {
+    const teeth = this.fortTeeth = this.terrain.teeth || []; if (!teeth.length) return;
+    const VAR = ['dragon_tooth', 'dragon_tooth_b', 'dragon_tooth_rubble'], CELL = 90, M = new THREE.Matrix4();
+    const tpl = VAR.map(n => g?.scene.getObjectByName(n) || fortFallback(n));
+    const cells = new Map(); this._teethHash = new Map();
+    teeth.forEach((t, i) => {
+      t.i = i; t.hp = t.bad ? 0.6 : 1; t.state = t.bad ? 1 : 0; t.slot = [-1, -1, -1];
+      const k = Math.floor(t[0] / CELL) + ',' + Math.floor(t[1] / CELL); let c = cells.get(k); if (!c) cells.set(k, c = { ids: [], k });
+      c.ids.push(i); t.cell = c;
+      const hk = Math.floor(t[0] / 8) * 4096 + Math.floor(t[1] / 8); (this._teethHash.get(hk) || this._teethHash.set(hk, []).get(hk)).push(t);
+    });
+    for (const c of cells.values()) {
+      c.v = tpl.map(tp => {
+        const L = { n: 0, ids: new Int32Array(c.ids.length), meshes: [], rels: [] }; tp.updateMatrixWorld(true);
+        const inv = new THREE.Matrix4().copy(tp.matrixWorld).invert();
+        tp.traverse(o => {
+          if (!o.isMesh) return;
+          const im = new THREE.InstancedMesh(o.geometry, o.material, c.ids.length); im.count = 0; im.castShadow = true; im.receiveShadow = true; im.name = o.name;
+          im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.scene.add(im); L.meshes.push(im); L.rels.push(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+        });
+        return L;
+      });
+      const [cx, cz] = c.k.split(',').map(Number);
+      LODS.push({ near: c.v.flatMap(L => L.meshes), mid: [], far: [], cx: (cx + 0.5) * CELL, cz: (cz + 0.5) * CELL, dm: cullDist, d1: cullDist, d2: cullDist, state: -1 });
+    }
+    this._teethDirty = new Set();
+    for (const t of teeth) this.toothShow(t, t.state, this.toothMatrix(t, t.state, M));
+    this.teethFlush();
+  }
+  toothMatrix(t, state, out = new THREE.Matrix4(), from = null) {
+    if (state === 0 || (state === 1 && !t.topple)) return out.copy(trs(t[0], t.y, t[1], t.ry, t.s, t.rx, t.rz));
+    if (state === 1) { // toppled away from the blast: tipped over its far edge, half out of the ground
+      const [ax, az, a] = t.topple; return out.copy(trs(t[0] + ax * 0.25, t.y + 0.08, t[1] + az * 0.25, Math.atan2(ax, az), t.s, a, 0));
+    }
+    return out.copy(trs(t[0], -0.06, t[1], t.ry + 1.3, t.s * (0.9 + (t.i % 5) * 0.05)));
+  }
+  // show tooth t as variant v (removing it from the others)
+  toothShow(t, v, Mt) {
+    const tmp = this._tm ||= new THREE.Matrix4(), mv = this._tm2 ||= new THREE.Matrix4();
+    for (let w = 0; w < 3; w++) {
+      const L = t.cell.v[w], s = t.slot[w];
+      if (w !== v && s >= 0) { // swap-remove
+        const last = --L.n;
+        if (s !== last) { for (const im of L.meshes) { im.getMatrixAt(last, mv); im.setMatrixAt(s, mv); } const id = L.ids[last]; L.ids[s] = id; this.fortTeeth[id].slot[w] = s; }
+        t.slot[w] = -1; for (const im of L.meshes) { im.count = L.n; this._teethDirty.add(im); }
+      }
+    }
+    const L = t.cell.v[v]; let s = t.slot[v]; if (s < 0) { s = t.slot[v] = L.n++; L.ids[s] = t.i; }
+    L.meshes.forEach((im, k) => { im.setMatrixAt(s, tmp.multiplyMatrices(Mt, L.rels[k])); im.count = L.n; this._teethDirty.add(im); });
+  }
+  teethFlush() { for (const im of this._teethDirty) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); } this._teethDirty.clear(); }
+  // blast at (x, z): damage / destroy dragon's teeth (see the API notes at the top of this section)
+  damageFortAt(x, z, power, radius = 0) {
+    const H = this._teethHash; if (!H || !(power >= 0.6)) return 0;
+    const big = power >= 1.2, rD = big ? Math.min(3.2, 1.15 * power - 0.1) : 0;
+    let rT = big ? rD * 1.45 : 0.9; if (radius > 0) rT = Math.min(rT, Math.max(radius, 0.9));
+    const hit = [];
+    for (let i = Math.floor((x - rT) / 8); i <= Math.floor((x + rT) / 8); i++) for (let j = Math.floor((z - rT) / 8); j <= Math.floor((z + rT) / 8); j++)
+      for (const t of H.get(i * 4096 + j) || []) { if (t.state === 2) continue; const d = Math.hypot(t[0] - x, t[1] - z); if (d < rT) hit.push([d, t]); }
+    if (!hit.length) return 0;
+    hit.sort((a, b) => a[0] - b[0]); if (!big) hit.length = 1;
+    const M = new THREE.Matrix4(), gone = [];
+    for (const [d, t] of hit) {
+      const dmg = big ? (d <= rD ? 1.5 : 0.15 + 0.5 * (1 - (d - rD) / (rT - rD))) : 0.36 * Math.min(1, power / 0.8);
+      t.hp -= dmg;
+      if (t.hp <= 0) { t.state = 2; t.hp = 0; gone.push(t); }
+      else if (t.hp < 0.75 || t.state === 1) {
+        if (big && !t.topple && t.state === 0) { const L = Math.max(d, 0.01); t.topple = [(t[0] - x) / L, (t[1] - z) / L, 0.55 + 0.4 * Math.min(1, dmg / 0.6)]; }
+        t.state = 1;
+      } else continue;
+      this.toothShow(t, t.state, this.toothMatrix(t, t.state, M));
+    }
+    this.teethFlush();
+    if (gone.length) {
+      let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+      for (const t of gone) { this.nav.removeTooth(t[0], t[1]); x0 = Math.min(x0, t[0]); z0 = Math.min(z0, t[1]); x1 = Math.max(x1, t[0]); z1 = Math.max(z1, t[1]); }
+      this.nav.refreshArea(x0 - 2, z0 - 2, x1 + 2, z1 + 2);
+    }
+    return gone.length;
   }
   // A trench system (strongpoint / line) as the game sees it:
   //   id, key, name, kind ('strongpoint' | 'outpost' | 'line'), obj (objective id within 160 m, or null),
@@ -1236,6 +1338,7 @@ function fortFallback(name) {
   else if (name === 'tarp_cover') fbox(g, 2.0, 0.03, 2.2, 0x4a5038, 0, 0.04, 0);
   else if (/^dugout_roof/.test(name)) { fbox(g, 4.6, 0.45, 4.8, 0x4f4636, 0, 0.22, 0); fbox(g, 1.6, 1.9, 0.2, 0x4b3d2e, 0, -0.85, 2.45); }
   else if (name === 'mg_nest_roof') fbox(g, 2.3, 0.3, 2.1, 0x4b3d2e, 0, 0.55, -0.1);
+  else if (name === 'dragon_tooth_rubble') { fbox(g, 0.9, 0.35, 0.9, 0x8f8a80, 0, 0.15, 0); for (const [x, z, w] of [[1.1, 0.3, 0.4], [-0.8, 0.9, 0.3], [0.2, -1.2, 0.35], [-1.2, -0.5, 0.25]]) fbox(g, w, w * 0.6, w * 0.8, 0x8f8a80, x, w * 0.25, z); }
   else if (/^dragon_tooth/.test(name)) { const m = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.0, 4), fm(0x9a958a)); m.position.y = 0.5; m.rotation.y = Math.PI / 4; m.castShadow = m.receiveShadow = true; g.add(m); }
   else if (name === 'ammo_crates') fbox(g, 0.66, 0.3, 0.36, 0x4c5236, 0, 0.15, 0);
   else return null;

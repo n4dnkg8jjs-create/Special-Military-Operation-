@@ -6,27 +6,37 @@ import { trs } from './instancer.js';
 // dugout passages), smooth relief (anti-tank ditches, spoil berms, parapets, dugout mounds, shell craters) and rubble
 // piles, all feeding one sparse heightfield that the game queries with groundHeight(x, z).
 //
-//   cuts     simple polygons (x-z) dug to a flat floor at -depth; the union of the polygons is the hole.
-//            Signed distance S(p) = per polygon the exact distance to its edges, then pushed out by a noise field
-//            (widen(), scaled by the polygon's roughness) so outlines are ragged and widths uneven like hand-dug
-//            2023-25 positions (slumped lips, over-dug corners); union = min over polygons.  Everything (heights,
+//   cuts     trench runs / crawl trenches / dugout passages are 'lines': a centre polyline + half width, S(p) =
+//            distance to the polyline - half width (a chain of capsules: round outer bends, sharp inner ones, never
+//            self-intersecting, open junctions by construction).  Firing cells, foxholes and MG pits are simple polygons
+//            (exact signed distance to the edges).  Either is then pushed out by a noise field (widen(), scaled by the
+//            cut's roughness) so outlines are ragged and widths uneven like hand-dug 2023-25 positions; lines never get
+//            narrower than MIN_HW so the 0.4 m grid always resolves them.  Union = min over cuts.  Everything (heights,
 //            nav, mask, meshes, dressing) reads the same displaced S, so collision and visuals agree.
 //            Spoil / parapets are a function of S, lumpy and patchy (thrown out by hand, partly spread / hidden).
 //   reliefs  ditches (polyline, trapezoid profile + spoil berm), mounds (rounded boxes; mesh:false = height only)
 //            and shell craters (bowl + rim).
-//   heights  16 m tiles of (CPT+1)^2 Float32 vertices at RES m, allocated only where something is non-flat.
+//   heights  16 m tiles of (CPT+1)^2 Float32 vertices at RES m, allocated only where something is non-flat.  Grid
+//            cells the cut outline passes through (or near) are flagged: heightAt() evaluates them exactly (cutSDF ->
+//            floor / battered wall profile / top surface), so the walkable height follows the ragged outline instead
+//            of a 0.4 m bilinear staircase, and matches the rendered mesh.
 //
 // Rendering: the cut / relief areas get their own terrain mesh (same splat shader as the ground, plus depth
-// darkening / mud), built on a GR grid whose vertices next to a cut are snapped onto the cut outline; the walls are
-// raw earth: battered (the floor is narrower than the lip), three rows of lumpy vertices between lip and floor, and
-// the main ground plane discards fragments where the hole mask (1 px / m) is set.
+// darkening / mud) built by marching triangles on the heightfield grid: every grid triangle the outline crosses is
+// clipped at the exact crossing points (bisection on S along the grid edges, shared by neighbouring triangles) into a
+// top part (lip height) and a floor part; the raw-earth wall runs between the crossing points: battered (the floor is
+// narrower than the lip), three rows of lumpy vertices between lip and floor.  No top triangle can span the cut.  The
+// main ground plane discards fragments where the hole mask (1 px / m) is set.
 const TS = 16, CPT = 40, RES = TS / CPT, VW = CPT + 1;   // heightfield tiles: 16 m, 0.4 m cells
 const GR = RES;                                           // trench mesh grid == heightfield grid (shared vertices)
 const BLK = 20;                                           // meshing block: 20 cells = 8 m
 const SPOIL = 3.1;                                        // max reach of the spoil / parapet past the cut (m)
 const CORR = 3.5;                                         // the terrain mesh covers the cut + this margin
 const HC = 8;                                             // feature hash cell (m)
+const HN = 2;                                             // near-outline hash cell (m), see sdfNear
 const LOW = -0.02;                                        // terrain mesh rim, tucked just under the ground plane
+const MIN_HW = 0.37;                                      // narrowest half width of a line cut (m): > grid diagonal / 2
+const WALL_U = [0, 0.34, 0.64, 0.86, 1], WALL_F = [0, 0.09, 0.36, 0.7, 1];   // battered wall: inset / s0 -> fraction of the drop
 // cut kinds: parapet front / rear height, nav cost (infantry), vehicle flag (1 = wheeled can't cross, 2 = no vehicle),
 // rough = outline noise scale, batter = how far the wall foot creeps in (slumped raw earth)
 const KIND = {
@@ -59,7 +69,7 @@ export class Terrain {
     this.size = size; this.half = size / 2; this.nav = nav; this.R = rng;
     this.TN = Math.ceil(size / TS); this.tiles = new Array(this.TN * this.TN).fill(null);
     this.tmax = new Float32Array(this.TN * this.TN); this.tmin = new Float32Array(this.TN * this.TN);
-    this.cuts = []; this.reliefs = []; this.hCut = new Map(); this.hRel = new Map();
+    this.cuts = []; this.reliefs = []; this.hCut = new Map(); this.hNear = new Map(); this.hRel = new Map();
     this.dress = new Map();   // piece name -> [Matrix4]
     this.blocks = new Set();  // 8 m meshing blocks touched by features
     this.maxH = 0; this._tplH = new Map();
@@ -81,11 +91,14 @@ export class Terrain {
     }
   }
   // Ground height (m, Y-up) at a world point: 0 on the flat, < 0 in trenches / ditches, > 0 on parapets, mounds, rubble.
+  // Bilinear on the 0.4 m grid; cells the cut outline passes through are evaluated exactly (edgeH).
   heightAt(x, z) {
     const u = (x + this.half) / TS, v = (z + this.half) / TS, ti = Math.floor(u), tj = Math.floor(v);
     if (ti < 0 || tj < 0 || ti >= this.TN || tj >= this.TN) return 0;
-    const t = this.tiles[tj * this.TN + ti]; if (!t) return 0;
+    const tk = tj * this.TN + ti, t = this.tiles[tk]; if (!t) return 0;
     const fx = (u - ti) * CPT, fz = (v - tj) * CPT, i = Math.min(CPT - 1, fx | 0), j = Math.min(CPT - 1, fz | 0), a = fx - i, b = fz - j, k = j * VW + i;
+    const ef = this.efl && this.efl[tk], f = ef ? ef[j * CPT + i] : 0;
+    if (f) return this.edgeH(x, z, t, this.tops[tk], k, a, b, f);   // the cut outline passes here: exact
     return (t[k] * (1 - a) + t[k + 1] * a) * (1 - b) + (t[k + VW] * (1 - a) + t[k + VW + 1] * a) * b;
   }
   normalAt(x, z, out = new THREE.Vector3()) {
@@ -113,56 +126,85 @@ export class Terrain {
     return false;
   }
   // ================================================================ features
-  // A cut is a simple polygon (strip runs, firing cells, foxholes, passages) dug to a flat floor at -depth.
-  // Edges are hashed; S(p) per polygon = exact signed distance to its edges (sign from the edge normal, or the vertex
-  // pseudo-normal at corners) minus rough * widen(p); union = min over polygons (overlaps stay negative, no seams).
+  // A cut is a simple polygon (firing cells, foxholes, MG pits) or a line (o.line = centre polyline, o.w = half width:
+  // trench runs, crawl trenches, passages; pts is then only its mitred outline, used for dressing / map painting).
+  // Polygon edges / line segments are hashed; S(p) per cut = exact signed distance to its edges (sign from the edge
+  // normal, or the vertex pseudo-normal at corners) or distance to the centre line - max(MIN_HW, w + rough * widen(p));
+  // polygons: minus rough * widen(p); union = min over cuts (overlaps stay negative, no seams).
   addPoly(pts, o) {
     pts = pts.map(p => [p[0], p[1]]);
     let area = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1]; }
     if (area < 0) pts.reverse();
     const n = pts.length, K = KIND[o.kind] || KIND.fire, id = this.cuts.length;
-    const q = { pts, depth: o.depth, kind: o.kind, K, rough: o.rough ?? K.rough, front: o.front || null, revet: o.revet || null, sys: o.sys, segs: o.segs || null, w: o.w, tag: o.tag, id, edges: [] };
+    const q = { pts, depth: o.depth, kind: o.kind, K, rough: o.rough ?? K.rough, front: o.front || null, revet: o.revet || null, sys: o.sys, segs: o.segs || null, w: o.w, tag: o.tag, id, edges: [], line: o.line || null };
     q.cx = pts.reduce((s, p) => s + p[0], 0) / n; q.cz = pts.reduce((s, p) => s + p[1], 0) / n;
+    // hCut: 8 m cells, reach = spoil / mesh margin; hNear: 2 m cells, reach = 1.1 m past the widest wall (sdfNear)
+    const hash = (e, x0, z0, x1, z1, m, mn) => {
+      for (let x = Math.floor((x0 - m) / HC); x <= Math.floor((x1 + m) / HC); x++) for (let z = Math.floor((z0 - m) / HC); z <= Math.floor((z1 + m) / HC); z++) { const k = x * 8192 + z; (this.hCut.get(k) || this.hCut.set(k, []).get(k)).push(e); }
+      for (let x = Math.floor((x0 - mn) / HN); x <= Math.floor((x1 + mn) / HN); x++) for (let z = Math.floor((z0 - mn) / HN); z <= Math.floor((z1 + mn) / HN); z++) { const k = x * 65536 + z; (this.hNear.get(k) || this.hNear.set(k, []).get(k)).push(e); }
+    };
     const N = []; for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1; N.push([dz / L, -dx / L, L]); }
     for (let i = 0; i < n; i++) {
       const a = pts[i], b = pts[(i + 1) % n], [nx, nz, L] = N[i], pa = N[(i + n - 1) % n], pb = N[(i + 1) % n];
       const e = { ax: a[0], az: a[1], bx: b[0], bz: b[1], nx, nz, L, q, wall: o.walls ? o.walls[i] : 1, pax: nx + pa[0], paz: nz + pa[1], pbx: nx + pb[0], pbz: nz + pb[1] };
       q.edges.push(e);
-      const m = CORR + 1;
-      for (let x = Math.floor((Math.min(a[0], b[0]) - m) / HC); x <= Math.floor((Math.max(a[0], b[0]) + m) / HC); x++) for (let z = Math.floor((Math.min(a[1], b[1]) - m) / HC); z <= Math.floor((Math.max(a[1], b[1]) + m) / HC); z++) { const k = x * 8192 + z; (this.hCut.get(k) || this.hCut.set(k, []).get(k)).push(e); }
+      if (!q.line) hash(e, Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), CORR + 1, 1.1 + 0.3 * q.rough);
+    }
+    if (q.line) {
+      // capsule segments: the band out to the widest wall + mesh margin
+      const P = q.line, m = (o.w || 0.5) + 0.35 * q.rough + CORR + 1;
+      if (P.length === 1) P.push([P[0][0] + 0.01, P[0][1]]);
+      for (let i = 0; i < P.length - 1; i++) {
+        const [ax, az] = P[i], [bx, bz] = P[i + 1], e = { cap: true, ax, az, bx, bz, L: Math.max(1e-6, Math.hypot(bx - ax, bz - az)), q };
+        hash(e, Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), m, Math.max(MIN_HW, (o.w || 0.5) + 0.3 * q.rough) + 1.1);
+      }
     }
     const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
     q.bb = [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
+    if (q.line) { const hw = (o.w || 0.5) + 0.35 * q.rough; for (const [x, z] of q.line) { q.bb[0] = Math.min(q.bb[0], x - hw); q.bb[1] = Math.min(q.bb[1], z - hw); q.bb[2] = Math.max(q.bb[2], x + hw); q.bb[3] = Math.max(q.bb[3], z + hw); } }
     this.cuts.push(q); this._pd = null;
     this.markBlocks(q.bb[0] - CORR - 0.5, q.bb[1] - CORR - 0.5, q.bb[2] + CORR + 0.5, q.bb[3] + CORR + 0.5);
     return q;
   }
   markBlocks(x0, z0, x1, z1) { const B = BLK * GR; for (let i = Math.floor((x0 + this.half) / B); i <= Math.floor((x1 + this.half) / B); i++) for (let j = Math.floor((z0 + this.half) / B); j <= Math.floor((z1 + this.half) / B); j++) this.blocks.add(i * 8192 + j); }
-  // per-polygon signed distances at (x, z) for the polygons whose edges are hashed here; returns the touched list.
-  // this._pd[id] = displaced signed distance, this._pvx/_pvz[id] = vector from the nearest outline point to (x, z)
-  polyDists(x, z) {
-    const l = this.hCut.get(hkey(x, z)); this._touch.length = 0; if (!l) return this._touch;
+  // local half width of a line cut at (x, z) (noise included, never below MIN_HW)
+  halfW(q, x, z, D = widen(x, z)) { return Math.max(MIN_HW, q.w + q.rough * D); }
+  // per-cut signed distances at (x, z) for the cuts whose edges are hashed here; returns the touched list.
+  // this._pd[id] = displaced signed distance, this._pvx/_pvz[id] = vector from the nearest outline (polygon) or centre
+  // line (line cut) point to (x, z)
+  polyDists(x, z, l = this.hCut.get(hkey(x, z))) {
+    this._touch.length = 0; if (!l) return this._touch;
     if (!this._pd || this._pd.length < this.cuts.length) { const n = this.cuts.length + 64; this._pd = new Float64Array(n); this._ps = new Float64Array(n); this._pst = new Uint32Array(n); this._pvx = new Float64Array(n); this._pvz = new Float64Array(n); }
     const st = ++this._stamp, pd = this._pd, ps = this._ps, pst = this._pst, pvx = this._pvx, pvz = this._pvz, touch = this._touch;
     for (let n = 0; n < l.length; n++) {
       const e = l[n], dx = e.bx - e.ax, dz = e.bz - e.az, wx = x - e.ax, wz = z - e.az;
       let t = (wx * dx + wz * dz) / (e.L * e.L); let sx, sz;
-      if (t <= 0) { t = 0; sx = e.pax; sz = e.paz; } else if (t >= 1) { t = 1; sx = e.pbx; sz = e.pbz; } else { sx = e.nx; sz = e.nz; }
+      if (e.cap) { t = t < 0 ? 0 : t > 1 ? 1 : t; sx = 0; sz = 0; }
+      else if (t <= 0) { t = 0; sx = e.pax; sz = e.paz; } else if (t >= 1) { t = 1; sx = e.pbx; sz = e.pbz; } else { sx = e.nx; sz = e.nz; }
       const px = wx - dx * t, pz = wz - dz * t, d2 = px * px + pz * pz, id = e.q.id;
       if (pst[id] !== st) { pst[id] = st; pd[id] = d2; ps[id] = px * sx + pz * sz; pvx[id] = px; pvz[id] = pz; touch.push(id); }
       else if (d2 < pd[id] - 1e-12) { pd[id] = d2; ps[id] = px * sx + pz * sz; pvx[id] = px; pvz[id] = pz; }
     }
-    let D = null;
+    let D = null; this._D = undefined;
     for (const id of touch) {
-      let d = (ps[id] < 0 ? -1 : 1) * Math.sqrt(pd[id]); const r = this.cuts[id].rough;
+      const q = this.cuts[id], r = q.rough;
+      if (q.line) { if (D === null) D = widen(x, z); pd[id] = Math.sqrt(pd[id]) - Math.max(MIN_HW, q.w + r * D); continue; }
+      let d = (ps[id] < 0 ? -1 : 1) * Math.sqrt(pd[id]);
       if (r) { if (D === null) D = widen(x, z); d -= r * D; }
       pd[id] = d;
     }
+    if (D !== null) this._D = D;   // widen(x, z), reused by s0At
     return touch;
   }
   // signed distance to the union of cuts (m, < 0 inside); this._q = the polygon it comes from (deepest inside)
   cutSDF(x, z) {
     const touch = this.polyDists(x, z); this._q = null; let best = 99;
+    for (const id of touch) { const d = this._pd[id]; if (d < best) { best = d; this._q = this.cuts[id]; } }
+    return best;
+  }
+  // cutSDF exact only within ~1 m of the outline (fine hash: much cheaper; 99 / a value > 1 further out)
+  sdfNear(x, z) {
+    const touch = this.polyDists(x, z, this.hNear.get(Math.floor(x / HN) * 65536 + Math.floor(z / HN))); this._q = null; let best = 99;
     for (const id of touch) { const d = this._pd[id]; if (d < best) { best = d; this._q = this.cuts[id]; } }
     return best;
   }
@@ -243,7 +285,8 @@ export class Terrain {
     return pos > 0.004 ? pos : (mesh ? LOW : 0);
   }
   // ---------------------------------------------------------------- trench builders
-  // polyline -> one polygon (mitred offset outline); segs keeps the centre line for floor litter / covers
+  // polyline -> one line cut (capsule chain; pts = mitred offset outline for dressing); segs keeps the centre line for
+  // floor litter / covers
   strip(P, w, o) {
     const n = P.length; if (n < 2) return [];
     const N = []; for (let i = 0; i < n - 1; i++) { const dx = P[i + 1][0] - P[i][0], dz = P[i + 1][1] - P[i][1], L = Math.hypot(dx, dz) || 1; N.push([-dz / L, dx / L]); }
@@ -251,7 +294,7 @@ export class Terrain {
     const O = P.map((_, i) => off(i));
     const pts = [...P.map((p, i) => [p[0] + O[i][0], p[1] + O[i][1]]), ...P.map((p, i) => [p[0] - O[i][0], p[1] - O[i][1]]).reverse()];
     const segs = []; for (let i = 0; i < n - 1; i++) segs.push([P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]]);
-    return [this.addPoly(pts, { ...o, segs, w })];
+    return [this.addPoly(pts, { ...o, segs, w, line: P.map(p => [p[0], p[1]]) })];
   }
   // split a polyline into runs that stay off roads / keep-out areas
   runs(P, pad) {
@@ -382,7 +425,7 @@ export class Terrain {
   dugout(x, z, dx, dz, o = {}) {
     const L = Math.hypot(dx, dz); dx /= L; dz /= L;
     const len = o.len || 3.2, depth = o.depth || 1.7, ex = x + dx * len, ez = z + dz * len;
-    this.strip([[x - dx * 0.6, z - dz * 0.6], [ex, ez]], 0.44, { kind: 'pass', depth, front: null, revet: o.revet || 'pass', sys: o.sys });
+    this.strip([[x - dx * 0.6, z - dz * 0.6], [ex - dx * 0.4, ez - dz * 0.4]], 0.44, { kind: 'pass', depth, front: null, revet: o.revet || 'pass', sys: o.sys });   // round end reaches the doorway
     const hl = 2.5, cx = ex + dx * hl, cz = ez + dz * hl, rot = Math.atan2(dx, dz);
     this.addRelief({ type: 'mound', x: cx, z: cz, hx: 2.35, hz: 2.75, rot: -rot, h: 0.5, mesh: false, nav: 'dugout' });
     this.put(this.R() < 0.5 ? 'dugout_roof' : 'dugout_roof_b', trs(cx, 0, cz, rot + Math.PI));
@@ -399,7 +442,9 @@ export class Terrain {
   crater(x, z, r, o = {}) {
     return this.addRelief({ type: 'crater', x, z, r, depth: o.depth ?? Math.min(1.0, 0.16 + r * 0.19), rim: o.rim ?? Math.min(0.35, 0.05 + r * 0.06), reach: r * 1.9 });
   }
-  // rows of concrete pyramids ("dragon's teeth"), staggered; gaps where roads cross
+  // rows of concrete pyramids ("dragon's teeth"), staggered; gaps where roads cross.  Each tooth is recorded in
+  // this.teeth as [x, z] (+ y, ry, s, rx, rz placement, bad = already chipped); City instances them itself so they can
+  // be damaged / destroyed (City.damageFortAt), nav blocks them via NavGrid.addTooth.
   dragonTeeth(pts, o = {}) {
     const R = this.R, rows = o.rows || 3, gap = o.gap || 2.1, rowGap = o.rowGap || 2.0;
     for (let s = 0; s < pts.length - 1; s++) {
@@ -409,53 +454,69 @@ export class Terrain {
         if (this.roadTest && this.roadTest(x, z, 4)) continue;
         if (this.keepOut && this.keepOut(x, z)) continue;
         if (R() < 0.04) continue; // a few lifted out / blown
-        const bad = R() < 0.08;
-        this.put(bad ? 'dragon_tooth_b' : 'dragon_tooth', trs(x, -0.12 - R() * 0.12, z, R() * 6.28, 0.92 + R() * 0.16, bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08, bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08));
-        (this.teeth ||= []).push([x, z]);
+        const bad = R() < 0.08, tooth = [x, z];
+        tooth.y = -0.12 - R() * 0.12; tooth.ry = R() * 6.28; tooth.s = 0.92 + R() * 0.16; tooth.rx = bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08; tooth.rz = bad ? (R() - .5) * 0.6 : (R() - .5) * 0.08; tooth.bad = bad;
+        (this.teeth ||= []).push(tooth);
       }
     }
   }
   put(name, M) { (this.dress.get(name) || this.dress.set(name, []).get(name)).push(M); }
   // ================================================================ finalise: heights, nav, mask, meshes, dressing
-  // vertex record cache over the global GR grid
+  // vertex record cache over the global GR grid (raw grid positions: S, the cut it is in, top heights outside)
   vrec(gi, gj) {
     const k = gi * 65536 + gj; let v = this._vc.get(k); if (v) return v;
     const x = gi * GR - this.half, z = gj * GR - this.half, S = this.cutSDF(x, z), q = this._q;
-    v = { x, z, S, q, cls: S < 0 ? 2 : 0 }; this._vc.set(k, v); return v;
+    v = { x, z, S, q, cls: S < 0 ? 2 : 0, gi, gj };
+    if (S >= 0) { const h = this.topH2(x, z); v.H = h[0]; v.Hh = h[1]; }
+    this._vc.set(k, v); return v;
+  }
+  // top-surface (heightfield) height extrapolated to an inside vertex: the lip height where it projects onto the outline
+  vtop(v) {
+    if (v.T !== undefined) return v.T;
+    if (v.S >= 0) return (v.T = v.Hh);
+    let x = v.x, z = v.z;
+    for (let it = 0; it < 4; it++) { const S = this.cutSDF(x, z); if (S >= 0 && S < 0.02) break; const [gx, gz] = this.grad(x, z); x -= gx * (S - 0.01); z -= gz * (S - 0.01); }
+    return (v.T = this.topH2(x, z)[1]);
   }
   finalize(opts = {}) {
     const tt = this.times = {}, t0 = performance.now(), lap = k => { tt[k] = Math.round(performance.now() - t0); };
     this._vc = new Map();
-    const nb = Math.round(this.size / GR);
-    // 1) classify + snap vertices of every active block (+1 ring for neighbour tests)
-    const blocks = [...this.blocks];
+    const nb = Math.round(this.size / GR), blocks = [...this.blocks];
+    this.tops = new Array(this.TN * this.TN).fill(null); this.efl = new Array(this.TN * this.TN).fill(null);
+    // 1) heightfield at the raw grid points: inside -> floor (same floor noise as the mesh), else top (height-only
+    //    mounds included)
     for (const b of blocks) {
       const bi = Math.floor(b / 8192), bj = b % 8192, i0 = bi * BLK, j0 = bj * BLK;
       for (let gj = j0; gj <= j0 + BLK; gj++) for (let gi = i0; gi <= i0 + BLK; gi++) {
         if (gi < 0 || gj < 0 || gi > nb || gj > nb) continue;
-        const v = this.vrec(gi, gj); if (v.done) continue; v.done = true;
-        if (v.cls === 2) { // inside: boundary if any 8-neighbour is outside
-          let bnd = false; for (let dj = -1; dj <= 1 && !bnd; dj++) for (let di = -1; di <= 1; di++) { if (!di && !dj) continue; if (this.vrec(gi + di, gj + dj).S >= 0) { bnd = true; break; } }
-          if (bnd) { v.cls = 1; this.snap(v); }
-        }
-        if (v.cls === 2) { v.H = -v.q.depth; }
-        else { const h = this.topH2(v.x, v.z); v.H = h[0]; v.Hh = h[1]; }
-        if (v.cls === 1) { v.F = -v.q.depth; }
-      }
-    }
-    // 2) heightfield: raw grid points (not snapped): inside -> floor, else top (height-only mounds included)
-    for (const b of blocks) {
-      const bi = Math.floor(b / 8192), bj = b % 8192, i0 = bi * BLK, j0 = bj * BLK;
-      for (let gj = j0; gj <= j0 + BLK; gj++) for (let gi = i0; gi <= i0 + BLK; gi++) {
-        if (gi < 0 || gj < 0 || gi > nb || gj > nb) continue;
-        const v = this.vrec(gi, gj), h = v.S < 0 ? -v.q.depth : v.Hh;
+        const v = this.vrec(gi, gj), h = v.S < 0 ? this.floorAt(v.x, v.z, v.q) : v.Hh;
         if (Math.abs(h) > 0.003) this.writeV(gi, gj, h, false);
       }
     }
-    // height-only mounds outside the meshed blocks (dugout roofs)
+    // 2) edge cells: the outline passes through or near the cell (or its battered wall reaches into it): heightAt()
+    //    evaluates those exactly; tops = top surface at the corners (lip height projected for inside corners),
+    //    flag = 1 | inside-corner bits << 1
+    for (const b of blocks) {
+      const bi = Math.floor(b / 8192), bj = b % 8192, i0 = bi * BLK, j0 = bj * BLK;
+      for (let gj = j0; gj < j0 + BLK; gj++) for (let gi = i0; gi < i0 + BLK; gi++) {
+        if (gi < 0 || gj < 0 || gi >= nb || gj >= nb) continue;
+        const V = [this.vrec(gi, gj), this.vrec(gi + 1, gj), this.vrec(gi, gj + 1), this.vrec(gi + 1, gj + 1)];
+        let mn = 99, mx = -99, bits = 0, sm = 0; V.forEach((v, k) => { mn = Math.min(mn, v.S); mx = Math.max(mx, v.S); if (v.S < 0) { bits |= 1 << k; sm = Math.max(sm, 0.36 * v.q.K.batter); } });
+        // S varies by < 0.4 m inside a cell (|grad S| < ~1.3, half diagonal 0.28): skip cells surely outside, or surely
+        // beyond the deepest wall foot (s0 <= 0.36 batter)
+        if (!(mn < 0.4 && mx > -(sm + 0.4))) continue;
+        const ti = Math.floor(gi / CPT), tj = Math.floor(gj / CPT), tk = tj * this.TN + ti;
+        if (!this.tiles[tk]) this.tile(ti, tj, true);
+        (this.efl[tk] ||= new Uint8Array(CPT * CPT))[(gj - tj * CPT) * CPT + (gi - ti * CPT)] = 1 | (bits << 1);
+        V.forEach(v => this.writeT(v.gi, v.gj, this.vtop(v)));
+      }
+    }
+    // height-only mounds outside the meshed blocks (dugout roofs) -- never over a cut (the passage stays open)
     for (const r of this.reliefs) if (r.mesh === false) {
       for (let gj = Math.floor((r.bb[1] + this.half) / GR); gj <= Math.ceil((r.bb[3] + this.half) / GR); gj++) for (let gi = Math.floor((r.bb[0] + this.half) / GR); gi <= Math.ceil((r.bb[2] + this.half) / GR); gi++) {
-        const x = gi * GR - this.half, z = gj * GR - this.half, rel = this.relief(x, z, false); if (rel && rel[1] > 0.003) this.writeV(gi, gj, rel[1], true);
+        const x = gi * GR - this.half, z = gj * GR - this.half, rel = this.relief(x, z, false); if (!rel || rel[1] <= 0.003) continue;
+        if (this.cutSDF(x, z) < 0.45) continue;
+        this.writeV(gi, gj, rel[1], true);
       }
     }
     lap('heights');
@@ -464,22 +525,37 @@ export class Terrain {
     if (opts.scene) this.buildMeshes(opts.scene, opts.matTop, opts.matWall, opts.groundS);
     lap('meshes');
     this.buildDressing(opts); lap('dressing');
-    this._vc = null;
+    this._vc = null; this._xc = null;
   }
-  snap(v) {
-    let x = v.x, z = v.z; const e = 0.02;
-    for (let it = 0; it < 5; it++) {
-      const S = this.cutSDF(x, z); if (Math.abs(S) < 1e-4) break;
-      const gx = (this.cutSDF(x + e, z) - this.cutSDF(x - e, z)) / (2 * e), gz = (this.cutSDF(x, z + e) - this.cutSDF(x, z - e)) / (2 * e), g2 = gx * gx + gz * gz || 1;
-      x -= S * gx / g2; z -= S * gz / g2;
+  // write the top-surface value of global vertex (gi, gj) into every tile that holds it (see writeV)
+  writeT(gi, gj, h) {
+    const a = Math.floor(gi / CPT), b = Math.floor(gj / CPT), TN = this.TN;
+    for (let ti = gi % CPT === 0 ? a - 1 : a; ti <= a; ti++) for (let tj = gj % CPT === 0 ? b - 1 : b; tj <= b; tj++) {
+      if (ti < 0 || tj < 0 || ti >= TN || tj >= TN) continue;
+      const tk = tj * TN + ti; (this.tops[tk] ||= new Float32Array(VW * VW))[(gj - tj * CPT) * VW + (gi - ti * CPT)] = h;
     }
-    const dx = x - v.x, dz = z - v.z, d = Math.hypot(dx, dz), mx = GR * 0.95;
-    if (d > mx) { x = v.x + dx / d * mx; z = v.z + dz / d * mx; }
-    v.x = x; v.z = z; this.cutSDF(x, z); v.q = this._q || v.q;
   }
-  // battered raw-earth walls: s0 = how far the wall foot creeps in from the lip at this spot
-  s0At(x, z, q) { return (q ? q.K.batter : 1) * (0.16 + 0.2 * vnoise(x * 0.31 + 11.7, z * 0.31 + 2.3)); }
-  floorY(v) { return -v.q.depth + 0.08 * (vnoise(v.x * 0.7 + 3.3, v.z * 0.7 + 1.1) - 0.5) + (v.cls === 1 ? 0.06 : 0); }
+  // exact walkable height in an edge cell (see finalize): top surface outside, the battered wall profile (same rows as
+  // the mesh, wallRing) between the lip and the wall foot, the floor beyond
+  edgeH(x, z, t, T, k, a, b, f) {
+    const S = this.sdfNear(x, z), q = this._q;
+    if (S >= 0 || !q) return (T[k] * (1 - a) + T[k + 1] * a) * (1 - b) + (T[k + VW] * (1 - a) + T[k + VW + 1] * a) * b;
+    const F = (f & 30) === 30 ? (t[k] * (1 - a) + t[k + 1] * a) * (1 - b) + (t[k + VW] * (1 - a) + t[k + VW + 1] * a) * b : this.floorAt(x, z, q);
+    const sm = 0.36 * q.K.batter; if (-S >= sm) return F;   // beyond any wall foot
+    const s0 = this.s0At(x, z, q, this._D), u = -S / s0; if (u >= 1) return F;
+    const top = (T[k] * (1 - a) + T[k + 1] * a) * (1 - b) + (T[k + VW] * (1 - a) + T[k + VW + 1] * a) * b;
+    let i = 1; while (WALL_U[i] < u) i++;
+    const fr = WALL_F[i - 1] + (WALL_F[i] - WALL_F[i - 1]) * (u - WALL_U[i - 1]) / (WALL_U[i] - WALL_U[i - 1]);
+    return top + (F - top) * fr;
+  }
+  // battered raw-earth walls: s0 = how far the wall foot creeps in from the lip at this spot (never more than ~0.4 of
+  // a line cut's half width, so the floor of a narrow crawl trench cannot fold over)
+  s0At(x, z, q, D) {
+    const s = (q ? q.K.batter : 1) * (0.16 + 0.2 * vnoise(x * 0.31 + 11.7, z * 0.31 + 2.3));
+    return q && q.line ? Math.min(s, 0.42 * this.halfW(q, x, z, D ?? widen(x, z))) : s;
+  }
+  floorAt(x, z, q) { return -q.depth + 0.08 * (vnoise(x * 0.7 + 3.3, z * 0.7 + 1.1) - 0.5); }
+  floorY(v) { this.floorPos(v); return this.floorAt(v.fx, v.fz, v.q); }
   // floor position of a vertex: pulled in along the gradient by g(S) = s0 (1 + S / 2 s0) so the floor shrinks
   // monotonically (no folds) and meets the wall foot
   floorPos(v) {
@@ -494,11 +570,11 @@ export class Terrain {
     if (v.wr) return v.wr; this.floorPos(v);
     const top = v.H, bot = this.floorY(v), s0 = v.s0, gx = v.gx, gz = v.gz, K = v.q.K, D = Math.max(0.4, top - bot);
     // rows: lip, eroded shoulder, upper wall, lower wall, slumped foot
-    const LV = [0, 0.09, 0.36, 0.7, 1], IN = [0, 0.34, 0.64, 0.86, 1], SL = [2.6, 2.0, 1.1, 0.7, 0.5], ring = [];
+    const LV = WALL_F, IN = WALL_U, SL = [2.6, 2.0, 1.1, 0.7, 0.5], ring = [];
     for (let k = 0; k < 5; k++) {
       let ins = s0 * IN[k], y = top + (bot - top) * LV[k], jx = 0, jz = 0;
       if (k >= 1 && k <= 3) {
-        ins += (vnoise(v.x * 2.3 + k * 17.1, v.z * 2.3 - k * 5.3) - 0.5) * (k === 1 ? 0.08 : 0.17) * K.rough;
+        ins += (vnoise(v.x * 2.3 + k * 17.1, v.z * 2.3 - k * 5.3) - 0.5) * (k === 1 ? 0.08 : 0.17) * K.rough * Math.min(1, s0 / 0.25);
         y += (vnoise(v.x * 1.9 - k * 3.7, v.z * 1.9 + k * 9.1) - 0.5) * (k === 1 ? 0.05 : 0.12);
         jx = (vnoise(v.x * 3.1 + k, v.z * 3.1) - 0.5) * 0.6; jz = (vnoise(v.x * 3.1, v.z * 3.1 + k * 7) - 0.5) * 0.6;
       }
@@ -506,6 +582,21 @@ export class Terrain {
       ring.push([v.x - gx * ins, y, v.z - gz * ins, nx / L, ny / L, nz / L]);
     }
     return v.wr = ring;
+  }
+  // crossing point of the outline on the grid edge between inside vertex A and outside vertex B (bisection on S),
+  // cached per edge so the neighbouring triangle uses the same point (watertight top / floor / wall)
+  cross(ek, A, B) {
+    let r = this._xc.get(ek); if (r) return r;
+    let lo = 0, hi = 1, sl = A.S, sh = B.S;
+    for (let it = 0; it < 9; it++) {
+      let m = sl / (sl - sh); m = lo + (hi - lo) * Math.min(0.85, Math.max(0.15, m));   // safeguarded regula falsi
+      const S = this.cutSDF(A.x + (B.x - A.x) * m, A.z + (B.z - A.z) * m);
+      if (S < 0) { lo = m; sl = S; } else { hi = m; sh = S; }
+      if (hi - lo < 0.004) break;
+    }
+    const x = A.x + (B.x - A.x) * lo, z = A.z + (B.z - A.z) * lo; this.cutSDF(x, z);
+    r = { x, z, S: 0, cls: 1, q: this._q || A.q, H: this.topH2(A.x + (B.x - A.x) * hi, A.z + (B.z - A.z) * hi)[0] };
+    this._xc.set(ek, r); return r;
   }
   markNav() {
     const nav = this.nav; if (!nav) return; nav.terrain = this;
@@ -524,8 +615,7 @@ export class Terrain {
       }
     }
     for (const r of this.reliefs) if (r.nav === 'dugout') nav.rect(r.x, r.z, r.hx * 0.85, r.hz * 0.85, r.rot, 4, 0), nav.setVeh(r.x, r.z, r.hx, r.hz, r.rot, 2);
-    for (const [x, z] of this.teeth || []) { nav.circle(x, z, 0.45, BLOCK); }
-    if (this.teeth) for (const [x, z] of this.teeth) nav.setVeh(x, z, 1.6, 1.6, 0, 2);
+    for (const [x, z] of this.teeth || []) nav.addTooth(x, z);
     nav.vehDirty = true;
   }
   // 1 px / m hole mask for the ground plane (R channel): cut + spoil zone and meshed relief.  maskData (what map
@@ -547,63 +637,75 @@ export class Terrain {
     this.mask = t; this.maskData = core; this.holeData = data; this.maskN = N;
     return t;
   }
-  // terrain meshes per 64 m chunk: top + floor (ground material) and walls (earth material)
+  // terrain meshes per 64 m chunk: top + floor (ground material) and walls (earth material), marching triangles:
+  // grid triangles wholly outside -> top, wholly inside -> floor, crossed -> clipped at the outline crossing points into
+  // a top polygon (lip height) and a floor polygon (wall foot, pulled in), plus a wall strip between the crossings.
   buildMeshes(scene, matTop, matWall, groundS) {
     const CH = 64, chunks = new Map(), nb = Math.round(this.size / GR);
+    this._xc = new Map();
     const chunkOf = (x, z) => { const k = Math.floor((x + this.half) / CH) * 1024 + Math.floor((z + this.half) / CH); let c = chunks.get(k); if (!c) chunks.set(k, c = { tp: [], tn: [], tu: [], ti: [], tmap: new Map(), fmap: new Map(), wp: [], wn: [], wu: [] }); return c; };
     const S = groundS, uvOf = (x, z) => [x / S + 0.5, 0.5 - z / S];
+    // key >= 0: grid vertex, < 0: crossing point (edge key)
     const vtx = (c, key, v, floor) => {
       const map = floor ? c.fmap : c.tmap; let i = map.get(key); if (i !== undefined) return i;
       i = c.tp.length / 3; map.set(key, i);
-      if (floor) { this.floorPos(v); c.tp.push(v.fx, this.floorY(v), v.fz); c.tu.push(...uvOf(v.fx, v.fz)); c.tn.push(0, 1, 0); }
+      if (floor) { const y = this.floorY(v); c.tp.push(v.fx, y, v.fz); c.tu.push(...uvOf(v.fx, v.fz)); c.tn.push(0, 1, 0); }
       else { c.tp.push(v.x, v.H, v.z); c.tu.push(...uvOf(v.x, v.z)); c.tn.push(0, 1, 0); }
       return i;
     };
-    const edges = new Map(); // edge key -> {a, b, top, floor, fx, fz (floor-side point)}
+    const emit = (c, ids) => {   // convex polygon fan, every triangle wound up-facing (from the emitted positions)
+      const P = c.tp;
+      for (let k = 1; k < ids.length - 1; k++) {
+        const ia = ids[0], ib = ids[k], ic = ids[k + 1], ax = P[ia * 3], az = P[ia * 3 + 2];
+        const cr = (P[ib * 3] - ax) * (P[ic * 3 + 2] - az) - (P[ib * 3 + 2] - az) * (P[ic * 3] - ax);
+        if (Math.abs(cr) < 1e-9) continue;
+        if (cr < 0) c.ti.push(ia, ib, ic); else c.ti.push(ia, ic, ib);
+      }
+    };
+    // grid edge key: horizontal (gi,gj)-(gi+1,gj) *4+0, vertical *4+1, the cell's diagonal *4+2
+    const ekey = (a, b) => a.gj === b.gj ? (Math.min(a.gi, b.gi) * 65536 + a.gj) * 4 : a.gi === b.gi ? (a.gi * 65536 + Math.min(a.gj, b.gj)) * 4 + 1 : (Math.min(a.gi, b.gi) * 65536 + Math.min(a.gj, b.gj)) * 4 + 2;
     const inMesh = v => v.S < CORR || v.H > LOW + 0.001 || v.H < LOW - 0.001;
+    let nw = 0;
+    const wall = (c, A, B, side) => {   // raw earth wall along crossing A -> B, facing the inside vertex `side`
+      const ra = this.wallRing(A), rb = this.wallRing(B);
+      const dx = B.x - A.x, dz = B.z - A.z, sx = side.x - A.x, sz = side.z - A.z, flip = (dx * sz - dz * sx) > 0;
+      for (let k = 0; k < 4; k++) {
+        const A0 = ra[k], B0 = rb[k], A1 = ra[k + 1], B1 = rb[k + 1];
+        for (const p of flip ? [A0, A1, B1, A0, B1, B0] : [A0, B0, B1, A0, B1, A1]) { c.wp.push(p[0], p[1], p[2]); c.wn.push(p[3], p[4], p[5]); c.wu.push(0, p[1] / 1.4); }
+      }
+      nw++;
+    };
     for (const b of this.blocks) {
       const bi = Math.floor(b / 8192), bj = b % 8192, i0 = bi * BLK, j0 = bj * BLK;
       for (let gj = j0; gj < j0 + BLK; gj++) for (let gi = i0; gi < i0 + BLK; gi++) {
         if (gi < 0 || gj < 0 || gi >= nb || gj >= nb) continue;
-        const ids = [[gi, gj], [gi + 1, gj], [gi + 1, gj + 1], [gi, gj + 1]], V = ids.map(([a, c]) => this.vrec(a, c));
+        const V = [this.vrec(gi, gj), this.vrec(gi + 1, gj), this.vrec(gi + 1, gj + 1), this.vrec(gi, gj + 1)];
         if (!V.some(inMesh)) continue;
-        const keys = ids.map(([a, c]) => a * 65536 + c);
-        const diag = (gi + gj) % 2 === 0;
-        const tris = diag ? [[0, 2, 1], [0, 3, 2]] : [[0, 3, 1], [1, 3, 2]];
+        // diagonal: the one that does not cross the outline (one wall segment per cell instead of two); across a
+        // saddle the one joining the inside corners (junctions stay open); else alternating
+        const m = (V[0].S < 0 ? 1 : 0) | (V[1].S < 0 ? 2 : 0) | (V[2].S < 0 ? 4 : 0) | (V[3].S < 0 ? 8 : 0);
+        const odd = m === 1 || m === 4 || m === 14 || m === 11 ? 1 : m === 2 || m === 8 || m === 13 || m === 7 ? 0 : -1;
+        const d02 = odd === 1 ? false : odd === 0 ? true : m === 5 ? true : m === 10 ? false : (gi + gj) % 2 === 0;
+        const tris = d02 ? [[0, 2, 1], [0, 3, 2]] : [[0, 3, 1], [1, 3, 2]];
         const c = chunkOf(gi * GR - this.half + 0.2, gj * GR - this.half + 0.2);
         for (const t of tris) {
-          const tv = t.map(k => V[k]); let floor;
-          if (tv.some(v => v.cls === 0)) floor = false; else if (tv.some(v => v.cls === 2)) floor = true;
-          else { const ox = t.reduce((s, k) => s + (ids[k][0] * GR - this.half), 0) / 3, oz = t.reduce((s, k) => s + (ids[k][1] * GR - this.half), 0) / 3; floor = this.cutSDF(ox, oz) < 0; }
-          const ia = vtx(c, keys[t[0]], tv[0], floor), ib = vtx(c, keys[t[1]], tv[1], floor), ic = vtx(c, keys[t[2]], tv[2], floor);
-          // winding: up-facing (x-z ccw seen from +Y), from the emitted positions (floor vertices are pulled in)
-          const P = c.tp, ax = P[ia * 3], az = P[ia * 3 + 2], cr = (P[ib * 3] - ax) * (P[ic * 3 + 2] - az) - (P[ib * 3 + 2] - az) * (P[ic * 3] - ax);
-          if (cr < 0) c.ti.push(ia, ib, ic); else c.ti.push(ia, ic, ib);
-          for (let e = 0; e < 3; e++) {
-            const p = t[e], q = t[(e + 1) % 3]; if (V[p].cls !== 1 || V[q].cls !== 1) continue;
-            const ka = keys[p], kb = keys[q], ek = ka < kb ? ka + ':' + kb : kb + ':' + ka; let E = edges.get(ek);
-            if (!E) edges.set(ek, E = { a: V[p], b: V[q] });
-            if (floor) { const o = t[(e + 2) % 3]; E.floor = true; E.fx = V[o].x; E.fz = V[o].z; } else E.top = true;
+          const tv = t.map(k => V[k]), ins = tv.map(v => v.S < 0), n = ins.filter(Boolean).length;
+          const gk = v => v.gi * 65536 + v.gj;
+          if (n === 0) { emit(c, tv.map(v => vtx(c, gk(v), v, false))); continue; }
+          if (n === 3) { emit(c, tv.map(v => vtx(c, gk(v), v, true))); continue; }
+          const top = [], flo = [], X = [];
+          for (let k = 0; k < 3; k++) {
+            const P = tv[k], Pn = tv[(k + 1) % 3], pi = ins[k];
+            if (pi) flo.push(vtx(c, gk(P), P, true)); else top.push(vtx(c, gk(P), P, false));
+            if (pi !== ins[(k + 1) % 3]) {
+              const ek = ekey(P, Pn), r = pi ? this.cross(ek, P, Pn) : this.cross(ek, Pn, P);
+              top.push(vtx(c, -1 - ek, r, false)); flo.push(vtx(c, -1 - ek, r, true)); X.push(r);
+            }
           }
+          emit(c, top); emit(c, flo);
+          if (X.length === 2) wall(c, X[0], X[1], tv[ins.indexOf(true)]);
         }
       }
-    }
-    // raw earth walls along top|floor edges: 3 rows of quads from the lip down to the (pulled-in) floor edge
-    let nw = 0;
-    for (const E of edges.values()) {
-      if (!E.top || !E.floor) continue;
-      const { a, b } = E, c = chunkOf((a.x + b.x) / 2, (a.z + b.z) / 2), ra = this.wallRing(a), rb = this.wallRing(b);
-      // face towards the floor-side point
-      const dx = b.x - a.x, dz = b.z - a.z, sx = E.fx - a.x, sz = E.fz - a.z, flip = (dx * sz - dz * sx) > 0;
-      for (let k = 0; k < 4; k++) {
-        const A0 = ra[k], B0 = rb[k], A1 = ra[k + 1], B1 = rb[k + 1];
-        const quad = flip ? [A0, A1, B1, A0, B1, B0] : [A0, B0, B1, A0, B1, A1];
-        for (const p of quad) {
-          c.wp.push(p[0], p[1], p[2]); c.wn.push(p[3], p[4], p[5]);
-          c.wu.push(0, p[1] / 1.4);   // the wall shader maps biplanar in world space
-        }
-      }
-      nw++;
     }
     this.meshes = [];
     let tris = 0;
@@ -741,7 +843,8 @@ export class Terrain {
     const a = fx - i, b = fz - j, k = j * H.nx + i, g = H.g;
     return (g[k] * (1 - a) + g[k + 1] * a) * (1 - b) + (g[k + H.nx] * (1 - a) + g[k + H.nx + 1] * a) * b;
   }
-  // stamp a placed template (rubble pile, collapse heap) into the heightfield (max with what's there)
+  // stamp a placed template (rubble pile, collapse heap) into the heightfield (max with what's there; trenches and
+  // their edge cells are left alone)
   stamp(tpl, M) {
     const H = this.templateHeights(tpl); if (H.top < 0.05) return;
     const inv = new THREE.Matrix4().copy(M).invert(), p = new THREE.Vector3(), e = M.elements;
@@ -752,6 +855,7 @@ export class Terrain {
     for (let gj = gj0; gj <= gj1; gj++) for (let gi = gi0; gi <= gi1; gi++) {
       p.set(gi * GR - this.half, 0, gj * GR - this.half).applyMatrix4(inv);
       const h = this.sampleT(H, p.x, p.z); if (h < 0.03) continue;
+      if (this.cuts.length && this.cutSDF(gi * GR - this.half, gj * GR - this.half) < 1.0) continue;   // never fills a trench
       this.writeV(gi, gj, h * sy + ty, true);
     }
   }

@@ -37,7 +37,8 @@ Environment asset pipeline (run from this folder, Blender 5.2 bpy module, `nice 
                                       floor_planks, litter_a/b, ammo_crates, sandbag_row / sandbag_pile, debris_conc, overhead cover
                                       net_cover / branch_cover / tarp_cover / net_drone (long axis X along the trench, Z scaled to the
                                       width), dugout_roof(_b) (low overgrown log-and-earth roof + timbered doorway down to y=-1.7),
-                                      mg_nest_roof, dragon_tooth(_b); plus tree_*_mid mid-distance LODs of the farmland trees
+                                      mg_nest_roof, dragon_tooth(_b), dragon_tooth_rubble (blown-apart tooth: stump, slabs, lumps, bent rebar -- the
+                                      game swaps teeth to _b / _rubble in place, City.damageFortAt); plus tree_*_mid mid-distance LODs of the farmland trees
                                       (build_forest_lods.py, same seeds as farmland.glb) used 58..210 m (windbreaks) / 12..175 m
                                       (forest).  Uses the cached farmland atlases + fort_atlas.py (material fort_extra: camo / drone
                                       net, wire mesh, tarps, plastic, OSB / plywood, cardboard, labels).  ONLY=a,b OUT=x.glb for QA.
