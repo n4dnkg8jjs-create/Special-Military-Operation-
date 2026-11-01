@@ -177,6 +177,7 @@ export class Game {
     if (killer && killer.squad) killer.squad.stats.kills++; else if (killer && killer.stats) killer.stats.kills++;
     if (this.camDist(s.pos) < 60) { this.sfx('body_fall', s.pos); if (Math.random() < 0.3) this.sfx('death', s.pos, { gain: 0.6 }); }
     if (s.slotRef) { s.slotRef.occupant = null; s.slotRef = null; }
+    if (s.trenchSlot) { s.trenchSlot.occupant = null; s.trenchSlot = null; }
     if (sq.destroyed && sq.side === 'player') this.hud?.alert(`${sq.name} has been wiped out`, 'bad');
   }
   bailOut(v, cas) {
@@ -221,11 +222,13 @@ export class Game {
         const at = new THREE.Vector3(s.x, 0.1, s.z);
         // rounds landing on a building hit the roof/top floor
         const b = this.city.buildingAt(s.x, s.z, 0); if (b) at.y = b.floors * this.assets.kit.H - 0.5;
+        this.combat.blastSide = s.side;
         if (s.caliber === 'spg') {   // 152 / 155 mm HE-Frag: ~6-7 kg of explosive, lethal radius well beyond a mortar's
           this.combat.explode(at, s.power || 2.7, s.owner || null, [170, 420], 15);
           if (!b) for (let k = 0; k < 2; k++) this.fx.vehicleDust(at, 16);
           for (const v of this.vehicles) if (!v.destroyed && v.pos.distanceTo(at) < 7) { v.hp -= (7 - v.pos.distanceTo(at)) * (v.kind === 'tank' ? 25 : 70); if (v.hp <= 0) v.knockOut(false); else if (v.pos.distanceTo(at) < 3 && Math.random() < 0.5) { v.immob.track = true; v.immobile = true; } }
         } else this.combat.explode(at, s.caliber === 'arty' ? 2.2 : 1.3, null, s.caliber === 'arty' ? [120, 320] : [80, 220], s.caliber === 'arty' ? 11 : 8);
+        this.combat.blastSide = null;
       }
     }
   }

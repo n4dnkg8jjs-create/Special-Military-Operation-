@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Soldier, clipDuration, hasClip } from './soldier.js';
+import { TrenchMixin, trenchMen } from './trench.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING, WEAPONS } from '../config.js';
 import { AtgmTeam, FpvTeam } from './support.js';
 
@@ -152,6 +153,7 @@ export class Squad {
   }
   threatScore(b, sl) { const o = b.outward(sl.panel); const enemyDir = this.side === 'player' ? -1 : 1; return o.z * enemyDir - sl.panel.floor * 0.1 + (sl.panel.state >= 2 ? -0.5 : 0); }
   leaveBuilding() {
+    this.leaveTrench();
     if (!this.building) return;
     const b = this.building;
     for (const s of this.soldiers) if (s.slotRef) {
@@ -228,6 +230,8 @@ export class Squad {
   }
   orderAttack(target) {
     if (this.routing) return;
+    // enemy dug into a trench: clear it (work down it from one end, grenades round the bends and into the dugouts)
+    if (target.type === 'squad') { const T = target.trench || target.order?.trench || target.soldiers.find(s => s.trenchSys)?.trenchSys; if (T && trenchMen(this.game, T, target.side).length) return this.orderClearTrench(T); }
     this.order = { type: 'attack', target };
     const tc = target.center ? target.center() : target.pos;
     const c = this.center(); const d = c.distanceTo(tc);
@@ -235,7 +239,7 @@ export class Squad {
     if (d > range) { const p = c.clone().lerp(tc, 1 - range * 0.85 / d); this.orderMove(p.x, p.z, Math.atan2(tc.x - p.x, tc.z - p.z), 18, this.run); this.order.attack = target; }
     this.focus = target;
   }
-  halt() { this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
+  halt() { this.leaveTrench(); this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
   // ------------------------------------------------------------ morale
   addMorale(d, why) { if (this.destroyed) return; this.morale = THREE.MathUtils.clamp(this.morale + d, 0, 100); }
   onCasualty(s, killed) {
@@ -290,6 +294,7 @@ export class Squad {
     this.updateMorale(dt);
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
+    if (this.order?.type === 'clear') this.clearTick(dt);
     for (const s of this.soldiers) this.updateSoldier(s, dt);
     this.resupplyTick(dt);
   }
@@ -366,11 +371,12 @@ export class Squad {
         else s.stance = s.weaponKey === 'pkm' && s.target ? 'prone' : 'stand';
       }
     }
+    if (this.trench) this.trenchThink();
   }
   // individual initiative: a man caught in the open while his squad is halted and taking fire scrambles to the
   // nearest real cover against his target (a few metres, never far from where he was ordered)
   seekCover() {
-    if (this.mounted || this.routing || this.building || this.order?.type === 'storm' || this.order?.type === 'mount') return;
+    if (this.mounted || this.routing || this.building || this.trench || this.order?.type === 'storm' || this.order?.type === 'mount' || this.order?.type === 'clear') return;
     if (this.underFireT > 2.5) return;
     const nav = this.game.nav, now = this.game.time;
     for (const s of this.effective) {
@@ -565,3 +571,4 @@ export class Squad {
 }
 
 export function angDiff(a, b) { let d = (a - b) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+Object.defineProperties(Squad.prototype, Object.getOwnPropertyDescriptors(TrenchMixin));

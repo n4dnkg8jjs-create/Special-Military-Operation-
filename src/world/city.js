@@ -149,9 +149,11 @@ export class City {
     const T = this.terrain, R = this.rng;
     T.roadTest = (x, z, pad) => onRoad(x, z, pad);
     T.keepOut = (x, z) => this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + 4 && Math.abs(lz) < b.D / 2 + 4; }) || !!(this.inVillage && this.inVillage(x, z, 1)) || !!(this.inFarm && this.inFarm(x, z, 3)) || !!(this.inFarmstead && this.inFarmstead(x, z, 2));
+    this.trenchSystems = [];
     for (const f of MAP.fortifications || []) {
       if (f.type === 'fire') {
         const res = T.fireTrench(f.base, { front: f.front, style: f.style, revet: f.revet, leg: f.leg, amp: f.amp, bayEvery: f.bays, depth: f.depth, sys: f });
+        const sysRec = { id: this.trenchSystems.length, front: f.front, res, dugouts: [] }; this.trenchSystems.push(sysRec);
         const at = fr => { // trench point nearest to a fraction along the baseline
           const B = f.base, L = B.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - B[i][0], p[1] - B[i][1]), 0); let d = fr * L, i = 0;
           while (i < B.length - 2 && d > Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1])) { d -= Math.hypot(B[i + 1][0] - B[i][0], B[i + 1][1] - B[i][1]); i++; }
@@ -164,7 +166,8 @@ export class City {
           const p = rear(fr); if (!p) continue; const bx = -f.front[0], bz = -f.front[1], sx = -bz, sz = bx, d0 = res.w + 0.1, cx = p[0] + bx * (d0 + 3.2 + 2.5), cz = p[1] + bz * (d0 + 3.2 + 2.5);
           const clear = [[-2.4, -2.5], [2.4, -2.5], [-2.4, 2.5], [2.4, 2.5], [0, 0]].every(([u, v]) => { const x = cx + sx * u + bx * v, z = cz + sz * u + bz * v; return T.cutSDF(x, z) > 0.4 && !onRoad(x, z, 2) && !T.keepOut(x, z); });
           if (!clear) continue;
-          T.dugout(p[0] + bx * d0, p[1] + bz * d0, bx, bz, { sys: f, revet: 'logs' });
+          const ch = T.dugout(p[0] + bx * d0, p[1] + bz * d0, bx, bz, { sys: f, revet: 'logs' });
+          sysRec.dugouts.push({ x: ch[0], z: ch[1], door: [p[0], p[1]], dir: [bx, bz], occupants: new Set() });
         }
         for (const fr of f.mg || []) {
           const p = at(fr); if (!p) continue; let best = null, bd = 1e9;
@@ -175,6 +178,7 @@ export class City {
       else if (f.type === 'ditch') T.antitankDitch(f.pts, { bermSide: f.bermSide });
       else if (f.type === 'teeth') T.dragonTeeth(f.pts, { rows: f.rows });
     }
+    this.trenchSystems = this.trenchSystems.map(r => this.trenchSystem(r)).filter(Boolean);
     const wall = this.wallMat();
     T.finalize({ scene: this.scene, matTop: this.groundMat(true), matWall: wall, groundS: this.groundS });
     this.groundUniforms.tHole.value = T.mask;
@@ -184,6 +188,31 @@ export class City {
       const t = g?.scene.getObjectByName(name) || fortFallback(name); if (!t) continue;
       instance(this.scene, t, mats, { cullDist: cull[name] || 600, shadows: !/duckboard|ammo/.test(name) });
     }
+  }
+  // gameplay contract for src/game/trench.js: front, lines, slots {x,z,fx,fz,kind}, dugouts {x,z,door,dir,occupants}, center, radius
+  trenchSystem(r) {
+    const T = this.terrain, res = r.res, [fx, fz] = r.front, inside = (x, z) => T.cutSDF(x, z) < -0.15;
+    const lines = T.runs(res.pts, 3.5).map(run => run.filter(p => inside(p[0], p[1]))).filter(l => l.length > 1);
+    if (!lines.length) return null;
+    const slots = [];
+    for (const b of res.bays) {
+      const t = b.tag, k = Math.max(0.5, t.L - 0.55), x = t.x + t.fx * k, z = t.z + t.fz * k;
+      if (inside(x, z)) slots.push({ x, z, fx: t.fx, fz: t.fz, kind: b.covered ? 'mg' : 'bay' });
+    }
+    lines.forEach((l, li) => {
+      let acc = 3;
+      for (let i = 0; i < l.length - 1; i++) {
+        const [ax, az] = l[i], [bx, bz] = l[i + 1], L = Math.hypot(bx - ax, bz - az);
+        for (; acc < L; acc += 6) {
+          const x = ax + (bx - ax) * acc / L, z = az + (bz - az) * acc / L, px = x + fx * (res.w - 0.3), pz = z + fz * (res.w - 0.3);
+          if (inside(px, pz) && !slots.some(o => Math.hypot(o.x - px, o.z - pz) < 3.5)) slots.push({ x: px, z: pz, fx, fz, kind: 'line', line: li, i });
+        }
+        acc -= L;
+      }
+    });
+    const all = lines.flat(), cx = all.reduce((a, p) => a + p[0], 0) / all.length, cz = all.reduce((a, p) => a + p[1], 0) / all.length;
+    const radius = Math.max(...all.map(p => Math.hypot(p[0] - cx, p[1] - cz)));
+    return { id: r.id, front: r.front, lines, slots, dugouts: r.dugouts, center: [cx, cz], radius, depth: res.depth };
   }
   wallMat() {
     const T = this.assets.tex.dirt || {}, p = { color: 0x8c7c6a, roughness: 1 };

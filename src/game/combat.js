@@ -1,5 +1,6 @@
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
+import { trenchBlast } from './trench.js';
 import { WEAPONS, TUNING } from '../config.js';
 import { angDiff } from './squad.js';
 import { initArmor, resolveHit } from './armor.js';
@@ -210,7 +211,10 @@ export class Combat {
     if (t.inBuilding) p *= this.windowExposed(t) ? 0.3 : 0.02;
     else if (t.inside === 'ride') p *= 0.75;
     else {
-      const cov = this.g.nav.coverFrom(t.pos.x, t.pos.z, s.pos.x, s.pos.z);
+      // two men in the same trench (a clearing fight) see each other along the straight stretches: the walls are no
+      // cover then (the bends already block line of sight through the terrain test)
+      const nv = this.g.nav, both = nv.trenchDepth && nv.trenchDepth(t.pos.x, t.pos.z) > 0.9 && nv.trenchDepth(s.pos.x, s.pos.z) > 0.9 && t.pos.distanceTo(s.pos) < 40;
+      const cov = both ? 0 : nv.coverFrom(t.pos.x, t.pos.z, s.pos.x, s.pos.z);
       p *= 1 - cov * (t.stance === 'stand' ? 0.45 : 0.72);
       if (t.stance === 'prone') p *= 0.5; else if (t.stance === 'crouch') p *= 0.75;
       if (t.vel.lengthSq() > 4) p *= 0.65;
@@ -524,6 +528,7 @@ export class Combat {
       if (power >= 1.5 && Math.random() < 0.3) this.hitVehicle(v, { pen: 40, dmg: [60, 120] }, at, 'ce', owner, true);
       else v.hp -= 20 * power * (1 - d / radius);
     }
+    trenchBlast(g, at, power, owner);
   }
   damageBuilding(b, at, power) {
     const g = this.g;

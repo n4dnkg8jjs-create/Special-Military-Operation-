@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { trenchNear } from '../game/trench.js';
 
 // Mouse & keyboard command layer (Total War conventions).
 export class Input {
@@ -96,6 +97,8 @@ export class Input {
       const b = this.buildingAt(e.clientX, e.clientY);
       const sqs = sel.filter(u => u.type === 'squad');
       if (b && sqs.length && g1 && b === this.g.city.buildingAt(g1.x, g1.z, 6)) { for (const s of sqs) s.orderGarrison(b); this.g.sfx('ui_order'); return; }
+      // click into a trench: occupy it (or clear it if the enemy holds it)
+      if (!b && sqs.length && g1 && this.g.city.trenchInfo?.(g1.x, g1.z)) { const T = trenchNear(this.g, g1.x, g1.z, 5); if (T) { for (const s of sqs) s.orderTrench(T); this.g.sfx('ui_order'); return; } }
       if (g1) this.moveSelected(g1.x, g1.z, null);
     }
   }
@@ -141,7 +144,8 @@ export class Input {
     if (o === 'run') { this.runMode = !this.runMode; for (const u of sel) if (u.type === 'squad') u.run = this.runMode; }
     if (o === 'holdfire') { const v = !sel.every(u => u.holdFire); for (const u of sel) u.holdFire = v; }
     if (o === 'halt') for (const u of sel) u.halt();
-    if (o === 'garrison') { const p = this.lastMouse; const b = p && this.buildingAt(p[0], p[1]); for (const u of sel) if (u.type === 'squad') { const bb = b || nearestBuilding(g, u.center()); if (bb) u.orderGarrison(bb); } }
+    if (o === 'garrison') { const p = this.lastMouse; const b = p && this.buildingAt(p[0], p[1]); const gp = p && this.groundAt(p[0], p[1]); const Tm = !b && gp ? trenchNear(g, gp.x, gp.z, 8) : null;
+      for (const u of sel) if (u.type === 'squad') { const c = u.center(), Tn = Tm || (!b ? trenchNear(g, c.x, c.z, 30) : null), nb = !b && nearestBuilding(g, c); if (Tn && (Tm || !nb || nb.toLocal && Math.hypot(nb.x - c.x, nb.z - c.z) > 30)) { u.orderTrench(Tn); continue; } const bb = b || nearestBuilding(g, u.center()); if (bb) u.orderGarrison(bb); } }
     if (o === 'mount' && g.phase === 'deploy') {
       for (const u of sel) { const sq = u.type === 'squad' ? u : u.passengers; const v = u.type === 'vehicle' ? u : u.carrier;
         if (!sq || !v) continue;

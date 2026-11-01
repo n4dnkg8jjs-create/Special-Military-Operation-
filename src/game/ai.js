@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { trenchNear, trenchMen } from './trench.js';
 import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
 
 // Enemy commander. Phase 1: dug-in defenders hold both objectives. Phase 2 (after the player takes an
@@ -187,11 +188,14 @@ export class Commander {
     if (moving) return;
     // assault squads: storm a player-held building near the objective
     if (b.kind === 'assault' && dObj < 90) {
+      // player dug into a trench near the objective: clear it
+      const Tp = (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - ox, T.center[1] - oz) < T.radius + 90 && trenchMen(g, T, 'player').length).sort((p, q) => Math.hypot(p.center[0] - c.x, p.center[1] - c.z) - Math.hypot(q.center[0] - c.x, q.center[1] - c.z))[0];
+      if (Tp && Math.hypot(Tp.center[0] - c.x, Tp.center[1] - c.z) < Tp.radius + 110) { sq.orderClearTrench(Tp); b.wait = 8; return; }
       const target = this.g.city.buildings.filter(bl => bl.slots.some(sl => sl.occupant && sl.occupant.squad.side === 'player')).sort((p, q) => Math.hypot(p.x - ox, p.z - oz) - Math.hypot(q.x - ox, q.z - oz))[0];
       if (target && Math.hypot(target.x - c.x, target.z - c.z) < 110) { sq.orderGarrison(target); b.wait = 4; return; }
     }
     if (b.state === 'hold') { if (g.objectives.every(o => o.owner === 'enemy')) return; if (Math.random() < 0.04) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = others[Math.floor(Math.random() * others.length)].id; if (sq.building) sq.leaveBuilding(); } } return; }
-    if (dObj < 22) { b.state = 'hold'; const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
+    if (dObj < 22) { b.state = 'hold'; const T = this.freeTrench(ox, oz, 70, sq); if (T && Math.random() < 0.7) { sq.orderTrench(T); return; } const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
     if (sq.building && sq.underFireT < 4 && Math.random() < 0.7) { b.wait = 5; return; }
     // in contact: fire and manoeuvre — one fire team keeps the enemy's heads down while the other bounds to
     // cover on a flank; if clearly outnumbered locally, go to ground in the best cover and wait for support
@@ -199,6 +203,11 @@ export class Commander {
     if (contact) {
       const T = contact.p, local = this.threatsNear(c, 90).n, friends = this.friendsNear(c, 70);
       // a solid building close by facing the contact: turn it into a strongpoint (360 deg garrison) instead of fighting in the open
+      // or a trench close by: drop into it and fight from it
+      if (b.kind !== 'assault' && !sq.trench && T.distanceTo(c) < 170) {
+        const tr = this.freeTrench(c.x, c.z, 35, sq);
+        if (tr && Math.random() < (local >= friends ? 0.8 : 0.5)) { sq.orderTrench(tr); b.state = 'strongpoint'; b.holdT = g.time + 40 + Math.random() * 30; b.wait = 6; return; }
+      }
       if (!b.noBld && b.kind !== 'assault' && T.distanceTo(c) < 160) {
         const bld = this.nearBuilding(c, 28, sq);
         if (bld && Math.random() < (local >= friends ? 0.75 : 0.4)) { sq.orderGarrison(bld); b.state = 'strongpoint'; b.holdT = g.time + 30 + Math.random() * 30; b.wait = 5; return; }
@@ -231,16 +240,23 @@ export class Commander {
     b.bound++;
     b.wait = assault ? 2 : 5 + Math.random() * 7;
   }
+  // a trench system near (x,z) with room for most of the squad and no player troops in it
+  freeTrench(x, z, r, sq) {
+    const g = this.g, n = sq.effective.length;
+    return (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - x, T.center[1] - z) < T.radius + r && T.slots.filter(sl => !sl.occupant || !sl.occupant.effective).length >= Math.min(n, 4) && !trenchMen(g, T, 'player').length)
+      .sort((p, q) => Math.hypot(p.center[0] - x, p.center[1] - z) - Math.hypot(q.center[0] - x, q.center[1] - z))[0] || null;
+  }
   thinkDefender(b) {
     const g = this.g, sq = b.sq, o = g.objectives.find(q => q.id === b.obj);
     if (sq.routing) return;
     // building collapsed / lost the garrison -> fall back to the next building near the objective
-    if (!sq.building && !sq.effective.some(s => s.path) && sq.effective.length) {
+    if (!sq.building && !sq.trench && !sq.effective.some(s => s.path) && sq.effective.length) {
+      const T = this.freeTrench(o.x, o.z, 80, sq); if (T && Math.random() < 0.6) { sq.orderTrench(T); return; }
       const bld = this.nearBuilding(new THREE.Vector3(o.x, 0, o.z), 45, sq);
       if (bld && Math.random() < 0.5) sq.orderGarrison(bld);
     }
     // objective lost and still steady: switch to counterattack mode
-    if (o.owner === 'player' && sq.morale > 45 && !sq.building) { b.kind = 'foot'; b.state = 'advance'; b.flank = 0; }
+    if (o.owner === 'player' && sq.morale > 45 && !sq.building && !sq.trench) { b.kind = 'foot'; b.state = 'advance'; b.flank = 0; }
   }
   supportVehicle(b) {
     const v = b.v, sq = b.sq, c = sq.center();
@@ -334,11 +350,15 @@ export class AutoDefender {
         if (d < 120 || u.underFireT < 2 || u.carrier.destroyed) u.dismount(Math.PI); else if (!u.carrier.path) u.carrier.orderMove(o.x, o.z + 90, Math.PI, true);
         continue;
       }
-      if (u.building || (u.order && u.effective.some(s => s.path))) continue;
+      if (u.building || u.trench || u.order?.type === 'clear' || (u.order && u.effective.some(s => s.path))) continue;
+      const eT = (g.city.trenchSystems || []).find(T => Math.hypot(T.center[0] - o.x, T.center[1] - o.z) < T.radius + 60 && trenchMen(g, T, 'enemy').length);
+      if (eT && u.assault && Math.hypot(eT.center[0] - u.center().x, eT.center[1] - u.center().z) < eT.radius + 120) { u.orderClearTrench(eT); continue; }
       const enemyIn = g.city.buildings.find(b => Math.hypot(b.x - o.x, b.z - o.z) < 35 && b.slots.some(s => s.occupant && s.occupant.squad.side === 'enemy'));
       if (enemyIn && u.assault) { u.orderGarrison(enemyIn); continue; }
       if (o.owner === 'enemy') { u.orderMove(o.x + (Math.random() - .5) * 16, o.z + 10, Math.PI, 16, false); continue; }
       const bl = g.city.buildings.slice().sort((a, b) => Math.hypot(a.x - o.x, a.z - o.z) - Math.hypot(b.x - o.x, b.z - o.z)).find(b => b.slots.some(s => !s.occupant && !s.panel.gone));
+      const fT = (g.city.trenchSystems || []).find(T => Math.hypot(T.center[0] - o.x, T.center[1] - o.z) < T.radius + 50 && T.slots.some(sl => !sl.occupant) && !trenchMen(g, T, 'enemy').length);
+      if (fT && Math.random() < 0.5) { u.orderTrench(fT); continue; }
       if (bl && Math.random() < 0.5) u.orderGarrison(bl); else u.orderMove(o.x + (Math.random() - .5) * 20, o.z - 8, Math.PI, 18, true);
     }
     for (const v of g.unitsOf('player')) if (v.type === 'vehicle' && !v.path && !v.passengers) { const o = g.objectives[v.id % 2]; if (Math.hypot(v.pos.x - o.x, v.pos.z - o.z) > 70) v.orderMove(o.x, o.z + 55, Math.PI); }

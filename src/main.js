@@ -26,6 +26,29 @@ async function start(opts) {
     if (Q.has('fire')) { const [fx, fz] = Q.get('fire').split(',').map(Number); game.fx.emitter(new THREE.Vector3(fx, 0, fz), 'fire', 1.3, 999); }
     if (Q.has('fireat')) { const [fx, fz] = Q.get('fireat').split(',').map(Number); for (const u of game.playerUnits) u.fireAt = { p: new THREE.Vector3(fx, 0, fz), until: 1e9 }; }
     if (Q.has('spgat')) { const [fx, fz] = Q.get('spgat').split(',').map(Number); for (const u of game.playerUnits) if (u.kind === 'spg') u.fireAt = { p: new THREE.Vector3(fx, 0, fz) }; }
+    if (Q.has('trenchtest')) {   // enemy squad dug into trench i (2 men in the dugout), player assault squad clears it
+      const tq = Q.get('trenchtest'), TS = game.city.trenchSystems || [];
+      const T = tq.includes(',') ? (() => { const [x, z] = tq.split(',').map(Number); return TS.slice().sort((a, b) => Math.hypot(a.center[0] - x, a.center[1] - z) - Math.hypot(b.center[0] - x, b.center[1] - z))[0]; })() : TS[+tq || 0];
+      const es = game.squads.find(s => s.side === 'enemy' && !s.mounted && !s.support && s.kind !== 'atgm' && s.kind !== 'fpv');
+      const ps = game.squads.find(s => s.side === 'player' && s.assault);
+      if (T && es && ps) {
+        for (const b of game.ai?.units || []) if (b.sq === es) b.dead = true; for (const b of game.ai?.army || []) if (b.sq === es) b.dead = true;
+        if (!Q.has('occupy')) {
+        es.soldiers.forEach((s, i) => { const sl = T.slots[i % T.slots.length]; s.pos.set(sl.x, 0, sl.z); s.path = null; });
+        es.orderTrench(T);
+        es.soldiers.forEach(s => { if (s.trenchSlot) { s.pos.set(s.trenchSlot.x, 0, s.trenchSlot.z); s.path = null; s.pathReq = null; } });
+        if (T.dugouts[0]) es.effective.slice(-2).forEach(s => es.enterDugout(s, T.dugouts[0]));
+        }
+        if (!Q.has('noclear')) {
+          if (ps.mounted) { ps.dismount(); for (const s of ps.soldiers) { if (s.dmWait != null) ps.exitCarrier(s); s.jumpT = 0; s.path = null; s.goal = null; } }
+          const L = T.lines[0], d = [L[0][0] - L[1][0], L[0][1] - L[1][1]], n = Math.hypot(d[0], d[1]) || 1;
+          ps.soldiers.forEach((s, i) => { const [x, z] = game.nav.nearestFree(L[0][0] + d[0] / n * (14 + (i >> 1) * 2), L[0][1] + d[1] / n * (14 + (i >> 1) * 2) + (i % 2 ? 1.5 : -1.5), 0.4, 6); s.pos.set(x, 0, z); s.path = null; s.goal = null; s.inside = null; });
+          if (Q.has('occupy')) { ps.orderTrench(T); ps.soldiers.forEach(s => { if (s.trenchSlot) { s.pos.set(s.trenchSlot.x, 0, s.trenchSlot.z); s.path = null; s.pathReq = null; } }); } else ps.orderClearTrench(T);
+        }
+        globalThis.__tt = { T, es, ps };
+      }
+    }
+    if (Q.has('shell')) { const [x, z] = Q.get('shell').split(',').map(Number); game.callStrike(x, z, 8, 22, 'enemy', 2, 'arty'); }
     if (Q.has('hitlog')) globalThis.__hitlog = 1;
     if (Q.has('doors')) for (const v of game.vehicles) v.doorT = 1e9;
     if (Q.has('bail')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('bail')]; if (v.passengers) v.passengers.dismount(); v.burning = 0.01; v.bailAt = 0.2; }
@@ -50,7 +73,7 @@ async function start(opts) {
     window.__info = { renderMs: Math.round(renderMs), calls: Math.round(ri.render.calls / 3), tris: Math.round(ri.render.triangles / 3), programs: ri.programs?.length, simMs: Math.round(performance.now() - t0), time: Math.round(game.time), over: game.over, result: game.result?.title,
       objectives: game.objectives.map(o => `${o.id}:${o.owner}:${Math.round(o.control)}`),
       player: game.stats.player, enemy: game.stats.enemy, squads: game.squads.map(s => `${s.side[0]}${s.effective.length}/${Math.round(s.morale)}${s.routing ? 'R' : ''}${s.mounted ? 'M' : ''}`).join(' '),
-      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
+      vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
     window.__done = true; return;
   }
   let last = performance.now();
