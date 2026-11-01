@@ -5264,7 +5264,7 @@
   "file": "soldier_anims.glb",
   "size_bytes": 3478232,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
-  "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and dismount_jump keep root motion and end at rest",
+  "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and the vehicle exits (hatch_exit*, dismount_*) keep root motion and end on the root",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
   "rifle_fire": {
    "clips": "fire_stand / fire_crouch / fire_prone / fire_peek_left / fire_peek_right / fire_peek_crouch_left / fire_peek_crouch_right",
@@ -5302,7 +5302,7 @@
    "frame": "ride_sit_edge / ride_sit_deck / ride_aim: root = ride_seat_N empty (point on the sitting surface under the pelvis), +Z = seat facing; Hips joint 0.118 m above and 0.035 m behind the seat point; place the soldier root exactly on the seat empty (position + heading), no ground snapping.",
    "edge": "thighs along +Z, knees ~0.42 m out, shins angled ~30 deg outward (clears the BTR's sloped upper hull), rifle across the lap",
    "deck": "knees up, feet flat on the deck ~0.47 m ahead, rifle upright between the knees, butt on the deck",
-   "dismount_jump": "root on the ground at the landing point; the clip starts with the seat point at (0, 1.8, -1.6) relative to it (game: landing = seat + 1.6 m outward, seat ~1.8 m high); vertical and horizontal root motion kept; touchdown 0.84 s"
+   "dismount_jump": "dismount_jump = dismount_jump_btr (2.2 s) / dismount_jump_tank (1.9 s): start == ride_sit_edge frame 0 at the seat, end == crouch_walk frame 0; see soldier_anims.vehicle_exits"
   },
   "medical": {
    "drag": "drag_wounded (dragger) and being_dragged (casualty) share a 2.5 s loop. Casualty root = dragger root + 1.0 m along the dragger facing, casualty heading = dragger heading + 180 deg (head towards the dragger). Contact point = socket drag_handle (Spine1) at (0, 0.50, 0.42) in the casualty frame = (0, 0.50, 0.58) in the dragger frame (both hands).",
@@ -5319,10 +5319,8 @@
    "note": "the crew presets have no rifle: parent pm.glb to weapon_socket for these clips (holster stays on the belt)"
   },
   "hatch_exit": {
-   "clip": "hatch_exit, 2.7 s, plays once, root motion in the Hips track (vertical + horizontal), no weapon in the hands",
-   "frame": "clip space = the soldier root at the END of the clip: on the ground beside the vehicle, facing away from it (+Z). Authored for a T-72-sized vehicle and its commander hatch: rim centre at (0, 2.25, -1.80) relative to that root, hatch radius 0.33 m, turret roof y 2.20 up to z -1.15, fender / hull deck y 1.45 up to z -0.42, crewman starts standing on the inside floor at y 0.42 (hips 0.92 m below the rim).",
-   "game": "place the soldier root at R = hatch_centre_world + exit_dir * 1.80 at ground height (y = ground), heading = exit_dir (perpendicular to the vehicle side, pointing away from it), then play hatch_exit once with no further root movement; when it ends the soldier stands at R. For a hatch at height H != 2.25 add (H - 2.25) to the root y for t < events.on_fender and blend it to 0 by events.landed (or accept the mismatch; the clip is tuned for T-72 / BTR-82A turret heights).",
-   "events": "hands_on_rim [0, 0.66], hips_clear_rim 0.50, knee_on_deck 0.70, on_deck 1.01, step_off 1.08, on_fender 1.37, jump 1.60, landed 2.19 (s)"
+   "clip": "hatch_exit = hatch_exit_tank (T-72 turret hatch, 4.4 s) and hatch_exit_btr (BTR roof hatch, 4.2 s), play once, root motion in the Hips track, hands free (PM drawn at the end)",
+   "see": "soldier_anims.vehicle_exits"
   },
   "sources": "CMU mocap: walk 07_01, run 16_45, crouch walk 136_09, limp 77_19, drag 81_08 (legs), death_back 90_18, throw 113_24. Pistol walk / run reuse 07_01 / 16_45 legs. Hand-keyed + IK: crawls, hatch_exit, pistol aim / idle / fire. Arms of all rifle clips are IK-solved onto the AK grips (right hand = weapon_socket, left hand = grip_L) then baked. Aim clips: authored cheek-weld head posture, gun on the sight line through the right eye, chest/clavicle solved to bring the butt to the shoulder pocket.",
   "clips": {
@@ -5727,20 +5725,55 @@
     }
    },
    "dismount_jump": {
-    "duration_s": 1.2,
-    "frames": 37,
+    "duration_s": 2.2,
+    "frames": 67,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": true,
-    "notes": "push off from the edge seat and drop 1.8 m, land in a crouch; root motion kept (vertical AND horizontal): the clip starts with the seat point at [0.0, 1.8, -1.6] relative to the root, i.e. the game places the root on the ground 1.6 m out from the seat (facing out) and the clip ends at the root; touchdown at 0.84 s; ik {'R': 6.661338147750939e-16, 'L': 0.018106586165507834}",
+    "notes": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate. Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.995, -1.6] relative to the end root (root = seat + 1.60 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle). (copy of dismount_jump_btr)",
     "events": {
-     "leave_seat": 0.4,
-     "touchdown": 0.84,
+     "hand_down": 0.52,
+     "leave_seat": 1.05,
+     "land": 1.55,
+     "step": 1.9000000000000001,
      "seat_offset_from_root": [
       0.0,
-      1.8,
+      1.995,
+      -1.6
+     ],
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_btr",
+     "note": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate",
+     "vehicles": [
+      "btr82a",
+      "btr80_ua"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.16,
+      -0.45
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.45,
+       0.0,
+       -2.16
+      ],
+      "yaw_deg": 90.0
+     },
+     "seat_vehicle": [
+      -0.56,
+      1.995,
+      -0.45
+     ],
+     "seat_from_root": [
+      0.0,
+      1.995,
       -1.6
      ]
     }
@@ -6092,74 +6125,61 @@
     }
    },
    "hatch_exit": {
-    "duration_s": 2.7,
-    "frames": 82,
+    "duration_s": 4.4,
+    "frames": 133,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": true,
-    "notes": "crewman bails out of a turret hatch: standing inside on the floor (0.42 m), hips 0.92 m below the rim (2.25 m), dips, jumps and pulls and presses up on the rim, right knee then left foot onto the turret roof (on_deck), steps off the turret edge onto the fender/deck (1.45 m), jumps down beside the vehicle and lands in a crouch (landed), rises. Root motion (vertical + horizontal) is in the Hips track; clip space = the soldier root at the END (on the ground, facing away from the vehicle): hatch rim centre at [0.0, 2.25, -1.8] relative to it. No weapon in the hands (pistol holstered).",
+    "notes": "T-72 commander hatch (turret right, rim 2.28 m); gunner hatch = the mirror (side +1). Crew bail-out, hands free (PM holstered, drawn at the end: weapon_socket shows the PM from events.draw = dur - 0.5 s). Start: crouched on the seat under the closed hatch; hatch rim centre at [0.25, 2.28, -1.92] relative to the end root (i.e. root = hatch_centre + 1.92 m outward (perpendicular to the hull side) + -0.25 m along the hull (+ = toward the bow for a right-side exit), on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends crouched, PM at a compressed low ready (blends to pistol_idle / pistol_walk / pistol_run). (copy of hatch_exit_tank)",
     "events": {
+     "hatch_open": 0.3,
      "hands_on_rim": [
-      0.0,
-      0.66
+      0.4,
+      1.02
      ],
-     "hips_clear_rim": 0.5,
-     "knee_on_deck": 0.7,
-     "on_deck": 1.01,
-     "step_off": 1.08,
-     "on_fender": 1.37,
-     "jump": 1.6,
-     "landed": 2.19
+     "regrip_on_roof": [
+      1.12,
+      1.66
+     ],
+     "hips_clear": 1.48,
+     "out": 1.98,
+     "on_fender": 2.5,
+     "jump": 3.27,
+     "ground": 3.78,
+     "draw": 3.9
     },
-    "hatch": {
-     "geometry": {
-      "hatch_rim_centre": [
+    "vehicle": {
+     "layout_of": "hatch_exit_tank",
+     "note": "T-72 commander hatch (turret right, rim 2.28 m); gunner hatch = the mirror (side +1)",
+     "vehicles": [
+      "t72av_ua",
+      "t72b3"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.42,
+      -0.07
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.07,
        0.0,
-       2.25,
-       -1.8
+       -2.42
       ],
-      "hatch_radius": 0.33,
-      "turret_roof_y": 2.2,
-      "turret_edge_z": -1.15,
-      "deck_y": 1.45,
-      "deck_edge_z": -0.42,
-      "inside_floor_y": 0.42
+      "yaw_deg": 90.0
      },
-     "hips_at": {
-      "start": [
-       0.0,
-       1.33,
-       -1.88
-      ],
-      "on_deck": [
-       0.0,
-       2.74,
-       -1.28
-      ],
-      "on_fender": [
-       0.0,
-       2.377,
-       -0.741
-      ],
-      "jump": [
-       0.0,
-       2.1,
-       -0.44
-      ],
-      "landed": [
-       0.0,
-       0.926,
-       -0.027
-      ],
-      "end": [
-       0.0,
-       0.9,
-       0.0
-      ]
-     },
-     "fit_drop": 0.052
+     "hatch_vehicle": [
+      -0.5,
+      2.28,
+      0.18
+     ],
+     "hatch_from_root": [
+      0.25,
+      2.28,
+      -1.92
+     ]
     }
    },
    "atgm_aim": {
@@ -10640,6 +10660,311 @@
       60.8
      ]
     }
+   },
+   "hatch_exit_tank": {
+    "duration_s": 4.4,
+    "frames": 133,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "T-72 commander hatch (turret right, rim 2.28 m); gunner hatch = the mirror (side +1). Crew bail-out, hands free (PM holstered, drawn at the end: weapon_socket shows the PM from events.draw = dur - 0.5 s). Start: crouched on the seat under the closed hatch; hatch rim centre at [0.25, 2.28, -1.92] relative to the end root (i.e. root = hatch_centre + 1.92 m outward (perpendicular to the hull side) + -0.25 m along the hull (+ = toward the bow for a right-side exit), on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends crouched, PM at a compressed low ready (blends to pistol_idle / pistol_walk / pistol_run).",
+    "events": {
+     "hatch_open": 0.3,
+     "hands_on_rim": [
+      0.4,
+      1.02
+     ],
+     "regrip_on_roof": [
+      1.12,
+      1.66
+     ],
+     "hips_clear": 1.48,
+     "out": 1.98,
+     "on_fender": 2.5,
+     "jump": 3.27,
+     "ground": 3.78,
+     "draw": 3.9
+    },
+    "vehicle": {
+     "layout_of": "hatch_exit_tank",
+     "note": "T-72 commander hatch (turret right, rim 2.28 m); gunner hatch = the mirror (side +1)",
+     "vehicles": [
+      "t72av_ua",
+      "t72b3"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.42,
+      -0.07
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.07,
+       0.0,
+       -2.42
+      ],
+      "yaw_deg": 90.0
+     },
+     "hatch_vehicle": [
+      -0.5,
+      2.28,
+      0.18
+     ],
+     "hatch_from_root": [
+      0.25,
+      2.28,
+      -1.92
+     ]
+    }
+   },
+   "hatch_exit_btr": {
+    "duration_s": 4.2,
+    "frames": 127,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BTR-80/82 commander hatch (hull roof, front right, rim 2.03 m); driver hatch = the mirror (side +1). Crew bail-out, hands free (PM holstered, drawn at the end: weapon_socket shows the PM from events.draw = dur - 0.5 s). Start: crouched on the seat under the closed hatch; hatch rim centre at [0.0, 2.03, -1.7] relative to the end root (i.e. root = hatch_centre + 1.70 m outward (perpendicular to the hull side) + -0.00 m along the hull (+ = toward the bow for a right-side exit), on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends crouched, PM at a compressed low ready (blends to pistol_idle / pistol_walk / pistol_run).",
+    "events": {
+     "hatch_open": 0.3,
+     "hands_on_rim": [
+      0.4,
+      1.02
+     ],
+     "regrip_on_roof": [
+      1.12,
+      1.66
+     ],
+     "hips_clear": 1.48,
+     "out": 1.98,
+     "slide": [
+      2.62,
+      2.85
+     ],
+     "jump": 3.05,
+     "ground": 3.55,
+     "draw": 3.7
+    },
+    "vehicle": {
+     "layout_of": "hatch_exit_btr",
+     "note": "BTR-80/82 commander hatch (hull roof, front right, rim 2.03 m); driver hatch = the mirror (side +1)",
+     "vehicles": [
+      "btr82a",
+      "btr80_ua"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.15,
+      1.98
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       -1.98,
+       0.0,
+       -2.15
+      ],
+      "yaw_deg": 90.0
+     },
+     "hatch_vehicle": [
+      -0.45,
+      2.03,
+      1.98
+     ],
+     "hatch_from_root": [
+      0.0,
+      2.03,
+      -1.7
+     ]
+    }
+   },
+   "dismount_jump_btr": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate. Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.995, -1.6] relative to the end root (root = seat + 1.60 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.52,
+     "leave_seat": 1.05,
+     "land": 1.55,
+     "step": 1.9000000000000001,
+     "seat_offset_from_root": [
+      0.0,
+      1.995,
+      -1.6
+     ],
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_btr",
+     "note": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate",
+     "vehicles": [
+      "btr82a",
+      "btr80_ua"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.16,
+      -0.45
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.45,
+       0.0,
+       -2.16
+      ],
+      "yaw_deg": 90.0
+     },
+     "seat_vehicle": [
+      -0.56,
+      1.995,
+      -0.45
+     ],
+     "seat_from_root": [
+      0.0,
+      1.995,
+      -1.6
+     ]
+    }
+   },
+   "dismount_jump_tank": {
+    "duration_s": 1.9,
+    "frames": 58,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "T-72 edge seat ride_seat_1 (on the fender stowage boxes, 1.42 m out, 1.42 m high). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.415, -1.2] relative to the end root (root = seat + 1.20 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.52,
+     "leave_seat": 0.9,
+     "land": 1.25,
+     "step": 1.5999999999999999,
+     "seat_offset_from_root": [
+      0.0,
+      1.415,
+      -1.2
+     ],
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_tank",
+     "note": "T-72 edge seat ride_seat_1 (on the fender stowage boxes, 1.42 m out, 1.42 m high)",
+     "vehicles": [
+      "t72av_ua",
+      "t72b3"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -2.62,
+      -2.45
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       2.45,
+       0.0,
+       -2.62
+      ],
+      "yaw_deg": 90.0
+     },
+     "seat_vehicle": [
+      -1.42,
+      1.415,
+      -2.45
+     ],
+     "seat_from_root": [
+      0.0,
+      1.415,
+      -1.2
+     ]
+    }
+   },
+   "dismount_door": {
+    "duration_s": 1.6,
+    "frames": 49,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BTR-80/82 side door between axles 2 and 3 (dismount_R empty = end root), sill 0.85 m, opening top 1.75 m. Starts crouched inside on the troop floor (0.56 m); door sill (step) at [0.0, 0.85, -0.89] relative to the end root (root = door + 0.89 m outward = the dismount_L/R empty), opening top 1.75 m, width 0.74 m. Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at 0.929 m/s.",
+    "events": {
+     "out": 0.58,
+     "ground": 0.9,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929,
+     "step": 0.42,
+     "door_sill_from_root": [
+      0.0,
+      0.85,
+      -0.89
+     ],
+     "door_top_y": 1.75
+    },
+    "vehicle": {
+     "layout_of": "dismount_door",
+     "note": "BTR-80/82 side door between axles 2 and 3 (dismount_R empty = end root), sill 0.85 m, opening top 1.75 m",
+     "vehicles": [
+      "btr82a",
+      "btr80_ua"
+     ],
+     "side": -1,
+     "end_root_vehicle_xz": [
+      -1.95,
+      -0.2
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.2,
+       0.0,
+       -1.95
+      ],
+      "yaw_deg": 90.0
+     },
+     "door_vehicle": [
+      -1.06,
+      0.85,
+      -0.2
+     ],
+     "door_from_root": [
+      0.0,
+      0.85,
+      -0.89
+     ]
+    }
+   },
+   "dismount_rear": {
+    "duration_s": 1.3,
+    "frames": 40,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "IFV rear door / ramp edge: floor / threshold 0.50 m above the ground, edge 0.55 m behind the end root. Starts crouched on the troop floor at threshold_h = 0.5 m, the floor edge 0.55 m behind the end root (root = rear door / ramp edge + 0.55 m along -hull axis, on the ground, heading = hull backward). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at 0.929 m/s. A different threshold h: offset the root y by (h - 0.5) for t < events.ground and blend to 0 over the next 0.3 s, or rebuild with clips_vehicle.dismount_rear(threshold=h). Ramp (Bradley): the ramp is a slope, not a step: play crouch_walk down it instead.",
+    "events": {
+     "out": 0.3,
+     "ground": 0.46,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929,
+     "threshold_h": 0.5,
+     "threshold_z": -0.55
+    },
+    "vehicle": {
+     "layout_of": "dismount_rear",
+     "note": "IFV rear door / ramp edge: floor / threshold 0.50 m above the ground, edge 0.55 m behind the end root",
+     "threshold_h": 0.5,
+     "threshold_z": -0.55
+    }
    }
   },
   "atgm_fpv": {
@@ -10649,6 +10974,21 @@
    "props": "props[]: node = node name in `glb`; while from_event <= t < to_event the node is a child of `socket` (soldier) with local translation t / rotation q (xyzw); `before` / `after` = where it is outside that window: {attach: \"weapon_socket_back\"} (identity), {attach: \"launcher\"} (its default place in the launcher GLB), {attach: \"launcher\", empty: \"<name>\"} (node transform = that empty of the launcher GLB), {attach: \"world\"} (keep the world transform it had at to_event), {attach: \"hidden\"}.  launcher_nodes[]: visibility of launcher-GLB nodes over the clip (visible from `show` to `hide`, null = clip start / end).  The launcher is placed so its `seat` empty == the gunner root (position + heading); the loader root = the launcher's `loader_seat` empty.  track{f0,f1,fps,p,q}: exact per-frame node transform in the soldier root frame over the hold window - drive the prop from it.",
    "fpv": "fpv_launch (assistant; drone in hands until release), fpv_pilot (loop; fpv_controller on weapon_socket, fpv_goggles on Head, rifle laid on the ground at events.rifle_ground)",
    "reactions": "dodge_dive_L / dodge_dive_R (in place, ends prone), drone_shoot (loop, rifle aimed 54-61 deg up)"
+  },
+  "vehicle_exits": {
+   "clips": "hatch_exit (= hatch_exit_tank, 4.4 s), hatch_exit_btr (4.2 s), dismount_jump (= dismount_jump_btr, 2.2 s), dismount_jump_tank (1.9 s), dismount_door (1.6 s), dismount_rear (1.3 s); all play once (names match the soldier.js once-regex: dismount*, hatch_exit*)",
+   "frame": "clip frame = the soldier root at the END of the clip, on the ground, facing +Z (away from the vehicle). Root motion: the whole path from the vehicle is in the Hips translation track. The game places the root ONCE at that end position (y = ground) with heading = the clip +Z and does not move it while the clip plays (s.vel = 0, as now for jumpT / hatchT). No root-motion distance has to be applied.",
+   "placement": {
+    "hatch_exit_tank": "hatch rim centre at [0.25, 2.28, -1.92] from the root: root = hatch_xz + 1.92 m outward (perpendicular to the hull side the hatch is on) + 0.25 m toward the stern (the exit station is shifted aft to land on a fender stowage box, not the gap between boxes); heading = outward. T-72 commander hatch (right); gunner hatch (left) = the mirror with the same numbers.",
+    "hatch_exit_btr": "hatch rim centre at [0.0, 2.03, -1.7] from the root: root = hatch_xz + 1.70 m outward, same station along the hull; heading = outward. BTR-80/82 commander hatch (front right roof); driver hatch = the mirror.",
+    "dismount_jump": "ride_seat_N empty (edge seats) at [0.0, 1.995, -1.6] (BTR) / [0.0, 1.415, -1.2] (T-72) from the root: root = seat_xz + 1.60 m (BTR, dismount_jump / _btr) or 1.20 m (T-72, dismount_jump_tank) along the seat heading (outward), on the ground; heading = seat heading. Frame 0 == ride_sit_edge frame 0 at the seat (no pop from the riding loop). Deck seats (ride_sit_deck) have no matching start pose: crossfade, or walk them to an edge seat first.",
+    "dismount_door": "door sill (step) at [0.0, 0.85, -0.89] from the root: the root is the dismount_L / dismount_R empty of btr82a / btr80_ua (1.95 m off the hull axis at the door station z = -0.20, between axles 2 and 3); heading = outward (vehicle heading -/+ 90 deg). The vehicle models have the doors closed: open the upper leaf forward and fold the lower leaf down (step, 0.45 m) for the clip, or accept the body passing the door panel.",
+    "dismount_rear": "root = rear door threshold / ramp hinge + 0.55 m along -hull axis, on the ground; heading = hull backward. Floor / threshold height 0.50 m (param: clips_vehicle.LAYOUT[\"dismount_rear\"][\"threshold\"], rebuild for BMP-3 / Bradley values, or offset the root y by (h - 0.50) for t < events.ground). A real ramp (Bradley) is a slope: play crouch_walk down it instead."
+   },
+   "timing": "hatch_exit*: events hatch_open (lid thrown open), out (body clear of the hatch, sitting on the rim), ground (feet on the ground), draw (= duration - 0.5: the PM appears in weapon_socket, soldier.js already shows it for hatchT < 0.5); set hatchT = clip duration (4.4 / 4.2 s, was 2.7). dismount_*: events land / ground (feet on the ground), out (through the door); set jumpT = clip duration (2.2 / 1.9 / 1.6 / 1.3 s, was 1.1).",
+   "continuity": "dismount_jump*, dismount_door, dismount_rear end exactly in crouch_walk frame 0 (left foot forward, right heel up) with the hips moving forward at crouch_walk ground speed (0.93 m/s): start crouch_walk at time 0 (not a random phase) with the game root moving, or crossfade into crouch_idle / walk_rifle. hatch_exit* end in a crouch with the PM at a compressed low ready (crossfade into pistol_idle / pistol_walk / pistol_run).",
+   "vehicles_checked": "check_anims.py tests the body against the actual vehicle GLBs (voxelised LOD0 meshes, hatch / door openings carved): hatch_exit_tank vs t72av_ua + t72b3, hatch_exit_btr / dismount_jump_btr / dismount_door vs btr82a + btr80_ua, dismount_jump_tank vs t72av_ua + t72b3. Known model obstacles ignored by the check: the AA machine gun on the T-72 cupola (t72av_ua: its barrel lies over the commander hatch; t72b3: outboard of it) and the T-72B3 cope cage (a crewman cannot stand up through it): hide / swing them for the bail-out or accept the clipping. Turret yaw: the tank clip assumes the turret facing forward.",
+   "tool": "clips_vehicle.py (choreography + vehicle layouts), vehicle_geo.py (vehicle surfaces / solid), preview_vehicle.html + pvv.sh (filmstrips against the vehicle GLBs: vp / vyaw = clips_vehicle.preview_transform(name))"
   }
  },
  "ak74m": {

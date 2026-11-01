@@ -182,7 +182,7 @@ export class Vehicle {
   orderMove(x, z, facing = null, fast = false) {
     if (this.destroyed || this.immobile) return;
     this.order = { type: 'move', x, z, facing }; this.fast = fast;
-    this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'btr' ? 1.8 : 2.0, true);
+    this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'btr' ? 1.8 : 2.0, this.def.wheeled ? 'wheeled' : 'tracked');
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
   halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; if (this.spg) this.spg.mission = null; }
@@ -222,13 +222,14 @@ export class Vehicle {
       targetSpeed = def.speed * (this.fast ? 1 : 0.7) * cornering * Math.min(1, d / 8 + (last ? 0 : 0.6));
       // rubble slows; roads are fast, open fields slower (wheels more than tracks)
       const c = this.game.nav.cost[this.game.nav.idx(this.pos.x, this.pos.z)] || 1; if (c > 2) targetSpeed *= 0.55;
+      if (this.slope > 0.06) targetSpeed *= Math.max(0.3, 1 - this.slope * 2.2);   // grinding up a rubble heap
       const rd = this.game.nav.roadAt(this.pos.x, this.pos.z); targetSpeed *= rd === 2 ? 1.25 : rd === 1 ? 1.08 : def.wheeled ? 0.85 : 0.92;
       // wait for blocking friendly vehicles
       for (const o of this.game.vehicles) if (o !== this && !o.destroyed) { const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z, od = Math.hypot(ox, oz); if (od < def.radius + o.def.radius + 3 && (ox * Math.sin(this.heading) + oz * Math.cos(this.heading)) > 0) targetSpeed *= 0.15; }
     } else if (this.order?.facing != null && !this.immobile) { const err = angDiff(this.order.facing, this.heading); if (Math.abs(err) > 0.05) turn = THREE.MathUtils.clamp(err * 2, -1, 1) * (def.wheeled ? 0 : 1); }
     if (this.crew < 2) targetSpeed *= 0.5;
     // stuck recovery: back up with opposite lock for a moment, then replan
-    if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, true); }
+    if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, this.def.wheeled ? 'wheeled' : 'tracked'); }
     else if (this.path && !this.immobile && !this.spgHold) {
       this.wdT = (this.wdT || 0) + dt;
       if (this.wdT > 3) { const moved = this.wdP ? Math.hypot(this.pos.x - this.wdP[0], this.pos.z - this.wdP[1]) : 9; this.wdP = [this.pos.x, this.pos.z]; this.wdT = 0; if (moved < 1.2) { this.reverseT = 1.6; this.revTurn = Math.sign(turn || 1); } }
@@ -240,7 +241,8 @@ export class Vehicle {
     this.angVel = tr;
     const nx = this.pos.x + Math.sin(this.heading) * this.speed * dt, nz = this.pos.z + Math.cos(this.heading) * this.speed * dt;
     // hull footprint: centre plus a probe at the leading edge (front when driving, rear when reversing)
-    const nav = this.game.nav, free = (x, z) => { const k = nav.idx(x, z); return k >= 0 && nav.cost[k] !== 255; };
+    // trenches stop wheeled vehicles (tracks cross them), AT ditches / dragon's teeth / forest stop everyone
+    const nav = this.game.nav, tracked = !def.wheeled, free = nav.vehPassable ? (x, z) => nav.vehPassable(x, z, tracked) : (x, z) => { const k = nav.idx(x, z); return k >= 0 && nav.cost[k] !== 255; };
     const lead = (this.speed >= 0 ? 1 : -1) * def.length * 0.45, fx = nx + Math.sin(this.heading) * lead, fz = nz + Math.cos(this.heading) * lead;
     if (free(nx, nz) && free(fx, fz)) { this.pos.x = nx; this.pos.z = nz; }
     else { this.speed *= 0.3; if (this.path && !(this.reverseT > 0) && this.speed >= 0) { this.blockT = (this.blockT || 0) + dt; if (this.blockT > 0.8) { this.blockT = 0; this.reverseT = 1.4; this.revTurn = Math.sign(turn || 1); } } }
@@ -249,8 +251,22 @@ export class Vehicle {
     if (Math.abs(this.speed) > 0.4) this.game.city.crushCheck(this, this.game);
     // suspension pitch from acceleration
     const accel = (this.speed - (this.lastSpeed ?? 0)) / Math.max(dt, 1e-3); this.lastSpeed = this.speed;
-    this.pitch = THREE.MathUtils.lerp(this.pitch || 0, THREE.MathUtils.clamp(-accel * 0.012, -0.05, 0.05), Math.min(1, dt * 4));
-    this.roll = THREE.MathUtils.lerp(this.roll || 0, THREE.MathUtils.clamp(-this.angVel * this.speed * 0.01, -0.04, 0.04), Math.min(1, dt * 4));
+    // ground: sample under the nose, tail and both sides so the hull pitches and rolls over rubble heaps,
+    // parapets and trench lips (city.groundHeight), and sits at the right height
+    const gh = this.game.city.groundHeight;
+    let tp = 0, tr_ = 0;
+    if (gh) {
+      const L = def.length * 0.42, W = def.width * 0.4, sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+      const hF = gh(this.pos.x + sh * L, this.pos.z + ch * L), hB = gh(this.pos.x - sh * L, this.pos.z - ch * L);
+      const hR = gh(this.pos.x + ch * W, this.pos.z - sh * W), hL = gh(this.pos.x - ch * W, this.pos.z + sh * W);
+      // tracks bridge a trench: the hull rests on the higher contact points rather than dropping into the cut
+      const y = Math.max((hF + hB) / 2, (hL + hR) / 2, gh(this.pos.x, this.pos.z) * (def.wheeled ? 1 : 0.3));
+      this.pos.y = THREE.MathUtils.lerp(this.pos.y || 0, y, Math.min(1, dt * 8));
+      tp = Math.atan2(hB - hF, 2 * L); tr_ = Math.atan2(hR - hL, 2 * W);
+      this.slope = (hF - hB) / (2 * L);
+    }
+    this.pitch = THREE.MathUtils.lerp(this.pitch || 0, THREE.MathUtils.clamp(-accel * 0.012, -0.05, 0.05) + tp, Math.min(1, dt * 5));
+    this.roll = THREE.MathUtils.lerp(this.roll || 0, THREE.MathUtils.clamp(-this.angVel * this.speed * 0.01, -0.04, 0.04) + tr_, Math.min(1, dt * 5));
   }
   aimAndFire(dt) {
     if (this.abandoned) { this.target = null; return; }
@@ -405,8 +421,8 @@ export class Vehicle {
     const roles = out.map(c => CREW_ROLES.find(r => r.role.toLowerCase().includes(c.role === 'driver' ? 'driver' : c.role)) || CREW_ROLES[2]);
     const sq = new Squad(g, this.side, this.faction, `${this.name} crew`, 'crew', roles); sq.name = `${this.name} crew`;
     const right = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading)), fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-    // hatch_exit is authored with the hatch rim 1.8 m behind the end root: put each man's root 1.8 m out from his
-    // hatch, facing away from the vehicle, and stagger them (they go one after another through the hatches)
+    // hatch_exit clips: put each man's root out from his hatch (see clip frame below), facing away from the vehicle,
+    // and stagger them (they go one after another through the hatches)
     let hatches = this.kind === 'tank' ? { commander: [0.45, -0.3], gunner: [-0.45, -0.3], driver: [0, 2.6] } : { commander: [0.45, 2.6], driver: [-0.45, 2.6], gunner: [0, 1.2] };
     // newer models carry hatch_<role> empties: use their real positions (vehicle-local x / z)
     if (this.model.getObjectByName('hatch_commander')) {
@@ -417,8 +433,9 @@ export class Vehicle {
     sq.soldiers.forEach((s, i) => {
       const role = out[i].role, h = hatches[role] || [0, 0], side = h[0] < 0 || (h[0] === 0 && i % 2) ? -1 : 1;
       const hx = this.pos.x + right.x * h[0] + fwd.x * h[1], hz = this.pos.z + right.z * h[0] + fwd.z * h[1];
-      const exitD = this.def.width / 2 - Math.abs(h[0]) + 1.8 - 0.42;
-      const [x, z] = g.nav.nearestFree(hx + right.x * side * exitD, hz + right.z * side * exitD, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
+      // clip frame: the tank hatch rim sits 1.92 m inboard and 0.25 m forward of the end root, the BTR rim 1.70 m inboard
+      const tank = this.kind === 'tank', exitD = tank ? 1.92 : 1.70, aft = tank ? 0.25 : 0;
+      const [x, z] = g.nav.nearestFree(hx + right.x * side * exitD - fwd.x * aft, hz + right.z * side * exitD - fwd.z * aft, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(right.x * side, right.z * side);
       s.hatchWait = 0.6 + i * 1.4 + Math.random() * 0.5; s.inside = 'btr'; s.stance = 'stand';
       s.hatchClip = this.kind === 'btr' && hasClip('hatch_exit_btr') ? 'hatch_exit_btr' : hasClip('hatch_exit_tank') ? 'hatch_exit_tank' : 'hatch_exit';
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }

@@ -49,17 +49,15 @@ KNEEL = ['crouch_idle', 'aim_crouch', 'fire_crouch', 'suppressed_cower', 'reload
 PARTIAL = {'throw_grenade_window': {'Right': [(0, 9)], 'Left': [(0, 0.5), (0.85, 9)]},
            'launcher_raise': {'Left': [(0, 0.12), (0.5, 9)], 'Right': [(0.6, 9)]},
            'fire_launcher': {'Left': [(0, 9)], 'Right': [(0, 0.07), (0.33, 9)]},
-           'dismount_jump': {'Left': [(0.9, 9)], 'Right': [(0.9, 9)]}}
+           }
 LOCO = ['walk_rifle', 'run_rifle', 'crouch_walk', 'limp_walk', 'drag_wounded']
 DEATHS = ['death_crumple', 'death_front', 'death_back']
 LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone', 'wounded_crawl', 'wounded_ground']   # trunk rests on the ground
 # deliberate fast moves where > 25 deg/frame is allowed (clip -> (t0, t1, limit deg))
 SNAP = {'hit_react': (0.0, 0.15, 40.0), 'throw_grenade_window': [(0.40, 0.70, 30.0), (0.70, 0.95, 45.0)], 'death_front': (0.75, 0.95, 40.0), 'death_back': (0.0, 9, 40.0), 'throw_grenade': (0.0, 9, 40.0),
-        'death_crumple': (0.25, 1.4, 35.0), 'dismount_jump': [(0.25, 0.55, 30.0), (0.80, 0.95, 35.0)],
-        'hatch_exit': [(0.25, 0.45, 60.0), (0.48, 0.62, 50.0), (0.62, 0.80, 60.0), (0.80, 1.03, 32.0), (0.95, 1.12, 50.0), (1.35, 1.45, 50.0), (1.56, 1.70, 35.0), (2.15, 2.3, 35.0)]}   # hatch_exit: shoulders pass over the hands on the rim (pull -> press), hands leave the roof, landing   # push-off (palm planted while the trunk
-#                                                                            passes over it) and landing impact
+        'death_crumple': (0.25, 1.4, 35.0)}
 NO_GROUND = {'ride_sit_edge', 'ride_sit_deck', 'ride_aim'}   # seat frame, no ground under the root
-# ---- vehicle crew (clips_crew.py): PM pistol set + hatch_exit; rebuilt crawls (clips_crawl.py)
+# ---- vehicle crew (clips_crew.py): PM pistol set; rebuilt crawls (clips_crawl.py); vehicle exits: clips_vehicle.py (vehicle_checks below)
 PISTOL = ['pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim']
 PM = dict(grip_L=np.array([0.0235, -0.0140, 0.0040]), sight=np.array([0, 0.0695, -0.0345]), front=np.array([0, 0.0702, 0.1015]))   # weapons_info overrides
 PISTOL_SIGHT = {'pistol_aim': None, 'pistol_crouch_aim': None, 'pistol_fire': [0, -1]}      # right eye on the PM sight line (frames; None = all)
@@ -72,11 +70,6 @@ CRAWL = {'prone_crawl': [('soleL', 0.0, 0.70, 0.015), ('soleR', 0.70, 1.40, 0.01
          'wounded_crawl': [('palmR', 0.0, 1.0, 0.015), ('palmL', 1.0, 2.0, 0.015), ('soleL', 0.0, 1.0, 0.015)]}
 CRAWL_FLAT = 0.03          # crawls: the bare torso stays within 3 cm of the ground in every frame
 CRAWL_FEET_UP = 0.06       # crawls: boots never lifted more than 6 cm (sliding on the ground)
-# hatch_exit: (foot, t0, t1, floor y) planted windows, hands on the rim, vehicle blocks the body may not enter (clip frame)
-HATCH = dict(feet=[('Left', 0.0, 0.12, 0.42), ('Right', 0.0, 0.11, 0.42), ('Left', 0.88, 1.08, 2.20), ('Right', 1.02, 1.08, 2.20),
-                   ('Left', 1.37, 1.60, 1.45), ('Right', 1.37, 1.60, 1.45), ('Left', 2.19, 9, 0.0), ('Right', 2.19, 9, 0.0)],
-             rim=(0.0, 0.54, 2.272), hole=(0.0, -1.80, 0.36),
-             blocks=[(-3.45, -1.15, 1.45, 2.20), (-3.9, -0.42, 0.0, 1.45)])        # (z0, z1, y0, y1): turret (minus the hatch hole), hull + fender
 # ---- ATGM / FPV teams + drone reactions (clips_atgm.py)
 ATGM_AIM = ['atgm_aim', 'atgm_fire']                      # right eye at the sight (atgm_layout.EYE), palms on GRIP_R / GRIP_L, both knees down
 ATGM_PROPS = ['atgm_setup', 'atgm_setup_stugna', 'atgm_pack', 'atgm_pack_stugna', 'atgm_reload', 'atgm_reload_stugna', 'fpv_launch']
@@ -220,8 +213,11 @@ def left_spec(name, F):
         m = (t <= 0.22) | (t >= 2.47); tg[m] = GRIP_L; rot[m] = True
         for te in (0.70, 1.80):
             tg[int(round(te * FPS))] = [0.032, -0.055, 0.112]
-    elif name == 'dismount_jump':
-        m = (t <= 0.10) | (t >= 1.165); tg[m] = GRIP_L; rot[m] = True
+    elif name in VEH and VCHECK(name).get('grip'):
+        m = np.zeros(F, bool)
+        for a, b in VCHECK(name)['grip']:
+            m |= (t >= a - 1e-6) & (t <= b + 1e-6)
+        tg[m] = GRIP_L; rot[m] = True
     elif name == 'death_crumple':
         m = t <= 0.2; tg[m] = GRIP_L; rot[m] = True
     return tg, rot
@@ -472,8 +468,10 @@ def check_clip(name, model, pose, B, torso):
         atgm_checks(name, r, pose, model, B)
     # ---- feet
     soles = {sd: sole_points(pose, model, B, sd) for sd in ('Left', 'Right')}
-    if name in CRAWL or name == 'hatch_exit':
+    if name in CRAWL:
         crawl_hatch_checks(name, r, pose, model, B, soles, gun_q, gun_p)
+    if name in VEH:
+        vehicle_checks(name, r, pose, model, B, soles)
     low = {sd: soles[sd][..., 1].min(1) for sd in soles}
     planted = {}
     if name in STAND:
@@ -521,7 +519,7 @@ def check_clip(name, model, pose, B, torso):
             r['flags'].append(f'loco both feet up {both.max():.3f}')
     r['feet'] = fr
     # ---- whole-body ground penetration (bare torso surface from the uniform mesh + limb joints with radii + boot soles)
-    if name not in NO_GROUND and name != 'hatch_exit':
+    if name not in NO_GROUND:
         c = np.full(model.n, -9.0)
         for b, v in (('Neck', 0.06), ('Neck1', 0.06), ('Head', 0.10), ('LeftArm', 0.05), ('RightArm', 0.05), ('LeftForeArm', 0.04), ('RightForeArm', 0.04),
                      ('LeftHand', 0.025), ('RightHand', 0.025), ('LeftLeg', 0.045), ('RightLeg', 0.045), ('LeftUpLeg', 0.07), ('RightUpLeg', 0.07)):
@@ -625,54 +623,86 @@ def crawl_hatch_checks(name, r, pose, model, B, soles, gun_q, gun_p):
             r['rifle_low'] = round(low, 4)
             if low < -0.01:
                 r['flags'].append(f'rifle through the ground {low:.3f} m')
-    if name == 'hatch_exit':
-        H = HATCH
-        fr = []
-        for sd, t0, t1, fy in H['feet']:
-            m = (t >= t0 - 1e-6) & (t <= t1 + 1e-6)
-            S = soles[sd][m]
-            y = S[..., 1].min(1) - fy
-            P = S.mean(1)
-            slide = float(np.linalg.norm(P[:, [0, 2]] - P[:1, [0, 2]], axis=1).max())
-            fr.append((sd[0], t0, round(float(y.min()), 3), round(float(y.max()), 3), round(slide, 3)))
-            if y.min() < -TOL['pen'] or y.max() > 0.03 or slide > 0.03:
-                r['flags'].append(f'hatch {sd} foot on y={fy} ({t0}-{t1} s): {y.min():.3f}..{y.max():.3f} m, slide {slide:.3f} m')
-        r['hatch_feet'] = fr
-        t0, t1, ry = H['rim']
-        m = (t >= t0) & (t <= t1)
-        for sd in ('Left', 'Right'):
-            P = world_pt(pose, model, sd + 'Hand', B['palmL'] if sd == 'Left' else B['palmR'])[m]
-            dy = P[:, 1] - ry; slide = float(np.linalg.norm(P[:, [0, 2]] - P[:1, [0, 2]], axis=1).max())
-            r.setdefault('hatch_rim', {})[sd[0]] = (round(float(np.abs(dy).max()), 3), round(slide, 3))
-            if np.abs(dy).max() > 0.025 or slide > 0.02:
-                r['flags'].append(f'hatch {sd} palm off the rim: dy {np.abs(dy).max():.3f} m, slide {slide:.3f} m')
-        # body (joints with radii) inside the vehicle blocks (turret minus the hatch hole, hull / fender) or below the ground
-        rad = {b: 0.05 for b in BONES}
-        for b, v in (('Hips', 0.10), ('LowerBack', 0.10), ('Spine', 0.10), ('Spine1', 0.10), ('Head', 0.09), ('LeftHand', 0.03), ('RightHand', 0.03),
-                     ('LeftFoot', 0.04), ('RightFoot', 0.04), ('LeftToeBase', 0.025), ('RightToeBase', 0.025)):
-            rad[b] = v
+
+
+# ---- vehicle exits (clips_vehicle.py): body vs the vehicle GLB meshes (voxelised solid, hatch / door openings carved), planted
+# feet on their support (vehicle surface / ground / floor) without sliding, left palm on the handguard windows, events present,
+# start (ride_sit_edge frame 0 at the seat) and end (crouch_walk frame 0) continuity
+import clips_vehicle as CVH
+VEH = list(CVH.CLIPS)
+VCHECK = lambda n: CVH.CHECK[CVH.ALIAS.get(n, n)]
+for _n in VEH:                      # landing impacts (first contact frames after a drop): deliberate fast knee / hip flexion
+    if VCHECK(_n).get('snap'):
+        SNAP[_n] = VCHECK(_n)['snap']
+VRAD = dict(Hips=0.10, LowerBack=0.10, Spine=0.11, Spine1=0.12, Neck=0.06, Head=0.10, LeftHand=0.0, RightHand=0.0, LeftFoot=0.0, RightFoot=0.0,
+            LeftToeBase=0.0, RightToeBase=0.0, LeftUpLeg=0.07, RightUpLeg=0.07, LeftLeg=0.05, RightLeg=0.05, LeftForeArm=0.04, RightForeArm=0.04)
+# (hands / feet are contact effectors: joint centre vs the solid only; their contacts are checked against the exact mesh surface
+#  by the planted-foot clearance and the palm targets, the voxel grid would read a palm flat on a plate as 3-6 cm deep)
+
+
+def vehicle_checks(name, r, pose, model, B, soles):
+    base = CVH.ALIAS.get(name, name)
+    L = CVH.LAYOUT[base]
+    F = pose['F']; t = np.arange(F) / FPS
+    gp, lq = pose['gp'], pose['lq']
+    # -- body inside the vehicle(s)
+    pen = {}
+    for veh in L.get('veh', ()):
         worst = (0.0, '')
-        hx, hz, hr = H['hole']
         for b in BONES:
-            if b.endswith(('Thumb', 'FingerBase', 'Finger1')) or b in ('LHipJoint', 'RHipJoint'):
+            if b.endswith(('Thumb', 'FingerBase', 'Finger1')) or b in ('LHipJoint', 'RHipJoint', 'Neck1'):
                 continue
-            P = gp[:, model.idx[b]]; rr = rad[b]
-            inhole = np.hypot(P[:, 0] - hx, P[:, 2] - hz) < hr - rr * 0.5      # the hatch column (crew compartment below it) is open
-            for k, (z0, z1, y0, y1) in enumerate(H['blocks']):
-                inside = (P[:, 2] > z0) & (P[:, 2] < z1 + rr) & (P[:, 1] < y1 + rr) & (P[:, 1] > y0 - rr) & ~inhole
-                d = np.where(inside, np.minimum(y1 + rr - P[:, 1], z1 + rr - P[:, 2]), 0)
-                if d.max() > worst[0]:
-                    worst = (float(d.max()), f'{b} f{int(np.argmax(d))} block {k}')
-            g = np.maximum(rr * 0.6 - P[:, 1], 0)
-            if g.max() > worst[0]:
-                worst = (float(g.max()), f'{b} f{int(np.argmax(g))} ground')
-        r['hatch_pen'] = (round(worst[0], 3), worst[1])
-        if worst[0] > 0.035:
-            r['flags'].append(f'hatch_exit body inside the vehicle / ground {worst[0]:.3f} m ({worst[1]})')
-        end = gp[-1, model.idx['Hips']]
-        r['hatch_end_hips'] = [round(float(v), 3) for v in end]
-        if np.hypot(end[0], end[2]) > 0.03:
-            r['flags'].append(f'hatch_exit does not end over the root ({end[0]:.3f}, {end[2]:.3f})')
+            d = CVH.vehicle_depth(base, veh, gp[:, model.idx[b]], VRAD.get(b, 0.05))
+            if d.max() > worst[0]:
+                worst = (float(d.max()), f'{b}@{t[int(np.argmax(d))]:.2f}s')
+        pen[veh] = (round(worst[0], 3), worst[1])
+        if worst[0] > CVH.PEN_TOL:
+            r['flags'].append(f'body inside {veh} {worst[0]:.3f} m ({worst[1]})')
+    r['veh_pen'] = pen
+    # -- planted feet: stationary (< 3 cm/s for >= 4 frames) -> lowest sole point on its support, no slide
+    res = []
+    for sd in ('Left', 'Right'):
+        S = soles[sd]; c = S.mean(1); low = S[..., 1].min(1)
+        v = np.r_[0, np.linalg.norm(np.diff(c, axis=0), axis=1)] * FPS
+        st = v < 0.03
+        idx = np.where(st)[0]
+        for seg in (np.split(idx, np.where(np.diff(idx) > 1)[0] + 1) if len(idx) else []):
+            if len(seg) < 4:
+                continue
+            # clearance = min over the sole outline of (sole point height - support under that point): sloped plates
+            dy = np.array([min(p_[1] - CVH.support_y(base, p_[0], p_[2], p_[1]) for p_ in S[f, ::4]) for f in seg[::3]])
+            if dy.min() > 0.10:                                     # still but in the air (dangling legs while seated)
+                continue
+            slide = float(np.linalg.norm(c[seg][:, [0, 2]] - c[seg[0], [0, 2]], axis=1).max())
+            res.append((sd[0], round(t[seg[0]], 2), round(t[seg[-1]], 2), round(float(dy.min()), 3), round(float(dy.max()), 3), round(slide, 3)))
+            if dy.min() < -0.015 or dy.max() > 0.03 or slide > 0.02:
+                r['flags'].append(f'{sd} planted foot {t[seg[0]]:.2f}-{t[seg[-1]]:.2f}s off its support {dy.min():.3f}..{dy.max():.3f} m, slide {slide:.3f}')
+    r['veh_feet'] = res
+    # -- events
+    rec = (MANIFEST or {}).get(name) or {}
+    ev = rec.get('events') or {}
+    miss = [e for e in VCHECK(name)['events'] if e not in ev]
+    if rec and miss:
+        r['flags'].append(f'missing events {miss}')
+    if 'draw' in ev and abs(ev['draw'] - (r['dur'] - 0.5)) > 0.02:
+        r['flags'].append(f'draw event {ev["draw"]} != dur - 0.5 (the game shows the PM for the last 0.5 s)')
+    # -- ends on its root (crew) / start + end continuity (rifle dismounts)
+    end = gp[-1, model.idx['Hips']]
+    r['veh_end_hips'] = [round(float(x), 3) for x in end]
+    if np.hypot(end[0], end[2]) > 0.03:
+        r['flags'].append(f'does not end over the root ({end[0]:.3f}, {end[2]:.3f})')
+    J = [model.idx[b] for b in BONES if not b.endswith(('Thumb', 'FingerBase', 'Finger1'))]
+    for key, fa, fb in (('start', 0, 0), ('end', -1, 0)):
+        other = VCHECK(name).get(key)
+        if not other or other not in model.G['anims']:
+            continue
+        po = model.pose(other)
+        ang = max(float(qang(lq[fa, j], po['lq'][fb, j])) for j in J)
+        off = np.array(CVH.v2c(base, L['seat'])) if key == 'start' else np.zeros(3)
+        dr = float(np.linalg.norm(gp[fa, model.idx['Hips']] - (po['gp'][fb, model.idx['Hips']] + off)))
+        r[f'veh_{key}'] = (other, round(ang, 2), round(dr, 4))
+        if ang > 2.0 or dr > 0.005:
+            r['flags'].append(f'{key} pose != {other}[{fb}]: {ang:.1f} deg / {dr:.3f} m')
 
 
 def main():
@@ -701,7 +731,7 @@ def main():
         res.append(r)
         status = 'OK  ' if not r['flags'] else 'FAIL'
         extra = ' '.join(f'{k}={r[k]}' for k in ('rot', 'handL', 'handLrot', 'butt', 'sight', 'clip', 'gun_clip', 'ground_pen', 'rest_gap', 'seam', 'crawl_slide', 'crawl_flat',
-                                                     'crawl_feet_up', 'rifle_low', 'hatch_feet', 'hatch_rim', 'hatch_pen', 'hatch_end_hips', 'atgm_eye', 'atgm_grips',
+                                                     'crawl_feet_up', 'rifle_low', 'veh_pen', 'veh_feet', 'veh_end_hips', 'veh_start', 'veh_end', 'atgm_eye', 'atgm_grips',
                                                      'knees2', 'props', 'hips_y') if k in r)
         print(f'{status} {n:24s} {r["dur"]:6.3f}s {"loop" if r["loop"] else "once"} {extra} feet={r["feet"]}')
         for f in r['flags']:

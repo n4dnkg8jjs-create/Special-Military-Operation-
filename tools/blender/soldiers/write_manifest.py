@@ -305,6 +305,8 @@ def main():
         'prone_crawl holds the rifle in the right hand only (left hand free) - it no longer uses the prone support grip.',
     ]
     json.dump(out, open(f'{ASSETS}/manifest.json', 'w'), indent=1)
+    import vehicle_manifest            # vehicle exits: clip records + vehicle_exits / hatch_exit / riding.dismount_jump texts
+    vehicle_manifest.main()
     print('manifest written', {k: out[f'soldier_{k}']['default_config_tris'] for k in ('ru', 'ua')})
 
 

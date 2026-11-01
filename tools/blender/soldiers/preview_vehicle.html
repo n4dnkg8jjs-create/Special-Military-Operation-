@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{window.__err=String(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{window.__err=String(e.reason&&e.reason.stack||e.reason);window.__done=true});</script>
+<script type="module">
+// Vehicle-relative clip preview (hatch_exit_*, dismount_*): soldier + clip, with a vehicle GLB placed in the clip frame
+// (clip frame = soldier root at the end of the clip, facing +Z).
+//  glb= soldier glb  combo= combo node  anims= clips glb  clip=  ts= times (comma list; one view each)
+//  az= azimuths (deg, comma list; cycled)  el=  r=  c= look-at x,y,z  fov=  cols=  w= h=
+//  veh= vehicle glb   vp= x,y,z position of the vehicle origin in the clip frame   vyaw= vehicle yaw (deg) in the clip frame
+//  weapon=ak74m|pm|none  wshow= time from which the weapon is shown (s)   wsock= weapon_socket|weapon_socket_back
+//  cut=1: clip the vehicle with a plane x < cutx (clip frame) to see the body inside the hull  grid=1
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w')||1400), H = +(q.get('h')||800);
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(W,H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.localClippingEnabled = true; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(),0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(5,10,6); sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=sun.shadow.camera.bottom=-5; sun.shadow.camera.right=sun.shadow.camera.top=5; scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfd8e0,0x3a3328,0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60,60), new THREE.MeshStandardMaterial({color:0x6b6458,roughness:1}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+if (q.get('grid')) { const g=new THREE.GridHelper(6,60,0x333333,0x555555); g.position.y=0.002; scene.add(g); }
+const loader = new GLTFLoader();
+const prep = (o)=>o.traverse(m=>{ if(m.isMesh){ m.castShadow=m.receiveShadow=true; m.frustumCulled=false; const n=m.name+' '+(m.parent?m.parent.name:''); m.visible=!/_LOD1|wreck/.test(n); } });
+// vehicle
+if (q.get('veh')) {
+  const v = (await loader.loadAsync(q.get('veh'))).scene; prep(v);
+  const vp=(q.get('vp')||'0,0,0').split(',').map(Number); v.position.set(vp[0],vp[1],vp[2]); v.rotation.y=(+(q.get('vyaw')||0))*Math.PI/180;
+  if (q.get('cut')) { const pl=new THREE.Plane(new THREE.Vector3(-1,0,0), +(q.get('cutx')||0)); v.traverse(m=>{ if(m.isMesh){ m.material=m.material.clone(); m.material.clippingPlanes=[pl]; m.material.side=THREE.DoubleSide; } }); }
+  scene.add(v);
+}
+const g = await loader.loadAsync(q.get('glb')||'/assets/soldiers/soldier_ru.glb');
+const m = SkeletonUtils.clone(g.scene); const combo=q.get('combo')||'combo_0'; const keep=new Set([combo, combo+'_tape']);
+m.traverse(o=>{ if(o.isMesh){ o.castShadow=o.receiveShadow=true; o.frustumCulled=false; let n=o, hit=null; while(n){ if(keep.has(n.name.replace(/_LOD1$/,''))) { hit=n; break; } n=n.parent; } o.visible=!!hit && !/_LOD1$/.test(hit.name); } });
+scene.add(m);
+const clipsGlb = await loader.loadAsync(q.get('anims')||'/assets/soldiers/soldier_anims.glb');
+const mixer = new THREE.AnimationMixer(m);
+const clip = clipsGlb.animations.find(a=>a.name===q.get('clip')); if(!clip) throw new Error('no clip '+q.get('clip'));
+mixer.clipAction(clip).play();
+let weapon=null; const wk=q.get('weapon')||'none', wshow=+(q.get('wshow')||0);
+if (wk!=='none') { weapon=(await loader.loadAsync(`/assets/soldiers/${wk}.glb`)).scene; prep(weapon); m.getObjectByName(q.get('wsock')||'weapon_socket').add(weapon); }
+const ts = (q.get('ts')||'0').split(',').map(Number);
+const azs = (q.get('az')||'30').split(',').map(Number); const el=+(q.get('el')||12); const r=+(q.get('r')||5.0);
+const c = (q.get('c')||'0,1.0,-1.0').split(',').map(Number);
+const nv = Math.max(ts.length, azs.length);
+const cols = Math.min(nv, +(q.get('cols')||4)), rows = Math.ceil(nv/cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov')||30), (W/cols)/(H/rows), 0.01, 200);
+renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
+const info = {views:[], clip: clip.name+':'+clip.duration.toFixed(3)};
+for (let i=0;i<nv;i++){
+  const t=ts[i%ts.length], az=azs[i%azs.length];
+  mixer.setTime(Math.min(t, clip.duration-1e-4)); if (weapon) weapon.visible = t>=wshow; scene.updateMatrixWorld(true);
+  const a=az*Math.PI/180, e=el*Math.PI/180;
+  cam.position.set(c[0]+r*Math.cos(e)*Math.sin(a), c[1]+r*Math.sin(e), c[2]+r*Math.cos(e)*Math.cos(a)); cam.lookAt(c[0],c[1],c[2]);
+  const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;
+  renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(scene,cam);
+  info.views.push(t+'s@'+az);
+}
+window.__info = info; window.__done = true;
+</script></body></html>

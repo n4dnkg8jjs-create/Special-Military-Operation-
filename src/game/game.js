@@ -234,12 +234,12 @@ export class Game {
   spotFor(side) {
     const other = side === 'player' ? 'enemy' : 'player', spotters = [];
     for (const u of this.unitsOf(side)) {
-      if (u.type === 'vehicle') spotters.push([u.pos.x, 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1), u]); // buttoned-up crews see little
+      if (u.type === 'vehicle') spotters.push([u.pos.x, (u.pos.y || 0) + 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1), u]); // buttoned-up crews see little
       else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inside === 'ride' ? 220 : 280, u.building]);
     }
     for (const u of this.unitsOf(other)) {
       const ca = this.city.concealAt;
-      const pts = u.type === 'vehicle' ? [[u.pos.x, 1.6, u.pos.z, null, ca ? Math.max(0.8, ca.call(this.city, u.pos.x, u.pos.z)) : 1]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null, (ca && !s.inBuilding && !s.aboard ? ca.call(this.city, s.pos.x, s.pos.z) : 1) * (s.stance === 'prone' ? 0.75 : s.stance === 'crouch' ? 0.9 : 1)]);
+      const pts = u.type === 'vehicle' ? [[u.pos.x, (u.pos.y || 0) + 1.6, u.pos.z, null, ca ? Math.max(0.8, ca.call(this.city, u.pos.x, u.pos.z)) : 1]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null, (ca && !s.inBuilding && !s.aboard ? ca.call(this.city, s.pos.x, s.pos.z) : 1) * (s.stance === 'prone' ? 0.75 : s.stance === 'crouch' ? 0.9 : 1)]);
       // detection is a meter, not a switch: it fills faster for close, moving or firing targets, needs line
       // of sight, falls off with distance and concealment, and drains when nobody is looking
       let seen = false, best = 0;
@@ -276,7 +276,7 @@ export class Game {
   objectiveMarkers() {
     this.objMeshes = this.objectives.map(o => {
       const g = new THREE.Group();
-      const ring = new THREE.Mesh(new THREE.RingGeometry(TUNING.captureRadius - 0.6, TUNING.captureRadius, 96), new THREE.MeshBasicMaterial({ color: 0x8fb069, transparent: true, opacity: 0.45, depthWrite: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry((o.r ?? TUNING.captureRadius) - 0.6, o.r ?? TUNING.captureRadius, 96), new THREE.MeshBasicMaterial({ color: 0x8fb069, transparent: true, opacity: 0.45, depthWrite: false }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; g.add(ring);
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6, 6), new THREE.MeshStandardMaterial({ color: 0x333333 })); pole.position.y = 3; g.add(pole);
       g.position.set(o.x, 0, o.z); this.scene.add(g); o.ring = ring; return g;
@@ -287,9 +287,9 @@ export class Game {
       let p = 0, e = 0;
       for (const sq of this.squads) {
         if (sq.mounted || sq.routing || sq.destroyed) continue;
-        for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr' && Math.hypot(s.pos.x - o.x, s.pos.z - o.z) < TUNING.captureRadius) { if (sq.side === 'player') p++; else e++; }
+        for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr' && Math.hypot(s.pos.x - o.x, s.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (sq.side === 'player') p++; else e++; }
       }
-      for (const v of this.vehicles) if (!v.destroyed && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < TUNING.captureRadius) { if (v.side === 'player') p += 1.5; else e += 1.5; }
+      for (const v of this.vehicles) if (!v.destroyed && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (v.side === 'player') p += 1.5; else e += 1.5; }
       o.contested = p > 0 && e > 0; o.p = p; o.e = e;
       const rate = TUNING.captureRate;
       if (e > 0 && p === 0) o.control -= rate * Math.min(6, e) * dt;

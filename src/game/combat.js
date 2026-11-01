@@ -609,14 +609,14 @@ export class Combat {
   updateImmobile(v) { v.immob ||= {}; v.immobile = Object.values(v.immob).some(Boolean); }
   // ---------------------------------------------------------------- vehicle targeting
   vehicleTargets(v) {
-    const g = this.g, eye = A.set(v.pos.x, 2.4, v.pos.z).clone();
+    const g = this.g, eye = A.set(v.pos.x, (v.pos.y || 0) + 2.4, v.pos.z).clone();
     const mainW = WEAPONS[v.weapons[0].key];
     let best = null, bs = -1e9, bestInf = null, bi = 1e9;
     for (const u of g.enemiesOf(v.side)) {
       if (!g.seen(v.side, u, v.pos)) continue;
       if (u.type === 'vehicle') {
         if (u.destroyed) continue; const d = u.pos.distanceTo(v.pos); if (d > mainW.range) continue;
-        if (!this.los(eye.x, eye.y, eye.z, u.pos.x, 1.5, u.pos.z, v, u)) continue;
+        if (!this.los(eye.x, eye.y, eye.z, u.pos.x, (u.pos.y || 0) + 1.5, u.pos.z, v, u)) continue;
         const sc = (u.kind === 'tank' ? 300 : 200) - d * 0.3 + (v.focus === u ? 200 : 0);
         if (v.kind === 'btr' && u.kind === 'tank') continue; // BTRs don't duel tanks
         if (v.kind === 'ifv' && u.kind === 'tank' && (!v.atgm || v.atgm.ammo <= 0 || v.atgmDisabled)) continue;   // IFVs only with missiles

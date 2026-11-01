@@ -189,14 +189,19 @@ export class Squad {
     if (s.dmKind === 'jump' && s.seat) {
       const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
       const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
-      s.pos.set(w.pos.x + out.x * 1.6, 0, w.pos.z + out.z * 1.6); s.heading = Math.atan2(out.x, out.z);
-      s.jumpClip = 'dismount_jump'; s.jumpT = clipDuration('dismount_jump', 1.1);
+      // clip frame: the seat is 1.60 m (BTR deck) / 1.20 m (T-72 deck) behind the end root
+      const tank = v.kind === 'tank' && hasClip('dismount_jump_tank'), off = tank ? 1.2 : 1.6, clip = tank ? 'dismount_jump_tank' : 'dismount_jump';
+      s.pos.set(w.pos.x + out.x * off, 0, w.pos.z + out.z * off); s.heading = Math.atan2(out.x, out.z);
+      s.jumpClip = clip; s.jumpT = clipDuration(clip, 1.1);
       s.inside = null; s.seat = null;
     } else {
       const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, 0, d.z); s.inside = null;
-      const rear = v.kind !== 'btr' && hasClip('dismount_rear');
+      const rear = v.kind !== 'btr', ramp = v.def.asset === 'bradley_ua';   // the Bradley ramp is a slope: they just walk down it
       s.heading = rear ? v.heading + Math.PI : v.heading + ((s.dmI ?? 0) % 2 ? 1.57 : -1.57);
-      const clip = rear ? 'dismount_rear' : hasClip('dismount_door') ? 'dismount_door' : null;
+      // BTR side doors: the clip's end root is exactly the dismount_L / dismount_R empty
+      const de = !rear && v.model.getObjectByName((s.dmI ?? 0) % 2 ? 'dismount_R' : 'dismount_L');
+      if (de && (s.dmI ?? 0) < 2) { v.root.updateMatrixWorld(true); const p = de.getWorldPosition(new THREE.Vector3()); s.pos.set(p.x, 0, p.z); s.heading = Math.atan2(p.x - v.pos.x, p.z - v.pos.z); }
+      const clip = ramp ? null : rear ? (hasClip('dismount_rear') ? 'dismount_rear' : null) : hasClip('dismount_door') ? 'dismount_door' : null;
       if (clip) { s.jumpClip = clip; s.jumpT = clipDuration(clip, 1.4); }
     }
     s.dmVeh = null;
@@ -464,7 +469,7 @@ export class Squad {
     // pinned down: nobody gets up and moves (except to drag a wounded mate)
     const pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
     if (s.aimStopT > 0) s.aimStopT -= dt;
-    if (moving && (pinned || s.aimStopT > 0 || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; s.pos.y = 0; return; }
+    if (moving && (pinned || s.aimStopT > 0 || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; this.groundY(s, dt, false); return; }
     if (moving) {
       const wp = s.path[s.pathI];
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
@@ -504,7 +509,20 @@ export class Squad {
     } else { s.wdT = 0; s.wdP = null; }
     // footsteps (close to camera only)
     if (s.vel.lengthSq() > 1 && g.camDist(s.pos) < 35) { s.stepT = (s.stepT || 0) + dt * s.vel.length(); if (s.stepT > 1.6) { s.stepT = 0; g.sfx(Math.random() < .6 ? 'footstep_rubble' : 'footstep_gravel', s.pos, { gain: 0.5 }); } }
-    s.pos.y = 0;
+    this.groundY(s, dt, moving);
+  }
+  // feet on the terrain (trench floors, parapets, rubble heaps); a man in a trench steps up onto the firing step
+  // to shoot (head and shoulders over the parapet) and ducks back to the floor otherwise
+  groundY(s, dt, moving) {
+    const c = this.game.city, gh = c.groundHeight;
+    if (!gh) { s.pos.y = 0; return; }
+    let y = gh(s.pos.x, s.pos.z);
+    if (y < -0.8 && !moving) {
+      const ti = c.trenchInfo?.(s.pos.x, s.pos.z);
+      const firing = s.target || (this.game.time - (s.lastShotT ?? -99) < 2) || (this.fireAt && !this.holdFire);
+      if (ti && firing && ti.fireY > y) y = ti.fireY;
+    }
+    s.pos.y = Math.abs(s.pos.y - y) > 2.5 ? y : THREE.MathUtils.lerp(s.pos.y, y, Math.min(1, dt * 7));
   }
   dragStep(s, dt) {
     const w = s.dragging, g = this.game;

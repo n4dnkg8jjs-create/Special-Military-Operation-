@@ -339,8 +339,7 @@ def build_all(rig, R, only=None):
         out['throw_grenade_window'] = CX.throw_grenade_window(rig, stance, plant_feet)
     if want('cqb_stack'):
         out['cqb_stack'] = CX.cqb_stack(rig, stance, plant_feet)
-    if want('dismount_jump'):
-        out['dismount_jump'] = CX.dismount_jump(rig, lm)
+    # dismount_jump (+ _btr / _tank), dismount_door, dismount_rear, hatch_exit (+ _tank / _btr): clips_vehicle.py (below)
     # ---------------- combat v2 (clips_combat.py): recoil cycles, corner peeks, cover duck, pinned prone, launcher raise/fire, reloads
     import clips_combat as CC
     out.update(CC.combat_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs, prone))
@@ -349,8 +348,12 @@ def build_all(rig, R, only=None):
     if any(want(n) for n in CW_PISTOL):
         out.update(CW.pistol_clips(rig, lm, R, want, stance, plant_feet, kneel, kneel_legs,
                                    lambda *a, **k: loco_body(rig, *a, **k)))
-    if want('hatch_exit'):
-        out['hatch_exit'] = CW.hatch_exit(rig, lm, stance, plant_feet)
+    # ---------------- vehicle exits (clips_vehicle.py): crew bail-out through a hatch, riders jumping off, side / rear door dismounts.
+    # Vehicle-relative (clip frame = the end root), built against the vehicle GLBs; continuity: ride_sit_edge frame 0 -> dismount_jump_*,
+    # dismount_* -> crouch_walk frame 0 (uses the crouch_walk / ride_sit_edge built above in this run, else .cache/clips.pkl)
+    import clips_vehicle as CV
+    if any(want(n) for n in CV.CLIPS):
+        out.update(CV.vehicle_clips(rig, lm, want, built=out))
     # ---------------- ATGM / FPV teams + drone reactions (clips_atgm.py)
     import clips_atgm as CA
     if any(want(n) for n in CA.CLIPS):
