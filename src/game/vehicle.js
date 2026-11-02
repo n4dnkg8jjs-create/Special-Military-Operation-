@@ -145,6 +145,11 @@ export class Vehicle {
         : [[1.5, 1.85, -1.4, 1], [-1.5, 1.85, -1.4, -1], [0.7, 1.75, -2.6, 0], [-0.7, 1.75, -2.6, 0], [1.4, 1.75, -2.9, 1], [-1.4, 1.75, -2.9, -1]];
       for (const [x, y, z, side] of L) { const o = new THREE.Object3D(); o.position.set(x, y, z); o.rotation.y = side ? side * Math.PI / 2 : Math.PI; (this.hull || this.model).add(o); list.push({ obj: o, type: side ? 'edge' : 'deck' }); }
     }
+    // BMP-3: the whole 8-man desant rides on top (nobody inside, so the rear doors stay shut) — one more deck seat
+    if (this.def.asset === 'bmp3' && list.length < 8) {
+      const dk = list.filter(st => st.type === 'deck'), ref = dk.reduce((a, st) => (!a || st.obj.position.x < a.obj.position.x ? st : a), null);
+      if (ref) { const o = new THREE.Object3D(); o.position.copy(ref.obj.position); o.position.x -= 0.62; o.quaternion.copy(ref.obj.quaternion); ref.obj.parent.add(o); list.push({ obj: o, type: 'deck' }); }
+    }
     // the rear-most row of deck seats: men there sit on the back edge facing the rear, legs over the stern, rather
     // than facing the gun (re-seated on the hull's rear edge, sitting as on the side edges)
     const deck = list.filter(st => st.type === 'deck');
