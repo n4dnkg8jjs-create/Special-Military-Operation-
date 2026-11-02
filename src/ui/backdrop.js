@@ -62,12 +62,12 @@ export class Backdrop {
       // shelled corners and burnt-out flats. Plus an Orthodox church with onion domes and a heating-plant chimney.
       const fires = this.fires = [], B = '#1e1f20'; this.blockList = [];
       const church = w * 0.585, stack = w * 0.935;
-      const kinds = [['khrush', 0.45], ['panel9', 0.35], ['tower', 0.2]];
+      const kinds = [['khrush', 0.55], ['panel9', 0.37], ['tower', 0.08]];
       const pick = () => { let q = r(); for (const [k, p] of kinds) if ((q -= p) < 0) return k; return 'khrush'; };
       for (let X = -U * 2; X < w;) {
         if (Math.abs(X - church) < U * 7 || Math.abs(X - stack) < U * 2.5) { X += U * 2; continue; }
         const k = pick(), fh = U * 0.92;   // floor height
-        const floors = k === 'khrush' ? 5 : k === 'panel9' ? 9 : 14 + Math.floor(r() * 3);
+        const floors = k === 'khrush' ? 5 : k === 'panel9' ? 9 : 10 + Math.floor(r() * 3);
         const bw = k === 'khrush' ? U * (9 + r() * 6) : k === 'panel9' ? U * (6 + r() * 6) : U * (3.6 + r() * 1.2);
         const bh = floors * fh + U * 0.4, x0 = X, top = base - bh; (this.blockList ||= []).push({ x0, bw, top, floors, fh });
         X += bw + U * (0.8 + r() * 2.4);
@@ -158,24 +158,29 @@ export class Backdrop {
       for (let i = 0; i < poles.length - 1; i++) for (const o of [-1, 1.4]) { if (r() < 0.12) continue; const a = poles[i] + o * U, b = poles[i + 1] + o * U, y = base - U * 8.5; x.beginPath(); x.moveTo(a, y); x.quadraticCurveTo((a + b) / 2, y + U * 1.6, b, y); x.stroke(); }
       // ground plane with a soft haze line
       x.fillRect(0, base, w, h - base);
+      // the road the convoys use: a slightly paler band along the foot of the private sector
+      x.fillStyle = 'rgba(120,108,92,.10)'; x.fillRect(0, base + U * 0.25, w, U * 0.75); x.fillStyle = '#121415';
+      this.roadY = base + U * 0.85;
     });
     this.fg = this.layer(W + M * 2, H, (x, w, h) => {
-      const n1 = noise1(77), base = hz + U * 12;
+      const n1 = noise1(77), base = hz + U * 12, sm = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+      // the same function draws the ridge outline and places everything on it, so nothing floats
+      const ground = X => base - n1(X / (U * 9)) * U * 5 - sm((X / w - 0.5) / 0.12) * U * 2.2 + n1(X / U * 0.9 + 40) * U * 0.7;
       x.fillStyle = '#08090a'; x.beginPath(); x.moveTo(0, h);
-      for (let X = 0; X <= w; X += U * 0.8) x.lineTo(X, base - n1(X / (U * 9)) * U * 5 - (X / w > 0.55 ? U * 2.2 : 0) + n1(X / U * 0.9 + 40) * U * 0.7);
+      for (let X = 0; X <= w; X += U * 0.5) x.lineTo(X, ground(X));
       x.lineTo(w, h); x.closePath(); x.fill();
       x.strokeStyle = '#08090a'; x.lineCap = 'round';
-      const ground = X => base - n1(X / (U * 9)) * U * 5 - (X / w > 0.55 ? U * 2.2 : 0);
+      const footY = (px, half) => Math.max(ground(px - half), ground(px), ground(px + half));   // lowest point under the object
       // burnt-out armoured hull on the ridge (generic silhouette)
-      const hx = w * 0.69, hy = ground(hx) + U * 0.6;
+      const hx = w * 0.69, hy = footY(hx, U * 5.5) + U * 0.5;
       x.beginPath(); x.moveTo(hx - U * 6, hy); x.lineTo(hx - U * 5.4, hy - U * 1.9); x.lineTo(hx + U * 5.2, hy - U * 1.9); x.lineTo(hx + U * 6.2, hy - U * 0.6); x.lineTo(hx + U * 5.8, hy); x.closePath(); x.fill();
       x.beginPath(); x.moveTo(hx - U * 2.6, hy - U * 1.9); x.lineTo(hx - U * 2, hy - U * 3.1); x.lineTo(hx + U * 1.6, hy - U * 3.2); x.lineTo(hx + U * 2.4, hy - U * 1.9); x.closePath(); x.fill();
       x.lineWidth = U * 0.42; x.beginPath(); x.moveTo(hx + U * 1.6, hy - U * 2.6); x.lineTo(hx + U * 7.5, hy - U * 1.5); x.stroke();
       // anti-tank hedgehogs + a wire fence
-      const hog = (px, sz) => { const y = ground(px) + sz * 0.15; x.lineWidth = sz * 0.16; x.beginPath(); x.moveTo(px - sz * 0.6, y); x.lineTo(px + sz * 0.45, y - sz); x.moveTo(px + sz * 0.6, y); x.lineTo(px - sz * 0.4, y - sz * 0.95); x.moveTo(px - sz * 0.15, y + sz * 0.05); x.lineTo(px + sz * 0.1, y - sz * 1.05); x.stroke(); };
+      const hog = (px, sz) => { const y = footY(px, sz * 0.6) + sz * 0.12; x.lineWidth = sz * 0.16; x.beginPath(); x.moveTo(px - sz * 0.6, y); x.lineTo(px + sz * 0.45, y - sz); x.moveTo(px + sz * 0.6, y); x.lineTo(px - sz * 0.4, y - sz * 0.95); x.moveTo(px - sz * 0.15, y + sz * 0.05); x.lineTo(px + sz * 0.1, y - sz * 1.05); x.stroke(); };
       for (const [fx, sz] of [[0.5, 2.6], [0.555, 2.1], [0.6, 2.9], [0.86, 2.4], [0.93, 3.2]]) hog(w * fx, U * sz);
       x.lineWidth = Math.max(1, U * 0.16);
-      for (let X = w * 0.36; X < w; X += U * 4.5) { const y = ground(X); x.beginPath(); x.moveTo(X, y + U * 0.4); x.lineTo(X + U * 0.3, y - U * 2.3); x.stroke(); }
+      for (let X = w * 0.36; X < w; X += U * 4.5) { const y = ground(X) + U * 0.3; x.beginPath(); x.moveTo(X, y + U * 0.4); x.lineTo(X + U * 0.3, y - U * 2.3); x.stroke(); }
       x.lineWidth = Math.max(0.6, U * 0.06); for (const k of [1.2, 2]) { x.beginPath(); for (let X = w * 0.36; X < w; X += U * 1.5) { const y = ground(X) - U * k + Math.sin(X * 0.3) * U * 0.15; X === w * 0.36 ? x.moveTo(X, y) : x.lineTo(X, y); } x.stroke(); }
     });
     // haze bands between layers
@@ -194,6 +199,19 @@ export class Backdrop {
     this.sources = [...big.map(f => [f.x / FW, f.y - U * 0.4, 0.75 + f.s / U * 0.4]), [0.62, hz + U * 1.2, 1.3], [0.47, hz + U * 1, 0.7]];
     if (this.stackTop) this.sources.push([this.stackTop[0] / FW, this.stackTop[1], 0.6, 'stack']);
     this.smoke = []; this.embers = []; this.ash = []; this.flashes = []; this.nextFlash = 1.5;
+    // 2-D armour silhouettes for the passing convoys (generic shapes: BTR-80 type APC, T-72 type tank, BMP-2 type IFV)
+    this.vehSprites = {}; const VK = U * 1.45, C = '#0b0c0d';
+    const veh = (len, paint) => {
+      const c = mk(len * VK + 4, 2.6 * VK + 4), x = c.getContext('2d'); x.translate(2, 2.6 * VK + 2); x.scale(VK, VK);
+      // firelight rim along the top edges: paint once offset up in amber, then the dark body over it
+      x.save(); x.translate(0.02, -0.07); x.fillStyle = x.strokeStyle = 'rgba(190,120,64,.4)'; paint(x); x.restore();
+      x.fillStyle = C; x.strokeStyle = C; paint(x); return c; };
+    const poly = (x, pts) => { x.beginPath(); x.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) x.lineTo(pts[i], pts[i + 1]); x.closePath(); x.fill(); };
+    const wheel = (x, cx, r0) => { x.beginPath(); x.arc(cx, -r0, r0, 0, 7); x.fill(); };
+    this.vehSprites.btr = veh(4.0, x => { for (const wx of [0.55, 1.2, 2.3, 2.95]) wheel(x, wx, 0.36); poly(x, [0.05, -0.45, 0, -1.05, 0.35, -1.4, 2.7, -1.42, 3.75, -0.95, 3.55, -0.5]); x.fillRect(1.45, -1.78, 0.75, 0.38); x.lineWidth = 0.09; x.beginPath(); x.moveTo(2.1, -1.62); x.lineTo(3.25, -1.66); x.stroke(); });
+    this.vehSprites.tank = veh(5.6, x => { poly(x, [0.1, -0.12, 0, -0.55, 0.25, -0.72, 3.25, -0.72, 3.55, -0.5, 3.4, -0.12]); poly(x, [0, -0.66, 0.05, -0.95, 3.2, -0.95, 3.6, -0.72]); x.beginPath(); x.ellipse(1.55, -0.95, 0.85, 0.42, 0, Math.PI, 0); x.fill(); x.fillRect(1.25, -1.47, 0.35, 0.12); x.lineWidth = 0.11; x.beginPath(); x.moveTo(2.2, -1.12); x.lineTo(5.4, -1.2); x.stroke(); });
+    this.vehSprites.bmp = veh(4.4, x => { poly(x, [0.1, -0.12, 0, -0.5, 0.2, -0.62, 3.0, -0.62, 3.3, -0.4, 3.15, -0.12]); poly(x, [0, -0.58, 0.02, -1.0, 2.2, -1.06, 3.4, -0.72, 3.4, -0.58]); x.beginPath(); x.ellipse(1.35, -1.04, 0.55, 0.3, 0, Math.PI, 0); x.fill(); x.lineWidth = 0.07; x.beginPath(); x.moveTo(1.7, -1.18); x.lineTo(3.05, -1.36); x.stroke(); });
+    this.convoy = []; this.dust = []; this.nextConvoy = 3 + Math.random() * 3;
     const ar = rng(5); for (let i = 0; i < 70; i++) this.ash.push({ x: ar() * W, y: ar() * H, v: 0.2 + ar() * 0.8, s: 0.6 + ar() * 1.6, p: ar() * 6 });
     // pre-warm the smoke so columns are fully grown on the first frame
     for (let i = 0; i < 260; i++) this.step(1 / 15);
@@ -220,6 +238,25 @@ export class Backdrop {
     for (const p of this.embers) { p.life += dt; p.vx += (0.5 + Math.sin(this.t * 2.3 + p.ph) * 1.4) * U * dt; p.vy += (0.35 + Math.cos(this.t * 3.1 + p.ph * 1.7) * 0.5) * U * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
     this.embers = this.embers.filter(p => p.life < p.max);
     for (const a of this.ash) { a.y += a.v * U * 0.6 * dt; a.x += (0.5 + Math.sin(this.t * 0.7 + a.p)) * U * 0.25 * dt; if (a.y > this.H) { a.y = -4; a.x = Math.random() * W; } if (a.x > W) a.x -= W; }
+    // convoys: every 30-70 s two to four vehicles drive along the road, kicking up dust
+    if (this.vehSprites) {
+      this.nextConvoy -= dt;
+      if (this.nextConvoy <= 0 && !this.convoy.length) {
+        this.nextConvoy = 30 + Math.random() * 40;
+        const mixes = [['btr', 'btr', 'tank'], ['bmp', 'btr'], ['tank', 'bmp', 'btr', 'btr'], ['btr', 'btr'], ['tank', 'tank', 'bmp']], mix = mixes[Math.floor(Math.random() * mixes.length)];
+        const dir = Math.random() < 0.5 ? 1 : -1, FW = W + M * 2, sp = U * (4.2 + Math.random() * 1.6);
+        mix.forEach((k, i) => this.convoy.push({ k, dir, sp, x: dir > 0 ? -U * 6 - i * U * 7.5 : FW + U * 2 + i * U * 7.5, ph: Math.random() * 6 }));
+      }
+      for (const v of this.convoy) {
+        v.x += v.dir * v.sp * dt;
+        const len = this.vehSprites[v.k].width, rear = v.dir > 0 ? v.x : v.x + len;
+        if (this.dust.length < 90 && Math.random() < dt * 9) this.dust.push({ x: rear - v.dir * U * 0.3, y: this.roadY - U * 0.25, vx: -v.dir * U * (0.3 + Math.random() * 0.5) + U * 0.3, vy: -U * (0.15 + Math.random() * 0.35), r: U * (0.3 + Math.random() * 0.3), g: U * (0.5 + Math.random() * 0.4), life: 0, max: 2.5 + Math.random() * 2 });
+        if (Math.random() < dt * 3) this.dust.push({ x: rear, y: this.roadY - U * 1.1, vx: -v.dir * U * 0.4 + U * 0.25, vy: -U * 0.5, r: U * 0.15, g: U * 0.35, life: 0, max: 1.8, exh: true });
+      }
+      const FW = W + M * 2; this.convoy = this.convoy.filter(v => v.dir > 0 ? v.x < FW + U * 40 : v.x > -U * 40);
+      for (const d of this.dust) { d.life += dt; d.x += d.vx * dt; d.y += d.vy * dt; d.r += d.g * dt; }
+      this.dust = this.dust.filter(d => d.life < d.max);
+    }
     this.nextFlash -= dt;
     if (this.nextFlash <= 0) { this.nextFlash = 1.8 + Math.random() * 5; const n = Math.random() < 0.3 ? 3 : 1; for (let i = 0; i < n; i++) this.flashes.push({ x: (0.42 + Math.random() * 0.55) * (W + M * 2), t: -i * 0.18, d: 0.35 + Math.random() * 0.35, s: 0.6 + Math.random() * 0.9 }); }
     for (const f of this.flashes) f.t += dt;
@@ -265,6 +302,15 @@ export class Backdrop {
     }
     x.globalAlpha = 1;
     [ox, oy] = off(0.5); x.drawImage(this.mid, ox, oy);
+    if (this.convoy?.length || this.dust?.length) {
+      for (const d of this.dust) { const a = Math.min(1, d.life / 0.4) * (1 - d.life / d.max); x.globalAlpha = a * (d.exh ? 0.5 : 0.65); const R = d.r; x.drawImage(d.exh ? this.smokeS : this.steamS, d.x + ox - R, d.y + oy - R, R * 2, R * 2); }
+      x.globalAlpha = 1;
+      for (const v of this.convoy) {
+        const img = this.vehSprites[v.k], bob = Math.sin(this.t * 9 + v.ph) * U * 0.03, y = this.roadY - img.height + 2 + bob + oy;
+        if (v.dir > 0) x.drawImage(img, v.x + ox, y);
+        else { x.save(); x.translate(v.x + ox + img.width, y); x.scale(-1, 1); x.drawImage(img, 0, 0); x.restore(); }
+      }
+    }
     x.drawImage(this.haze2, 0, 0, W, H);
     // embers
     x.globalCompositeOperation = 'lighter'; [ox, oy] = off(0.25); x.lineCap = 'round';

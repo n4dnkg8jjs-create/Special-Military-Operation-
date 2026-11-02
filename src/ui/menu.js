@@ -60,7 +60,7 @@ if (pick) new MutationObserver(syncMap).observe(pick, { subtree: true, childList
 
 // ---------------------------------------------------------------- backdrop: live only while menu / loading are up
 const bgc = $('menuBg'), loading = $('loading');
-const bg = bgc ? new Backdrop(bgc) : null;
+const bg = bgc ? new Backdrop(bgc) : null; window.__backdrop = bg;   // test hook
 function syncBg() {
   if (!bg) return;
   const m = menu && !menu.classList.contains('hidden'), l = loading && !loading.classList.contains('hidden');
