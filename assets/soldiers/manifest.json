@@ -5275,7 +5275,7 @@
    "geometry": "leaning out around a wall corner while aiming straight ahead (+Z): trunk rolled 22-28 deg about the aim axis to the named side (the soldier's own left / right), weight on that leg, feet / knee planted, rifle on the right shoulder canted 11-12 deg (right peeks) / 32-40 deg (left peeks: the cheek stays on the stock), right eye on the sight line, butt in the shoulder pocket (< 1.5 cm). The head sits 0.23-0.36 m to the lean side of the root (events.head_out_m): with the corner edge ~0.15 m to the lean side of the root, head and rifle are past the edge and the far shoulder / hip stay behind it."
   },
   "cover": {
-   "cover_duck": "deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below a 0.9-1.0 m parapet (see events.head_top_m), rifle vertical and close, flinches (events.flinch); 3 s loop",
+   "cover_duck": "deep squat tight behind a low wall / window sill in front (+Z, wall face ~0.42 m ahead of the root), head below a 0.9-1.0 m parapet (see events.head_top_m), rifle across the thighs, muzzle to his left along the wall (clear of the head, also through the duck <-> aim cross-fades), flinches (events.flinch); 3 s loop",
    "pinned_prone": "flat prone, face down, left forearm over the helmet, rifle lying on its side beside the body (still in weapon_socket), flinches (events.flinch); 3 s loop"
   },
   "launchers": {
@@ -5432,7 +5432,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {'R': 9.650801630464006e-16, 'L': 1.2037731057624424e-15}"
+    "notes": "prone, elbows down, rifle off the shoulder resting in front (butt low, muzzle out to the left: clear of his face when he looks round), head up looking around; ik err {'R': 7.4165058627159095e-16, 'L': 1.0492194985853742e-15}"
    },
    "prone_crawl": {
     "duration_s": 1.4,
@@ -5969,7 +5969,7 @@
     "ground_speed_mps": 0.0,
     "direction": "in place",
     "root_motion": false,
-    "notes": "deep squat tight behind a low wall / sill in front (+Z, face of the wall ~0.42 m ahead of the root), back rounded, head ducked (helmet top <= 0.94 m, i.e. under a ~0.9-1.0 m parapet), rifle vertical and close (muzzle up beside the head), flinches at 0.55 s and 2.0 s, fast breathing + tremor; ik err {'R': 0.0, 'L': 0.0}",
+    "notes": "deep squat tight behind a low wall / sill in front (+Z, face of the wall ~0.42 m ahead of the root), back rounded, head ducked (helmet top <= 0.94 m, i.e. under a ~0.9-1.0 m parapet), rifle across the thighs (muzzle to his left along the wall, clear of the head), flinches at 0.55 s and 2.0 s, fast breathing + tremor; ik err {'R': 0.0, 'L': 0.0}",
     "events": {
      "flinch": [
       0.55,

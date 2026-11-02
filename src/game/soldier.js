@@ -247,7 +247,10 @@ export class Soldier {
       else if (this.state === 'stable') { clip = 'wounded_sit'; alt = ['wounded_ground']; }
       else if (sp > 0.05) { clip = 'wounded_crawl'; ts = sp / CLIP_SPEED.wounded_crawl; }
       else clip = 'wounded_ground';
-    } else if (this.inside === 'ride') { clip = this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }
+    } else if (this.inside === 'ride') {
+      if (this.deckWalk) { clip = 'crouch_walk'; ts = THREE.MathUtils.clamp(sp / (CLIP_SPEED.crouch_walk || 1), 0.5, 1.8); alt = ['walk_rifle']; }   // crossing the deck to jump off the other side
+      else { clip = this.dmWait != null ? 'ride_sit_edge' : this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }   // about to jump: the jump clip's frame 0
+    }
     else if (this.hatchT > 0) { clip = this.hatchClip || 'hatch_exit'; alt = ['hatch_exit', 'dismount_jump', 'crouch_idle']; if (this.weaponObj) this.weaponObj.visible = this.hatchT < 0.5; }
     else if (this.jumpT > 0) { clip = this.jumpClip || 'dismount_jump'; alt = ['dismount_jump', 'crouch_idle']; }
     else if (this.launcherT > 0) {
@@ -326,7 +329,7 @@ export class Soldier {
   // ground under the falling body is uneven, at once (with an impulse) for blasts; on level ground the authored clip ends it instead.
   die(kind, info = {}) {
     const wasDown = this.state === 'critical' || this.state === 'stable', speed = this.vel.length();
-    this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0);
+    this.state = 'dead'; this.target = null; this.path = null; this.vel.set(0, 0, 0); this.jumpT = 0;   // (deathTick never ticks jumpT down)
     // leaning out of a corner: the body is where it was drawn (sync() adds the peek offset to the root) - no jump when it lapses
     if (this.peekAmt > 0.01 && this.peekVec && !this.aboard) { this.pos.x += this.peekVec[0] * this.peekAmt * 0.45; this.pos.z += this.peekVec[1] * this.peekAmt * 0.45; }
     this.peek = 0; this.peekAmt = 0; this.peekOut = false;

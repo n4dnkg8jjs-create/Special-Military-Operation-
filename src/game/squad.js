@@ -29,6 +29,15 @@ function hullBox(v) {
   return v._dmBox = box;
 }
 const smooth01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+// a point moved out of the vehicle's real hull footprint (plus margin m) to the nearest side (wounded falling off, landing spots)
+function outsideHull(v, x, z, M = 0.35) {
+  const B = hullBox(v), sh = Math.sin(v.heading), ch = Math.cos(v.heading), dx = x - v.pos.x, dz = z - v.pos.z;
+  let lf = dx * sh + dz * ch, ll = dx * ch - dz * sh;
+  const pf = Math.min(lf - (B.min.z - M), B.max.z + M - lf), pl = Math.min(ll - (B.min.x - M), B.max.x + M - ll);
+  if (pf <= 0 || pl <= 0) return [x, z];
+  if (pl < pf) ll = ll - (B.min.x - M) < B.max.x + M - ll ? B.min.x - M : B.max.x + M; else lf = lf - (B.min.z - M) < B.max.z + M - lf ? B.min.z - M : B.max.z + M;
+  return [v.pos.x + lf * sh + ll * ch, v.pos.z + lf * ch - ll * sh];
+}
 
 // An infantry squad (8 men). Owns orders, formation, morale and casualty handling.
 export class Squad {
@@ -78,27 +87,73 @@ export class Squad {
     const perRank = width < 10 ? Math.ceil(n / 2) : n;
     const sp = Math.max(1.8, Math.min(4.2, width / Math.max(1, perRank - 1)));
     const out = [];
+    // the ordered spot is the side of the wall / building they go to: every slot stays on that side - a slot (or a cover cell)
+    // that can only be reached through a wall from the ordered spot is pulled back towards it (it used to be snapped to the
+    // nearest free cell, which for a slot inside a building could be its far side or the next street)
+    const [ax, az] = this.orderAnchor(x, z);
+    // ordered up to a building's wall: the men line up along THAT wall (its length, a little past the corners at most), backs to
+    // it - the 18 m line used to stick out past the corners of a short end wall and half the squad went round to the next facade
+    const W = this.wallAt(ax, az);
+    const sameSide = (px, pz) => nav.lineFree(ax, az, px, pz, 0.4) && nav.passable(nav.idx(px, pz), 0.4) && (!W || W.on(px, pz));
+    const pullBack = (px, pz) => { const d = Math.hypot(px - ax, pz - az); for (let f = 1; f > 0; f -= Math.min(0.5, 0.5 / Math.max(1, d))) { const qx = ax + (px - ax) * f, qz = az + (pz - az) * f; if (sameSide(qx, qz)) return [qx, qz]; } return [ax, az]; };
+    let wallSlot = null;
+    if (W) {
+      const cap = Math.max(1, Math.floor((2 * W.half + 2) / 2.1) + 1), per = Math.min(n, cap), gap = Math.min(3, (2 * W.half + 2) / Math.max(1, per - 1));
+      const lim = W.half + 1 - (per - 1) * gap / 2, c0 = lim > 0 ? THREE.MathUtils.clamp(W.a0, -lim, lim) : 0;
+      wallSlot = i => { const rank = Math.floor(i / per), k = i % per; return W.at(c0 + (k - (per - 1) / 2) * gap + (Math.random() - .5) * 0.5, 0.75 + rank * 1.5 + Math.random() * 0.35); };
+    }
     for (let i = 0; i < this.soldiers.length; i++) {
-      // loose, staggered line: alternate men sit forward/back, irregular spacing — never a parade-ground rank
-      const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp + (Math.random() - .5) * sp * 0.45;
-      const depth = rank * 3.2 + (k % 2 ? 1.6 : -0.4) + (Math.random() - .5) * 1.8;
-      let px = x + right[0] * off - fwd[0] * depth, pz = z + right[1] * off - fwd[1] * depth;
+      let px, pz;
+      if (wallSlot) [px, pz] = wallSlot(i);
+      else {
+        // loose, staggered line: alternate men sit forward/back, irregular spacing — never a parade-ground rank
+        const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp + (Math.random() - .5) * sp * 0.45;
+        const depth = rank * 3.2 + (k % 2 ? 1.6 : -0.4) + (Math.random() - .5) * 1.8;
+        px = x + right[0] * off - fwd[0] * depth; pz = z + right[1] * off - fwd[1] * depth;
+      }
+      if (!sameSide(px, pz)) [px, pz] = pullBack(px, pz);
       // snap to a nearby cell offering cover toward the facing direction
       let best = null, bestS = -1;
       // next to a wall: line up against it (CQB) rather than standing a metre or two off it
       const ci0 = nav.idx(px, pz), nearWall = ci0 >= 0 && nav.clear[ci0] < 6;
-      const R0 = nearWall ? 5 : 3.5;
+      const R0 = W ? 2.2 : nearWall ? 5 : 3.5;
       for (let r = 0; r <= R0; r += 0.9) for (let a = 0; a < 8; a++) {
         const cx = px + Math.cos(a * 0.785) * r, cz = pz + Math.sin(a * 0.785) * r, idx = nav.idx(cx, cz);
         if (!nav.passable(idx, 0.4)) continue;
         if (out.some(o => Math.hypot(o[0] - cx, o[1] - cz) < 1.1)) continue;
+        if (!nav.lineFree(ax, az, cx, cz, 0.4) || (W && !W.on(cx, cz))) continue;
         const sc = nav.coverFrom(cx, cz, cx + fwd[0] * 50, cz + fwd[1] * 50) * 2 - r * 0.25 + (nearWall && nav.clear[idx] < 1.4 ? 1.1 : 0);
         if (sc > bestS) { bestS = sc; best = [cx, cz]; }
       }
-      if (!best) best = nav.nearestFree(px, pz, 0.4, 8);
+      if (!best) best = [px, pz];
       out.push(best);
     }
     return out;
+  }
+  // the building facade a point stands in front of (within 5 m of it, not past its corners): its outward normal and length,
+  // at(along, out) -> world point, on(x, z) -> is that point in front of the same facade (between its corners + 1.5 m, 0.3-7 m out)
+  wallAt(x, z) {
+    const B = this.game.city?.buildings; if (!B) return null;
+    let best = null, bd = 5;
+    for (const b of B) {
+      if (Math.hypot(b.x - x, b.z - z) > Math.max(b.L, b.D) / 2 + 6) continue;
+      const [lx, lz] = b.toLocal(x, z), ex = Math.abs(lx) - b.L / 2, ez = Math.abs(lz) - b.D / 2;
+      const zf = ez >= ex, d = zf ? ez : ex, lat = zf ? Math.abs(lx) - b.L / 2 : Math.abs(lz) - b.D / 2;
+      if (d < -0.5 || d > bd || lat > 1.5) continue;
+      bd = d; best = { b, zf, sg: zf ? Math.sign(lz) || 1 : Math.sign(lx) || 1, half: zf ? b.L / 2 : b.D / 2, a0: zf ? lx : lz };
+    }
+    if (!best) return null;
+    const { b, zf, sg, half } = best, face = zf ? b.D / 2 : b.L / 2;
+    best.at = (along, out) => { const lx = zf ? along : sg * (face + out), lz = zf ? sg * (face + out) : along; return [b.x + lx * b.cos + lz * b.sin, b.z - lx * b.sin + lz * b.cos]; };
+    best.on = (px, pz) => { const [lx, lz] = b.toLocal(px, pz), o = (zf ? lz : lx) * sg - face, al = zf ? lx : lz; return o > 0.3 && o < 7 && Math.abs(al) < half + 1.5; };
+    return best;
+  }
+  // the ordered spot itself, moved out of a wall / building it lies in towards the side the squad comes from
+  orderAnchor(x, z) {
+    const nav = this.game.nav; if (nav.passable(nav.idx(x, z), 0.4)) return [x, z];
+    const c = this.center(), d = Math.hypot(c.x - x, c.z - z);
+    if (d > 0.5) for (let k = 0.5; k < Math.min(d, 40); k += 0.5) { const px = x + (c.x - x) / d * k, pz = z + (c.z - z) / d * k; if (nav.passable(nav.idx(px, pz), 0.4)) return [px, pz]; }
+    return nav.nearestFree(x, z, 0.4, 8);
   }
   orderMove(x, z, facing = null, width = 18, run = false, queued = false, bound = false) {
     if (this.routing) return;
@@ -200,7 +255,11 @@ export class Squad {
     // of a second apart; the men inside get out through the doors one after another once the jumpers are clear of the doors
     const riders = this.soldiers.filter(s => s.state !== 'evac' && s.inside === 'ride' && s.seat);
     const rearRiders = riders.some(s => Math.cos(v.seatWorld(s.seat.i).heading - v.heading) < -0.7);
-    for (const s of riders) { s.dmWait = 0.05 + Math.random() * 0.3; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; }
+    // the jump clip starts from ride_sit_edge facing out from the seat: a man who was aiming from the deck (ride_aim, turned to his
+    // target) or sat on the deck first settles into that pose (0.3 s cross-fade, turning back to the seat heading) before he goes
+    for (const s of riders) { s.target = null; s.dmWait = (s.curName === 'ride_sit_edge' ? 0.05 : 0.4) + Math.random() * 0.3; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; s.seatOver = null; s.deckWalk = null; }
+    // orders given while they are still getting off (move, garrison, ...) set new goals: exitCarrier keeps those
+    for (const s of this.soldiers) if (s.aboard) { s.goal = null; s.path = null; s.pathReq = null; }
     // BTR side doors are under the side riders' landing spots; IFV rear doors / ramp swing through the stern riders' landing spots
     const clear = !riders.length ? 0 : v.kind === 'btr' ? 2.6 : v.kind === 'ifv' && rearRiders ? 2.2 : 0;
     let k = 0;
@@ -213,27 +272,71 @@ export class Squad {
     this.order = null; this.dmFacing = facing;
     this.game.sfx('hatch', v.pos);
   }
+  // free ground for a jumper to land on beside vehicle v (no wall, no other vehicle)
+  landingOk(v, x, z) {
+    const g = this.game, nav = g.nav; if (!nav.passable(nav.idx(x, z), 0.45)) return false;
+    for (const o of g.vehicles) if (o !== v && (!o.destroyed || o.wreck) && Math.hypot(o.pos.x - x, o.pos.z - z) < o.def.radius + 0.9) return false;
+    return true;
+  }
   // one man leaving the carrier (called when his turn comes)
   exitCarrier(s) {
     const v = s.dmVeh, g = this.game; s.dmWait = null;
+    if (!v) { s.inside = null; s.seat = null; return; }
+    const gH = (x, z) => (g.city?.groundHeight ? g.city.groundHeight(x, z) : 0);
+    this.dmLastExit = g.time;
+    // dead / badly wounded men don't jump: the body slides off the deck beside the hull (a corpse drops from deck height:
+    // Soldier.deathTick / the ragdoll), a casualty inside is pulled out of the door
+    if (!s.effective) {
+      s.jumpT = 0; s.jumpFix = null;
+      if (s.state !== 'dead') {
+        const ride = !!s.seat, w = ride ? v.seatWorld(s.seat.i).pos : v.doorPos(s.dmI ?? 0, true), [fx, fz] = outsideHull(v, w.x, w.z, 0.4 + Math.random() * 0.4), gy = gH(fx, fz);
+        s.pos.set(fx, gy, fz);
+        // off the deck: he slumps down beside the hull over ~0.4 s (jumpFix offset fading from the seat to the ground) - no pop
+        if (ride) { s.jumpT = 0.45; s.jumpFix = { x: fx, y: gy, z: fz, ox: w.x - fx, oy: w.y - gy, oz: w.z - fz, t0: g.time, T: 0.45 }; s.pos.set(w.x, w.y, w.z); }
+      }
+      s.inside = null; s.seat = null; s.dmVeh = null; s.vel.set(0, 0, 0); s.sync(); return;
+    }
     if (s.dmKind === 'jump' && s.seat) {
       // the clip's root is its END point (on the ground, facing away from the hull); its frame 0 is ride_sit_edge with the seat point at
       // events.seat_offset_from_root. Root = seat + that distance along the seat heading, at the ground height there: he lands exactly
       // on the root and walks off from it. The (small) rest between the actual seat (deck height of this hull / seat row, terrain) and
       // the clip's seat is an offset on the root that fades out while he slides to the edge, before he leaves the deck.
-      const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
-      const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
+      const w = s.seatOver || v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
+      const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (!s.seatOver && side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
       const rear = Math.cos(Math.atan2(out.x, out.z) - v.heading) < -0.7, clip = jumpClip(v, rear), ev = clipEvents(clip);
       const so = ev.seat_offset_from_root || [0, ...(JUMP_SEAT[clip] || [1.995, 1.6]).map((x, j) => j ? -x : x)];
       const dist = -so[2], nav = g.nav;
-      let rx = w.pos.x + out.x * dist, rz = w.pos.z + out.z * dist;
-      const ci = nav.idx(rx, rz);
-      if (ci < 0 || nav.cost[ci] === 255) [rx, rz] = nav.nearestFree(rx, rz, 0.45, 3);   // parked against a wall: land on the nearest free spot
-      const gy = g.city?.groundHeight ? g.city.groundHeight(rx, rz) : 0;
+      // parked against a wall / another vehicle: jump a little shorter (the flight is compressed), or off diagonally along the hull
+      // edge (the root stays seat + jump along the jump direction, so frame 0 still matches the seat), or - no room on his side at
+      // all - cross the deck and jump off the other side. (Snapping the landing to the nearest free cell made the seated man slide up
+      // to 3 m along the deck before the jump and leave the deck in mid-air.)
+      const plan = (W, h0) => {
+        for (const d of [dist, dist - 0.3, dist - 0.6]) for (const da of [0, 0.35, -0.35, 0.65, -0.65]) {
+          if (d < 0.9) continue;
+          const h = h0 + da, x = W.pos.x + Math.sin(h) * d, z = W.pos.z + Math.cos(h) * d, [bx, bz] = outsideHull(v, x, z, 0.15);
+          if (Math.hypot(bx - x, bz - z) > 0.05 || !this.landingOk(v, x, z)) continue;   // (not on the hull itself)
+          return { h, d, x, z };
+        }
+        return null;
+      };
+      let P = plan(w, Math.atan2(out.x, out.z));
+      if (!P && !s.seatOver) {
+        const fx = Math.sin(v.heading), fz = Math.cos(v.heading), lx = fz, lz = -fx, dx = w.pos.x - v.pos.x, dz = w.pos.z - v.pos.z, al = dx * fx + dz * fz, la = dx * lx + dz * lz;
+        if (Math.abs(la) > 0.6) {
+          const m = { pos: new THREE.Vector3(v.pos.x + fx * al - lx * la, w.pos.y, v.pos.z + fz * al - lz * la), heading: Math.atan2(-lx * Math.sign(la), -lz * Math.sign(la)) };
+          if (plan(m, m.heading)) { s.seatOver = m; s.dmVeh = v; s.dmKind = 'jump'; s.dmWait = 0; s.deckWalk = { x0: w.pos.x, z0: w.pos.z, x1: m.pos.x, z1: m.pos.z, y: w.pos.y, t: 0, T: Math.max(1, Math.hypot(m.pos.x - w.pos.x, m.pos.z - w.pos.z) / 1.1) }; return; }
+        }
+      }
+      let rx, rz;
+      if (P) { out.set(Math.sin(P.h), 0, Math.cos(P.h)); rx = P.x; rz = P.z; }
+      else [rx, rz] = nav.nearestFree(w.pos.x + out.x * dist, w.pos.z + out.z * dist, 0.45, 3);
+      const gy = gH(rx, rz), d = P ? P.d : dist;
       s.heading = Math.atan2(out.x, out.z);
-      const sx = rx - out.x * dist + out.z * so[0], sz = rz - out.z * dist - out.x * so[0];   // clip seat point in the world
-      s.jumpFix = { x: rx, y: gy, z: rz, ox: w.pos.x - sx, oy: w.pos.y - (gy + so[1]), oz: w.pos.z - sz, t0: g.time, T: Math.max(0.3, (ev.leave_seat || 0.9) - 0.05) };
-      s.pos.set(rx + s.jumpFix.ox, gy + s.jumpFix.oy, rz + s.jumpFix.oz);
+      // clip seat point in the world for a root at the full jump distance; the shortfall (dist - d) is the flight part of the offset
+      const fx = out.x * (dist - d), fz = out.z * (dist - d), sx = rx + fx - out.x * dist + out.z * so[0], sz = rz + fz - out.z * dist - out.x * so[0];
+      s.jumpFix = { x: rx, y: gy, z: rz, ox: w.pos.x - sx, oy: w.pos.y - (gy + so[1]), oz: w.pos.z - sz, fx, fz, t0: g.time, T: Math.max(0.3, (ev.leave_seat || 0.9) - 0.05), T1: ev.leave_seat || 0.9, T2: ev.land || 1.45 };
+      s.seatOver = null;
+      s.pos.set(rx + s.jumpFix.ox + fx, gy + s.jumpFix.oy, rz + s.jumpFix.oz + fz);
       s.jumpClip = clip; s.jumpT = clipDuration(clip, 2.2);
       s.inside = null; s.seat = null; s.vel.set(0, 0, 0);
       s.vehFrom = v; s.vehFromT = g.time + s.jumpT + 2.5;
@@ -241,19 +344,23 @@ export class Squad {
       if (s.mixer) { s.play(clip, 0, 1, ['dismount_jump', 'crouch_idle']); s.mixer.update(0); }
       s.sync();
     } else {
-      const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, 0, d.z); s.inside = null;
+      const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, gH(d.x, d.z), d.z); s.inside = null; s.seat = null;
       const rear = v.kind !== 'btr', ramp = v.def.asset === 'bradley_ua';   // the Bradley ramp is a slope: they just walk down it
       s.heading = rear ? v.heading + Math.PI : v.heading + ((s.dmI ?? 0) % 2 ? 1.57 : -1.57);
       // BTR side doors: the clip's end root is exactly the dismount_L / dismount_R empty
       const de = !rear && v.model.getObjectByName((s.dmI ?? 0) % 2 ? 'dismount_R' : 'dismount_L');
-      if (de && (s.dmI ?? 0) < 2) { v.root.updateMatrixWorld(true); const p = de.getWorldPosition(new THREE.Vector3()); s.pos.set(p.x, 0, p.z); s.heading = Math.atan2(p.x - v.pos.x, p.z - v.pos.z); }
+      if (de && (s.dmI ?? 0) < 2) { v.root.updateMatrixWorld(true); const p = de.getWorldPosition(new THREE.Vector3()); s.pos.set(p.x, gH(p.x, p.z), p.z); s.heading = Math.atan2(p.x - v.pos.x, p.z - v.pos.z); }
       const clip = ramp ? null : rear ? (hasClip('dismount_rear') ? 'dismount_rear' : null) : hasClip('dismount_door') ? 'dismount_door' : null;
       if (clip) { s.jumpClip = clip; s.jumpT = clipDuration(clip, 1.4); }
     }
-    s.dmVeh = null;
-    const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
-    const slots = this.formationSlots(back.x, back.z, this.dmFacing ?? v.heading, 18), i = this.soldiers.indexOf(s);
-    const sl = slots[i % slots.length]; s.goal = sl; s.goalHeading = this.dmFacing ?? v.heading;
+    s.dmVeh = null; s.startDelay = 0;   // (an order's reaction delay is spent sitting on the deck)
+    // an order given while he was still aboard (move, garrison, attack...) stands; otherwise he forms up behind the carrier
+    let sl = s.goal;
+    if (!sl) {
+      const back = v.pos.clone().addScaledVector(new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), -6);
+      const slots = this.dmSlots && g.time - this.dmSlots.t < 4 && this.dmSlots.v === v ? this.dmSlots.s : (this.dmSlots = { v, t: g.time, s: this.formationSlots(back.x, back.z, this.dmFacing ?? v.heading, 18) }).s, i = this.soldiers.indexOf(s);
+      sl = slots[i % slots.length]; s.goal = sl; s.goalHeading = this.dmFacing ?? v.heading;
+    }
     // Bradley: he starts inside the troop compartment and walks out down the lowered ramp
     const ex = v.def.asset === 'bradley_ua' && s.dmKind !== 'jump' && v.model.getObjectByName('exit_rear');
     if (ex) {
@@ -262,7 +369,7 @@ export class Squad {
       const at = k => [E.x + f.x * k + r.x * lat, E.z + f.z * k + r.z * lat];
       const inside = at(3.4); s.pos.set(inside[0], 0.62, inside[1]); s.heading = v.heading + Math.PI;
       s.rampWalk = { bx: E.x, bz: E.z, fx: f.x, fz: f.z, y0: 0.62, len: 1.9 };
-      s.path = [at(1.9), at(0), at(-1.6), sl]; s.pathI = 0; s.pathReq = null; s.speedMul = 0.8; s.stance = 'crouch';
+      s.path = [at(1.9), at(0), at(-1.6)]; s.pathI = 0; s.pathReq = null; s.speedMul = 0.8; s.stance = 'crouch';   // the route on to his goal: groundY, once off the ramp
       return;
     }
     s.pathDelay = s.jumpT || 0; g.requestPath(s, s.pos.x, s.pos.z, sl[0], sl[1], 0.45);
@@ -347,11 +454,20 @@ export class Squad {
     this.support?.update(dt);
     if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
     this.updateMorale(dt);
+    if (this.dmHold) this.dmHoldTick();
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
     if (this.order?.type === 'clear') this.clearTick(dt);
     for (const s of this.soldiers) this.updateSoldier(s, dt);
     this.resupplyTick(dt);
+  }
+  // the carrier's move order given while riders were still jumping off: carried out once the last one has left the deck
+  dmHoldTick() {
+    const H = this.dmHold, v = H.v;
+    if (v.destroyed || this.mounted || v.path || v.pathReq) { this.dmHold = null; return; }
+    if (this.soldiers.some(s => s.dmWait != null)) return;
+    if (this.game.time - (this.dmLastExit ?? -99) < 1.1) return;
+    this.dmHold = null; v.orderMove(H.x, H.z, H.facing, H.fast);
   }
   updateRiders(dt, frozen = false) {
     const v = this.carrier, g = this.game;
@@ -360,7 +476,9 @@ export class Squad {
       if (s.inside === 'btr' || s.state === 'evac') { if (v) s.pos.copy(v.pos); s.sync(); continue; }
       if (s.inside === 'ride' && v) {
         if (!s.effective) { // hit while riding: falls off the vehicle
-          const w = v.seatWorld(s.seat.i); s.inside = null; s.seat = null; s.pos.set(w.pos.x + (Math.random() - .5) * 3, 0, w.pos.z + (Math.random() - .5) * 3);
+          const w = v.seatWorld(s.seat.i); s.inside = null; s.seat = null;
+          const [fx, fz] = outsideHull(v, w.pos.x + (Math.random() - .5) * 3, w.pos.z + (Math.random() - .5) * 3, 0.3 + Math.random() * 0.5);   // never inside the hull
+          s.pos.set(fx, g.city?.groundHeight ? g.city.groundHeight(fx, fz) : 0, fz);
         } else {
           const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = s.target ? Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z) : w.heading;
           s.vel.set(Math.sin(v.heading) * v.speed, 0, Math.cos(v.heading) * v.speed); s.stance = 'crouch';
@@ -410,9 +528,13 @@ export class Squad {
     }
     this.seekCover();
     // stance from situation
+    // an ATGM team with the launcher out kneels round it (support.js keeps the crew crouched every frame): no stand-up here, or
+    // the loader / bearer bob up for one frame every think tick (idle_rifle <-> crouch_idle cross-fades: 'constantly squatting')
+    const kneelTeam = this.support && this.support.state && this.support.state !== 'packed' && !this.support.abandoned;
     for (const s of this.effective) {
       if (s.aboard) continue;
       if (s.rampWalk) { s.stance = 'crouch'; continue; }   // bent double through the low troop compartment and down the ramp
+      if (kneelTeam) { s.stance = (s.suppression > 70 || this.pinned) && !s.supportClip && !(s.path && s.pathI < s.path.length) ? 'prone' : 'crouch'; continue; }
       if (s.inBuilding) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
       const moving = s.path && s.pathI < s.path.length;
       if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
@@ -439,11 +561,13 @@ export class Squad {
       if (s.inside || s.dragging || (s.path && s.pathI < s.path.length) || s.pathReq || s.waitTeam || !s.target || (s.coverT || 0) > now) continue;
       const tp = s.target.pos; if (nav.coverFrom(s.pos.x, s.pos.z, tp.x, tp.z) >= 0.55) continue;
       s.coverT = now + 7 + Math.random() * 4;
-      const ax = s.goal ? s.goal[0] : s.pos.x, az = s.goal ? s.goal[1] : s.pos.z;
+      const ax = s.goal ? s.goal[0] : s.pos.x, az = s.goal ? s.goal[1] : s.pos.z, W = this.wallAt(ax, az);
       let best = null, bs = 0.5;
       for (let r = 1.5; r <= 9; r += 1.5) for (let a = 0; a < 12; a++) {
         const x = ax + Math.cos(a / 12 * 6.283) * r, z = az + Math.sin(a / 12 * 6.283) * r, i = nav.idx(x, z);
         if (!nav.passable(i, 0.45)) continue;
+        // only on his side of the wall he was sent to: never round the corner / through the building to its far side
+        if (!nav.lineFree(ax, az, x, z, 0.4) || !nav.lineFree(s.pos.x, s.pos.z, x, z, 0.4) || (W && !W.on(x, z))) continue;
         if (this.soldiers.some(o => o !== s && o.alive && Math.hypot(o.pos.x - x, o.pos.z - z) < 1.3)) continue;
         const sc = nav.coverFrom(x, z, tp.x, tp.z) - Math.hypot(x - s.pos.x, z - s.pos.z) * 0.03;
         if (sc > bs) { bs = sc; best = [x, z]; }
@@ -469,22 +593,42 @@ export class Squad {
     if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchOpen?.(); s.hatchOpen = null; s.hatchT = clipDuration(s.hatchClip || 'hatch_exit', 2.7); g.sfx('hatch', s.pos); } else { s.sync(); return; } }
     // waiting for his turn to get off the carrier: stays on his seat (riders, carried along) or inside
     if (s.dmWait != null) {
-      const v = s.dmVeh;
-      if (!v) s.dmWait = null;
+      const v = s.dmVeh || (s.dmVeh = this.carrier);
+      if (!v) { s.dmWait = null; if (s.aboard && s.state !== 'evac') { s.inside = null; s.seat = null; } }
       else {
-        // jumpers wait until the carrier has (nearly) stopped: the landing point is fixed on the ground when he leaves the seat
-        if (!(s.dmKind === 'jump' && !v.destroyed && Math.abs(v.speed) > 0.3)) s.dmWait -= dt;
+        // jumpers wait until the carrier has (nearly) stopped: the landing point is fixed on the ground when he leaves the seat. A
+        // fresh move order for the carrier while men are still on the deck is held back until they are off (dmHoldTick), so it
+        // never drives off with them sitting on it (they used to ride along, no longer part of a mounted squad, unable to get off)
+        // (doors too: nobody steps out of a hull that is still rolling)
+        if (!v.destroyed && (v.path || v.pathReq)) { if (v.order?.type === 'move') this.dmHold = { v, x: v.order.x, z: v.order.z, facing: v.order.facing, fast: v.fast }; v.halt(); v.pathReq = null; }
+        if (v.destroyed || Math.abs(v.speed) <= 0.3) s.dmWait -= dt;
         if (this.dmDoor && g.time >= this.dmDoor.at) { this.dmDoor.v.doorT = Math.max(this.dmDoor.v.doorT || 0, this.dmDoor.until); this.dmDoor = null; }
-        if (s.inside === 'ride' && s.seat) { const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = w.heading; s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); }
+        let settled = true;
+        if (s.deckWalk) {   // no room to jump off on his side: crouched, he crosses the deck to the other edge, sits down there, jumps
+          const D = s.deckWalk; D.t = Math.min(D.T, D.t + dt); const f = D.t / D.T, dx = D.x1 - D.x0, dz = D.z1 - D.z0;
+          s.pos.set(D.x0 + dx * f, D.y, D.z0 + dz * f); s.heading += THREE.MathUtils.clamp(angDiff(Math.atan2(dx, dz), s.heading), -8 * dt, 8 * dt);
+          s.vel.set(dx / D.T, 0, dz / D.T); s.stance = 'crouch'; s.target = null; s.animate(dt, g.camDist(s.pos)); s.vel.set(0, 0, 0);
+          if (D.t >= D.T) { s.deckWalk = null; s.dmWait = 0.45; } else { s.sync(); return; }
+        }
+        if (s.inside === 'ride' && s.seat) {   // turn back to the seat heading (from ride_aim) before the jump clip takes over
+          const w = s.seatOver || v.seatWorld(s.seat.i), dh = angDiff(w.heading, s.heading); s.pos.copy(w.pos); s.heading += THREE.MathUtils.clamp(dh, -7 * dt, 7 * dt); settled = Math.abs(dh) < 0.12;
+          s.target = null; s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos));
+        }
         else if (s.inside === 'btr') s.pos.copy(v.pos);
-        if (s.dmWait <= 0 || v.destroyed) this.exitCarrier(s);
+        if ((s.dmWait <= 0 && settled) || (v.destroyed && (settled || s.dmWait < -0.6))) this.exitCarrier(s);
         else { s.sync(); return; }
       }
     }
+    // still aboard although the squad is not mounted and nobody is getting him off (should not happen): off he gets
+    if (s.aboard && s.state !== 'evac' && !this.mounted && s.hatchWait == null && s.dmWait == null) {
+      const v = this.carrier; if (v) { s.dmVeh = v; s.dmKind = s.inside === 'ride' && s.seat ? 'jump' : 'door'; s.dmI = this.soldiers.indexOf(s); this.exitCarrier(s); } else { s.inside = null; s.seat = null; }
+    }
     // jumping off the carrier: the root stays on the landing point (the clip carries him there); the seat-match offset fades out
     if (s.jumpFix) {
-      const J = s.jumpFix, k = 1 - smooth01((g.time - J.t0) / J.T);
-      if (s.jumpT > 0 && s.state !== 'dead') s.pos.set(J.x + J.ox * k, J.y + J.oy * k, J.z + J.oz * k); else s.jumpFix = null;   // (jumpT cut to 0 = placed elsewhere)
+      // seat-match offset: fades while he slides to the edge; the flight part (a shortened jump: little room beside the hull) fades
+      // while he is in the air, between leaving the deck and landing - he simply jumps less far
+      const J = s.jumpFix, k = 1 - smooth01((g.time - J.t0) / J.T), kf = J.fx || J.fz ? 1 - smooth01((g.time - J.t0 - J.T1) / Math.max(0.1, J.T2 - J.T1)) : 0;
+      if (s.jumpT > 0 && s.state !== 'dead') s.pos.set(J.x + J.ox * k + (J.fx || 0) * kf, J.y + J.oy * k, J.z + J.oz * k + (J.fz || 0) * kf); else s.jumpFix = null;   // (jumpT cut to 0 = placed elsewhere)
     }
     s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
     // heavily suppressed: duck behind the wall / window sill, pop up for a burst, duck again
@@ -532,8 +676,11 @@ export class Squad {
   }
   moveStep(s, dt) {
     const g = this.game;
-    if (s.jumpT > 0 || s.hatchT > 0) { s.vel.set(0, 0, 0); return; }
+    if (s.jumpT > 0 || s.hatchT > 0) { s.vel.set(0, 0, 0); if (s.jumpT > 0) s.jumpEnded = s.jumpClip; return; }
     let moving = s.path && s.pathI < s.path.length;
+    // the jump-off clips end walking off (events.end_speed_mps): carry that pace on instead of stopping dead for a frame and
+    // starting again from zero (idle <-> walk cross-fades, a visible stutter right after landing)
+    if (s.jumpEnded) { const es = clipEvents(s.jumpEnded).end_speed_mps; s.jumpEnded = null; if (es > 0 && moving) s.vel.set(Math.sin(s.heading) * es, 0, Math.cos(s.heading) * es); }
     let speed = 0;
     // pinned down: nobody gets up and moves (except to drag a wounded mate)
     const pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
@@ -561,22 +708,41 @@ export class Squad {
     const sepK = s.vehFrom ? 0.3 : 1;   // men who just landed side by side drift apart slowly (they walk off anyway), not shoved
     for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
     if (s.vehFrom && (g.time > s.vehFromT || s.vehFrom.pos.distanceToSquared(s.pos) > 64)) s.vehFrom = null;
+    // vehicles: kept out of the real hull footprint (oriented box) - a live vehicle is not in the nav grid, so a path may run
+    // straight through it; the old round push (radius + 0.9, far shorter than the hull) let men walk through its bow / stern and
+    // left anyone heading for its middle pressed against it for good. Walking into it, he now slides along the side to the
+    // nearer end and round it
     if (!s.rampWalk) for (const v of g.vehicles) {
       if (v.destroyed && !v.wreck) continue;
-      if (v === s.vehFrom) {   // just jumped off it: keep clear of the real hull (oriented box), gently - no shove off the landing point
-        const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, sh = Math.sin(v.heading), ch = Math.cos(v.heading);
-        const B = hullBox(v), lf = dx * sh + dz * ch, ll = dx * ch - dz * sh, M = 0.25, m = 1.5 * dt;   // root frame: +Z forward (sin h, cos h), +X = the vehicle's left (cos h, -sin h)
-        const pf = Math.min(lf - (B.min.z - M), B.max.z + M - lf), pl = Math.min(ll - (B.min.x - M), B.max.x + M - ll);
-        if (pf > 0 && pl > 0) {
-          const dl = pl < pf ? (ll - (B.min.x - M) < B.max.x + M - ll ? -1 : 1) * Math.min(pl, m) : 0, df = pl < pf ? 0 : (lf - (B.min.z - M) < B.max.z + M - lf ? -1 : 1) * Math.min(pf, m);
-          const px = df * sh + dl * ch, pz = df * ch - dl * sh;
-          if (free(s.pos.x + px, s.pos.z + pz)) { s.pos.x += px; s.pos.z += pz; }
-        }
-        continue;
+      const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, R = v.def.length * 0.5 + 1.5; if (dx * dx + dz * dz > R * R) continue;
+      const sh = Math.sin(v.heading), ch = Math.cos(v.heading), B = hullBox(v), lf = dx * sh + dz * ch, ll = dx * ch - dz * sh;   // root frame: +Z forward (sin h, cos h), +X = the vehicle's left (cos h, -sin h)
+      const gentle = v === s.vehFrom, M = gentle ? 0.25 : 0.35;   // just jumped off it: gently, no shove off the landing point
+      const pf = Math.min(lf - (B.min.z - M), B.max.z + M - lf), pl = Math.min(ll - (B.min.x - M), B.max.x + M - ll);
+      if (pf <= 0 || pl <= 0) continue;
+      const side = pl < pf, sg = side ? (ll - (B.min.x - M) < B.max.x + M - ll ? -1 : 1) : (lf - (B.min.z - M) < B.max.z + M - lf ? -1 : 1);
+      const nx = side ? sg * ch : sg * sh, nz = side ? -sg * sh : sg * ch, depth = Math.min(side ? pl : pf, gentle ? 1.5 * dt : 9);
+      if (free(s.pos.x + nx * depth, s.pos.z + nz * depth)) { s.pos.x += nx * depth; s.pos.z += nz * depth; }
+      const vn = s.vel.x * nx + s.vel.z * nz;
+      if (moving && vn < 0) {
+        let tx = side ? sh : ch, tz = side ? ch : -sh;   // along the face (+forward on a side face, +left on the bow / stern)
+        const wp = moving && s.path ? s.path[s.pathI] || null : null, along = side ? lf : ll, lo = side ? B.min.z : B.min.x, hi = side ? B.max.z : B.max.x;
+        let want = wp ? (wp[0] - s.pos.x) * tx + (wp[1] - s.pos.z) * tz : s.vel.x * tx + s.vel.z * tz;
+        const wd = wp ? Math.hypot(wp[0] - s.pos.x, wp[1] - s.pos.z) : s.vel.length();
+        if (Math.abs(want) < 0.35 * wd) want = along - lo < hi - along ? -1 : 1;   // heading for the middle: round the nearer end
+        if (want < 0) { tx = -tx; tz = -tz; }
+        const sp = Math.max(Math.hypot(s.vel.x, s.vel.z), 0.6);
+        s.vel.x = tx * sp; s.vel.z = tz * sp;
       }
-      const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
+    }
     // already inside a blocked cell (pushed, collapsed rubble, spawned badly): step out to the nearest free spot
-    if (!free(s.pos.x, s.pos.z)) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 0.45, 8); s.pos.x = fx; s.pos.z = fz; if (s.goal) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } }
+    // (a few metres - e.g. the ground round a fresh wreck that was just blocked, a crewman's hatch exit spot - he shuffles out at a
+    // brisk walk instead of popping there in one frame)
+    if (!free(s.pos.x, s.pos.z)) {
+      const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 0.45, 8), d = Math.hypot(fx - s.pos.x, fz - s.pos.z), k = d < 3 ? Math.min(1, 2.2 * dt / Math.max(d, 1e-3)) : 1;
+      s.pos.x += (fx - s.pos.x) * k; s.pos.z += (fz - s.pos.z) * k;
+      if (k >= 1 && s.goal) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); }
+      if (k < 1) { s.vel.set((fx - s.pos.x) / Math.max(d, 1e-3) * 2.2, 0, (fz - s.pos.z) / Math.max(d, 1e-3) * 2.2); this.groundY(s, dt, true); return; }
+    }
     const nx = s.pos.x + s.vel.x * dt, nz = s.pos.z + s.vel.z * dt;
     if (free(nx, nz)) { s.pos.x = nx; s.pos.z = nz; }
     else if (free(nx, s.pos.z)) { s.pos.x = nx; s.vel.z *= 0.5; }      // slide along the wall
@@ -603,7 +769,8 @@ export class Squad {
     let y = gh(s.pos.x, s.pos.z);
     if (s.rampWalk) {   // walking out of an IFV: compartment floor, then down the ramp
       const R = s.rampWalk, t = (s.pos.x - R.bx) * R.fx + (s.pos.z - R.bz) * R.fz;
-      if (t < -0.4) s.rampWalk = null; else { s.pos.y = Math.max(y, R.y0 * THREE.MathUtils.clamp(t / R.len, 0, 1)); return; }
+      if (t < -0.4) { s.rampWalk = null; if (s.goal) this.game.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); }
+      else { s.pos.y = Math.max(y, R.y0 * THREE.MathUtils.clamp(t / R.len, 0, 1)); return; }
     }
     if (y < -0.8 && !moving) {
       const ti = c.trenchInfo?.(s.pos.x, s.pos.z);

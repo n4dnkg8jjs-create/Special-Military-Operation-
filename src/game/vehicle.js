@@ -537,6 +537,7 @@ export class Vehicle {
     this.fire = g.fx.emitter(this.pos.clone().setY(1.6), 'fire', this.kind === 'tank' ? 1.5 : 1.2, 120 + Math.random() * 120);
     this.fireSound = g.audio.ok ? g.audio.loop('fire_vehicle_loop', this.pos, 0.8) || g.audio.loop('fire_loop', this.pos, 0.8) : null;
     g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 0.3, 255); g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 1.2, 7, true);
+    g.nav.rect(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 255, 0.15);   // the whole hull (the circle missed bow and stern: paths ran through the wreck)
     g.nav.addOccluder(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 2.2, this);
     this.engine?.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.engine = null;
     this.wreck = true;

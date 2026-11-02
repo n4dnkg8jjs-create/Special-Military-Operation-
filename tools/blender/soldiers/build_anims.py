@@ -284,7 +284,10 @@ def build_all(rig, R, only=None):
             C.add_local(rig, lq, 'Head', lambda f: (-4 + 0 * f, 12 * osc(F, 1, 0.3), 0 * f))
             lq = C.breathing(rig, lq, F, 1, 1.0)
             gq = rig.global_from_local(lq)
-            gun_q2, gun_p2 = prone_relaxed_gun(rig, gq, root, relq, relp, qeuler(x=7, y=6, z=-12, order='YXZ'), drop=0.03)
+            # (was qeuler(x=7, y=6, z=-12): turning the rifle muzzle-down about the support-hand grip swung the butt up into his face -
+            #  looking right, the stock / receiver came within 4-5 cm of the helmet centre: 'the gun glitches through the head' of a
+            #  pinned man lying prone. Butt down a little, muzzle out to his left: >= 0.135 m, as in aim_prone's own cheek weld)
+            gun_q2, gun_p2 = prone_relaxed_gun(rig, gq, root, relq, relp, qeuler(x=-8, y=12, z=-14, order='YXZ'), drop=0.03)
             gpos = fk_global(rig.sk, gq, root)
             gq2, err = CC.prone_overlay(rig, gq, root, gun_q2, gun_p2, gpos[:, I['RightArm']] + [-0.4, -0.6, 0.1], gpos[:, I['LeftArm']] + [0.3, -0.6, 0.1])
             out['prone_idle'] = to_clip('prone_idle', rig, gq2, root, True, notes=f'prone, elbows down, rifle off the shoulder resting in front (muzzle low), head up looking around; ik err {err}')

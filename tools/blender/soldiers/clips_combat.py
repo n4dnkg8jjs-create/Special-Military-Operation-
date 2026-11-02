@@ -561,7 +561,12 @@ def flinches(t, times, rise=0.07, fall=0.45):
     return np.max([pulse(t, t0, rise, fall) for t0 in times], axis=0)
 
 
-def cover_duck(rig, dur=3.0, wall_z=0.42):
+def cover_duck(rig, dur=3.0, wall_z=0.42, gun_dir=(1.0, 0.2, 0.05), gun_pos=(-0.05, 0.48, 0.30), head_yaw=(6, 4), gun_up=(0.0, 1.0, -0.6)):
+    # the rifle used to be held upright beside the head (gun_dir (-0.10, 1, -0.10), gun_pos (-0.10, 0.62, 0.30), gun_up
+    # (0.15, 0, -1), head sweep 8 deg): its receiver came within 0.13 m of the helmet centre, and every duck <-> aim / fire / idle
+    # cross-fade (a pinned man ducks and comes up again every 1-3 s) swept it straight through the head (down to 3 mm from the
+    # helmet centre): 'the gun glitches through the head when pinned'. Now it lies across the thighs, muzzle to his left along the
+    # wall: >= 0.22 m from the helmet in the clip, and the cross-fades never come closer than the aim pose's own cheek weld
     """deep squat tight behind a low wall / window sill in front (+Z), head ducked below the parapet, back rounded, rifle
     held vertical and close (muzzle up beside the head, magazine toward the wall), flinching at 0.55 s and 2.0 s,
     fast shallow breathing and tremor.  Both feet flat."""
@@ -570,12 +575,12 @@ def cover_duck(rig, dur=3.0, wall_z=0.42):
     t = np.arange(F) / FPS
     fl = flinches(t, (0.55, 2.0))
     trem = noise(F, 91, 3, 1.0)
-    pose = dict(root=np.array([0.0, 0.50, -0.10]), Hips=(34, -10, 0), LowerBack=(14, 2, 0), Spine=(14, 3, 0), Spine1=(12, 3, 0), Neck=(14, 0, 0), Head=(20, 6, 0),
+    pose = dict(root=np.array([0.0, 0.50, -0.10]), Hips=(34, -10, 0), LowerBack=(14, 2, 0), Spine=(14, 3, 0), Spine1=(12, 3, 0), Neck=(14, 0, 0), Head=(20, head_yaw[0], 0),
                 LeftShoulder=(0, 8, -6), RightShoulder=(0, -8, 6))
     lq, root = C.pose_lq(rig, pose, F)
     add_euler(rig, lq, 'Spine1', 5 * fl + 0.8 * trem, 0.6 * trem, 0)
     add_euler(rig, lq, 'Neck', 7 * fl, 0, 0)
-    add_euler(rig, lq, 'Head', 8 * fl + 2 * osc(F, 1, 0.5), 8 * noise(F, 92, 22), 0)
+    add_euler(rig, lq, 'Head', 8 * fl + 2 * osc(F, 1, 0.5), head_yaw[1] * noise(F, 92, 22), 0)
     add_euler(rig, lq, 'LeftShoulder', 0, 0, -7 * fl)
     add_euler(rig, lq, 'RightShoulder', 0, 0, 7 * fl)
     lq = C.breathing(rig, lq, F, 4, 1.6)
@@ -586,11 +591,11 @@ def cover_duck(rig, dur=3.0, wall_z=0.42):
     for side, sx, z, yaw in (('Left', 1, 0.10, -14), ('Right', -1, -0.02, -26)):
         ank = np.array([sx * 0.17, ay, z])
         gq = leg_to(rig, gq, root, side, ank, ank + [sx * 0.35, 0.4, 0.8], foot_q=qaxis(Y, np.radians(yaw)))
-    # rifle: vertical, muzzle up beside the right side of the head, magazine toward the wall, carried by the chest
+    # rifle: across the thighs, muzzle to his left along the wall, sights up, carried by the chest
     gq0 = gq[:1]
     cq, cp = A.chest_frame(rig.sk, gq, root)
-    gw_q = qlook(np.array([-0.10, 1.0, -0.10]), np.array([0.15, 0.0, -1.0]))    # tipped slightly back: muzzle clear of the wall face
-    gw_p = np.array([-0.10, 0.62, 0.30])          # (z was 0.27: the left forearm wrapping the handguard went 8 cm into the chest)
+    gw_q = qlook(np.array(gun_dir, float), np.array(gun_up, float))    # tipped slightly back: muzzle clear of the wall face
+    gw_p = np.array(gun_pos, float)          # (z was 0.27: the left forearm wrapping the handguard went 8 cm into the chest)
     relq = qmul(qinv(cq[0]), gw_q); relp = qrot(qinv(cq[0]), gw_p - cp[0])
     gun_q = qmul(cq, np.broadcast_to(relq, (F, 4))); gun_p = cp + qrot(cq, np.broadcast_to(relp, (F, 3)))
     gpos = fk_global(rig.sk, gq, root)
@@ -603,7 +608,7 @@ def cover_duck(rig, dur=3.0, wall_z=0.42):
     top = gp2[:, I['Head'], 1].max() + 0.20
     return to_clip('cover_duck', rig, gq2, root, True,
                    notes=f'deep squat tight behind a low wall / sill in front (+Z, face of the wall ~{wall_z} m ahead of the root), back rounded, head ducked '
-                         f'(helmet top <= {top:.2f} m, i.e. under a ~0.9-1.0 m parapet), rifle vertical and close (muzzle up beside the head), flinches at '
+                         f'(helmet top <= {top:.2f} m, i.e. under a ~0.9-1.0 m parapet), rifle across the thighs (muzzle to his left along the wall, clear of the head), flinches at '
                          f'0.55 s and 2.0 s, fast breathing + tremor; ik err {ik_err(err)}',
                    events={'flinch': [0.55, 2.0], 'head_top_m': round(float(top), 2), 'wall_front_z': wall_z})
 

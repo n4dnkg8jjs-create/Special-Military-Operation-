@@ -6,6 +6,8 @@ import { angDiff } from './squad.js';
 import { initArmor, resolveHit } from './armor.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), C2 = new THREE.Vector3();
+const LA = new THREE.Vector3(), LB = new THREE.Vector3(), WC = new THREE.Vector3();
+const WIN_OUT = 0.3, WIN_COS = 0.17;   // window point past the facade (m); widest angle out of a window: ~80 deg off its normal
 const rf = (a, b) => a + Math.random() * (b - a);
 const TRACER = { RU: [0.62, 1.0, 0.34], UA: [1.0, 0.42, 0.14] }; // green-yellow / orange-red burning tracer compound
 
@@ -20,11 +22,33 @@ export class Combat {
   // a shooter hidden in foliage gives himself away when he fires: his muzzle flash / report lets the other side put
   // rounds into the bush he's in (rough fix, poor accuracy) even though they can't actually see him
   roughFix(t) { const u = t.squad || t; return (u.firedT ?? 99) < 4 || (this.g.time - (t.lastShotT ?? -99)) < 4; }
-  soldierEye(s, out = A) { const pv = s.peek ? s.peekVec : null; return out.set(s.pos.x + (pv ? pv[0] : 0), s.pos.y + s.headHeight(), s.pos.z + (pv ? pv[1] : 0)); }
+  // a garrisoned man sees, shoots and is seen through his own window only: his eye / body point is just outside the window
+  // opening (WIN_OUT m past the facade, so the building's own volume no longer has to be ignored - it used to be, and with it
+  // men at a front window shot through the whole block at targets behind it, and men behind a building shot through it at a
+  // garrison on the far facade), and the other end of the line has to be in front of that window (facesWindow)
+  soldierEye(s, out = A) {
+    if (s.inBuilding) return this.windowPoint(s, out, s.headHeight());
+    const pv = s.peek ? s.peekVec : null; return out.set(s.pos.x + (pv ? pv[0] : 0), s.pos.y + s.headHeight(), s.pos.z + (pv ? pv[1] : 0));
+  }
   targetPoint(t, out = B) {
     if (t.type === 'vehicle') return out.set(t.pos.x, 1.5, t.pos.z);
+    if (t.inBuilding) return this.windowPoint(t, out, t.headHeight() * 0.75);
     const k = t.peek ? (t.peekAmt || 0) : 0, pv = t.peekVec;
-    return out.set(t.pos.x + (k ? pv[0] * k * 0.78 : 0), t.pos.y + t.headHeight() * 0.75, t.pos.z + (k ? pv[1] * k * 0.78 : 0));
+    return out.set(t.pos.x + (k ? pv[0] * k * 0.9 : 0), t.pos.y + t.headHeight() * 0.75, t.pos.z + (k ? pv[1] * k * 0.9 : 0));   // leaning out: his head and shoulders are where his eye is
+  }
+  windowPoint(s, out, h) { const b = s.bld, p = s.inside.panel; b.panelCenter(p, out); const o = b.outward(p); out.x += o.x * WIN_OUT; out.z += o.z * WIN_OUT; out.y = s.pos.y + h; return out; }
+  facesWindow(s, x, z) { const b = s.bld, p = s.inside.panel, c = b.panelCenter(p, WC), o = b.outward(p), dx = x - c.x, dz = z - c.z, d = Math.hypot(dx, dz); return d > 0.01 && (dx * o.x + dz * o.z) / d > WIN_COS; }
+  // line of sight from an eye point to target t (soldier or vehicle): garrisoned targets only through their window
+  losFrom(ex, ey, ez, t, ignA = null, noFoliage = false) {
+    const tp = this.targetPoint(t, LB);
+    if (t.type !== 'vehicle' && t.inBuilding && !this.facesWindow(t, ex, ez)) return false;
+    return this.los(ex, ey, ez, tp.x, tp.y, tp.z, ignA, t.type === 'vehicle' ? t : null, noFoliage);
+  }
+  // can soldier s see target t right now (from where his head really is: leaning out of a corner, at his window)?
+  canSee(s, t, noFoliage = false) {
+    const e = this.soldierEye(s, LA);
+    if (s.inBuilding) { const tp = t.type === 'vehicle' ? t.pos : this.targetPoint(t, LB); if (!this.facesWindow(s, tp.x, tp.z)) return false; }
+    return this.losFrom(e.x, e.y, e.z, t, null, noFoliage);
   }
   // hugging a wall with the enemy further along it: lean out from the wall to shoot (peek clip), then back
   wallLean(s) {
@@ -44,14 +68,15 @@ export class Combat {
   tryPeek(s, cands, ignA) {
     if (s.inBuilding || s.aboard || s.stance === 'prone' || s.vel.lengthSq() > 0.2 || s.weaponKey === 'rpg7') return false;
     const nav = this.g.nav;
-    for (let i = 0; i < Math.min(3, cands.length); i++) {
+    // a lean (0.8 m: root shift + the peek clip's lean put the head about there) or, failing that, a lean with half a step out
+    for (let i = 0; i < Math.min(5, cands.length); i++) {
       const t = cands[i][0]; if (t.type === 'vehicle') continue;
       const tp = this.targetPoint(t, B), h = Math.atan2(tp.x - s.pos.x, tp.z - s.pos.z), rx = -Math.cos(h), rz = Math.sin(h);
-      for (const side of [1, -1]) {
-        const ox = rx * side * 0.95, oz = rz * side * 0.95, k = nav.idx(s.pos.x + ox, s.pos.z + oz);
-        if (k < 0 || nav.cost[k] === 255) continue;
+      for (const [side, r] of [[1, 0.8], [-1, 0.8], [1, 1.2], [-1, 1.2]]) {
+        const ox = rx * side * r, oz = rz * side * r, k = nav.idx(s.pos.x + ox, s.pos.z + oz);
+        if (k < 0 || nav.cost[k] === 255 || (r > 1 && !nav.lineFree(s.pos.x, s.pos.z, s.pos.x + ox, s.pos.z + oz, 0.3))) continue;
         const ey = s.pos.y + s.headHeight();
-        if (this.los(s.pos.x + ox, ey, s.pos.z + oz, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t)) { s.target = t; s.peek = side; s.peekVec = [ox, oz]; s.heading = h; return true; }
+        if (this.losFrom(s.pos.x + ox, ey, s.pos.z + oz, t)) { s.target = t; s.peek = side; s.peekVec = [ox, oz]; s.heading = h; return true; }
       }
     }
     return false;
@@ -79,7 +104,7 @@ export class Combat {
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
     if (s.peek && s.peekAmt < 0.85) return;                          // still leaning out from the corner
-    if (s.rpg22 > 0 && t.type === 'vehicle' && s.inside !== 'ride' && Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z) < WEAPONS.rpg22.range && s.vel.lengthSq() < 0.5) {
+    if (s.rpg22 > 0 && t.type === 'vehicle' && s.inside !== 'ride' && Math.hypot(t.pos.x - s.pos.x, t.pos.z - s.pos.z) < WEAPONS.rpg22.range && s.vel.lengthSq() < 0.5 && this.canSee(s, t)) {
       s.rpg22--; s.launcherT = 2.7; s.launchFired = false; s.launcherTarget = t; s.raiseLauncher(); return;
     }
     // hand grenades at close range (RGD-5 / F-1): into windows or over cover
@@ -94,6 +119,9 @@ export class Combat {
     const want = Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z);
     if (Math.abs(angDiff(want, s.heading)) > 0.3) return;
     s.fireCd -= dt; if (s.fireCd > 0) return;
+    // every shot needs a clear line from where his head really is (leaning out / at his window) to the target: the target is only
+    // re-validated by acquire() every ~1 s, and meanwhile he (or the target) may have moved behind a wall
+    if (!this.shotClear(s, t)) { s.target = null; s.burstLeft = 0; s.scanT = Math.min(s.scanT, 0.15); return; }
     const W = s.weapon;
     if (s.inMag <= 0) { this.startReload(s); return; }
     if (W.type === 'at') { this.fireRpg(s, t); return; }
@@ -102,6 +130,7 @@ export class Combat {
     s.fireCd = s.burstLeft > 0 ? 60 / W.rof : rf(W.burstGap[0], W.burstGap[1]) * (1 + s.suppression / 60);
     this.fireSmallArms(s, t, W);
   }
+  shotClear(s, t) { return this.canSee(s, t) || (s.tgtFoliage && this.canSee(s, t, true)); }   // (a few segment tests per round: cheap)
   // ---- fire at ground (suppressive / recon-by-fire on a point the player clicked, without a spotted target)
   groundPoint(u, s) {
     const fa = u.fireAt; if (!fa) return null;
@@ -114,6 +143,7 @@ export class Combat {
     if (s.noRifle || s.supportClip || s.ducking || s.inside === 'btr' || W.type === 'at' || s.reloadT > 0) return;
     const p = this.groundPoint(sq, s); if (!p) return;
     const d = Math.hypot(p.x - s.pos.x, p.z - s.pos.z); if (d > W.range * 1.3 || d < 4) return;
+    if (s.inBuilding && !this.facesWindow(s, p.x, p.z)) return;     // the area is behind his facade
     s.groundAim = true; s.aimPoint = p;
     if (s.vel.lengthSq() > 0.5) return;
     if (Math.abs(angDiff(Math.atan2(p.x - s.pos.x, p.z - s.pos.z), s.heading)) > 0.3) return;
@@ -122,7 +152,7 @@ export class Combat {
     if (s.burstLeft <= 0) s.burstLeft = Math.round(rf(W.burst[0], W.burst[1] + 0.49));
     s.burstLeft--; s.inMag--;
     s.fireCd = s.burstLeft > 0 ? 60 / W.rof : rf(W.burstGap[0], W.burstGap[1]) * 1.3;
-    this.groundRound(s, s.muzzleWorld(C).clone(), p, W, s.squad.side, s);
+    this.groundRound(s, s.inBuilding ? this.windowPoint(s, new THREE.Vector3(), s.headHeight() - 0.1) : s.muzzleWorld(C).clone(), p, W, s.squad.side, s);
     s.kick = 1; s.squad.firedT = 0; s.firingT = W.type === 'mg' ? 0.5 : 0.35; s.lastShotT = this.g.time;
     this.g.sfx(W.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos);
   }
@@ -130,7 +160,7 @@ export class Combat {
   groundRound(owner, from, p, W, side, shooter) {
     const g = this.g, d = from.distanceTo(p), m = 0.8 + d * 0.025;
     const end = p.clone(); end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .5) * 0.8);
-    const occ = g.nav.occluded(from.x, from.y, from.z, end.x, end.y, end.z, owner.squad?.building || null, null);
+    const occ = g.nav.occluded(from.x, from.y, from.z, end.x, end.y, end.z, owner.inBuilding ? null : owner.squad?.building || null, null);
     if (occ && occ.ref?.panels) end.copy(this.facadePoint(occ, from, end));
     if (g.camDist(from) < 260) g.fx.muzzle(from, end.clone().sub(from).normalize(), W.type === 'mg' || W.type === 'hmg' ? 1.1 : 0.8);
     owner.shots = (owner.shots || 0) + 1;
@@ -164,23 +194,23 @@ export class Combat {
       if (!cands.length && s.sideKey && s.sideMags > 0) { this.swapToSide(s); return this.acquire(s); }
     }
     cands.sort((a, b) => a[1] - b[1]);
-    const ignA = this.bldOf(s);
+    const ignA = null;
     // keep current target if still valid
     if (s.target && cands.some(c => c[0] === s.target)) {
-      const tp = this.targetPoint(s.target, B);
-      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(s.target) || s.target)) { s.tgtFoliage = false; return; }
-      if (this.roughFix(s.target) && this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(s.target) || s.target, true)) { s.tgtFoliage = true; return; }
+      if (this.canSee(s, s.target)) { s.tgtFoliage = false; return; }
+      if (this.roughFix(s.target) && this.canSee(s, s.target, true)) { s.tgtFoliage = true; return; }
     }
     s.target = null; s.tgtFoliage = false;
-    const peeked = s.peek; s.peek = 0; this.soldierEye(s, eye);
-    for (let i = 0; i < Math.min(5, cands.length); i++) {
-      const t = cands[i][0], tp = this.targetPoint(t, B);
-      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t)) { s.target = t; break; }
+    const peeked = s.peek; s.peek = 0;
+    // a man at a window only looks out of it: targets behind his facade are not candidates (canSee checks it too)
+    for (let i = 0, n = 0; i < cands.length && n < 6; i++) {
+      const t = cands[i][0]; if (s.inBuilding && !this.facesWindow(s, t.pos.x, t.pos.z)) continue; n++;
+      if (this.canSee(s, t)) { s.target = t; break; }
     }
     // nobody in plain view: return fire into the foliage a shooter just revealed himself in
     if (!s.target) for (let i = 0; i < Math.min(5, cands.length); i++) {
-      const t = cands[i][0]; if (t.type === 'vehicle' || !this.roughFix(t)) continue; const tp = this.targetPoint(t, B);
-      if (this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, ignA, this.bldOf(t) || t, true)) { s.target = t; s.tgtFoliage = true; break; }
+      const t = cands[i][0]; if (t.type === 'vehicle' || !this.roughFix(t)) continue;
+      if (this.canSee(s, t, true)) { s.target = t; s.tgtFoliage = true; break; }
     }
     if (!s.target && this.tryPeek(s, cands, ignA)) { if (!peeked) s.peekT = 0; }
     else if (s.target && s.target.type !== 'vehicle') this.wallLean(s);
@@ -659,8 +689,7 @@ export class Combat {
         if (!s.effective || s.inside === 'btr') continue;
         // a vehicle only engages infantry it could plausibly make out itself (or that is shooting at it)
         const d = s.pos.distanceTo(v.pos); if (d > ((u.firedT ?? 99) < 3 ? 420 : v.side === 'enemy' ? 200 : 260)) continue;
-        const tp = this.targetPoint(s, B);
-        if (!this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s) && !(this.roughFix(s) && this.los(eye.x, eye.y, eye.z, tp.x, tp.y, tp.z, v, this.bldOf(s) || s, true))) continue;
+        if (!this.losFrom(eye.x, eye.y, eye.z, s, v) && !(this.roughFix(s) && this.losFrom(eye.x, eye.y, eye.z, s, v, true))) continue;
         if (d < bi) { bi = d; bestInf = s; }
         const sc = 120 - d * 0.25 + (s.inBuilding ? 40 : 0) + (s.inside === 'ride' ? 50 : 0) + (v.focus === u ? 200 : 0) + (s.weaponKey === 'rpg7' ? 60 : 0);
         if (v.kind === 'tank' && v.weapons[0].he <= 0 && !s.inBuilding) continue;

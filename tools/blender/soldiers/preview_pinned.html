@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{window.__err=String(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{window.__err=String(e.reason);window.__done=true});</script>
+<script type="module">
+// Suppressed / pinned poses with the game's own Soldier class (weapon on the socket the game uses for that clip):
+// clips= comma list (default pinned_prone,cover_duck,suppressed_cower)   roles= weapon roles (ak, pkm, rpg, ak12)
+// t= clip phase 0..1   dist= el= az= camera   w= h=
+// window.__info.head: per clip/weapon the worst (over 24 phases) weapon-mesh depth inside the helmet/head sphere (m, > 0 = through it)
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { FACTIONS, SQUAD_ROLES } from '/src/config.js';
+import { Soldier, prepareSoldierAssets } from '/src/game/soldier.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 1400), H = +(q.get('h') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.6); sun.position.set(4, 7, 5); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 }); sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.02; scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader(), assets = { gltf: {}, manifest: {} };
+const files = ['soldier_ua', 'soldier_ru', 'soldier_anims', 'ak74m', 'ak12', 'ak74m_optic', 'pkm', 'rpg7', 'rpg22', 'pm'];
+await Promise.all(files.map(async f => { try { assets.gltf[f] = await loader.loadAsync(`/assets/soldiers/${f}.glb`); } catch { } }));
+assets.manifest.soldiers = await (await fetch('/assets/soldiers/manifest.json')).json();
+// anims=/path.glb: clips in that GLB replace the shipped ones of the same name (e.g. tools/blender/soldiers/.cache/anims_test.glb)
+if (q.get('anims')) { const t = await loader.loadAsync(q.get('anims')), A = assets.gltf.soldier_anims.animations; for (const c of t.animations) { const i = A.findIndex(x => x.name === c.name); if (i >= 0) A[i] = c; else A.push(c); } }
+prepareSoldierAssets(assets);
+const ph = +(q.get('t') || 0.5);
+const clips = (q.get('clips') || 'pinned_prone,cover_duck,suppressed_cower').split(',');
+const R = { ak: SQUAD_ROLES.find(r => r.weapon === 'ak74m') || SQUAD_ROLES[1], pkm: SQUAD_ROLES.find(r => r.weapon === 'pkm'), rpg: SQUAD_ROLES.find(r => r.weapon === 'rpg7'), ak12: SQUAD_ROLES.find(r => r.weapon === 'primary') || SQUAD_ROLES[0] };
+const roles = (q.get('roles') || 'ak,pkm,rpg').split(',').filter(k => R[k]);
+const head = {}, men = [];
+const v = new THREE.Vector3(), hp = new THREE.Vector3();
+clips.forEach((clip, ci) => roles.forEach((rk, ri) => {
+  const s = new Soldier({ assault: false }, ci * 10 + ri, R[rk], FACTIONS[rk === 'ak12' ? 'RU' : 'UA'], scene);
+  s.pos.set((ri - (roles.length - 1) / 2) * 1.6, 0, (ci - (clips.length - 1) / 2) * -2.4); s.heading = +(q.get('heading') || 0); s.sync();
+  s.play(clip, 0); men.push([s, clip, rk]);
+  if (s.lods) for (const o of s.lods) o.visible = o.userData.variantOn && o.userData.lod === 0;
+  // worst weapon penetration of the head sphere over the clip
+  const hb = s.model.getObjectByName('Head') || s.model.getObjectByName('head'); let worst = -1, at = 0;
+  const wm = []; s.weaponObj?.traverse(o => { if (o.isMesh && o.visible && !/_LOD1$/i.test(o.name)) wm.push(o); });
+  for (let k = 0; k < 24; k++) {
+    const a = s.cur; a.time = a.getClip().duration * k / 24; s.mixer.update(0); s.root.updateMatrixWorld(true);
+    hb.getWorldPosition(hp); hp.y += 0.09;   // helmet centre ~9 cm above the head joint
+    for (const o of wm) { const pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 600)); for (let i = 0; i < pa.count; i += st) { v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld); const dpt = 0.15 - v.distanceTo(hp); if (dpt > worst) { worst = dpt; at = k / 24; } } }
+  }
+  head[`${clip}/${rk}`] = [+worst.toFixed(3), +at.toFixed(2), s.wSock];
+  const a = s.cur; a.time = a.getClip().duration * ph; s.mixer.update(0);
+  // blend=clip:w -> the cross-fade pose w of the way from this clip to that one (the game's 0.3 s cross-fade, frozen)
+  if (q.get('blend')) { const [bc, bw] = q.get('blend').split(':'), b2 = s.action(bc); if (b2) { b2.reset(); b2.play(); b2.time = b2.getClip().duration * 0.3; b2.setEffectiveWeight(+bw); a.setEffectiveWeight(1 - +bw); s.mixer.update(0); } }
+}));
+// views=az:el:dist;az:el:dist... -> a row of views side by side (default: the single az / el / dist view)
+const V = (q.get('views') || `${q.get('az') || 30}:${q.get('el') || 25}:${q.get('dist') || 11}`).split(';').map(v => v.split(':').map(Number));
+const tgt = new THREE.Vector3(+(q.get('tx') || 0), +(q.get('ty') || 0.4), +(q.get('tz') || 0)), vw = Math.floor(W / V.length);
+renderer.setScissorTest(true);
+V.forEach(([azd, eld, d], i) => {
+  const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 30), vw / H, 0.05, 200), el = eld * Math.PI / 180, az = azd * Math.PI / 180;
+  cam.position.set(tgt.x + d * Math.cos(el) * Math.sin(az), tgt.y + d * Math.sin(el), tgt.z + d * Math.cos(el) * Math.cos(az)); cam.lookAt(tgt);
+  renderer.setViewport(i * vw, 0, vw, H); renderer.setScissor(i * vw, 0, vw, H); renderer.render(scene, cam);
+});
+window.__info = { head, err: window.__err };
+window.__done = true;
+</script></body></html>
