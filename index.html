@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Special Military Operation — Novozavodsk</title>
+<!-- Placeholder only: the tab title is set from src/ui/brand.js (GAME_NAME) -->
+<title>Special Military Operation</title>
 <link rel="preload" href="assets/fonts/barlow-semicondensed-semibold.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="assets/fonts/big-shoulders-stencil.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/barlow-condensed-bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/big-shoulders-display.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="src/ui/style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
@@ -14,52 +16,85 @@
 <body>
 <canvas id="view"></canvas>
 
-<!-- Main menu: staff-map backdrop, identity + mode choice (left), skirmish setup (right) -->
-<div id="menu" class="screen">
-  <canvas id="menuBg" aria-hidden="true"></canvas>
-  <div class="menu-shell">
-    <header class="menu-id">
-      <div class="menu-eyebrow">Special Military Operation</div>
-      <h1 class="title">Hold<br>the line</h1>
-      <p class="tagline">Company-level battles of the Russo-Ukrainian war. Take the objectives, keep your people alive, hold until the clock runs out.</p>
-      <nav class="modes" aria-label="Game mode">
-        <button id="startBtn" class="mode mode-primary">
-          <span class="mode-t">Skirmish</span><span class="mode-d">One battle against the AI on the map you set up</span><span class="mode-go">Deploy</span>
-        </button>
-        <button id="campaignBtn" class="mode">
-          <span class="mode-t">Campaign</span><span class="mode-d">Run a brigade sector, turn by turn, between battles</span><span class="mode-go">Open HQ</span>
-        </button>
-        <button id="versusBtn" class="mode">
-          <span class="mode-t">Versus · 2 players</span><span class="mode-d">Two commanders over a direct peer-to-peer link</span><span class="mode-go">Lobby</span>
-        </button>
-      </nav>
-    </header>
+<!-- Animated backdrop shared by the main menu and the loading screen (src/ui/backdrop.js) -->
+<canvas id="menuBg" aria-hidden="true"></canvas>
 
-    <section class="setup panel" aria-label="Skirmish setup">
-      <div class="setup-head"><h2>Skirmish setup</h2><div class="kicker" id="mapKicker"></div></div>
-      <div id="mapPick"></div>
-      <p class="brief" id="mapBrief"></p>
-      <div class="setup-grid">
-        <div class="field">
-          <div class="label">Side</div>
-          <div class="seg" role="radiogroup" aria-label="Side">
-            <label class="seg-opt"><input type="radio" name="side" value="UA" checked><span class="swatch tape-ua"></span><span><b>Ukraine</b><small>BTR-80 · T-72AV · Bradley</small></span></label>
-            <label class="seg-opt"><input type="radio" name="side" value="RU"><span class="swatch tape-ru"></span><span><b>Russia</b><small>BTR-82A · T-72B3 · BMP-3</small></span></label>
+<!-- Main menu. Views: home (title + primary nav) · skirmish (battle setup) · settings (graphics + controls) -->
+<div id="menu" class="screen" data-view="home">
+  <div class="scr-fx" aria-hidden="true"></div>
+  <header class="menu-top">
+    <div class="mt-brand"><span class="mt-mark" aria-hidden="true"></span><span data-brand="name"></span></div>
+    <div class="mt-crumb" aria-live="polite"><span class="mt-home">Main menu</span><span class="mt-sep"></span><span class="mt-cur" id="menuCrumb"></span></div>
+  </header>
+
+  <section class="mv mv-home" data-v="home" aria-label="Main menu">
+    <div class="hero">
+      <div class="hero-kicker"><i aria-hidden="true"></i><span data-brand="subtitle"></span></div>
+      <h1 class="title" data-brand="title"></h1>
+      <p class="tagline" data-brand="tagline"></p>
+    </div>
+    <nav class="mainnav" aria-label="Game mode">
+      <button id="campaignBtn" class="nav-item" style="--i:0"><span class="ni-k">01</span><span class="ni-t">Campaign</span><span class="ni-d">Command a brigade sector, turn by turn, between battles</span></button>
+      <button id="skirmishBtn" class="nav-item" style="--i:1"><span class="ni-k">02</span><span class="ni-t">Skirmish</span><span class="ni-d">One battle against the AI on the map you choose</span></button>
+      <button id="versusBtn" class="nav-item" style="--i:2"><span class="ni-k">03</span><span class="ni-t">Versus</span><span class="ni-d">Two commanders over a direct peer-to-peer link</span></button>
+      <button id="settingsBtn" class="nav-item nav-minor" style="--i:3"><span class="ni-k">04</span><span class="ni-t">Settings &amp; controls</span><span class="ni-d">Graphics quality and the key reference</span></button>
+    </nav>
+  </section>
+
+  <section class="mv mv-skirmish" data-v="skirmish" aria-label="Skirmish setup" inert>
+    <div class="mv-head">
+      <button class="back" data-back aria-label="Back to the main menu"><i aria-hidden="true"></i><span>Back</span></button>
+      <div><div class="kicker">Single battle · vs AI</div><h2>Skirmish</h2></div>
+    </div>
+    <div class="sk-body">
+      <div class="sk-maps">
+        <div class="label sk-l">Battlefield</div>
+        <div id="mapPick"></div>
+      </div>
+      <aside class="sk-detail panel">
+        <div class="sk-top">
+          <div class="sk-prev"><canvas id="mapBig" width="368" height="368" aria-hidden="true"></canvas></div>
+          <div class="sk-info">
+            <div class="kicker" id="mapKicker"></div>
+            <div class="sk-objs" id="mapObjs"></div>
           </div>
         </div>
-        <div class="field">
-          <label class="label" for="roundLen">Round length</label>
-          <select id="roundLen"><option value="10">10 minutes</option><option value="12" selected>12 minutes</option><option value="14">14 minutes</option><option value="16">16 minutes</option><option value="rand">Random (10–16)</option></select>
+        <p class="brief" id="mapBrief"></p>
+        <div class="sk-grid">
+          <div class="field">
+            <div class="label">Side</div>
+            <div class="seg" role="radiogroup" aria-label="Side">
+              <label class="seg-opt"><input type="radio" name="side" value="UA" checked><span class="swatch tape-ua"></span><span><b>Ukraine</b><small>BTR-80 · T-72AV · Bradley</small></span></label>
+              <label class="seg-opt"><input type="radio" name="side" value="RU"><span class="swatch tape-ru"></span><span><b>Russia</b><small>BTR-82A · T-72B3 · BMP-3</small></span></label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label" for="roundLen">Round length</label>
+            <select id="roundLen"><option value="10">10 minutes</option><option value="12" selected>12 minutes</option><option value="14">14 minutes</option><option value="16">16 minutes</option><option value="rand">Random (10–16)</option></select>
+          </div>
         </div>
-      </div>
-    </section>
+        <div class="sk-go">
+          <div class="sk-hint">Deploy, then press <kbd>Enter</kbd> to start the clock</div>
+          <button id="startBtn" class="cta"><span>Deploy</span><i aria-hidden="true"></i></button>
+        </div>
+      </aside>
+    </div>
+  </section>
 
-    <footer class="menu-foot">
-      <div class="field field-inline"><label class="label" for="quality">Graphics</label>
-        <select id="quality"><option value="high" selected>High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
-      <details class="controls">
-        <summary>Controls</summary>
-        <div class="keys">
+  <section class="mv mv-settings" data-v="settings" aria-label="Settings and controls" inert>
+    <div class="mv-head">
+      <button class="back" data-back aria-label="Back to the main menu"><i aria-hidden="true"></i><span>Back</span></button>
+      <div><div class="kicker">Options</div><h2>Settings &amp; controls</h2></div>
+    </div>
+    <div class="set-body">
+      <div class="panel set-card">
+        <div class="label">Graphics</div>
+        <label class="set-row" for="quality"><span><b>Quality preset</b><small>Shadows, draw distance, effects. Applies to the next battle.</small></span>
+          <select id="quality"><option value="high" selected>High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+      </div>
+      <div class="panel set-card keys">
+        <div class="label">Controls</div>
+        <div class="keys-grid">
           <div><h4>Camera</h4><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or screen edge to pan · <kbd>Q</kbd><kbd>E</kbd> rotate · wheel zoom · middle-drag orbit</p></div>
           <div><h4>Select</h4><p>Click or drag a box · double-click selects the type · <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> sets a group, <kbd>1</kbd>–<kbd>9</kbd> recalls it · <kbd>Tab</kbd> folds the roster</p></div>
           <div><h4>Move</h4><p>Right-click to move or attack · right-drag a formation line · <kbd>R</kbd> run · <kbd>X</kbd> halt · <kbd>Space</kbd> pause</p></div>
@@ -67,39 +102,56 @@
           <div><h4>Deploy</h4><p>Place units inside your staging ground, then start the battle with <kbd>Enter</kbd></p></div>
           <div><h4>Support</h4><p>Kornet / Stugna teams set up when halted and engage armour to ~1.2 km. FPV teams launch three drones; right-click a target to pick one</p></div>
         </div>
-      </details>
-    </footer>
-  </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="menu-foot">
+    <span class="mf-keys"><span class="mf-back"><kbd>Esc</kbd> Back</span><span><kbd>↵</kbd> Select</span></span>
+    <span class="mf-note">Independent, non-commercial project · map data © OpenStreetMap contributors</span>
+  </footer>
 </div>
 
 <!-- Loading -->
 <div id="loading" class="screen hidden">
-  <div class="load-inner">
-    <div class="load-title">Hold the line</div>
+  <div class="scr-fx" aria-hidden="true"></div>
+  <div class="ld-brand"><span class="mt-mark" aria-hidden="true"></span><span data-brand="name"></span></div>
+  <div class="ld-main">
+    <div class="kicker ld-k">Operation area</div>
     <div class="load-map" id="loadMap">Deploying</div>
-    <div class="bar" role="progressbar" aria-label="Loading"><div id="loadBar"></div></div>
+    <div class="ld-tip"><span class="label">Field note</span><p id="loadTip"></p></div>
+  </div>
+  <div class="ld-foot">
     <div class="load-row"><span id="loadText">Loading…</span><span id="loadPct"></span></div>
+    <div class="bar" role="progressbar" aria-label="Loading"><div id="loadBar"></div></div>
   </div>
 </div>
 
 <!-- HUD -->
 <div id="hud" class="hidden">
   <div id="topbar">
-    <div id="obj-A" class="objective"><span class="tag">A</span><div class="name">School No. 7</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
-    <div id="clock"><div id="timer">12:00</div><div id="phase">CAPTURE A &amp; B · THEN HOLD</div><div id="forces"></div></div>
-    <div id="obj-B" class="objective"><span class="tag">B</span><div class="name">Market Crossroads</div><div class="ctl"><div class="fill"></div></div><div class="state"></div></div>
+    <div class="tb-main">
+      <div class="tk tk-f hidden" id="tkF"><div class="tk-head"><span class="tk-side"></span><span class="tk-rate"></span></div><div class="tk-row"><div class="tk-bar"><i></i><b></b></div><span class="tk-num">0</span></div></div>
+      <div id="clock"><div id="timer">12:00</div><div id="phase">CAPTURE A &amp; B · THEN HOLD</div></div>
+      <div class="tk tk-h hidden" id="tkH"><div class="tk-head"><span class="tk-rate"></span><span class="tk-side"></span></div><div class="tk-row"><span class="tk-num">0</span><div class="tk-bar"><i></i><b></b></div></div></div>
+    </div>
+    <div class="tb-objs" id="objRow">
+      <div id="obj-A" class="objective"><span class="tag">A</span><div class="ob-tx"><div class="name">School No. 7</div><div class="state"></div></div><div class="ctl"><div class="fill"></div></div></div>
+      <div id="obj-B" class="objective"><span class="tag">B</span><div class="ob-tx"><div class="name">Market Crossroads</div><div class="state"></div></div><div class="ctl"><div class="fill"></div></div></div>
+    </div>
+    <div id="forces"></div>
   </div>
   <div id="hud-sys"><div id="fps"></div></div>
   <div id="deploybar">
-    <div class="dk">Deployment</div>
-    <div class="dt">Place your units in your staging ground: select, then right-click or right-drag a formation line. <kbd>M</kbd> mounts and dismounts. The enemy is deploying across the map, opposite your staging ground.</div>
+    <div class="dk"><b>Deployment</b><span>Clock stopped</span></div>
+    <div class="dt">Place your units in your staging ground: select, then right-click or right-drag a formation line. <kbd>M</kbd> mounts and dismounts. The enemy is deploying opposite you.</div>
     <button id="startBattle" class="btn btn-go">Start battle <kbd>Enter</kbd></button>
   </div>
   <div id="alerts" aria-live="polite"></div>
   <div id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas><div class="mm-n">N</div></div>
   <div id="cards"></div>
+  <div id="unitinfo"></div>
   <div id="cmd">
-    <div id="unitinfo"></div>
     <div id="orders">
       <button data-o="run" data-tip="Run: move at the double, tires the men" data-k="R"><span class="ol">Run</span></button>
       <button data-o="holdfire" data-tip="Hold fire: stay hidden, don't engage" data-k="F"><span class="ol">Hold fire</span></button>
@@ -117,7 +169,7 @@
 <div id="selbox"></div>
 
 <!-- End screen: after-action report -->
-<div id="endscreen" class="screen hidden"><div class="aar panel"><div class="kicker" id="endKicker">ROUND OVER</div><h1 id="endTitle">VICTORY</h1><div id="endStats"></div><div class="aar-actions"><button class="big" onclick="location.reload()">Play again</button></div></div></div>
+<div id="endscreen" class="screen hidden"><div class="aar"><div class="aar-brand" data-brand="name"></div><div class="kicker" id="endKicker">ROUND OVER</div><h1 id="endTitle">VICTORY</h1><div id="endStats"></div><div class="aar-actions"><button class="big" onclick="location.reload()">Play again</button><button class="btn btn-ghost aar-menu" onclick="location.href=location.pathname">Main menu</button></div></div></div>
 
 <script type="module" src="src/main.js"></script>
 </body>
