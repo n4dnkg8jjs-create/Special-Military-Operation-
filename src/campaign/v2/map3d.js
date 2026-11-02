@@ -219,6 +219,9 @@ export class StrategicMap {
   buildBuildings() {
     const A = this.def.aor, [latS, lonW, latN, lonE] = A.bbox, inAor = (la, lo) => la >= latS && la <= latN && lo >= lonW && lo <= lonE;
     const list = [];   // [x, z, w(km), d(km), angle, h(km), kind, cellId]
+    // water mask (reservoirs, ponds): no procedural houses or trees standing in the water
+    const wet = [...(this.osm?.water || []), ...(this.geo?.water || [])].map(w => { const pts = w.map(p => [this.X(p[1]), this.Z(p[0])]), xs = pts.map(p => p[0]), zs = pts.map(p => p[1]); return { pts, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; });
+    const inWater = (x, z) => wet.some(w => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1 && pip([x, z], w.pts));
     for (const b of this.osm?.buildings || []) if (inAor(b[0], b[1])) list.push([this.X(b[1]), this.Z(b[0]), b[2] / 1000, b[3] / 1000, b[4], b[5] / 1000, b[6]]);
     // procedural towns where the OSM extracts have no footprints
     // procedural fill where the OSM footprints are missing or sparse (the extracts cover patches only)
@@ -231,7 +234,7 @@ export class StrategicMap {
       const want = { hamlet: 25, village: 45, town: 90, industrial: 15 }[s.kind] * (s.size || 1);
       if (have >= want * 0.7) continue;
       const extra = []; procTown(extra, p.x, p.z, s, rng(hash(c.id + s.name)));
-      for (const b of extra) if (!crowded(b[0], b[1])) list.push(b);
+      for (const b of extra) if (!crowded(b[0], b[1]) && !inWater(b[0], b[1])) list.push(b);
     }
     this.buildingList = list;
     const body = new THREE.BoxGeometry(1, 1, 1); body.translate(0, 0.5, 0);
@@ -250,7 +253,7 @@ export class StrategicMap {
     });
     IR.count = ir; this.scene.add(IB, IR); this.bMesh = IB;
     // trees: OSM tree rows and woods, procedural windbreaks and forest cells
-    const trees = [], RT = rng(9), add = (x, z) => { if (trees.length < 18000) trees.push([x, z, 0.6 + RT() * 0.7]); };
+    const trees = [], RT = rng(9), add = (x, z) => { if (trees.length < 18000 && !inWater(x, z)) trees.push([x, z, 0.6 + RT() * 0.7]); };
     const along = (ax, az, bx, bz, step) => { const L = Math.hypot(bx - ax, bz - az), n = Math.floor(L / step); for (let i = 0; i <= n; i++) add(lerp(ax, bx, i / Math.max(1, n)) + (RT() - 0.5) * 0.01, lerp(az, bz, i / Math.max(1, n)) + (RT() - 0.5) * 0.01); };
     const inside = (x, z) => x > this.x0 && x < this.x1 && z > this.z0 && z < this.z1;
     for (const t of this.osm?.treeRows || []) for (let i = 1; i < t.length; i++) along(this.X(t[i - 1][1]), this.Z(t[i - 1][0]), this.X(t[i][1]), this.Z(t[i][0]), 0.03);
