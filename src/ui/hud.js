@@ -1,17 +1,16 @@
 import * as THREE from 'three';
 import { WEAPONS } from '../config.js';
-import { ROADS, MAP_SIZE } from '../world/city.js';
+import { ROADS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
+import { unitSymbol, unitKindOf, UNIT_TYPE_NAME, ORDER_ICONS } from './symbols.js';
 
-const ICONS = {
-  squad: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/></g></svg>`,
-  btr: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><ellipse cx="31" cy="20" rx="20" ry="9"/><circle cx="16" cy="38" r="1.6"/><circle cx="26" cy="38" r="1.6"/><circle cx="36" cy="38" r="1.6"/><circle cx="46" cy="38" r="1.6"/></g></svg>`,
-  ifv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M6 6 L56 34 M56 6 L6 34"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
-  tank: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><rect x="14" y="12" width="34" height="16" rx="8"/></g></svg>`,
-  atgm: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M18 30 L31 11 L44 30"/></g></svg>`,
-  spg: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><circle cx="31" cy="17" r="4" fill="currentColor"/><rect x="16" y="25" width="30" height="6" rx="3"/></g></svg>`,
-  fpv: `<svg viewBox="0 0 62 40"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="50" height="28"/><path d="M15 16 Q23 26 31 18 Q39 26 47 16"/></g></svg>`,
-};
+// Battle HUD. Look & tokens: src/ui/style.css. All per-frame DOM writes are change-guarded
+// (each element remembers what it last showed), slow panels refresh at 4 Hz.
+const C = { friend: '#5cb2e6', hostile: '#ea5a4b', neutral: '#a5ac9e', accent: '#e9a93b', ok: '#7dbd69', t1: '#dfe4d6' };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const set = (el, k, v) => { if (el['_' + k] !== v) { el['_' + k] = v; el[k] = v; } };              // guarded property write
+const setS = (el, k, v) => { if (el['_s' + k] !== v) { el['_s' + k] = v; el.style[k] = v; } };      // guarded style write
+const tog = (el, c, on) => { on = !!on; const k = '_c' + c; if (el[k] !== on) { el[k] = on; el.classList.toggle(c, on); } };
 
 export class HUD {
   constructor(game) {
@@ -20,6 +19,7 @@ export class HUD {
     this.alerts = document.getElementById('alerts'); this.mm = document.getElementById('minimap'); this.mctx = this.mm.getContext('2d');
     this.selected = new Set(); this.groups = {}; this.banners = new Map();
     this.timerEl = document.getElementById('timer'); this.phaseEl = document.getElementById('phase'); this.fpsEl = document.getElementById('fps');
+    this.forcesEl = document.getElementById('forces');
     document.getElementById('hud').classList.remove('hidden');
     // objective boxes: A / B exist in the page; further objectives (C, D, ...) are cloned from A and placed outside them
     const tb = document.getElementById('topbar'), tplA = document.getElementById('obj-A');
@@ -32,9 +32,19 @@ export class HUD {
       }
       const n = document.querySelector(`#obj-${o.id} .name`); if (n) n.textContent = o.name;
     }
+    // objectives the map doesn't have (e.g. B on a one-objective map) are hidden
+    for (const el of tb.querySelectorAll('.objective')) el.classList.toggle('hidden', !game.objectives.some(o => `obj-${o.id}` === el.id));
+    this.objEls = game.objectives.map(o => { const el = document.getElementById(`obj-${o.id}`); return { o, el, fill: el.querySelector('.fill'), state: el.querySelector('.state') }; });
     tb.classList.toggle('many', game.objectives.length > 2);
-    this.rings(); this.drawMinimapBase(); this.rebuildCards();
-    this.mm.addEventListener('mousedown', e => this.minimapClick(e));
+    // order buttons: icons in front of the labels
+    this.orderBtns = {};
+    for (const b of document.querySelectorAll('#orders button')) { this.orderBtns[b.dataset.o] = b; if (!b.querySelector('.ico') && ORDER_ICONS[b.dataset.o]) b.insertAdjacentHTML('afterbegin', ORDER_ICONS[b.dataset.o]); }
+    this.mortarEl = document.getElementById('mortarCount');
+    this.rings(); this.sizeMinimap(); this.drawMinimapBase(); this.rebuildCards();
+    addEventListener('resize', () => { this.sizeMinimap(); });
+    this.mm.addEventListener('mousedown', e => { if (e.button !== 0) return; this.mmDrag = true; this.minimapClick(e); });
+    addEventListener('mousemove', e => { if (this.mmDrag) this.minimapClick(e); });
+    addEventListener('mouseup', () => { this.mmDrag = false; });
     this.mm.addEventListener('contextmenu', e => { e.preventDefault(); this.minimapClick(e, true); });
     this.frames = 0; this.fpsT = 0;
     document.getElementById('startBattle').addEventListener('click', () => game.startBattle());
@@ -77,9 +87,9 @@ export class HUD {
     m.rotation.x = -Math.PI / 2; m.position.set(p.x, 0.25, p.z); m.renderOrder = 3; g.scene.add(m); this._gm = m;
     this._gmT = setTimeout(() => { g.scene.remove(m); if (this._gm === m) this._gm = null; }, 30000);
   }
-  // ------------------------------------------------------------ cards
-  // Order-of-battle roster: a compact, grouped, scrollable list (left edge) instead of a row of big cards.
-  // Squads are nested under the BTR that carries them; groups collapse; Tab folds the whole panel to icons.
+  // ------------------------------------------------------------ roster
+  // Order-of-battle roster: a compact, grouped, scrollable list (left edge).
+  // Squads are nested under the carrier that brought them; groups collapse; Tab folds the whole panel to symbols.
   rebuildCards() {
     this.cards.innerHTML = ''; this.cards.className = 'roster' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
@@ -87,28 +97,31 @@ export class HUD {
     const groupOf = u => u.type === 'vehicle' ? (u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
     const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'CREWS'];
     const head = document.createElement('div'); head.className = 'rhead';
-    head.innerHTML = `<span>ORDER OF BATTLE</span><span class="rbtn" title="Fold (Tab)">${this.rosterMini ? '▸' : '◂'}</span>`;
+    head.innerHTML = `<span class="label">Order of battle<span class="rcount"></span></span><span class="rbtn" title="Fold the roster (Tab)"></span>`;
     head.querySelector('.rbtn').addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
+    this.rcountEl = head.querySelector('.rcount');
     this.cards.appendChild(head);
     const body = document.createElement('div'); body.className = 'rbody'; this.cards.appendChild(body);
     this.rosterFold ||= {};
     const row = (u, nested) => {
       const el = document.createElement('div'); el.className = 'r' + (nested ? ' nest' : '');
-      const kind = u.type === 'squad' ? (u.kind === 'atgm' ? 'atgm' : u.kind === 'fpv' ? 'fpv' : 'squad') : u.kind;
-      const col = u.type === 'squad' && u.assault ? '#e38b3a' : u.crew ? '#9aa3a8' : u.faction.color;
-      el.innerHTML = `<span class="g"></span><span class="ic" style="color:${col}">${ICONS[kind] || ICONS.squad}</span><span class="tx"><span class="nm">${u.name}</span><span class="st"></span></span><span class="mn"></span><span class="bars"><i class="hp"><b></b></i><i class="am"><b></b></i><i class="mo"><b></b></i></span>`;
+      el.innerHTML = `<span class="g"></span><span class="ic">${unitSymbol(unitKindOf(u), 'friend')}</span><span class="tx"><span class="nm">${esc(u.name)}</span><span class="st"></span></span><span class="mn"></span><span class="bars"><i class="hp"><b></b></i><i class="am"><b></b></i><i class="mo"><b></b></i></span>`;
       el.title = u.name;
       el.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; this.select([u], e.shiftKey); this.g.sfx('ui_select'); });
       el.addEventListener('dblclick', () => { const c = u.center(); this.g.cam.lookAt(c.x, c.z); });
-      this.cardEls.set(u, el); return el;
+      const q = s => el.querySelector(s);
+      this.cardEls.set(u, { el, g: q('.g'), st: q('.st'), mn: q('.mn'), hp: q('.hp b'), am: q('.am b'), mo: q('.mo b'), moI: q('.mo') }); return el;
     };
+    this.rosterGroups = [];
     for (const grp of order) {
       const members = units.filter(u => groupOf(u) === grp); if (!members.length) continue;
-      const h = document.createElement('div'); h.className = 'rg'; const folded = this.rosterFold[grp];
-      h.innerHTML = `<span>${folded ? '▸' : '▾'} ${grp}</span><span class="rgn"></span>`; h.dataset.grp = grp;
+      const h = document.createElement('div'); const folded = this.rosterFold[grp]; h.className = 'rg' + (folded ? ' folded' : '');
+      h.innerHTML = `<span class="chev"></span><span>${grp}</span><span class="rgn"></span>`; h.dataset.grp = grp;
+      h.title = 'Click to fold · Ctrl-click selects the group';
       h.addEventListener('mousedown', e => { e.stopPropagation(); if (e.shiftKey || e.ctrlKey) { this.select(members.flatMap(m => [m, ...units.filter(q => q.carrier === m)]), e.shiftKey); return; } this.rosterFold[grp] = !folded; this.rebuildCards(); });
       body.appendChild(h);
-      if (folded) { for (const u of members) this.cardEls.set(u, null); continue; }
+      this.rosterGroups.push({ el: h.querySelector('.rgn'), members: [...members, ...members.flatMap(m => units.filter(q => q.type === 'squad' && q.carrier === m && groupOf(q) === null))] });
+      if (folded) { for (const u of members) this.cardEls.set(u, null); for (const q of units) if (q.carrier && members.includes(q.carrier) && groupOf(q) === null) this.cardEls.set(q, null); continue; }
       for (const u of members) {
         body.appendChild(row(u, false));
         if (u.type === 'vehicle') for (const q of units.filter(q => q.type === 'squad' && q.carrier === u && groupOf(q) === null)) body.appendChild(row(q, true));
@@ -116,174 +129,278 @@ export class HUD {
     }
     // squads whose carrier is gone and that weren't placed yet
     for (const u of units) if (!this.cardEls.has(u)) body.appendChild(row(u, false));
+    this.rosterUnits = units;
   }
   updateCards() {
-    for (const [u, el] of this.cardEls) {
-      if (!el) continue;
+    const gOf = new Map(); for (const [k, v] of Object.entries(this.groups)) for (const u of v) if (!gOf.has(u)) gOf.set(u, k);
+    for (const [u, r] of this.cardEls) {
+      if (!r) continue;
       const dead = u.destroyed;
-      el.classList.toggle('dead', dead); el.classList.toggle('sel', this.selected.has(u));
-      const q = s => el.querySelector(s);
-      let men, hp, am, mo, st, rout = false;
+      tog(r.el, 'dead', dead); tog(r.el, 'sel', this.selected.has(u)); tog(r.el, 'mounted', u.type === 'squad' && u.mounted);
+      let men, hp, am, mo, st, cls = '';
       if (u.type === 'squad') {
         const eff = u.effective.length, wnd = u.soldiers.filter(s => s.state === 'critical' || s.state === 'stable').length;
-        men = `${eff}${wnd ? '+' + wnd : ''}`; hp = eff / u.soldiers.length; am = u.ammoFrac(); mo = u.morale / 100; rout = u.routing;
-        st = dead ? 'LOST' : u.pinned ? 'PINNED' : u.mounted ? 'MOUNTED' : u.building ? 'GARRISONED' : u.status?.() || u.moraleState();
+        men = `${eff}${wnd ? '+' + wnd : ''}`; hp = eff / u.soldiers.length; am = u.ammoFrac(); mo = u.morale / 100;
+        st = dead ? 'LOST' : u.routing ? 'ROUTING' : u.pinned ? 'PINNED' : u.mounted ? 'MOUNTED' : u.building ? 'GARRISONED' : u.status?.() || u.moraleState();
+        cls = u.routing || st === 'PINNED' ? 'rout' : /SHAKEN|WAVERING/.test(st) ? 'warn' : /GARRISON|MOVING|CLEAR/.test(st) ? 'act' : '';
       } else {
-        men = u.destroyed ? '✕' : `${u.crew}`; hp = Math.max(0, u.hp / u.def.hp); am = u.ammoFrac(); mo = u.destroyed ? 0 : 1;
+        men = u.destroyed ? '×' : `${u.crew}`; hp = Math.max(0, u.hp / u.def.hp); am = u.ammoFrac(); mo = u.destroyed ? 0 : 1;
         st = u.moraleState() + (u.passengers ? ' · LOADED' : '');
+        cls = /FIRE|IMMOB|DAMAGED|CREW/.test(st) ? 'warn' : '';
       }
-      q('.mn').textContent = men; q('.st').textContent = st; q('.st').classList.toggle('rout', rout || st === 'PINNED');
-      q('.hp b').style.height = `${hp * 100}%`; q('.am b').style.height = `${am * 100}%`; q('.mo b').style.height = `${mo * 100}%`;
-      q('.mo b').style.background = rout ? '#c8483a' : mo < 0.45 ? '#d8b25a' : '#8fb069';
-      const gnum = Object.entries(this.groups).find(([k, v]) => v.includes(u)); q('.g').textContent = gnum ? gnum[0] : '';
+      set(r.mn, 'textContent', men); set(r.st, 'textContent', st); set(r.st, 'className', 'st ' + cls);
+      setS(r.hp, 'width', `${Math.round(hp * 100)}%`); setS(r.am, 'width', `${Math.round(Math.min(1, am) * 100)}%`); setS(r.mo, 'width', `${Math.round(Math.min(1, mo) * 100)}%`);
+      set(r.moI, 'className', 'mo' + (u.type === 'squad' && u.routing ? ' bad' : mo < 0.45 ? ' warn' : ''));
+      set(r.g, 'textContent', gOf.get(u) || '');
     }
+    let fit = 0, all = 0;
+    for (const u of this.rosterUnits || []) { if (u.type === 'squad' && !u.crew) { fit += u.effective.length; all += u.soldiers.length; } }
+    if (this.rcountEl) set(this.rcountEl, 'textContent', `${fit}/${all} men`);
+    for (const gr of this.rosterGroups || []) set(gr.el, 'textContent', `${gr.members.filter(u => !u.destroyed).length}/${gr.members.length}`);
   }
   select(units, add = false) {
     if (!add) this.selected.clear();
     for (const u of units) if (u && (u.type === 'squad' ? !u.destroyed : !u.destroyed) && u.side === 'player') this.selected.add(u);
-    this.updateInfo(true);
+    this.updateInfo(true); if (this.cardEls) this.updateCards();
   }
-  // ------------------------------------------------------------ info panel
+  // ------------------------------------------------------------ order bar + unit panel
+  updateOrders(sel) {
+    const g = this.g, B = this.orderBtns, inp = g.input, deploy = g.phase === 'deploy';
+    const sq = sel.filter(u => u.type === 'squad');
+    const en = {
+      run: true, holdfire: sel.length > 0, halt: sel.length > 0,
+      garrison: sq.some(u => !u.mounted), smoke: sq.some(u => !u.mounted),
+      mount: sel.some(u => u.type === 'squad' ? (u.mounted || (u.carrier && !u.carrier.destroyed)) : !!u.passengers || (deploy && (u.kind === 'btr' || u.kind === 'ifv'))),
+      resupply: sq.some(u => u.carrier && !u.carrier.destroyed && !u.mounted),
+      fireground: sel.length > 0 && !deploy, mortar: g.mortars > 0 && !deploy,
+    };
+    for (const k in B) set(B[k], 'disabled', !en[k]);
+    tog(B.holdfire, 'on', sel.length > 0 && sel.every(u => u.holdFire));
+    tog(B.run, 'on', !!inp?.runMode);
+    tog(B.fireground, 'on', inp?.mode === 'fireground'); tog(B.mortar, 'on', inp?.mode === 'mortar');
+    set(this.mortarEl, 'textContent', String(g.mortars));
+  }
   updateInfo(force) {
     const sel = [...this.selected].filter(u => !u.destroyed);
-    const ob = document.getElementById('orders');
-    for (const b of ob.querySelectorAll('button')) b.disabled = !sel.length && b.dataset.o !== 'mortar';
-    ob.querySelector('[data-o=holdfire]').classList.toggle('on', sel.length > 0 && sel.every(u => u.holdFire));
-    ob.querySelector('[data-o=run]').classList.toggle('on', !!this.g.input?.runMode);
-    document.getElementById('mortarCount').textContent = this.g.mortars;
+    this.updateOrders(sel);
     const u = this.inspect || (sel.length === 1 ? sel[0] : null);
-    if (!u) { this.info.style.display = 'none'; return; }
-    this.info.style.display = 'block';
-    let html = `<h4>${u.side === 'player' ? '' : 'Enemy '}${u.name}</h4>`;
-    const row = (a, b) => `<div class="row"><span>${a}</span><b>${b}</b></div>`;
+    let html = '';
+    if (u) html = this.unitPanel(u);
+    else if (sel.length > 1) {
+      const men = sel.reduce((n, q) => n + (q.type === 'squad' ? q.effective.length : 0), 0), veh = sel.filter(q => q.type === 'vehicle').length;
+      html = `<div class="ui-head"><div class="tt"><h4>${sel.length} units selected</h4><div class="sub">${[men ? `${men} men` : '', veh ? `${veh} vehicle${veh > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} · right-drag to form a line</div></div></div><div class="ui-multi">${sel.slice(0, 18).map(q => unitSymbol(unitKindOf(q), 'friend')).join('')}</div>`;
+    }
+    if (html !== this.infoHTML) { this.infoHTML = html; this.info.innerHTML = html; }
+    setS(this.info, 'display', html ? 'block' : 'none');
+    tog(this.info, 'enemy', u && u.side !== 'player');
+  }
+  unitPanel(u) {
+    const aff = u.side === 'player' ? 'friend' : 'hostile', kind = unitKindOf(u);
+    const row = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
+    const meter = (label, f, val, cls) => `<span>${label}</span><div class="meter ${cls}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
+    let chip = '', meters = '', rows = '';
     if (u.type === 'squad') {
-      const s = u.soldiers;
-      const ammo = s.filter(x => x.effective).map(x => x.weaponKey === 'rpg7' ? `${x.inMag + x.mags} rkt` : `${x.mags}`).join(' ');
-      html += row('Fit / wounded / KIA', `${u.effective.length} / ${s.filter(x => x.state === 'critical' || x.state === 'stable' || x.state === 'light').length} / ${s.filter(x => x.state === 'dead').length}`);
-      html += row('Morale', `${u.moraleState()} (${Math.round(u.morale)})`);
-      html += row('Ammunition', `${Math.round(u.ammoFrac() * 100)}%`);
-      if (u.side === 'player') html += row('Mags per man', ammo);
-      html += row('Status', u.mounted ? `Mounted in ${u.carrier?.name}` : u.building ? 'Garrisoned' : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
-      if (u.holdFire) html += row('Fire', 'HOLD FIRE');
+      const s = u.soldiers, eff = u.effective.length, ms = u.moraleState(), am = u.ammoFrac();
+      chip = u.routing ? '<span class="chip bad">Routing</span>' : u.pinned ? '<span class="chip bad">Pinned</span>' : u.mounted ? '<span class="chip dim">Mounted</span>' : u.building ? '<span class="chip ok">Garrisoned</span>' : '';
+      meters = meter('Strength', eff / s.length, `${eff}/${s.length}`, 'friend')
+        + meter('Morale', u.morale / 100, `${ms[0] + ms.slice(1).toLowerCase()} ${Math.round(u.morale)}`, u.routing ? 'bad' : u.morale < 45 ? 'warn' : 'ok')
+        + meter('Ammo', am, `${Math.round(am * 100)}%`, am < 0.25 ? 'bad' : am < 0.5 ? 'warn' : '');
+      rows += row('Fit / wounded / KIA', `${eff} / ${s.filter(x => x.state === 'critical' || x.state === 'stable' || x.state === 'light').length} / ${s.filter(x => x.state === 'dead').length}`);
+      if (u.side === 'player') rows += row('Mags per man', s.filter(x => x.effective).map(x => x.weaponKey === 'rpg7' ? `${x.inMag + x.mags}r` : `${x.mags}`).join(' '));
+      rows += row('Status', u.mounted ? `Mounted in ${esc(u.carrier?.name)}` : u.building ? 'Garrisoned' : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
+      if (u.holdFire) rows += row('Fire', 'Holding fire');
       const sp = u.support;
-      if (sp && sp.drones != null) { html += row('System', 'FPV strike drones (PG-7VL warhead)'); html += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / 3`); html += row('Team', sp.status()); }
-      else if (sp) { html += row('System', `${sp.W.name} · ${sp.W.range} m · tandem HEAT`); html += row('Missiles', `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? ' + 1 in flight' : ''}`); html += row('Team', sp.status()); }
-      if (u.carrier && u.side === 'player') html += row('Carrier', `${u.carrier.name}${u.carrier.destroyed ? ' (lost)' : ''}`);
+      if (sp && sp.drones != null) { rows += row('System', 'FPV strike drones (PG-7VL)'); rows += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / 3`); rows += row('Team', sp.status()); }
+      else if (sp) { rows += row('System', `${sp.W.name} · ${sp.W.range} m`); rows += row('Missiles', `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? ' + 1 in flight' : ''}`); rows += row('Team', sp.status()); }
+      if (u.carrier && u.side === 'player') rows += row('Carrier', `${esc(u.carrier.name)}${u.carrier.destroyed ? ' (lost)' : ''}`);
     } else {
-      html += row('Condition', u.moraleState());
-      html += row('Hull integrity', `${Math.max(0, Math.round(u.hp / u.def.hp * 100))}%`);
-      html += row('Crew', `${Math.max(0, u.crew)}/${u.def.crew || 3}`);
+      const st = u.moraleState(), hull = Math.max(0, u.hp / u.def.hp), crewMax = u.def.crew || 3, am = u.ammoFrac();
+      chip = st === 'OPERATIONAL' ? '' : `<span class="chip ${/FIRE|DESTROY/.test(st) ? 'bad' : 'warn'}">${st.toLowerCase()}</span>`;
+      meters = meter('Hull', hull, `${Math.round(hull * 100)}%`, hull < 0.35 ? 'bad' : hull < 0.65 ? 'warn' : 'friend')
+        + meter('Crew', Math.max(0, u.crew) / crewMax, `${Math.max(0, u.crew)}/${crewMax}`, u.crew < crewMax ? 'warn' : 'ok')
+        + meter('Main gun', am, `${u.weapons[0].ammo}`, am < 0.2 ? 'bad' : am < 0.45 ? 'warn' : '');
       const w = u.weapons[0];
       if (u.kind === 'spg') {
-        html += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
-        html += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C)`);
-        html += row('Range', `indirect from ${u.def.minRange >= 1000 ? (u.def.minRange / 1000).toFixed(1) + ' km' : u.def.minRange + ' m'} · direct fire (line of sight) to ${(u.def.directRange / 1000).toFixed(1)} km`);
-        html += row('Into / out of action', `${u.def.deployT} s / ${u.def.packT} s${u.def.arc ? ' · ±30° sector' : ' · 360° turret'}`);
-        if (u.def.mg) html += row('Kord 12.7 mm', `${u.weapons[1].ammo}`);
-        this.info.innerHTML = html; return;
+        rows += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
+        rows += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C)`);
+        rows += row('Range', `indirect ≥ ${u.def.minRange >= 1000 ? (u.def.minRange / 1000).toFixed(1) + ' km' : u.def.minRange + ' m'} · direct ≤ ${(u.def.directRange / 1000).toFixed(1)} km`);
+        rows += row('Into / out of action', `${u.def.deployT} s / ${u.def.packT} s${u.def.arc ? ' · ±30°' : ' · 360°'}`);
+        if (u.def.mg) rows += row('Kord 12.7 mm', `${u.weapons[1].ammo}`);
+      } else {
+        rows += row('Main gun', u.kind === 'tank' ? `APFSDS ${w.ap} · HE-FRAG ${w.he}` : `${WEAPONS[w.key]?.name || ''} · ${w.ammo} rds`);
+        if (u.gun100) rows += row('100 mm', `${u.gun100.ammo} HE-Frag`);
+        if (u.atgm) rows += row('ATGM', u.atgmDisabled ? 'launcher destroyed' : `${WEAPONS[u.atgm.key].name.split(' (')[0]} · ${u.atgm.ammo}`);
+        rows += row('Coax PKT', `${u.weapons[1].ammo}`);
+        if (u.supply) rows += row('Resupply stock', `${u.supply.rifle} rds · ${u.supply.rpg} rkt`);
+        if (u.passengers) rows += row('Carrying', esc(u.passengers.name));
       }
-      html += row('Main gun', u.kind === 'tank' ? `${w.ammo} rds (APFSDS ${w.ap} / HE-FRAG ${w.he})` : `${WEAPONS[w.key]?.name || ''} · ${w.ammo} rds`);
-      if (u.gun100) html += row('100 mm', `${u.gun100.ammo} HE-Frag`);
-      if (u.atgm) html += row('ATGM', u.atgmDisabled ? 'launcher destroyed' : `${WEAPONS[u.atgm.key].name.split(' (')[0]} · ${u.atgm.ammo}`);
-      html += row('Coax PKT', `${u.weapons[1].ammo}`);
-      if (u.supply) html += row('Resupply stock', `${u.supply.rifle} rds · ${u.supply.rpg} rkt`);
-      if (u.passengers) html += row('Carrying', u.passengers.name);
     }
-    this.info.innerHTML = html;
+    return `<div class="ui-head">${unitSymbol(kind, aff)}<div class="tt"><h4>${u.side === 'player' ? '' : 'Enemy '}${esc(u.name)}</h4><div class="sub">${UNIT_TYPE_NAME[kind] || ''}</div></div>${chip}</div><div class="ui-meters">${meters}</div><div class="kv">${rows}</div>`;
   }
   // ------------------------------------------------------------ banners
+  // World-anchored unit flags. Far-away banners collapse to the symbol and fade; selected ones stay crisp.
   updateBanners() {
-    const cam = this.g.renderer.camera, v = new THREE.Vector3();
+    const cam = this.g.renderer.camera, v = new THREE.Vector3(), cp = cam.position, W = innerWidth, H = innerHeight;
     const all = [...this.g.squads, ...this.g.vehicles];
     for (const u of all) {
       let b = this.banners.get(u);
       const show = !u.destroyed && (u.side === 'player' || u.spotted) && !(u.type === 'squad' && u.mounted);
-      if (!show) { if (b) b.el.style.display = 'none'; continue; }
+      if (!show) { if (b) setS(b.el, 'display', 'none'); continue; }
       if (!b) {
-        const el = document.createElement('div'); el.className = 'banner';
-        const col = u.side === 'player' ? u.faction.color : '#c8483a';
-        el.innerHTML = `<div class="pin">PINNED</div><div class="flag" style="border-color:${col}">${u.side === 'player' ? u.name : (u.type === 'squad' ? 'Infantry' : u.name)}</div><div class="mb"><i></i></div><div class="pole"></div>`;
-        el.addEventListener('mousedown', e => { if (u.side === 'player' && e.button === 0) { e.stopPropagation(); this.select([u], e.shiftKey); } });
+        const el = document.createElement('div'), friend = u.side === 'player'; el.className = 'banner ' + (friend ? 'f' : 'h');
+        if (friend) el.style.setProperty('--tape', u.faction.color);
+        el.innerHTML = `<div class="pin">PINNED</div><div class="flag">${unitSymbol(unitKindOf(u), friend ? 'friend' : 'hostile')}<span class="bn">${esc(friend ? u.name : (u.type === 'squad' ? 'Infantry' : u.name))}</span></div><div class="mb"><i></i></div><div class="pole"></div>`;
         document.body.appendChild(el); b = { el, bar: el.querySelector('.mb i'), pin: el.querySelector('.pin') }; this.banners.set(u, b);
       }
       const c = u.type === 'squad' ? (u.leader || u.alive[0])?.pos || u.center() : u.pos;
-      v.set(c.x, (u.type === 'squad' ? 2.4 : 4.2) + (u.type === 'squad' && u.leader?.inside && u.leader.inside !== 'btr' ? u.leader.pos.y : 0), c.z).project(cam);
-      if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) { b.el.style.display = 'none'; continue; }
-      b.el.style.display = 'flex';
-      b.el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`; b.el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
-      b.el.classList.toggle('sel', this.selected.has(u));
+      v.set(c.x, (u.type === 'squad' ? 2.4 : 4.2) + (u.type === 'squad' && u.leader?.inside && u.leader.inside !== 'btr' ? u.leader.pos.y : 0), c.z);
+      const dist = v.distanceTo(cp); v.project(cam);
+      if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) { setS(b.el, 'display', 'none'); continue; }
+      setS(b.el, 'display', 'flex');
+      const x = Math.round((v.x * 0.5 + 0.5) * W), y = Math.round((-v.y * 0.5 + 0.5) * H);
+      setS(b.el, 'transform', `translate(${x}px,${y}px) translate(-50%,-100%)`);
+      const sel = this.selected.has(u);
+      tog(b.el, 'sel', sel); tog(b.el, 'far', !sel && dist > 140);
+      setS(b.el, 'opacity', sel ? '1' : String(Math.round(Math.max(0.45, Math.min(1, 1 - (dist - 110) / 260)) * 20) / 20));
       const pinned = u.type === 'squad' && u.pinned && !u.routing, note = pinned ? 'PINNED' : (u.bannerNote || ''); if (note !== b.note) { b.note = note; b.pin.textContent = note; b.pin.style.display = note ? 'block' : 'none'; b.pin.classList.toggle('fire', /FIRE/.test(note)); }
       const val = u.type === 'squad' ? u.morale : Math.max(0, u.hp / u.def.hp * 100);
-      b.bar.style.width = `${val}%`; b.bar.style.background = u.type === 'squad' && u.routing ? '#c8483a' : val < 45 ? '#d8b25a' : '#8fb069';
+      setS(b.bar, 'width', `${Math.round(val)}%`); set(b.bar, 'className', u.type === 'squad' && u.routing ? 'bad' : val < 45 ? 'warn' : '');
     }
   }
   // ------------------------------------------------------------ top bar
   updateTop() {
     const g = this.g, left = Math.max(0, g.roundLen - g.time);
-    this.timerEl.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    set(this.timerEl, 'textContent', `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`);
+    tog(this.timerEl, 'low', g.phase !== 'deploy' && left < 60);
     const lost = g.objectives.filter(o => o.owner === 'enemy');
     const men = side => g.squads.reduce((n, q) => n + (q.side === side && !q.destroyed ? q.effective.length : 0), 0), veh = side => g.vehicles.filter(v => v.side === side && !v.destroyed).length;
     const res = g.commander ? Math.max(0, (g.commander.waves?.length ?? g.commander.plan.length) - g.commander.waveI) : 0;
-    (this.forcesEl ||= document.getElementById('forces')).textContent = `YOU ${men('player')} MEN · ${veh('player')} VEH${g.reinforced ? '' : ' (+1 RESERVE)'}   ENEMY ≈${men('enemy')} · ${veh('enemy')}${res ? ` (+${res} RESERVE)` : ''}`;
-    this.phaseEl.textContent = g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : g.objectives.length > 2 ? 'HOLD ALL OBJECTIVES' : 'HOLD BOTH OBJECTIVES';
-    for (const o of g.objectives) {
-      const el = document.getElementById(`obj-${o.id}`);
-      el.querySelector('.fill').style.width = `${(o.control + 100) / 2}%`;
-      el.classList.toggle('lost', o.owner === 'enemy'); el.classList.toggle('contested', o.contested);
-      el.querySelector('.state').textContent = o.owner === 'neutral' ? (o.p || o.e ? `CONTESTED · ${Math.round(o.p || 0)} vs ${Math.round(o.e || 0)}` : 'NEUTRAL') : o.owner === 'enemy' ? (o.captured ? `ENEMY HELD · ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - o.lostT))}s TO RETAKE` : o.p > 0 ? `ASSAULTING · ${Math.round(o.p)} vs ${Math.round(o.e)}` : 'ENEMY HELD — CAPTURE') : o.contested ? `CONTESTED · ${Math.round(o.p)} vs ${Math.round(o.e)}` : o.e > 0 ? 'UNDER ATTACK' : 'HELD';
+    set(this.forcesEl, 'innerHTML', `<span class="fz f" title="Your force"><b>${men('player')}</b>men <b>${veh('player')}</b>veh${g.reinforced ? '' : ' +1 res'}</span><span class="fz h" title="Enemy (estimate)"><b>≈${men('enemy')}</b>men <b>${veh('enemy')}</b>veh${res ? ` +${res} res` : ''}</span>`);
+    set(this.phaseEl, 'textContent', g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED' : g.phase === 'capture' ? `CAPTURE ${g.objectives.filter(o => !o.captured).map(o => o.id).join(' & ')} · THEN HOLD` : lost.length ? `RETAKE ${lost.map(o => o.id).join(' & ')} — ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - Math.max(...lost.map(o => o.lostT))))}s` : g.objectives.length > 2 ? 'HOLD ALL OBJECTIVES' : 'HOLD BOTH OBJECTIVES');
+    tog(this.phaseEl, 'bad', g.phase !== 'deploy' && g.phase !== 'capture' && lost.length);
+    for (const { o, el, fill, state } of this.objEls) {
+      const c = Math.max(-100, Math.min(100, o.control));
+      setS(fill, 'left', `${c >= 0 ? 50 : 50 + c / 2}%`); setS(fill, 'width', `${Math.abs(c) / 2}%`); tog(fill, 'h', c < 0);
+      tog(el, 'lost', o.owner === 'enemy'); tog(el, 'held', o.owner === 'player'); tog(el, 'contested', o.contested);
+      set(state, 'textContent', o.owner === 'neutral' ? (o.p || o.e ? `CONTESTED · ${Math.round(o.p || 0)} vs ${Math.round(o.e || 0)}` : 'NEUTRAL') : o.owner === 'enemy' ? (o.captured ? `ENEMY HELD · ${Math.max(0, Math.ceil(TUNING.lostObjectiveGrace - o.lostT))}s TO RETAKE` : o.p > 0 ? `ASSAULTING · ${Math.round(o.p)} vs ${Math.round(o.e)}` : 'ENEMY HELD — CAPTURE') : o.contested ? `CONTESTED · ${Math.round(o.p)} vs ${Math.round(o.e)}` : o.e > 0 ? 'UNDER ATTACK' : 'HELD');
     }
   }
   // ------------------------------------------------------------ minimap
+  sizeMinimap() {
+    const r = this.mm.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+    const S = Math.round(r.width) || 220; if (S === this.mmS && dpr === this.mmDpr) return;
+    this.mmS = S; this.mmDpr = dpr; this.mm.width = this.mm.height = Math.round(S * dpr);
+  }
+  // static layer: terrain (desaturated into the C2 palette), roads, building footprints, 100 m grid
   drawMinimapBase() {
-    const c = document.createElement('canvas'); c.width = c.height = 440; const x = c.getContext('2d'); const k = 440 / MAP_SIZE, o = MAP_SIZE / 2;
-    x.fillStyle = '#3a3730'; x.fillRect(0, 0, 440, 440);
+    const R = 512, c = document.createElement('canvas'); c.width = c.height = R; const x = c.getContext('2d'); const k = R / MAP_SIZE, o = MAP_SIZE / 2;
+    x.fillStyle = '#3a3730'; x.fillRect(0, 0, R, R);
     this.g.city.minimapBase?.(x, k, o);
     for (const r of ROADS) { x.fillStyle = r.type === 'track' ? '#6e6248' : '#5c5a54'; x.fillRect((r.x0 + o) * k, (r.z0 + o) * k, Math.max(1, (r.x1 - r.x0) * k), Math.max(1, (r.z1 - r.z0) * k)); }
     this.g.city.minimapOver?.(x, k, o);
-    this.mmBase = c;
+    x.globalCompositeOperation = 'saturation'; x.fillStyle = 'rgba(128,128,128,.6)'; x.fillRect(0, 0, R, R);
+    x.globalCompositeOperation = 'multiply'; x.fillStyle = '#8c9a8f'; x.fillRect(0, 0, R, R);
+    x.globalCompositeOperation = 'source-over';
+    x.fillStyle = '#858d80'; x.strokeStyle = 'rgba(0,0,0,.35)'; x.lineWidth = 1;
+    for (const b of this.g.city.buildings) { x.save(); x.translate((b.x + o) * k, (b.z + o) * k); x.rotate(-b.rot); x.fillRect(-b.L / 2 * k, -b.D / 2 * k, b.L * k, b.D * k); x.restore(); }
+    x.strokeStyle = 'rgba(220,235,215,.09)'; x.beginPath();
+    for (let m = -Math.floor(o / 100) * 100; m <= o; m += 100) { const p = Math.round((m + o) * k) + 0.5; x.moveTo(p, 0); x.lineTo(p, R); x.moveTo(0, p); x.lineTo(R, p); }
+    x.stroke();
+    this.mmBase = c; this.mmBaseT = performance.now();
+  }
+  // ground point under a screen corner (clamped toward the horizon)
+  groundCorner(nx, ny, out) {
+    const cam = this.g.renderer.camera; const p = new THREE.Vector3(nx, ny, 0.5).unproject(cam), o = cam.position, d = p.sub(o).normalize();
+    let t = d.y < -1e-3 ? -o.y / d.y : Infinity; const lim = MAP_SIZE * 1.5; const hd = Math.hypot(d.x, d.z) || 1e-6;
+    if (t * hd > lim) t = lim / hd;
+    out.push([o.x + d.x * t, o.z + d.z * t]);
   }
   drawMinimap() {
-    const x = this.mctx, g = this.g, S = 220, k = S / MAP_SIZE, o = MAP_SIZE / 2;
+    const x = this.mctx, g = this.g, S = this.mmS || 220, k = S / MAP_SIZE, o = MAP_SIZE / 2, P = v => (v + o) * k;
+    if (performance.now() - this.mmBaseT > 15000) this.drawMinimapBase();   // footprints change slowly (collapses)
+    x.setTransform(this.mmDpr || 1, 0, 0, this.mmDpr || 1, 0, 0);
     x.drawImage(this.mmBase, 0, 0, S, S);
-    x.fillStyle = '#8b867a';
-    for (const b of g.city.buildings) { x.save(); x.translate((b.x + o) * k, (b.z + o) * k); x.rotate(-b.rot); x.fillRect(-b.L / 2 * k, -b.D / 2 * k, b.L * k, b.D * k); x.restore(); }
-    for (const ob of g.objectives) { x.strokeStyle = ob.owner === 'player' ? '#8fb069' : ob.owner === 'enemy' ? '#c8483a' : '#b8b4a8'; x.lineWidth = 2; x.beginPath(); x.arc((ob.x + o) * k, (ob.z + o) * k, TUNING.captureRadius * k, 0, 7); x.stroke(); x.fillStyle = '#fff'; x.font = 'bold 10px sans-serif'; x.fillText(ob.id, (ob.x + o) * k - 3, (ob.z + o) * k + 4); }
+    // staging grounds during deployment
+    if (g.phase === 'deploy' && DEPLOY_ZONES) for (const [side, col] of [['player', C.ok], ['enemy', C.hostile]]) {
+      const z = DEPLOY_ZONES[side]; if (!z) continue; x.setLineDash([3, 3]); x.strokeStyle = col; x.lineWidth = 1.2; x.fillStyle = side === 'player' ? 'rgba(125,189,105,.12)' : 'rgba(234,90,75,.10)';
+      x.fillRect(P(z.x0), P(z.z0), (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.strokeRect(P(z.x0) + .5, P(z.z0) + .5, (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.setLineDash([]);
+    }
+    // objectives: capture circle in the owner's colour, control arc, letter
+    for (const ob of g.objectives) {
+      const cx = P(ob.x), cz = P(ob.z), rr = Math.max(6, TUNING.captureRadius * k), col = ob.owner === 'player' ? C.friend : ob.owner === 'enemy' ? C.hostile : C.neutral;
+      x.fillStyle = ob.owner === 'player' ? 'rgba(92,178,230,.16)' : ob.owner === 'enemy' ? 'rgba(234,90,75,.16)' : 'rgba(165,172,158,.10)';
+      x.beginPath(); x.arc(cx, cz, rr, 0, 7); x.fill();
+      x.strokeStyle = ob.contested ? C.accent : col; x.lineWidth = 1.5; if (ob.contested) x.setLineDash([3, 2]); x.stroke(); x.setLineDash([]);
+      const cf = Math.max(-100, Math.min(100, ob.control)) / 100;
+      if (cf) { x.strokeStyle = cf > 0 ? C.friend : C.hostile; x.lineWidth = 2.5; x.beginPath(); x.arc(cx, cz, rr + 2.5, -Math.PI / 2, -Math.PI / 2 + cf * Math.PI * 2, cf < 0); x.stroke(); }
+      x.fillStyle = 'rgba(10,14,12,.85)'; x.fillRect(cx - 6, cz - 6, 12, 12); x.strokeStyle = col; x.lineWidth = 1; x.strokeRect(cx - 5.5, cz - 5.5, 11, 11);
+      x.fillStyle = C.t1; x.font = '700 9px "Barlow SC", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ob.id, cx, cz + 0.5);
+    }
+    // units: men as faint dots, each unit as an APP-6 frame (friend rectangle / hostile diamond)
+    const frame = (px, pz, friend, sel) => {
+      x.beginPath();
+      if (friend) x.rect(px - 4.5, pz - 3, 9, 6); else { x.moveTo(px, pz - 4.5); x.lineTo(px + 4.5, pz); x.lineTo(px, pz + 4.5); x.lineTo(px - 4.5, pz); x.closePath(); }
+      x.fillStyle = friend ? 'rgba(92,178,230,.55)' : 'rgba(234,90,75,.6)'; x.fill();
+      x.lineWidth = sel ? 2 : 1.2; x.strokeStyle = sel ? '#fff' : friend ? C.friend : C.hostile; x.stroke();
+    };
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
-      x.fillStyle = sq.side === 'player' ? (this.selected.has(sq) ? '#fff' : sq.faction.color) : '#d0453a';
-      for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr') x.fillRect((s.pos.x + o) * k - 1, (s.pos.z + o) * k - 1, 2, 2);
+      const friend = sq.side === 'player';
+      x.fillStyle = friend ? 'rgba(160,215,245,.7)' : 'rgba(250,150,140,.75)';
+      for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr') x.fillRect(P(s.pos.x) - .75, P(s.pos.z) - .75, 1.5, 1.5);
+      const c = (sq.leader?.effective ? sq.leader : sq.effective[0])?.pos; if (c) frame(P(c.x), P(c.z), friend, this.selected.has(sq));
     }
     for (const v of g.vehicles) {
       if (v.side === 'enemy' && !v.spotted && !v.destroyed) continue;
-      x.fillStyle = v.destroyed ? '#222' : v.side === 'player' ? (this.selected.has(v) ? '#fff' : v.faction.color) : '#d0453a';
-      x.save(); x.translate((v.pos.x + o) * k, (v.pos.z + o) * k); x.rotate(-v.heading); x.fillRect(-2, -3, 4, 6); x.restore();
+      const friend = v.side === 'player';
+      if (v.destroyed) { x.strokeStyle = 'rgba(0,0,0,.6)'; x.lineWidth = 1.5; const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px - 3, pz - 3); x.lineTo(px + 3, pz + 3); x.moveTo(px + 3, pz - 3); x.lineTo(px - 3, pz + 3); x.stroke(); continue; }
+      x.save(); x.translate(P(v.pos.x), P(v.pos.z)); x.rotate(-v.heading);
+      x.fillStyle = friend ? C.friend : C.hostile; x.fillRect(-2.5, -3.5, 5, 7);
+      if (this.selected.has(v)) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.strokeRect(-3.5, -4.5, 7, 9); }
+      x.restore();
     }
-    // camera frustum
-    const f = g.cam.focus; x.strokeStyle = 'rgba(255,255,255,.6)'; x.lineWidth = 1; const r = g.cam.dist * 0.6 * k;
-    x.strokeRect((f.x + o) * k - r, (f.z + o) * k - r * 0.6, r * 2, r * 1.2);
+    // camera footprint: the four screen corners projected onto the ground
+    const q = []; this.groundCorner(-1, -1, q); this.groundCorner(1, -1, q); this.groundCorner(1, 1, q); this.groundCorner(-1, 1, q);
+    x.beginPath(); q.forEach(([a, b], i) => i ? x.lineTo(P(a), P(b)) : x.moveTo(P(a), P(b))); x.closePath();
+    x.fillStyle = 'rgba(223,228,214,.06)'; x.fill(); x.strokeStyle = 'rgba(223,228,214,.75)'; x.lineWidth = 1; x.stroke();
   }
   minimapClick(e, right = false) {
     const r = this.mm.getBoundingClientRect(); const wx = (e.clientX - r.left) / r.width * MAP_SIZE - MAP_SIZE / 2, wz = (e.clientY - r.top) / r.height * MAP_SIZE - MAP_SIZE / 2;
     if (right || e.button === 2) this.g.input?.moveSelected(wx, wz, null);
-    else this.g.cam.lookAt(wx, wz);
+    else this.g.cam.lookAt(Math.max(-MAP_SIZE / 2, Math.min(MAP_SIZE / 2, wx)), Math.max(-MAP_SIZE / 2, Math.min(MAP_SIZE / 2, wz)));
   }
   // ------------------------------------------------------------ alerts / end
+  // Feed with priorities: critical ('bad') alerts stay longer and are the last to be pushed out; repeats stack (×n).
   alert(msg, kind = '') {
-    const el = document.createElement('div'); el.className = `alert ${kind}`; el.textContent = msg; this.alerts.prepend(el);
-    while (this.alerts.children.length > 5) this.alerts.lastChild.remove();
-    setTimeout(() => el.remove(), 5200);
+    for (const el of this.alerts.children) if (el._msg === msg && !el._dying) {
+      el._n++; el.querySelector('.n').textContent = `×${el._n}`;
+      el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+      clearTimeout(el._t); el._t = setTimeout(() => el.remove(), (el._life + 0.5) * 1000);
+      if (el !== this.alerts.firstChild) this.alerts.prepend(el);
+      return;
+    }
+    const life = kind === 'bad' ? 7 : kind === 'good' ? 5 : 4.5;
+    const el = document.createElement('div'); el.className = `alert ${kind}`; el._msg = msg; el._kind = kind; el._n = 1; el._life = life;
+    el.style.setProperty('--life', `${life}s`);
+    el.innerHTML = `<span class="m"></span><span class="n"></span>`; el.firstChild.textContent = msg;
+    this.alerts.prepend(el);
+    while (this.alerts.children.length > 5) { const list = [...this.alerts.children].reverse(); (list.find(a => a._kind !== 'bad') || list[0]).remove(); }
+    el._t = setTimeout(() => el.remove(), (life + 0.5) * 1000);
     if (kind === 'bad' && this.g.audio?.ok && !/Incoming/.test(msg)) this.g.sfx('radio', null, { gain: 0.6 });
   }
   showEnd(r) {
-    const g = this.g, P = g.stats.player, E = g.stats.enemy;
+    const g = this.g, P = g.stats.player, E = g.stats.enemy, t = v => `${Math.floor(v / 60)}:${String(Math.floor(v % 60)).padStart(2, '0')}`;
+    const es = document.getElementById('endscreen'); es.classList.toggle('win', !!r.win); es.classList.toggle('loss', !r.win);
     document.getElementById('endTitle').textContent = r.title;
-    document.getElementById('endKicker').textContent = r.win ? 'OBJECTIVES HELD' : 'POSITION LOST';
-    document.getElementById('endStats').innerHTML = `${r.why}<br><br>
-      Time: <b>${Math.floor(g.time / 60)}:${String(Math.floor(g.time % 60)).padStart(2, '0')}</b><br>
-      Your losses: <b>${P.kia}</b> killed · <b>${P.wia}</b> wounded (${P.evac} evacuated) · <b>${P.vehLost}</b> vehicles<br>
-      Enemy losses: <b>${E.kia}</b> killed · <b>${E.wia}</b> wounded · <b>${E.vehLost}</b> vehicles`;
-    if (g.campaign) { const b = document.querySelector('#endscreen button.big'); if (b) { b.textContent = 'RETURN TO BRIGADE HQ'; b.onclick = () => window.__campaignReturn?.(); } }
-    setTimeout(() => document.getElementById('endscreen').classList.remove('hidden'), 1800);
+    document.getElementById('endKicker').textContent = r.win ? 'Objectives held' : r.title === 'WITHDRAWN' ? 'Task group withdrawn' : 'Position lost';
+    const tr = (label, a, b) => `<tr><td>${label}</td><td>${a}</td><td>${b}</td></tr>`;
+    document.getElementById('endStats').innerHTML = `<p class="aar-why">${r.why}</p>
+      <div class="aar-grid"><table><thead><tr><th>Losses</th><th class="f">Your force</th><th class="h">Enemy</th></tr></thead><tbody>
+        ${tr('Killed', P.kia, E.kia)}${tr('Wounded', P.wia, E.wia)}${tr('Evacuated', P.evac, E.evac ?? 0)}${tr('Vehicles lost', P.vehLost, E.vehLost)}</tbody></table>
+      <div class="aar-side"><div class="label">Battle time</div><div class="aar-time">${t(g.time)}</div><div class="label">Objectives</div><div class="aar-objs">
+        ${g.objectives.map(o => `<div class="aar-obj ${o.owner}"><span class="tag">${o.id}</span>${esc(o.name)}<small>${o.owner === 'player' ? 'held' : o.owner === 'enemy' ? 'enemy' : 'neutral'}</small></div>`).join('')}</div></div></div>`;
+    if (g.campaign) { const b = document.querySelector('#endscreen button.big'); if (b) { b.textContent = 'Return to brigade HQ'; b.onclick = () => window.__campaignReturn?.(); } }
+    setTimeout(() => es.classList.remove('hidden'), 1800);
   }
   update(dt) {
     this.frames++; this.fpsT += dt; if (this.fpsT > 1) { this.fpsEl.textContent = `${Math.round(this.frames / this.fpsT)} fps`; this.frames = 0; this.fpsT = 0; }
