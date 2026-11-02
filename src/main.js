@@ -19,7 +19,7 @@ async function start(opts) {
   if ($('loadMap')) $('loadMap').textContent = `${MAPS[opts.map]?.name || 'Deploying'}${opts.campaign?.sectorName ? ' · ' + opts.campaign.sectorName : ''}`;
   const game = window.game = new Game(opts);
   try {
-    await game.init((f, msg) => { $('loadBar').style.width = `${Math.round(f * 100)}%`; $('loadText').textContent = msg; if ($('loadPct')) $('loadPct').textContent = `${Math.round(f * 100)}%`; });
+    await game.init((f, msg) => { window.__loadF = f; $('loadBar').style.width = `${Math.round(f * 100)}%`; $('loadText').textContent = msg; if ($('loadPct')) $('loadPct').textContent = `${Math.round(f * 100)}%`; });
   } catch (e) { console.error(e); $('loadText').textContent = 'Failed to start: ' + e.message; throw e; }
   const hud = new HUD(game); new Input(game, hud);
   if (opts.campaign && !opts.net) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
@@ -138,8 +138,19 @@ if (Q.has('vsbattle') && window.parent?.__vs) {
       const iv = setInterval(() => { if (g.over) { clearInterval(iv); setTimeout(() => window.__campaignReturn(), 25000); } }, 1000);   // don't keep the opponent waiting forever
     } else window.__campaignReturn = () => { const b = document.querySelector('#endscreen button.big'); if (b) b.textContent = 'WAITING FOR THE HOST…'; };
   });
-  if (o.net.role === 'client') P.peer.on('manifest', man => go({ ...o.net, peer: P.peer, manifest: man }));
-  else go({ ...o.net, peer: P.peer });
+  if (o.net.role === 'client') {
+    // the host builds the battle first: show a loading screen with the host's progress, never the main menu
+    $('menu').classList.add('hidden'); $('loading').classList.remove('hidden');
+    if ($('loadMap')) $('loadMap').textContent = `${MAPS[o.map]?.name || 'Battle'}${o.campaign?.sectorName ? ' · ' + o.campaign.sectorName : ''}`;
+    const wait = f => { if (window.game) return; $('loadBar').style.width = `${Math.round(f * 50)}%`; $('loadText').textContent = `Waiting for the host to load the battle… ${Math.round(f * 100)}%`; if ($('loadPct')) $('loadPct').textContent = ''; };
+    wait(0); P.peer.on('vsload', wait);
+    P.peer.on('vsfail', msg => { if (!window.game) $('loadText').textContent = `The host's battle failed to load (${msg}). Waiting for the host…`; });
+    let got = false; P.peer.on('manifest', man => { if (got) return; got = true; go({ ...o.net, peer: P.peer, manifest: man }); });
+    setTimeout(() => { if (!got) $('loadText').textContent = 'Still waiting for the host — their computer may be slow to load, or the connection dropped. Keep this open.'; }, 120000);
+  } else {
+    const iv = setInterval(() => P.peer.send('vsload', window.__loadF || 0), 700);   // the joiner sees how far the host's load is
+    go({ ...o.net, peer: P.peer }).then(() => clearInterval(iv), e => { clearInterval(iv); P.peer.send('vsfail', e.message); });
+  }
 }
 // test hook: replay a recorded versus stream (tools/mp_record.mjs) into a joiner game — index.html?vsreplay&sim=N
 if (Q.has('vsreplay')) fetch('previews/versus/stream.json').then(r => r.json()).then(S => {

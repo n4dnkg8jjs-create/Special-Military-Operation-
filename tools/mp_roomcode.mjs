@@ -72,6 +72,7 @@ const planned = await H.evaluate(() => { for (const s of document.querySelectorA
 ok(planned, 'host planned an attack');
 await H.click('.cp-end'); await G.click('.cp-end');
 await H.waitForSelector('.vs-frame', { timeout: 30000 }); await G.waitForSelector('.vs-frame', { timeout: 30000 });
+await G.waitForTimeout(4000); await G.screenshot({ path: path.join(out, 'joiner_battle_wait.png') });
 const FA = await (await H.$('.vs-frame')).contentFrame(), FB = await (await G.$('.vs-frame')).contentFrame();
 await FA.waitForFunction(() => window.game?.phase === 'deploy', null, { timeout: 300000 });
 await FB.waitForFunction(() => window.game?.netClient && window.game?.phase === 'deploy', null, { timeout: 300000 });
