@@ -135,6 +135,22 @@ export class Renderer {
       ao.blendIntensity = 0.75;
       comp.addPass(ao);
     }
+    // sanitize before bloom: one NaN / Inf pixel (degenerate normals, a shader edge case on some GPUs, half-float
+    // overflow from a bright flash) gets smeared by the bloom mip chain into big flickering black blotches
+    const clean = new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        bool bad(float v){ return isnan(v) || isinf(v) || !(v >= -1e4 && v <= 6e4); }
+        void main(){ vec4 c = texture2D(tDiffuse, vUv);
+          if (bad(c.r) || bad(c.g) || bad(c.b)) {   // replace with the average of the valid neighbours
+            vec2 px = 1.0 / vec2(textureSize(tDiffuse, 0)); vec3 sum = vec3(0.); float n = 0.;
+            for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) { vec3 q = texture2D(tDiffuse, vUv + vec2(i, j) * px * 2.0).rgb; if (!(bad(q.r) || bad(q.g) || bad(q.b))) { sum += q; n += 1.; } }
+            c.rgb = n > 0. ? sum / n : vec3(0.);
+          }
+          gl_FragColor = vec4(clamp(c.rgb, 0.0, 64.0), 1.0); }`,
+    });
+    comp.addPass(clean);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.35, 0.5, 0.92);
     comp.addPass(this.bloom);
     if (graded) {
