@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { trenchNear, trenchMen } from './trench.js';
 import { campaignArmy, campaignDefenders } from './campaignBattle.js';
 import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
+import { TUNING } from '../config.js';
 
 // Enemy commander. Phase 1: dug-in defenders hold both objectives. Phase 2 (after the player takes an
 // objective, or 40% into the round): counterattack waves from the north — mounted approach riding on
@@ -85,8 +86,11 @@ export class Commander {
       const own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
       const ap = new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
       if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
-      g.callStrike(c.x + (Math.random() - .5) * err, c.z + (Math.random() - .5) * err, 4 + Math.floor(Math.random() * 3), 24, 'enemy', 3, Math.random() < 0.25 ? 'arty' : 'mortar');
-      g.hud?.alert('Incoming artillery!', 'bad');
+      // off-map fire support is rationed like the player's: a fixed number of missions per battle
+      if ((g.enemyMortars ??= (g.campaign?.enemyMortars ?? TUNING.mortarStrikes)) <= 0) return;
+      g.enemyMortars--;
+      g.callStrike(c.x + (Math.random() - .5) * err, c.z + (Math.random() - .5) * err, 6, 16, 'enemy', 9, 'mortar');
+      g.hud?.alert('Incoming mortar fire!', 'bad');
     }
   }
   clusterScore(u) { const c = u.center(); let n = 0; for (const o of this.g.unitsOf('player')) if (o !== u && o.center().distanceTo(c) < 40) n++; return n + (u.type === 'vehicle' ? 0.5 : 0) + Math.random(); }

@@ -276,8 +276,10 @@ export class Soldier {
     else if ((this.target || this.groundAim) && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
     else if (this.target || this.groundAim) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
     else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
+    if (this.netClip && this.state !== 'dead') { clip = this.netClip; alt = ['idle_rifle']; ts = this.netTs || 1; }   // versus joiner: the host's exact clip
     if (this.mixer) {
       this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);
+      if (this.netClip && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
       const every = this.inView === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;

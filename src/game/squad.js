@@ -166,7 +166,7 @@ export class Squad {
     if (this.routing || !v || v.destroyed) return;
     this.leaveBuilding();
     this.order = { type: 'mount', vehicle: v }; this.carrier = v;
-    v.doorT = Math.max(v.doorT || 0, this.game.time + 6); for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
+    if (v.def.asset === 'bradley_ua') v.doorT = Math.max(v.doorT || 0, this.game.time + 6); for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
   }
   dismount(facing) {
     const v = this.carrier; if (!v || !this.mounted) return;
@@ -181,7 +181,7 @@ export class Squad {
       if (s.inside !== 'btr') return;
       s.dmWait = (v.kind === 'ifv' ? (v.def.asset === 'bradley_ua' ? 1.9 : 1.0) : 0.4) + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
     });
-    v.doorT = Math.max(v.doorT || 0, this.game.time + 1.6 + k * 0.6 + 2.5);   // IFV rear doors / ramp stay open while they get out
+    if (this.soldiers.some(s => s.dmKind === 'door' && s.dmWait != null)) v.doorT = Math.max(v.doorT || 0, this.game.time + 1.6 + k * 0.6 + 2.5);   // IFV rear doors / ramp open only if men are inside
     this.order = null; this.dmFacing = facing;
     this.game.sfx('hatch', v.pos);
   }

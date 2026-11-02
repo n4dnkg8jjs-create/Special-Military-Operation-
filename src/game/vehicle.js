@@ -173,7 +173,7 @@ export class Vehicle {
   animDoors(dt) {
     if (!this.doorNodes) this.doorNodes = [['door_rear_L', 'y', -1.75], ['door_rear_R', 'y', 1.75], ['roof_door_L', 'x', 1.65], ['roof_door_R', 'x', 1.65], ['ramp', 'x', -2.221]]
       .map(([n, ax, a]) => ({ o: this.model.getObjectByName(n), ax, a })).filter(d => d.o);
-    const boarding = this.order?.type !== 'move' && this.game.squads?.some(q => q.order?.type === 'mount' && q.carrier === this && !q.mounted);
+    const boarding = this.def.asset === 'bradley_ua' && this.order?.type !== 'move' && this.game.squads?.some(q => q.order?.type === 'mount' && q.carrier === this && !q.mounted);
     const want = (this.game.time < (this.doorT || 0) || boarding) && Math.abs(this.speed) < 1 ? 1 : 0;
     const k = this.doorK ?? 0, rate = this.def.asset === 'bradley_ua' ? 0.55 : 1.4;   // the ramp is hydraulic and slow
     this.doorK = want > k ? Math.min(1, k + dt * rate) : Math.max(0, k - dt * rate);
@@ -214,10 +214,11 @@ export class Vehicle {
     if (this.driverSwapT > 0 && (this.driverSwapT -= dt) <= 0 && this.crewList?.some(c => c.hp > 0)) { this.immob.driver = false; this.immobile = Object.values(this.immob).some(Boolean); if (this.side === 'player') this.game.hud?.alert(`${this.name}: crew swapped seats, mobile again`); }
     if (this.crewList) { const gun = this.crewList.find(c => c.role === 'gunner'), cmd = this.crewList.find(c => c.role === 'commander'); this.gunnerDown = gun.hp <= 0; if (gun.hp <= 0 && cmd.hp <= 0) this.gunDisabled = true; }
     // a burning vehicle: whoever survived the hit tries to get out of the hatches
-    if (this.burning > 0 && !this.abandoned) { this.bailAt ??= this.burning + 2 + Math.random() * 5; if (this.burning >= this.bailAt) this.bailCrew(0.82); }
+    if (this.burning > 0 && !this.abandoned && this.firefight !== false) this.fightFire(dt);
+    if (this.burning > 0 && !this.abandoned && !this.firefight) { this.bailAt ??= this.burning + 2 + Math.random() * 5; if (this.burning >= this.bailAt) this.bailCrew(0.82); }
     if (this.burning > 0) {
       this.burning += dt;
-      this.hp -= dt * (this.kind === 'tank' ? 10 : this.kind === 'ifv' ? 18 : 25);
+      this.hp -= dt * (this.kind === 'tank' ? 10 : this.kind === 'ifv' ? 18 : 25) * (this.firefight ? 0.3 : 1);
       if (this.burning > 3 && this.passengers) this.game.bailOut(this, 0.25);
       if (this.hp <= 0 || (this.kind === 'tank' && this.burning > 25 && Math.random() < dt * 0.1)) this.knockOut(this.kind === 'tank' && Math.random() < 0.6);
     }
@@ -473,6 +474,24 @@ export class Vehicle {
     if (this.side === 'player') { g.playerUnits?.push(sq); g.hud?.rebuildCards(); g.hud?.alert(`${this.name}: ${out.length} crew bailed out`, 'bad'); }
     else g.commander?.adoptCrew?.(sq);
   }
+  // a fire that isn't too bad: the crew fights it from inside with the hand extinguishers / the fixed fire system
+  // (a sign above the vehicle shows it); it goes out, or it gets worse and they bail out
+  fightFire(dt) {
+    const g = this.game, alive = (this.crewList || []).filter(c => c.hp > 0), frac = this.hp / this.def.hp;
+    if (this.firefight == null) {
+      if (alive.length < 2 || frac < 0.45 || Math.random() > (this.kind === 'tank' ? 0.8 : 0.6)) { this.firefight = false; return; }
+      this.firefight = { t: 0, dur: 7 + Math.random() * 7 };
+      if (this.side === 'player') g.hud?.alert(`${this.name}: fire on board — crew fighting it`);
+    }
+    const F = this.firefight; F.t += dt;
+    this.bannerNote = `FIGHTING FIRE ${Math.min(99, Math.round(F.t / F.dur * 100))}%`;
+    if (this.hp / this.def.hp < 0.3 || F.t >= F.dur) {
+      const ok = this.hp / this.def.hp >= 0.3 && Math.random() < 0.55 + 0.4 * (this.hp / this.def.hp);
+      this.bannerNote = null;
+      if (ok) { this.burning = 0; this.bailAt = null; this.firefight = null; if (this.side === 'player') g.hud?.alert(`${this.name}: fire put out`, 'good'); }
+      else { this.firefight = false; this.bailAt = this.burning; if (this.side === 'player') g.hud?.alert(`${this.name}: the fire is out of control — crew bailing out`, 'bad'); }
+    }
+  }
   // swing a hatch lid open (manifest hatch_lids: hinge node, local axis, open angle)
   openLid(name, L) {
     const o = this.model.getObjectByName(name); if (!o) return;
@@ -494,7 +513,7 @@ export class Vehicle {
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
     if (!catastrophic && !this.abandoned) this.bailCrew(0.6); else this.abandoned = true;
-    this.destroyed = true; this.target = null; this.path = null; this.speed = 0; this.burning = Math.max(this.burning, 0.01);
+    this.destroyed = true; this.target = null; this.path = null; this.speed = 0; this.burning = Math.max(this.burning, 0.01); this.bannerNote = null;
     const g = this.game;
     if (this.passengers) g.bailOut(this, catastrophic ? 0.8 : 0.4);
     g.onVehicleLost(this);

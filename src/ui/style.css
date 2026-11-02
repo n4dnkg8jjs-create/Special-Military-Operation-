@@ -137,3 +137,5 @@ button{font:inherit;cursor:pointer}
 .roster.mini .r .mn{font-size:10px;min-width:0}
 
 #topbar.many .objective{width:168px;padding-left:40px} #topbar.many .objective .name{font-size:13px}
+
+.banner .pin.fire{background:#b8461e;color:#fff2e0;letter-spacing:.5px}

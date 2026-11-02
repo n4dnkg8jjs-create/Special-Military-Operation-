@@ -32,6 +32,8 @@ export function hostBattle(game, peer) {
   // the joiner's orders, applied to its ('enemy') units
   const byId = id => game.squads.find(s => s.id === id) || game.vehicles.find(v => v.id === id);
   peer.on('cmd', c => applyCommand(game, byId, c));
+  game.mortarsEnemy = game.mortars;   // the joiner gets the same number of mortar missions
+  peer.on('mortar', ({ x, z }) => { if (game.mortarsEnemy > 0 && game.phase !== 'deploy') { game.mortarsEnemy--; game.callStrike(x, z, 6, 16, 'enemy', 9, 'mortar'); game.sfx('mortar_launch', null, { gain: 0.4 }); } });
   const sb = game.startBattle.bind(game);
   game.startBattle = () => { if (game.phase !== 'deploy') return; game.hostReady = true; if (game.guestReady) sb(); else game.hud?.alert('Ready — waiting for the opponent to finish deploying', 'good'); };
   peer.on('ready', () => { game.guestReady = true; game.hud?.alert('Opponent is ready', 'good'); if (game.hostReady) sb(); });
@@ -59,12 +61,15 @@ function snapshot(g) {
     const tp = s.target?.pos;
     return [r2(s.pos.x), r2(s.pos.y), r2(s.pos.z), r2(s.heading), r2(s.vel.x), r2(s.vel.z), STANCE.indexOf(s.stance), STATE.indexOf(s.state), f,
       s.inside === 'ride' ? 1 : s.inside === 'btr' ? 2 : s.inside && typeof s.inside === 'object' ? 3 : 0, s.weaponKey, tp ? [r2(tp.x), r2(tp.z)] : 0,
-      s.state === 'dead' ? (s.deathClip || 0) : (s.hatchT > 0 ? ['h', s.hatchClip, r2(s.hatchT)] : s.jumpT > 0 ? ['j', s.jumpClip, r2(s.jumpT)] : 0), s.seatType || 0];
+      s.state === 'dead' ? (s.deathClip || 0) : (s.hatchT > 0 ? ['h', s.hatchClip, r2(s.hatchT)] : s.jumpT > 0 ? ['j', s.jumpClip, r2(s.jumpT)] : 0), s.seatType || 0,
+      s.state !== 'dead' && s.curName ? [s.curName, r2(s.cur?.time || 0), r2(s.cur?.timeScale || 1)] : 0, s.kitObjs?.length ? s.kitObjs.map(o => (o.visible ? 1 : 0)).join('') : 0];
   })]);
   const v = g.vehicles.map(x => [x.id, r2(x.pos.x), r2(x.pos.y || 0), r2(x.pos.z), r2(x.heading), r2(x.pitch || 0), r2(x.roll || 0), r2(x.turretYaw), r2(x.gunPitch), Math.round(x.hp), (x.destroyed ? 1 : 0) | (x.burning > 0 ? 2 : 0) | (x.abandoned ? 4 : 0), r2(x.doorK || 0), r2(x.speed), x.side === 'player' ? seen(x) : 1, x.lidAnim ? 1 : 0, x.spg ? [x.spg.k, x.spg.state] : 0]);
   const pr = g.combat.projectiles.filter(p => p.mesh).map(p => [r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.target.x), r2(p.target.y), r2(p.target.z)]);
-  const dr = []; for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh && d.mesh.parent === g.scene) dr.push([r2(d.pos.x), r2(d.pos.y), r2(d.pos.z), ...d.mesh.quaternion.toArray().map(r2)]); }
-  return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, over: g.over ? g.result : null };
+  const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2)]); } }
+  // support teams: status line + every launcher prop (tripod, tube, guidance unit, spent tubes...) in world space
+  const sp = g.squads.filter(q => q.support).map(q => { const S = q.support; return [q.id, S.status?.() || '', S.launcher ? 1 : 0, S.launcher ? Object.entries(S.nodes || {}).map(([k, n]) => { n.o.getWorldPosition(W); n.o.getWorldQuaternion(Q); return [k, n.o.visible && n.o.parent ? 1 : 0, r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(x => Math.round(x * 1000) / 1000)]; }) : 0]; });
+  return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, sp, mo: g.mortarsEnemy ?? 0, over: g.over ? g.result : null };
 }
 
 function applyCommand(game, byId, c) {
@@ -101,7 +106,8 @@ export function clientBattle(game, peer) {
   const dp = game.deployPlace.bind(game);
   game.deployPlace = (u, x, z, f) => { dp(u, x, z, f); if (u.netId != null) peer.send('cmd', { id: u.netId, m: 'place', a: [x, z, f] }); };
   game.startBattle = () => { if (game.sentReady) return; game.sentReady = true; peer.send('ready', 1); game.hud?.alert('Ready — waiting for the opponent', 'good'); };
-  game.playerMortar = () => { game.hud?.alert('Mortar support is not available in versus battles', 'bad'); return false; };
+  game.mortars = 0;
+  game.playerMortar = (x, z) => { if (game.mortars <= 0 || game.phase === 'deploy') return false; game.mortars--; peer.send('mortar', { x, z }); game.mortarMarker(x, z); game.hud?.alert(`82 mm mortar fire mission: 6 rounds, ${game.mortars} missions left`, 'good'); game.sfx('radio'); return true; };
   // incoming
   peer.on('snap', s => { if (!game.lastSnap || s.t >= game.lastSnap.t) game.lastSnap = s; });
   peer.on('ev', list => replay(game, list));
@@ -143,6 +149,9 @@ export function clientFrame(g, dt) {
       so.inside = ins === 1 ? 'ride' : ins === 2 ? 'btr' : ins === 3 ? (so.inside && typeof so.inside === 'object' ? so.inside : { panel: { floor: 0 } }) : null; so.seatType = seat || so.seatType;
       if (wk && so.weaponKey !== wk && so.setWeapon) try { so.setWeapon(wk); } catch {}
       if (Array.isArray(clip)) { if (clip[0] === 'h') { so.hatchClip = clip[1]; so.hatchT = clip[2]; } else { so.jumpClip = clip[1]; so.jumpT = clip[2]; } }
+      const nc = m[14], kit = m[15];
+      if (Array.isArray(nc)) { so.netClip = nc[0]; so.netClipT = nc[1]; so.netTs = nc[2]; } else so.netClip = null;
+      if (kit && so.kitObjs) for (let ki = 0; ki < so.kitObjs.length; ki++) so.kitObjs[ki].visible = kit[ki] === '1';
       const state = STATE[stt] || 'ok';
       if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
       so.visible = sq.side === 'player' || !!vis || state === 'dead';
@@ -157,6 +166,15 @@ export function clientFrame(g, dt) {
     if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); g.fx.explosion(v.pos.clone().setY(1.2), 1.2); v.fire = g.fx.emitter(v.pos.clone().setY(1.6), 'fire', 1.2, 180); }
     v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : v.burning; v.abandoned = !!(fl & 4); v.doorK = dk;
     v.sync(); if (!v.destroyed) v.fx?.(dt);
+  }
+  // support teams: status text and launcher props as the host has them
+  if (g._mo == null || s.mo !== g._mo) { g._mo = s.mo; g.mortars = s.mo; }
+  for (const [id, status, hasL, nodes] of s.sp || []) {
+    const sq = g.netMap.get(id), S = sq?.support; if (!S) continue;
+    sq.netStatus = status; sq.status = () => sq.netStatus;
+    if (hasL && !S.launcher) { const s0 = sq.soldiers.find(x => x.alive) || sq.soldiers[0]; try { S.placeLauncher(s0); } catch (e) { console.warn(e); } }
+    if (!hasL && S.launcher) S.removeLauncher();
+    if (nodes && S.launcher) for (const [k, vis, x, y, z, qx, qy, qz, qw] of nodes) { const n = S.nodes[k]; if (!n) continue; if (n.o.parent !== g.scene) g.scene.attach(n.o); n.o.visible = !!vis; n.o.position.set(x, y, z); n.o.quaternion.set(qx, qy, qz, qw); }
   }
   // rockets and drones (pooled meshes)
   g._rk ||= []; s.pr.forEach((q, i) => { const m = g._rk[i] ||= (() => { const mm = g.combat.rocketMesh(); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.lookAt(q[3], q[4], q[5]); }); for (let i = s.pr.length; i < g._rk.length; i++) g._rk[i].visible = false;

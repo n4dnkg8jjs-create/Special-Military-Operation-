@@ -212,7 +212,7 @@ export class HUD {
       b.el.style.display = 'flex';
       b.el.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`; b.el.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
       b.el.classList.toggle('sel', this.selected.has(u));
-      const pinned = u.type === 'squad' && u.pinned && !u.routing; if (pinned !== b.pinned) { b.pinned = pinned; b.pin.style.display = pinned ? 'block' : 'none'; }
+      const pinned = u.type === 'squad' && u.pinned && !u.routing, note = pinned ? 'PINNED' : (u.bannerNote || ''); if (note !== b.note) { b.note = note; b.pin.textContent = note; b.pin.style.display = note ? 'block' : 'none'; b.pin.classList.toggle('fire', /FIRE/.test(note)); }
       const val = u.type === 'squad' ? u.morale : Math.max(0, u.hp / u.def.hp * 100);
       b.bar.style.width = `${val}%`; b.bar.style.background = u.type === 'squad' && u.routing ? '#c8483a' : val < 45 ? '#d8b25a' : '#8fb069';
     }
