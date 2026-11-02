@@ -5,6 +5,7 @@ import { HUD } from './ui/hud.js';
 import { Input } from './ui/input.js';
 import { MAPS } from './world/maps.js';
 import { Campaign } from './campaign/state.js';
+import { Campaign2 } from './campaign/v2/state.js';
 import { collectResult } from './game/campaignBattle.js';
 import { manifest } from './net/battle.js';
 
@@ -107,8 +108,9 @@ $('startBtn').addEventListener('click', () => {
 });
 // ---------------------------------------------------------------- campaign
 const launchCampaignBattle = () => { location.href = `${location.pathname}?cbattle=1`; };
-$('campaignBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle)); });
-if (Q.has('campaign')) import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle));
+const openCampaign = () => import('./campaign/v2/ui.js').then(m => m.openCampaign2(launchCampaignBattle));   // v2 grid campaign (versus stays on v1)
+$('campaignBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } openCampaign(); });
+if (Q.has('campaign')) openCampaign();
 if (Q.has('ctest')) {   // headless test of a campaign battle without a stored campaign
   const side = Q.get('side') || 'UA', mode = Q.get('ctest') || 'attack';
   const force = [{ uid: 1, key: 'mech_btr', name: '1st Platoon', kind: 'mech', men: 6, menMax: 8, veh: { kind: 'btr', hp: 0.7 }, xp: 3 }, { uid: 2, key: 'mech_ifv', name: '2nd Platoon', kind: 'imech', men: 8, menMax: 8, veh: { kind: 'ifv', hp: 1 }, xp: 6 },
@@ -117,9 +119,9 @@ if (Q.has('ctest')) {   // headless test of a campaign battle without a stored c
   start({ side, minutes: 12, quality: Q.get('quality') || 'low', map: Q.get('map') || 'farmland', net: Q.has('fakenet') ? { role: 'host', peer: fakePeer, enemyForce: force.map(u => ({ ...u, uid: u.uid + 100 })), enemyMods: {} } : undefined, campaign: { sector: 's1', sectorName: 'Test sector', map: Q.get('map') || 'farmland', mode, fort: 2, strength: 2, force, enemy: [{ kind: 'mech' }, { kind: 'foot' }, { kind: 'tank' }, { kind: 'atgm' }], mods: { armorPlate: 0.1, fpvDrones: 2, accuracy: 0.1, reconDrone: true }, side } });
 }
 if (Q.has('cbattle')) {
-  const setup = Campaign.pendingBattle();
-  if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: setup.map, campaign: setup });
-  else import('./campaign/ui.js').then(m => m.openCampaign(launchCampaignBattle));
+  const setup = Campaign2.pendingBattle() || Campaign.pendingBattle();
+  if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: MAPS[setup.map] ? setup.map : (setup.mapFallback || setup.map), campaign: setup });
+  else openCampaign();
 }
 // ---------------------------------------------------------------- versus (2 players): lobby, and battles in an iframe
 $('versusBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } import('./net/versus_ui.js').then(m => m.openVersus()); });
@@ -145,7 +147,7 @@ if (Q.has('vsreplay')) fetch('previews/versus/stream.json').then(r => r.json()).
   start({ side: S.side, minutes: 12, quality: Q.get('quality') || 'low', map: S.map, campaign: { sectorName: 'replay', mode: 'attack', force: [], enemy: [] }, net: { role: 'client', peer, manifest: S.manifest } });
 });
 // end of a campaign battle: report back to the brigade and return to the sector map
-window.__campaignReturn = () => { const g = window.game; if (g?.campaign) Campaign.storeResult(collectResult(g)); location.href = `${location.pathname}?campaign=1`; };
+window.__campaignReturn = () => { const g = window.game; if (g?.campaign) (g.campaign.v2 ? Campaign2 : Campaign).storeResult(collectResult(g)); location.href = `${location.pathname}?campaign=1`; };
 
 // ---------------------------------------------------------------- map picker (size badge on each card + in the header)
 let selMap = localStorage.getItem('smo_map') || 'city'; if (!MAPS[selMap]) selMap = 'city';

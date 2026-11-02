@@ -1,0 +1,519 @@
+// Campaign v2 strategic screen: the 3D grid map (map3d.js) with the HTML command interface around it — date / turn /
+// LP bar, directives, task forces (select, move, attack, split, merge, stance), high command (catalog, replacements,
+// tech tree, depots), the operations log, enemy attack warnings, battle launch / return, and the intro cutscene.
+import { Campaign2, xpLevel, XP_NAMES, MAX_BATTLE, dateLabel } from './state.js';
+import { loadCampaigns } from './index.js';
+import { StrategicMap, natoSvg, echelon, COL } from './map3d.js';
+import { playIntroMusic, primeAudio, blip } from './audio.js';
+
+const Q = new URLSearchParams(location.search);
+const h = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? '' : v); } if (html) e.innerHTML = html; return e; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = v => (Math.round(v * 10) / 10).toString();
+const STRENGTH = ['—', 'company', 'reinforced company', 'battalion'];
+const TERRAIN = { fields: 'Open fields', forest: 'Woods', urban: 'Town', industrial: 'Industrial zone', village: 'Village', water: 'Water', heights: 'Heights', balka: 'Balka (gully)' };
+const KIND = { mech: 'Mech. infantry', imech: 'Mech. infantry (IFV)', assault: 'Assault infantry', tank: 'Tank', atgm: 'ATGM team', fpv: 'FPV drone team', spg: 'Self-propelled gun', replacements: 'Replacements' };
+const KIND_ICON = { mech: '⊠', imech: '⊠', assault: '✕', tank: '⬭', atgm: '△', fpv: '≈', spg: '●', replacements: '+' };
+
+export async function openCampaign2(onLaunch) {
+  injectCss();
+  document.getElementById('menu')?.classList.add('hidden');
+  let root = document.getElementById('c2'); if (!root) { root = h('div', { id: 'c2' }); document.body.appendChild(root); }
+  root.classList.remove('hidden'); root.innerHTML = '<div class="c2-boot">LOADING THE OPERATIONAL PICTURE…</div>';
+  const { defs, test } = await loadCampaigns();
+  let C = Campaign2.load(defs);
+  const res = Campaign2.takeResult();
+  let applied = null;
+  if (C && res) { try { applied = C.applyResult(res) || res; } catch (e) { console.error(e); } }
+  else if (C?.battle) C.cancelBattle();
+  const pre = Q.get('cside');
+  if (pre && defs[pre]) { C = new Campaign2(defs[pre]); for (let i = +(Q.get('cadvance') || 0); i > 0 && !C.outcome(); i--) C.endTurn(); C.save(); return start(root, C, onLaunch, { intro: !Q.has('nointro'), test }); }   // cadvance: headless preview of a later week
+  if (!C) { chooseSide(root, defs, test, def => { primeAudio(); const c = new Campaign2(def); c.save(); start(root, c, onLaunch, { intro: true, test }); }); window.__done = true; return; }
+  start(root, C, onLaunch, { result: applied, test });
+}
+
+async function start(root, C, onLaunch, opts) {
+  const get = u => fetch(u).then(r => (r.ok ? r.json() : null)).catch(() => null);
+  const [osm, geo] = await Promise.all([get(new URL(`./data/osm_${C.def.id}.json`, import.meta.url)), C.def.aor.geo ? get(C.def.aor.geo) : null]);
+  const ui = new CampaignScreen(root, C, onLaunch, osm, opts, geo); window.__c2 = ui;
+  return ui;
+}
+
+function chooseSide(root, defs, test, done) {
+  root.innerHTML = '';
+  const box = h('div', { class: 'c2-choose' }, `<div class="kicker">CAMPAIGN · FEBRUARY 2023 – MARCH 2024</div><h1>Brigade area of responsibility</h1>
+    <p class="brief">Command one brigade's sector of the front, week by week, from the first anniversary of the invasion to the spring of 2024. Split your brigade into task forces, move them across the grid, attack enemy-held squares and towns, keep them supplied, and spend the logistics points your battles earn on replacements, new units and equipment from high command. Higher command sends the directives; the rest of the front moves as it really did.</p>${test ? '<p class="c2-note">Running on the built-in test campaigns (the researched campaign content is not installed yet).</p>' : ''}`);
+  const row = h('div', { class: 'c2-sides' });
+  for (const def of Object.values(defs)) row.appendChild(h('button', { class: `c2-side ${def.id}`, onclick: () => done(def) }, `<div class="c2-side-k">${def.id === 'UA' ? 'UKRAINE' : 'RUSSIA'}</div><div class="c2-side-t">${esc(def.intro?.place || def.aor?.name || def.title)}</div><div class="c2-side-s">${esc(def.brigade?.name || '')}</div><div class="c2-side-r">${esc(def.title)} · ${esc(def.region || '')}</div>`));
+  box.appendChild(row);
+  box.appendChild(h('button', { class: 'c2-btn', onclick: () => { location.href = location.pathname; } }, 'Back'));
+  root.appendChild(box);
+}
+
+export class CampaignScreen {
+  constructor(root, C, onLaunch, osm, opts = {}, geo = null) {
+    this.root = root; this.C = C; this.onLaunch = onLaunch; this.tab = 'dir'; this.sel = null; this.selCell = null; this.pick = new Set(); this.opts = opts;
+    root.innerHTML = '';
+    this.mapEl = h('div', { class: 'c2-map' }); root.appendChild(this.mapEl);
+    this.map = new StrategicMap(this.mapEl, C, osm, geo);
+    this.map.viewOffset = 190; this.map.resize();   // keep the camera's centre in the part of the screen the side panel leaves free
+    this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id) };
+    this.top = h('div', { class: 'c2-top' }); this.left = h('div', { class: 'c2-left' }); this.right = h('div', { class: 'c2-right hidden' });
+    this.bottom = h('div', { class: 'c2-bottom' }); this.toastEl = h('div', { class: 'c2-toast' });
+    root.append(this.top, this.left, this.right, this.bottom, this.toastEl);
+    this.onKey = e => this.key(e); window.addEventListener('keydown', this.onKey);
+    this.lastLog = C.log.length;
+    this.render();
+    if (opts.intro) this.intro();
+    else {
+      this.map.jump(this.map.view('front'));
+      // headless previews: &cview=theatre|aor|front or &ccell=<cellId>&cdist=<km>&cyaw=&cpitch=
+      if (Q.get('cview')) this.map.jump(this.map.view(Q.get('cview')));
+      if (Q.get('ccell') && C.cell(Q.get('ccell'))) { const p = this.map.cellCenter(Q.get('ccell')); this.map.jump({ x: p.x, z: p.z, dist: +(Q.get('cdist') || 6), yaw: +(Q.get('cyaw') || 0.3), pitch: +(Q.get('cpitch') || 0.75) }); }
+      if (Q.get('csel')) { const f = C.forces[+Q.get('csel')]; if (f) this.select(f.id); }
+      if (opts.result) this.resultModal(opts.result);
+      this.checkOutcome();
+      requestAnimationFrame(() => requestAnimationFrame(() => { window.__done = true; }));
+    }
+  }
+  // ------------------------------------------------------------------ top / bottom bars
+  render() { this.renderTop(); this.renderLeft(); this.renderRight(); this.renderBottom(); }
+  renderTop() {
+    const C = this.C, D = C.def, wk = Math.min(C.turn, C.maxTurn);
+    this.top.innerHTML = `<div class="c2-id"><div class="c2-k">${esc(D.brigade?.short || D.brigade?.name || '')} · ${esc(D.region || '')}</div><div class="c2-t">${esc(D.intro?.place || D.aor.name)}</div></div>
+      <div class="c2-date"><div class="c2-d">${esc(dateLabel(C.date, true).toUpperCase())}</div><div class="c2-k">WEEK ${wk} OF ${C.maxTurn} · <span class="c2-season">${seasonName(C.date)}</span></div><div class="c2-prog"><i style="width:${(100 * (wk - 1) / Math.max(1, C.maxTurn - 1)).toFixed(1)}%"></i></div></div>
+      <div class="c2-stats"><div><span>LP</span><b class="lp">${C.lp}</b></div><div><span>PER WEEK</span><b>+${C.lpIncome()}</b></div><div><span>BATTLES</span><b>${C.stats.won}/${C.stats.battles}</b></div><div><span>GRID HELD</span><b>${this.held()}</b></div></div>`;
+    const end = h('button', { class: 'c2-end', onclick: () => this.endTurn() }, 'END WEEK ▸'); this.top.appendChild(end);
+    const menu = h('div', { class: 'c2-menu' });
+    menu.appendChild(h('button', { class: 'c2-btn', title: 'Back to the main menu (the campaign is saved)', onclick: () => { location.href = location.pathname; } }, 'Menu'));
+    menu.appendChild(h('button', { class: 'c2-btn', title: 'Abandon this campaign', onclick: () => { if (confirm('Abandon this campaign? All progress will be lost.')) { Campaign2.clear(); location.href = location.pathname + '?campaign=1'; } } }, 'Abandon'));
+    this.top.appendChild(menu);
+  }
+  held() { const C = this.C, cells = C.def.aor.cells; return `${cells.filter(c => C.owner[c.id] === 'player').length}/${cells.length}`; }
+  renderBottom() {
+    this.bottom.innerHTML = '';
+    const views = h('div', { class: 'c2-views' });
+    for (const [k, l] of [['front', 'Task forces'], ['aor', 'Sector'], ['theatre', 'Whole front']]) views.appendChild(h('button', { class: 'c2-btn', onclick: () => this.map.flyTo(this.map.view(k), 1.4) }, l));
+    views.appendChild(h('button', { class: 'c2-btn' + (this.map.showSupply ? ' on' : ''), title: 'Supply overlay (L)', onclick: () => this.toggleSupply() }, 'Supply'));
+    this.bottom.appendChild(views);
+    this.bottom.appendChild(h('div', { class: 'c2-help' }, `<b>Left-click</b> select · <b>Right-click</b> move / attack · <b>WASD</b>/drag/edges pan · <b>wheel</b> zoom · <b>Q/E</b> or right-drag rotate · <b>Tab</b> next task force · <b>Esc</b> deselect · <b>Enter</b> end week`));
+  }
+  toggleSupply() { this.map.showSupply = !this.map.showSupply; this.map.refresh(); this.renderBottom(); }
+  // ------------------------------------------------------------------ left panel: tabs
+  renderLeft() {
+    const C = this.C; this.left.innerHTML = '';
+    const tabs = h('div', { class: 'c2-tabs' });
+    const nAtt = C.pendingAttacks.length;
+    for (const [k, l] of [['dir', `Directives${C.directives.length ? ` <i>${C.directives.length}</i>` : ''}`], ['tf', `Forces <i>${C.forces.length}</i>`], ['hc', 'High command'], ['log', 'Log']]) tabs.appendChild(h('button', { class: this.tab === k ? 'on' : '', onclick: () => { this.tab = k; this.renderLeft(); } }, l));
+    this.left.appendChild(tabs);
+    const pane = h('div', { class: 'c2-pane' });
+    if (nAtt) pane.appendChild(this.attacksCard());
+    pane.appendChild(({ dir: () => this.directivesPane(), tf: () => this.forcesPane(), hc: () => this.hcPane(), log: () => this.logPane() })[this.tab]());
+    this.left.appendChild(pane);
+  }
+  attacksCard() {
+    const C = this.C, card = h('div', { class: 'c2-card alert' }, `<div class="c2-ch">ENEMY ATTACKS EXPECTED</div><div class="c2-note">Intelligence reports attacks being prepared. Move a task force into the threatened square to fight the defence yourself; otherwise the line battalions hold it alone when the week ends.</div>`);
+    for (const a of C.pendingAttacks) {
+      const own = C.forcesAt(a.to);
+      const row = h('div', { class: 'c2-att' }, `<div><b>${esc(cellRef(C, a.to))}</b> ← ${esc(C.cellName(a.from))}<br><small>${STRENGTH[a.strength]} · ${own.length ? `defended by ${own.map(f => esc(f.name)).join(', ')}` : 'line battalions only'}</small></div>`);
+      const b = h('div', { class: 'c2-row' });
+      b.appendChild(h('button', { class: 'c2-btn', onclick: () => { this.map.flyTo({ ...this.map.cellCenter(a.to), dist: 9 }, 1); this.clickCell(a.to); } }, 'Show'));
+      if (own.length) b.appendChild(h('button', { class: 'c2-btn pri', onclick: () => this.fightDefence(a) }, 'Fight defence'));
+      row.appendChild(b); card.appendChild(row);
+    }
+    return card;
+  }
+  directivesPane() {
+    const C = this.C, p = h('div');
+    if (!C.directives.length) p.appendChild(h('div', { class: 'c2-note' }, 'No active directives. Hold the sector and prepare; higher command will issue new orders.'));
+    for (const a of C.directives) {
+      const d = C.directiveDef(a.id); if (!d) continue; const st = C.directiveStatus(a);
+      const card = h('div', { class: 'c2-card dir' }, `<div class="c2-ck">${esc(d.from || 'Higher command')} · issued ${esc(dateLabel(a.issuedDate))}</div><div class="c2-ch">${esc(d.title)}</div><div class="c2-order">${esc(d.text || '')}</div>
+        <div class="c2-kv"><span>${esc(kindLabel(d.kind))}</span><b>${esc(st.txt)}</b></div><div class="c2-kv"><span>Deadline</span><b>${esc(dateLabel(a.deadline))} (${st.weeksLeft} wk)</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP${d.reward?.units?.length ? ` + ${d.reward.units.length} unit(s)` : ''}${d.reward?.unlock?.length ? ' + equipment' : ''}</b></div>`);
+      const tg = h('div', { class: 'c2-row' }); for (const t of d.targets || []) tg.appendChild(h('button', { class: 'c2-chip' + (C.owner[t] === 'player' ? ' ok' : ''), onclick: () => { this.map.flyTo({ ...this.map.cellCenter(t), dist: 8 }, 1); this.clickCell(t); } }, `${esc(cellRef(C, t))}`));
+      card.appendChild(tg); p.appendChild(card);
+    }
+    const hist = (C.history || []).slice().reverse();
+    if (hist.length) { p.appendChild(h('div', { class: 'c2-sub' }, 'Completed directives')); for (const x of hist) { const d = C.directiveDef(x.id); p.appendChild(h('div', { class: 'c2-card done ' + (x.ok ? 'ok' : 'bad') }, `<div class="c2-ch">${x.ok ? '✓' : '✗'} ${esc(d?.title || x.id)} <small>${esc(dateLabel(x.date))}</small></div>${d?.history ? `<div class="c2-hist"><b>What really happened:</b> ${esc(d.history)}</div>` : ''}`)); } }
+    return p;
+  }
+  forcesPane() {
+    const C = this.C, p = h('div');
+    p.appendChild(h('div', { class: 'c2-note' }, 'Select a task force, then right-click a square to move or an enemy square to attack. Movement points depend on the slowest unit (foot 2, tracked 3, wheeled 4); roads are cheap, woods, towns and rivers expensive.'));
+    for (const f of C.forces) {
+      const us = C.tfUnits(f), mx = C.tfMpMax(f);
+      const card = h('div', { class: 'c2-card tf' + (f.id === this.sel ? ' sel' : ''), onclick: () => { this.select(f.id); this.map.flyTo({ ...this.map.cellCenter(f.cell), dist: Math.min(this.map.cam.dist, 14) }, 0.8); } },
+        `<div class="c2-tfh">${natoSvg(us, 34, 24)}<div><div class="c2-ch">${esc(f.name)} <small>${echelon(us.length)}</small></div><div class="c2-ck">${esc(cellRef(C, f.cell))} · ${us.length} units · ${f.stance}</div></div></div>
+        <div class="c2-kv"><span>Movement</span><b>${fmt(f.mp)}/${mx} MP${f.attacked ? ' · attacked' : ''}</b></div><div class="c2-kv"><span>Supply</span><b class="${(f.supply ?? 1) >= 1 ? 'good' : (f.supply ?? 1) > 0 ? 'warn' : 'bad'}">${(f.supply ?? 1) >= 1 ? 'in supply' : (f.supply ?? 1) > 0 ? 'stretched' : 'OUT OF SUPPLY'}</b></div><div class="c2-kv"><span>Combat power</span><b>${fmt(C.tfPower(f))}</b></div>`);
+      p.appendChild(card);
+    }
+    return p;
+  }
+  hcPane() {
+    const C = this.C, p = h('div');
+    p.appendChild(h('div', { class: 'c2-note' }, `Requests to high command are paid with logistics points (LP: ${C.lp}). Units arrive at brigade HQ (${esc(C.cellName(C.deliveryCell()))}) after the weeks shown; equipment and doctrine unlock when delivered. Some deliveries are only possible from a historical date.`));
+    if (C.orders.length) p.appendChild(h('div', { class: 'c2-card' }, `<div class="c2-ch">On the way</div>${C.orders.map(o => `<div class="c2-kv"><span>${esc(o.what === 'tech' ? C.techItem(o.key)?.name : C.catalogItem(o.key)?.label)}</span><b>${o.eta} wk</b></div>`).join('')}`));
+    const sub = h('div', { class: 'c2-subtabs' });
+    this.hcTab ||= 'units';
+    for (const [k, l] of [['units', 'Units'], ['repl', 'Replacements'], ['tech', 'Tech tree']]) sub.appendChild(h('button', { class: this.hcTab === k ? 'on' : '', onclick: () => { this.hcTab = k; this.renderLeft(); } }, l));
+    p.appendChild(sub);
+    if (this.hcTab === 'units') for (const c of C.def.catalog) {
+      const unlocked = C.available.includes(c.key) && (c.req || []).every(r => C.unlocked.includes(r)), dateOk = C.dateOk(c), ok = C.catalogAvailable(c), cost = C.unitCost(c);
+      const row = h('div', { class: 'c2-card cat' + (unlocked ? '' : ' locked') }, `<div class="c2-ch"><span class="ic">${KIND_ICON[c.kind] || '·'}</span> ${esc(c.label)} <small>${cost} LP · ${c.eta ?? 1} wk</small></div><div class="c2-ck">${esc(KIND[c.kind] || c.kind)}${c.men ? ` · ${c.men} men` : ''}${c.vehicle ? ` · ${c.vehicle.toUpperCase()}` : ''}</div><div class="c2-desc">${esc(c.desc || '')}</div>${!unlocked ? `<div class="c2-req">Needs ${(c.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ') || 'authorisation from high command'}</div>` : !dateOk ? `<div class="c2-req">Available from ${esc(dateLabel(c.date))}</div>` : ''}`);
+      if (unlocked && dateOk) row.appendChild(h('button', { class: 'c2-btn pri', disabled: !ok || C.lp < cost, onclick: () => { const e = C.orderUnit(c.key); this.toast(e || `${c.label} ordered`, !e); this.render(); } }, ok ? `Order (${cost} LP)` : 'Limit reached'));
+      p.appendChild(row);
+    }
+    if (this.hcTab === 'repl') {
+      const units = C.units.filter(u => C.replaceCost(u) > 0);
+      if (!units.length) p.appendChild(h('div', { class: 'c2-note' }, 'All units are at full strength.'));
+      for (const u of units) { const tf = C.tfOf(u.uid), cost = C.replaceCost(u); const row = h('div', { class: 'c2-card' }, `<div class="c2-ch"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${esc(tf?.name || '')}</small></div><div class="c2-ck">${u.menMax ? `${u.men}/${u.menMax} men${u.wounded ? ` (+${u.wounded} wounded)` : ''}` : ''}${u.veh ? ` · vehicle ${u.veh.lost ? 'destroyed' : Math.round(u.veh.hp * 100) + '%'}` : ''}</div>`);
+        row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || (tf && (tf.supply ?? 1) < 0.5), onclick: () => { const e = C.replenish(u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, (tf && (tf.supply ?? 1) < 0.5) ? 'Out of supply' : `Replenish (${cost} LP)`)); p.appendChild(row); }
+    }
+    if (this.hcTab === 'tech') {
+      const wrap = h('div', { class: 'c2-tech' }), branches = [...new Set(C.def.tech.map(t => t.branch || 'General'))];
+      for (const b of branches) {
+        const col = h('div', { class: 'c2-branch' }, `<div class="c2-sub">${esc(b)}</div>`);
+        for (const t of C.def.tech.filter(x => (x.branch || 'General') === b)) {
+          const st = C.unlocked.includes(t.id) ? 'have' : C.orders.some(o => o.key === t.id) ? 'ordered' : !C.dateOk(t) && (t.req || []).every(r => C.unlocked.includes(r)) ? 'date' : C.techAvailable(t.id) ? 'avail' : 'locked';
+          const n = h('div', { class: `c2-tn ${st}` }, `<div class="c2-tnh">${esc(t.name)} <small>${st === 'have' ? '✓ in service' : st === 'ordered' ? 'on the way' : st === 'date' ? `from ${esc(dateLabel(t.date))}` : `${t.lp} LP`}</small></div><div class="c2-desc">${esc(t.desc || '')}</div>${(t.req || []).length && st === 'locked' ? `<div class="c2-req">needs ${(t.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ')}</div>` : ''}`);
+          if (st === 'avail') n.appendChild(h('button', { class: 'c2-btn', disabled: C.lp < t.lp, onclick: () => { const e = C.orderTech(t.id); this.toast(e || `${t.name} requested`, !e); this.render(); } }, `Request (${t.lp} LP, ${t.eta ?? 1} wk)`));
+          col.appendChild(n);
+        }
+        wrap.appendChild(col);
+      }
+      p.appendChild(wrap);
+    }
+    return p;
+  }
+  logPane() {
+    const p = h('div', { class: 'c2-log' }); let last = null;
+    for (const l of this.C.log.slice().reverse()) { if (l.date !== last) { p.appendChild(h('div', { class: 'c2-logd' }, esc(dateLabel(l.date)))); last = l.date; } p.appendChild(h('div', { class: `c2-l ${l.kind || ''}` }, esc(l.text))); }
+    return p;
+  }
+  // ------------------------------------------------------------------ right panel: selection
+  renderRight() {
+    const C = this.C; this.right.innerHTML = '';
+    const tf = this.sel && C.tf(this.sel);
+    if (!tf && !this.selCell) { this.right.classList.add('hidden'); return; }
+    this.right.classList.remove('hidden');
+    if (tf) this.right.appendChild(this.tfCard(tf));
+    const cell = this.selCell || tf?.cell; if (cell) this.right.appendChild(this.cellCard(cell));
+  }
+  tfCard(f) {
+    const C = this.C, us = C.tfUnits(f), mx = C.tfMpMax(f), here = C.forcesAt(f.cell).filter(x => x !== f);
+    const card = h('div', { class: 'c2-card tfsel' });
+    card.innerHTML = `<div class="c2-tfh">${natoSvg(us, 44, 31)}<div style="flex:1"><div class="c2-ch lg">${esc(f.name)}</div><div class="c2-ck">${esc(cellRef(C, f.cell))}${f.reserve ? ' · brigade reserve' : ''}</div></div><button class="c2-x" title="Deselect (Esc)">×</button></div>
+      <div class="c2-mp">${Array.from({ length: Math.ceil(mx) }, (_, i) => `<i class="${f.mp >= i + 1 - 1e-6 ? 'on' : f.mp > i + 1e-6 ? 'half' : ''}"></i>`).join('')}<span>${fmt(f.mp)} / ${mx} MP${f.attacked ? ' · has attacked' : ''}</span></div>
+      <div class="c2-kv"><span>Supply</span><b class="${(f.supply ?? 1) >= 1 ? 'good' : (f.supply ?? 1) > 0 ? 'warn' : 'bad'}">${(f.supply ?? 1) >= 1 ? 'in supply' : (f.supply ?? 1) > 0 ? 'stretched — at the end of the supply line' : 'OUT OF SUPPLY: half movement, no replacements, battle penalties'}</b></div>`;
+    card.querySelector('.c2-x').onclick = () => this.select(null);
+    const st = h('div', { class: 'c2-seg' });
+    for (const [k, l, t] of [['attack', 'Ready', 'Ready to move and attack'], ['hold', 'Dig in', 'Hold: improves the square’s fortifications if it does not move'], ['rest', 'Rest', 'Rest and repair: vehicles repaired, wounded return faster (in supply, not moving)']]) st.appendChild(h('button', { class: f.stance === k ? 'on' : '', title: t, onclick: () => { C.setStance(f.id, k); this.render(); } }, l));
+    card.appendChild(st);
+    const list = h('div', { class: 'c2-units' });
+    for (const u of us) {
+      const lvl = xpLevel(u.xp), on = this.pick.has(u.uid);
+      const row = h('label', { class: 'c2-unit' + (on ? ' on' : '') + (C.combatReady(u) ? '' : ' nr') }, `<input type="checkbox" ${on ? 'checked' : ''}><span class="ic">${KIND_ICON[u.kind] || '·'}</span><span class="nm">${esc(u.name)}<small>${u.menMax ? `${u.men}/${u.menMax}${u.wounded ? ` +${u.wounded}w` : ''}` : ''}${u.veh ? ` · ${u.veh.lost ? 'no vehicle' : `<span class="hp"><i style="width:${Math.round(u.veh.hp * 100)}%"></i></span>`}` : ''}${u.status !== 'ready' ? ` · ${u.status === 'refit' ? 'refitting' : 'arriving'}` : ''}</small></span><span class="vt v${lvl}" title="${u.battles} battles, ${u.kills} kills">${XP_NAMES[lvl]}</span>`);
+      row.querySelector('input').onchange = e => { if (e.target.checked) this.pick.add(u.uid); else this.pick.delete(u.uid); this.renderRight(); };
+      list.appendChild(row);
+    }
+    card.appendChild(list);
+    const acts = h('div', { class: 'c2-row' });
+    const picked = [...this.pick].filter(id => f.units.includes(id));
+    acts.appendChild(h('button', { class: 'c2-btn', disabled: !picked.length || picked.length >= f.units.length, title: 'Detach the ticked units into a new task force on this square', onclick: () => { const r = C.split(f.id, picked); if (typeof r === 'string') return this.toast(r, false); this.pick.clear(); this.select(r.id); this.toast(`${r.name} detached`); } }, `Split off ${picked.length || ''}`.trim()));
+    for (const o of here) acts.appendChild(h('button', { class: 'c2-btn', title: `Combine ${o.name} and ${f.name} into one task force`, onclick: () => {
+      const [into, from] = (o.units.length > f.units.length || (o.units.length === f.units.length && C.forces.indexOf(o) < C.forces.indexOf(f))) ? [o, f] : [f, o];   // the larger / older force keeps its name
+      const r = C.merge(into.id, from.id); if (typeof r === 'string') return this.toast(r, false); this.toast(`${from.name} combined into ${into.name}`); this.select(into.id); } }, `Merge ${esc(o.name)}`));
+    acts.appendChild(h('button', { class: 'c2-btn', onclick: () => { const n = prompt('Task force name', f.name); if (n) { C.rename(f.id, n); this.render(); this.map.refresh(); } } }, 'Rename'));
+    card.appendChild(acts);
+    card.appendChild(h('div', { class: 'c2-note' }, here.length ? 'Other task forces share this square: merge them for a stronger attack.' : 'Tick units and split them off to send detachments to different squares; move task forces onto one square and merge them for a larger force.'));
+    return card;
+  }
+  cellCard(id) {
+    const C = this.C, c = C.cell(id); if (!c) return h('div');
+    const o = C.owner[id], known = C.known(id), sup = C.supplied[id] ?? 0;
+    const card = h('div', { class: 'c2-card cell' }, `<div class="c2-ck">GRID ${C.gridRef(id)} · ${esc(TERRAIN[c.terrain] || c.terrain)}</div><div class="c2-ch lg">${esc(C.cellName(id))}</div>
+      <div class="c2-kv"><span>Control</span><b class="${o === 'player' ? 'own' : o === 'contested' ? 'warn' : 'bad'}">${o === 'player' ? 'own' : o === 'contested' ? 'contested' : 'enemy'}</b></div>
+      ${c.settlement ? `<div class="c2-kv"><span>Settlement</span><b>${esc(c.settlement.name)} (${esc(c.settlement.kind)})</b></div>` : ''}
+      <div class="c2-kv"><span>Roads</span><b>${['none (cross-country)', 'local road', 'paved highway'][c.road || 0]}${c.river ? (c.bridge ? ' · river (bridge)' : ' · river (no bridge)') : ''}</b></div>
+      <div class="c2-kv"><span>Fortifications</span><b>${(o === 'player' || known) ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[id] || 0] : 'unknown'}</b></div>
+      ${o !== 'player' ? `<div class="c2-kv"><span>Enemy strength</span><b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] : 'unknown — reconnoitre'}</b></div>` : `<div class="c2-kv"><span>Supply</span><b class="${sup >= 1 ? 'good' : sup > 0 ? 'warn' : 'bad'}">${sup >= 1 ? 'in supply' : sup > 0 ? 'stretched' : 'cut off'}</b></div>`}
+      <div class="c2-kv"><span>Value</span><b>${c.vp || 0} VP · +${c.lp || 0} LP/wk</b></div>
+      <div class="c2-kv"><span>Battle map</span><b>${esc(c.battleMap || '')}</b></div>${c.notes ? `<div class="c2-desc">${esc(c.notes)}</div>` : ''}`);
+    if (C.depotAllowed(id)) card.appendChild(h('button', { class: 'c2-btn', title: 'A forward supply depot extends the supply network from this square', onclick: () => { const e = C.buildDepot(id); this.toast(e || 'Forward depot established', !e); this.render(); this.map.refresh(); } }, 'Establish forward depot (30 LP)'));
+    const tf = this.sel && C.tf(this.sel);
+    if (tf && o !== 'player') { const p = C.plan(tf.id, id); card.appendChild(h('button', { class: 'c2-btn pri', disabled: !p.ok, title: p.why || '', onclick: () => this.order(id) }, p.ok ? `Attack with ${esc(tf.name)}` : esc(p.why || 'Cannot attack'))); }
+    return card;
+  }
+  // ------------------------------------------------------------------ selection and orders
+  select(tfId) {
+    const C = this.C; if (tfId && !C.tf(tfId)) tfId = null;
+    if (tfId !== this.sel) this.pick.clear();
+    this.sel = tfId; if (tfId) this.selCell = null;
+    this.map.setSelection(tfId, tfId ? this.reachOf(tfId) : null); this.map.setSelectedCell(this.selCell); this.map.showPath(null);
+    this.renderRight(); if (this.tab === 'tf') this.renderLeft();
+  }
+  reachOf(tfId) {
+    const C = this.C, tf = C.tf(tfId), out = new Map(); if (!tf) return out; const { dist } = C.reach(tf);
+    for (const [id, d] of Object.entries(dist)) if (id !== tf.cell && (d <= tf.mp + 1e-6 || C.plan(tfId, id).ok)) out.set(id, 'move');
+    if (!tf.attacked) for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player' && C.neighbors(c.id).some(n => dist[n] != null) && C.plan(tfId, c.id).ok) out.set(c.id, 'attack');
+    return out;
+  }
+  clickCell(id) {
+    const C = this.C; if (!id) { this.select(null); this.selCell = null; this.map.setSelectedCell(null); this.renderRight(); return; }
+    const fs = C.forcesAt(id);
+    if (fs.length) { const i = fs.findIndex(f => f.id === this.sel); this.select(fs[(i + 1) % fs.length].id); return; }
+    this.selCell = id; this.map.setSelectedCell(id); this.renderRight();
+  }
+  hoverCell(id) {
+    if (!this.sel || !id) { this.map.showPath(null); return; }
+    const tf = this.C.tf(this.sel); if (!tf || id === tf.cell) { this.map.showPath(null); return; }
+    this.map.showPath(this.C.plan(this.sel, id));
+  }
+  order(id, tfId = null) {
+    const C = this.C; if (tfId && tfId !== this.sel && !this.sel) return this.select(tfId);
+    if (!this.sel) { this.clickCell(id); return; }
+    const tf = C.tf(this.sel); if (!tf || id === tf.cell) return;
+    const p = C.plan(tf.id, id);
+    if (!p.ok) { blip('error'); return this.toast(p.why || 'Cannot move there', false); }
+    if (p.attack) return this.attackModal(tf, id, p);
+    C.move(tf.id, id); blip('move');
+    this.select(tf.id); this.renderTop();
+  }
+  // ------------------------------------------------------------------ battles
+  estimate(tf, cellId) {
+    const C = this.C, us = C.battleUnits(tf.units), sup = tf.supply ?? 1, fort = C.fort[cellId] || 0, c = C.cell(cellId);
+    const urban = ['urban', 'industrial'].includes(c.terrain) ? 1 : c.terrain === 'village' || c.terrain === 'forest' ? 0.5 : 0;
+    const mine = us.reduce((a, u) => a + C.unitPower(u), 0) * (0.6 + 0.4 * sup), theirs = Math.max(0.5, C.garrison[cellId] || 1) * 2.1 + fort * 0.6 + urban * 0.8;
+    const r = mine / theirs; return { mine, theirs, r, label: r > 1.5 ? 'Favourable' : r > 1.1 ? 'Slight advantage' : r > 0.85 ? 'Even' : r > 0.6 ? 'Unfavourable' : 'Very unfavourable', cls: r > 1.1 ? 'good' : r > 0.85 ? 'warn' : 'bad', units: us };
+  }
+  attackModal(tf, cellId, plan) {
+    const C = this.C, c = C.cell(cellId), est = this.estimate(tf, cellId), known = C.known(cellId);
+    const m = this.modal(`<div class="c2-k">ATTACK ORDER · ${esc(dateLabel(C.date))}</div><h2>${esc(tf.name)} → ${esc(cellRef(C, cellId))}</h2>
+      <div class="c2-two"><div><div class="c2-sub">Own force (${est.units.length} of ${tf.units.length} units deploy, max ${MAX_BATTLE})</div>${est.units.map(u => `<div class="c2-li"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${u.menMax ? `${u.men}/${u.menMax}` : ''}${u.veh ? ` · ${u.veh.lost ? 'no veh.' : Math.round(u.veh.hp * 100) + '%'}` : ''} · ${XP_NAMES[xpLevel(u.xp)]}</small></div>`).join('')}${(tf.supply ?? 1) < 0.5 ? '<div class="c2-li bad">Out of supply: less ammunition, fewer drones, lower morale</div>' : ''}</div>
+      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(c.battleMap || '')}</b></div>
+      <div class="c2-odds ${est.cls}">${known ? `Staff estimate: <b>${est.label}</b>` : 'Staff estimate: <b>no reliable intelligence</b>'}</div></div></div>
+      <div class="c2-note">The task force moves to ${esc(C.cellName(plan.stage))} and attacks. Fight the battle yourself on the RTS map, or let the staff auto-resolve it (less LP, rougher losses). Win and the square is yours; the task force moves in.</div>`,
+      [['FIGHT THE BATTLE', 'pri', () => this.launchAttack(tf, cellId, false)], ['Auto-resolve', '', () => this.launchAttack(tf, cellId, true)], ['Cancel', '', () => {}]]);
+    return m;
+  }
+  launchAttack(tf, cellId, auto) {
+    const C = this.C, p = C.move(tf.id, cellId); if (!p.ok) return this.toast(p.why || 'Cannot attack', false);
+    const setup = C.attackSetup(tf.id, cellId); if (!setup) return this.toast('Cannot attack from here', false);
+    blip('attack');
+    if (auto) { const r = C.autoResolve(cellId, 'attack'); this.afterBattle(r); return; }
+    this.launch(setup);
+  }
+  fightDefence(a) {
+    const C = this.C, setup = C.defendSetup(a.id); if (!setup) return this.toast('No combat-ready task force in that square', false);
+    this.launch(setup);
+  }
+  launch(setup) {
+    const C = this.C; C.launch(setup);
+    const m = this.modal(`<div class="c2-k">${setup.mode === 'attack' ? 'ATTACK' : 'DEFENCE'} · ${esc(dateLabel(C.date))}</div><h2>${esc(setup.sectorName)}</h2><div class="c2-note">Moving to the battle map…</div>`, []);
+    setTimeout(() => this.onLaunch?.(setup), 350);
+    return m;
+  }
+  afterBattle(r) {
+    this.map.refresh(); this.render(); this.select(this.sel && this.C.tf(this.sel) ? this.sel : null);
+    if (r) this.resultModal(r);
+    this.checkOutcome();
+  }
+  resultModal(r) {
+    const C = this.C, win = r.win, att = r.mode === 'attack';
+    const rows = (r.units || []).map(u => { const f = C.unit(u.uid); return `<div class="c2-li"><span class="ic">${KIND_ICON[f?.kind] || '·'}</span> ${esc(f?.name || u.uid)} <small>${u.alive} fit · ${u.wounded} wounded${u.vehLost ? ' · <b class="bad">vehicle lost</b>' : ''}${u.kills ? ` · ${u.kills} kills` : ''}</small></div>`; }).join('');
+    this.modal(`<div class="c2-k">${r.auto ? 'AUTO-RESOLVED' : 'AFTER-ACTION REPORT'} · ${esc(cellRef(C, r.sector))}</div><h1 class="${win ? 'good' : 'bad'}">${win ? (att ? 'SQUARE TAKEN' : 'ATTACK REPULSED') : (att ? 'ATTACK FAILED' : 'POSITION LOST')}</h1>
+      <div class="c2-kv"><span>Enemy killed</span><b>${r.enemyKia || 0}</b></div><div class="c2-kv"><span>Enemy vehicles destroyed</span><b>${r.enemyVehLost || 0}</b></div>${rows ? `<div class="c2-sub">Own units</div>${rows}` : ''}`, [['CONTINUE', 'pri', () => {}]]);
+  }
+  // ------------------------------------------------------------------ end of week
+  endTurn() {
+    const C = this.C; if (C.outcome()) return this.checkOutcome();
+    if (document.querySelector('.c2-modal')) return;
+    const unanswered = C.pendingAttacks.filter(a => !C.forcesAt(a.to).length).length;
+    const go = () => {
+      const n0 = C.log.length, d0 = C.date, nDir = C.directives.map(a => a.id);
+      blip('end'); C.endTurn();
+      const entries = C.log.slice(n0);
+      this.map.setDate(C.date, true); this.select(this.sel && C.tf(this.sel) ? this.sel : null); this.map.refresh(); this.render();
+      for (const e of C.lastNews || []) if (e.latlon) this.map.flashEvent(e.latlon, `${dateLabel(e.date.length > 7 ? e.date : e.date + '-01')}: ${e.text}`);
+      const fresh = C.directives.filter(a => !nDir.includes(a.id));
+      this.turnReport(d0, entries, () => { if (fresh.length) this.directiveModal(fresh[0]); this.checkOutcome(); });
+    };
+    if (unanswered && !this.confirmedWeek) { this.modal(`<div class="c2-k">END WEEK</div><h2>${unanswered} enemy attack${unanswered > 1 ? 's' : ''} expected on undefended squares</h2><div class="c2-note">The line battalions will try to hold them alone. Move a task force in to fight the defence, or end the week anyway.</div>`, [['End week', 'pri', go], ['Back', '', () => {}]]); return; }
+    go();
+  }
+  turnReport(d0, entries, done) {
+    const C = this.C, imp = entries.slice(-18), rest = entries.length - imp.length;
+    if (!entries.length) return done();
+    this.modal(`<div class="c2-k">WEEKLY REPORT · ${esc(dateLabel(d0))} → ${esc(dateLabel(C.date))}</div><h2>Week ${C.turn - 1} summary</h2><div class="c2-report">${imp.map(e => `<div class="c2-l ${e.kind}">${esc(e.text)}</div>`).join('')}${rest > 0 ? `<div class="c2-l">+ ${rest} more entries in the log</div>` : ''}</div>`, [['CONTINUE', 'pri', done]]);
+  }
+  directiveModal(a) {
+    const C = this.C, d = C.directiveDef(a.id); if (!d) return;
+    this.modal(`<div class="c2-k">NEW DIRECTIVE · ${esc(d.from || 'Higher command')} · ${esc(dateLabel(a.issuedDate))}</div><h2>${esc(d.title)}</h2><div class="c2-order lg">${esc(d.text || '')}</div>
+      <div class="c2-kv"><span>Task</span><b>${esc(kindLabel(d.kind))}${(d.targets || []).length ? ': ' + d.targets.map(t => esc(C.cellName(t))).join(', ') : ''}</b></div><div class="c2-kv"><span>Deadline</span><b>${esc(dateLabel(a.deadline))}</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP</b></div>`,
+      [['ACKNOWLEDGED', 'pri', () => { this.tab = 'dir'; this.renderLeft(); const t = (d.targets || [])[0]; if (t) this.map.flyTo({ ...this.map.cellCenter(t), dist: 14 }, 1.4); }]]);
+  }
+  checkOutcome() {
+    const C = this.C, o = C.outcome(); if (!o || this.outShown) return; this.outShown = true;
+    const s = C.score();
+    this.modal(`<div class="c2-k">${esc(dateLabel(C.date, true).toUpperCase())}</div><h1 class="${o.win ? 'good' : 'bad'}">${esc(o.title)}</h1><p>${esc(o.text)}</p>
+      <div class="c2-kv"><span>Battles won</span><b>${C.stats.won} of ${C.stats.battles}</b></div><div class="c2-kv"><span>Grid squares</span><b>+${C.stats.cellsTaken} taken / −${C.stats.cellsLost} lost (net ${s.cells >= 0 ? '+' : ''}${s.cells})</b></div><div class="c2-kv"><span>Directives</span><b>${s.ok} carried out · ${s.fail} failed</b></div><div class="c2-kv"><span>Enemy killed / vehicles</span><b>${C.stats.kills} / ${C.stats.vehKills}</b></div><div class="c2-kv"><span>Own losses / vehicles</span><b>${C.stats.losses} / ${C.stats.vehLost}</b></div>`,
+      [['NEW CAMPAIGN', 'pri', () => { Campaign2.clear(); location.href = location.pathname + '?campaign=1'; }], ['Look at the map', '', () => {}]]);
+  }
+  // ------------------------------------------------------------------ intro cutscene
+  intro() {
+    const C = this.C, D = C.def, I = D.intro || {}, map = this.map;
+    const shot = Q.has('introshot') ? +Q.get('introshot') : null;
+    const ov = h('div', { class: 'c2-intro' }, `<div class="c2-bar t"></div><div class="c2-bar b"></div><div class="c2-black"></div>
+      <div class="c2-title"><div class="c2-ik">${esc(D.brigade?.name || '')}</div><div class="c2-ip">${esc((I.place || D.aor.name).toUpperCase())}</div><div class="c2-idate">${esc(I.date || dateLabel(C.date, true))}</div></div>
+      <div class="c2-lines">${(I.lines || []).slice(0, 3).map(l => `<p>${esc(l)}</p>`).join('')}</div><div class="c2-skip">click or press any key to skip</div>`);
+    this.root.appendChild(ov); this.root.classList.add('intro-on'); map.labels.style.visibility = 'hidden';
+    const th = map.view('theatre'), fr = map.view('front'), aor = map.view('aor');
+    const start = { x: (th.x * 0.55 + aor.x * 0.45), z: (th.z * 0.55 + aor.z * 0.45), dist: th.dist * 0.75, yaw: -0.35, pitch: 1.2 };
+    map.jump(start); map.locked = true;
+    const music = shot == null ? playIntroMusic({ titleAt: 3.2, length: 11 }) : { stop() {} };
+    const LEN = 10.5, lines = [...ov.querySelectorAll('.c2-lines p')];
+    let t = 0, last = performance.now(), done = false;
+    const path = k => { // slow descent: theatre → over the AOR with a gentle turn
+      const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      map.jump({ x: start.x + (fr.x - start.x) * e, z: start.z + (fr.z - start.z) * e, dist: Math.exp(Math.log(start.dist) + (Math.log(fr.dist * 1.05) - Math.log(start.dist)) * e), yaw: start.yaw + (fr.yaw - start.yaw) * e, pitch: start.pitch + (fr.pitch - start.pitch) * e });
+    };
+    const finish = () => {
+      if (done) return; done = true; music.stop(0.9); map.locked = false; map.jump(fr);
+      ov.classList.add('out'); setTimeout(() => { ov.remove(); this.root.classList.remove('intro-on'); map.labels.style.visibility = ''; }, 700);
+      window.removeEventListener('keydown', skip, true); ov.removeEventListener('pointerdown', skip);
+      const first = C.directives[0]; if (first) setTimeout(() => this.directiveModal(first), 500);
+    };
+    const skip = e => { e.preventDefault?.(); e.stopPropagation?.(); finish(); };
+    window.addEventListener('keydown', skip, true); ov.addEventListener('pointerdown', skip);
+    const step = now => {
+      if (done) return;
+      t = shot != null ? shot : t + Math.min(0.1, (now - last) / 1000); last = now;
+      path(Math.min(1, t / (LEN - 0.5)));
+      ov.querySelector('.c2-black').style.opacity = String(Math.max(0, 1 - t / 1.6));
+      const title = ov.querySelector('.c2-title'); title.style.opacity = String(t < 3.2 ? 0 : t < 3.9 ? (t - 3.2) / 0.7 : t < 8.4 ? 1 : Math.max(0, 1 - (t - 8.4) / 1));
+      title.style.transform = `translateY(-50%) scale(${1.04 - Math.min(1, Math.max(0, (t - 3.2) / 6)) * 0.04})`;
+      lines.forEach((p, i) => { const a = 4.6 + i * 1.9; p.style.opacity = String(t < a ? 0 : t < a + 0.6 ? (t - a) / 0.6 : t < LEN - 0.9 ? 1 : Math.max(0, 1 - (t - LEN + 0.9) / 0.6)); });
+      if (shot != null) { setTimeout(() => { window.__done = true; }, 1500); return; }
+      if (t >= LEN) return finish();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  // ------------------------------------------------------------------ misc
+  key(e) {
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || document.querySelector('.c2-intro')) return;
+    const m = document.querySelector('.c2-modal');
+    if (m) { if (e.key === 'Escape' || e.key === 'Enter') { m.querySelector('button.pri, button')?.click(); e.preventDefault(); } return; }
+    if (e.key === 'Escape') { this.select(null); this.selCell = null; this.map.setSelectedCell(null); this.renderRight(); }
+    else if (e.key === 'Tab') { e.preventDefault(); const fs = this.C.forces; if (!fs.length) return; const i = fs.findIndex(f => f.id === this.sel); const f = fs[(i + (e.shiftKey ? fs.length - 1 : 1)) % fs.length]; this.select(f.id); this.map.flyTo({ ...this.map.cellCenter(f.cell), dist: Math.min(this.map.cam.dist, 14) }, 0.7); }
+    else if (e.key === 'Enter') this.endTurn();
+    else if (e.key.toLowerCase() === 'l') this.toggleSupply();
+  }
+  modal(html, buttons) {
+    const m = h('div', { class: 'c2-modal' }), box = h('div', { class: 'c2-modal-in' }, html), row = h('div', { class: 'c2-row end' });
+    for (const [l, cls, f] of buttons) row.appendChild(h('button', { class: `c2-btn ${cls}`, onclick: () => { m.remove(); f(); } }, l));
+    if (buttons.length) box.appendChild(row); m.appendChild(box); this.root.appendChild(m); return m;
+  }
+  toast(msg, good = true) { this.toastEl.textContent = msg; this.toastEl.className = 'c2-toast show ' + (good ? '' : 'bad'); clearTimeout(this.tt); this.tt = setTimeout(() => { this.toastEl.className = 'c2-toast'; }, 2600); }
+}
+
+const cellRef = (C, id) => { const n = C.cellName(id), r = C.gridRef(id); return n.endsWith(r) ? n : `${n} ${r}`; };
+const kindLabel = k => ({ capture: 'Capture', hold: 'Hold', survive: 'Hold the line', destroy: 'Destroy enemy vehicles', recon: 'Reconnaissance', raid: 'Raid' })[k] || k;
+const seasonName = d => { const m = +String(d).slice(5, 7); return m === 12 || m <= 2 ? 'WINTER' : m <= 5 ? 'SPRING' : m <= 8 ? 'SUMMER' : 'AUTUMN'; };
+
+export function injectCss() {
+  if (document.getElementById('c2-css')) return;
+  const css = `
+#c2{position:fixed;inset:0;z-index:50;background:#0e0f0d;color:var(--ink,#e8e4d8);font-family:"Barlow Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;overflow:hidden;--p:rgba(16,17,15,.86);--l:rgba(232,228,216,.14);--own:${COL.own};--en:${COL.enemy};--acc:var(--accent,#d8b25a)}
+#c2.hidden{display:none}
+.c2-boot{position:absolute;inset:0;display:grid;place-items:center;letter-spacing:.3em;color:var(--dim,#9c978a);font-size:14px}
+.c2-map{position:absolute;inset:0}.c2-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none}
+.c2-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.c2-labels>div{position:absolute;left:0;top:0;will-change:transform}
+.c2-tl{transform-origin:0 0;white-space:nowrap;margin:0}
+.c2-tl-city{font-size:13px;color:rgba(232,228,216,.7);letter-spacing:.06em;text-shadow:0 1px 2px #000;translate:6px -50%}
+.c2-tl-oblast{font-size:12px;letter-spacing:.42em;color:rgba(232,228,216,.28);translate:-50% -50%}
+.c2-tl-river{font-size:12px;font-style:italic;color:rgba(120,165,185,.75);translate:-50% -50%}
+.c2-sl{translate:-50% -160%;white-space:nowrap;color:#f2eee2;text-shadow:0 0 3px #000,0 1px 2px #000;font-weight:600;letter-spacing:.05em}
+.c2-sl1{font-size:11px;opacity:.8}.c2-sl2{font-size:12.5px}.c2-sl3{font-size:14px}.c2-sl4{font-size:16px;letter-spacing:.1em}.c2-sl5{font-size:18px;letter-spacing:.14em;text-transform:uppercase}
+.c2-tok{pointer-events:auto;cursor:pointer;translate:-50% -100%;display:flex;flex-direction:column;align-items:center;padding-bottom:22px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.6))}
+.c2-tok .c2-nato{display:block}.c2-tok-ech{font-size:11px;font-weight:800;line-height:9px;color:#dfe9f7;letter-spacing:1px;text-shadow:0 0 2px #000}
+.c2-tok-n{font-size:12px;font-weight:700;color:#fff;background:rgba(10,18,30,.78);padding:0 5px;margin-top:2px;white-space:nowrap;border:1px solid rgba(79,143,224,.5)}
+.c2-tok-mp{display:flex;gap:2px;margin-top:2px;align-items:center}.c2-tok-mp i{width:7px;height:4px;background:rgba(255,255,255,.18)}.c2-tok-mp i.on{background:#9fd07a}.c2-tok-mp i.half{background:linear-gradient(90deg,#9fd07a 50%,rgba(255,255,255,.18) 50%)}
+.c2-tok-mp b{font-size:9px;letter-spacing:.08em;padding:0 3px;margin-left:3px}.c2-oos{background:var(--en);color:#fff}.c2-used{background:#555;color:#ddd}
+.c2-stem{position:absolute;bottom:0;left:50%;width:2px;height:22px;background:linear-gradient(rgba(220,235,255,.9),rgba(220,235,255,.1))}
+.c2-tok.sel .c2-nato rect{stroke:var(--acc);stroke-width:3}.c2-tok.sel .c2-tok-n{background:var(--acc);color:#14130f;border-color:var(--acc)}.c2-tok.sel{filter:drop-shadow(0 0 6px rgba(216,178,90,.8))}
+.c2-tok.res .c2-tok-n{opacity:.8}.c2-tok.oos .c2-nato rect{fill:#6c7d93}
+.c2-tok:hover .c2-tok-n{border-color:#fff}
+.c2-en{translate:-50% -50%;display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}.c2-en-ech{font-size:10px;font-weight:800;color:#ffd6cf;line-height:9px;text-shadow:0 0 2px #000}.c2-en.unk{opacity:.8}
+.c2-obj{translate:-50% -100%}.c2-obj span{display:block;background:var(--acc);color:#14130f;font-weight:800;font-size:13px;padding:1px 6px 2px;clip-path:polygon(0 0,100% 0,100% 75%,50% 100%,0 75%);min-width:20px;text-align:center}.c2-obj.held span{background:#9fd07a}
+.c2-hq{translate:-50% -50%;font-size:10px;font-weight:800;color:#0d1520;background:var(--own);border:2px solid #0d1520;padding:0 3px;letter-spacing:.08em}
+.c2-arrow-l{translate:-50% -50%;font-size:11px;font-weight:700;color:#fff;background:rgba(160,40,30,.85);padding:0 5px;white-space:nowrap;letter-spacing:.04em}
+.c2-path-l{translate:-50% -170%;font-size:12px;font-weight:700;background:rgba(10,12,10,.88);border:1px solid rgba(255,255,255,.4);color:#fff;padding:1px 7px;white-space:nowrap}.c2-path-l.atk{border-color:var(--en);color:#ffb8ab}.c2-path-l.bad{color:#bbb;border-style:dashed}
+.c2-evt{translate:-8px -50%;display:flex;align-items:center;gap:8px;animation:c2fade 9s forwards}.c2-evt i{width:12px;height:12px;border-radius:50%;background:var(--en);box-shadow:0 0 0 0 rgba(224,80,63,.8);animation:c2ping 1.4s infinite}.c2-evt span{background:rgba(10,10,9,.85);border-left:3px solid var(--en);padding:3px 8px;font-size:13px;max-width:320px}
+@keyframes c2ping{0%{box-shadow:0 0 0 0 rgba(224,80,63,.8)}100%{box-shadow:0 0 0 18px rgba(224,80,63,0)}}@keyframes c2fade{0%{opacity:0}5%{opacity:1}85%{opacity:1}100%{opacity:0}}
+.c2-top{position:absolute;left:0;right:0;top:0;height:64px;display:flex;align-items:center;gap:22px;padding:0 16px;background:linear-gradient(rgba(10,11,9,.95),rgba(10,11,9,.82));border-bottom:1px solid var(--l);z-index:3}
+.c2-top *{white-space:nowrap}.c2-id{min-width:0;max-width:24vw;overflow:hidden}.c2-id .c2-t{overflow:hidden;text-overflow:ellipsis}.c2-k{font-size:11px;letter-spacing:.24em;color:var(--acc)}.c2-t{font-size:22px;font-weight:700;letter-spacing:.04em}
+.c2-date{margin-left:auto;text-align:center;min-width:220px}.c2-d{font-size:26px;font-weight:800;letter-spacing:.08em;line-height:1}.c2-date .c2-k{color:var(--dim,#9c978a);margin-top:3px}.c2-season{color:var(--acc)}
+.c2-prog{height:3px;background:rgba(255,255,255,.1);margin-top:4px}.c2-prog i{display:block;height:100%;background:var(--acc)}
+.c2-stats{display:flex;gap:16px;margin-left:auto}.c2-stats div{display:flex;flex-direction:column;align-items:flex-end}.c2-stats span{font-size:10px;letter-spacing:.16em;color:var(--dim,#9c978a)}.c2-stats b{font-size:20px}.c2-stats .lp{color:var(--acc)}
+.c2-end{background:var(--acc);color:#14130f;border:0;font:inherit;font-weight:800;font-size:17px;letter-spacing:.12em;padding:10px 18px;cursor:pointer;flex:none}.c2-end:hover{filter:brightness(1.12)}
+.c2-menu{display:flex;gap:6px}
+.c2-btn{background:rgba(255,255,255,.06);border:1px solid var(--l);color:var(--ink,#e8e4d8);font:inherit;font-size:14px;padding:5px 11px;cursor:pointer;letter-spacing:.03em}.c2-btn:hover{border-color:rgba(232,228,216,.45)}.c2-btn.pri{background:var(--acc);color:#14130f;border-color:var(--acc);font-weight:700}.c2-btn.on{border-color:var(--acc);color:var(--acc)}.c2-btn[disabled]{opacity:.4;cursor:default}
+.c2-left{position:absolute;left:12px;top:76px;bottom:52px;width:370px;display:flex;flex-direction:column;background:var(--p);border:1px solid var(--l);backdrop-filter:blur(6px);z-index:2}
+.c2-tabs,.c2-subtabs{display:flex;border-bottom:1px solid var(--l)}.c2-tabs button,.c2-subtabs button{flex:1;background:none;border:0;color:var(--dim,#9c978a);font:inherit;font-size:14px;letter-spacing:.08em;padding:9px 4px;cursor:pointer;text-transform:uppercase}.c2-tabs button.on,.c2-subtabs button.on{color:var(--acc);box-shadow:inset 0 -2px var(--acc)}.c2-tabs i{font-style:normal;background:rgba(255,255,255,.12);padding:0 5px;margin-left:3px;font-size:12px}
+.c2-subtabs{margin:4px 0 8px}.c2-subtabs button{font-size:12.5px;padding:6px 2px}
+.c2-pane{flex:1;overflow:auto;padding:10px}.c2-pane::-webkit-scrollbar{width:6px}.c2-pane::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15)}
+.c2-card{background:rgba(255,255,255,.035);border:1px solid var(--l);padding:9px 11px;margin-bottom:9px}.c2-card.alert{border-color:rgba(224,80,63,.6);background:rgba(120,30,20,.18)}.c2-card.sel{border-color:var(--acc)}.c2-card.tf{cursor:pointer}.c2-card.tf:hover{border-color:rgba(232,228,216,.4)}
+.c2-card.done{padding:6px 10px}.c2-card.done.ok .c2-ch{color:#b5d69a}.c2-card.done.bad .c2-ch{color:#e8a598}
+.c2-ch{font-weight:700;font-size:16px;letter-spacing:.02em}.c2-ch.lg{font-size:21px}.c2-ch small{font-weight:400;color:var(--dim,#9c978a);font-size:12.5px;margin-left:4px}.c2-ck{font-size:11.5px;letter-spacing:.1em;color:var(--dim,#9c978a);text-transform:uppercase}
+.c2-kv{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.06)}.c2-kv span{color:var(--dim,#9c978a)}.c2-kv b{font-weight:600;text-align:right}
+.good{color:#a9d48a!important}.warn{color:#e8b85a!important}.bad{color:#ef8c7c!important}.own{color:#8fbaf0!important}
+.c2-note{font-size:13px;color:var(--dim,#9c978a);line-height:1.4;margin:4px 0 8px}.c2-desc{font-size:13px;color:#bdb8a8;margin-top:4px;line-height:1.35}.c2-req{font-size:12px;color:#c9a46a;margin-top:3px}
+.c2-order{font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;font-size:12.5px;line-height:1.5;color:#d8d3c2;background:rgba(0,0,0,.25);border-left:2px solid var(--acc);padding:6px 9px;margin:6px 0;white-space:pre-wrap}.c2-order.lg{font-size:14px}
+.c2-hist{font-size:12.5px;color:#c4bfae;margin-top:4px;line-height:1.4}.c2-hist b{color:var(--acc);font-weight:600}
+.c2-sub{font-size:11px;letter-spacing:.2em;color:var(--dim,#9c978a);text-transform:uppercase;margin:10px 0 6px}
+.c2-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.c2-row.end{justify-content:flex-end;margin-top:16px}
+.c2-chip{background:rgba(216,178,90,.12);border:1px solid rgba(216,178,90,.5);color:#ecd9a8;font:inherit;font-size:13px;padding:2px 8px;cursor:pointer}.c2-chip.ok{background:rgba(143,176,105,.15);border-color:rgba(143,176,105,.6);color:#c5e0ad}
+.c2-ref{font-size:12px;color:var(--acc);border:1px solid rgba(216,178,90,.5);padding:0 4px;letter-spacing:.06em;vertical-align:middle}
+.c2-att{border-top:1px solid rgba(224,80,63,.3);padding-top:7px;margin-top:7px;font-size:14px}.c2-att small{color:#d8a59b}
+.c2-tfh{display:flex;gap:10px;align-items:center}
+.c2-right{position:absolute;right:12px;top:76px;width:350px;max-height:calc(100% - 140px);overflow:auto;z-index:2;display:flex;flex-direction:column;gap:0}
+.c2-right .c2-card{background:var(--p);backdrop-filter:blur(6px)}.c2-card.tfsel{border-color:rgba(216,178,90,.6)}
+.c2-x{margin-left:auto;background:none;border:0;color:#aaa;font-size:22px;cursor:pointer;align-self:flex-start}
+.c2-mp{display:flex;gap:3px;align-items:center;margin:8px 0 4px}.c2-mp i{width:22px;height:7px;background:rgba(255,255,255,.12)}.c2-mp i.on{background:#9fd07a}.c2-mp i.half{background:linear-gradient(90deg,#9fd07a 50%,rgba(255,255,255,.12) 50%)}.c2-mp span{margin-left:8px;font-size:13px;color:var(--dim,#9c978a)}
+.c2-seg{display:flex;margin:8px 0}.c2-seg button{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--l);color:var(--dim,#9c978a);font:inherit;font-size:13.5px;padding:4px;cursor:pointer}.c2-seg button.on{color:#14130f;background:var(--acc);border-color:var(--acc);font-weight:700}
+.c2-units{margin-top:6px;max-height:300px;overflow:auto}.c2-unit{display:flex;gap:7px;align-items:center;padding:4px 6px;border:1px solid transparent;cursor:pointer;font-size:14px}.c2-unit:hover{background:rgba(255,255,255,.04)}.c2-unit.on{border-color:rgba(216,178,90,.55);background:rgba(216,178,90,.08)}.c2-unit.nr{opacity:.6}
+.c2-unit input{accent-color:var(--acc);margin:0}.c2-unit .nm{flex:1;display:flex;flex-direction:column;line-height:1.15}.c2-unit small{color:var(--dim,#9c978a);font-size:12px}
+.hp{display:inline-block;width:36px;height:5px;background:rgba(255,255,255,.12);vertical-align:middle}.hp i{display:block;height:100%;background:#9fd07a}
+.ic{width:16px;text-align:center;color:var(--acc);display:inline-block}
+.vt{font-size:10.5px;padding:1px 5px;background:rgba(255,255,255,.08);color:#bdb8a5;letter-spacing:.05em}.vt.v1{background:#3c4a2c;color:#d4e6c0}.vt.v2{background:#5a4a20;color:#f0d890}.vt.v3{background:#6a2a20;color:#ffd0b0}
+.c2-card.cat.locked{opacity:.55}
+.c2-tech{display:flex;flex-direction:column;gap:2px}.c2-branch{margin-bottom:4px}.c2-tn{border:1px solid var(--l);border-left-width:3px;padding:6px 9px;margin-bottom:5px;font-size:13px}.c2-tn.have{border-left-color:#8fb069;background:rgba(143,176,105,.07)}.c2-tn.ordered{border-left-color:var(--acc)}.c2-tn.avail{border-left-color:#c9c4b0}.c2-tn.locked,.c2-tn.date{opacity:.55}.c2-tnh{font-weight:700;font-size:14px}.c2-tnh small{font-weight:400;color:var(--dim,#9c978a)}
+.c2-log{font-size:13.5px}.c2-logd{font-size:11px;letter-spacing:.18em;color:var(--acc);margin:10px 0 3px;border-bottom:1px solid var(--l)}.c2-l{padding:3px 0 3px 8px;border-left:2px solid transparent;color:#c6c1b1;line-height:1.3}
+.c2-l.good{border-left-color:#8fb069}.c2-l.bad{border-left-color:var(--en)}.c2-l.news{border-left-color:#6f9fc0;color:#a9c7dc}.c2-l.directive{border-left-color:var(--acc);color:#ecd9a8}.c2-l.history{border-left-color:#8a7a5a;color:#b9ab8a;font-style:italic}
+.c2-bottom{position:absolute;left:394px;right:12px;bottom:10px;display:flex;align-items:center;gap:14px;z-index:2;pointer-events:none}.c2-bottom>*{pointer-events:auto}
+.c2-views{display:flex;gap:4px}.c2-views .c2-btn{background:var(--p);font-size:13px;white-space:nowrap}
+.c2-help{font-size:12.5px;color:rgba(232,228,216,.55);text-shadow:0 1px 2px #000}.c2-help b{color:rgba(232,228,216,.85);font-weight:600}
+.c2-toast{position:absolute;left:50%;top:78px;transform:translateX(-50%);background:rgba(10,11,9,.92);border-left:3px solid #8fb069;padding:7px 16px;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:6}.c2-toast.show{opacity:1}.c2-toast.bad{border-left-color:var(--en)}
+.c2-modal{position:absolute;inset:0;background:rgba(4,4,3,.55);display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(2px)}
+.c2-modal-in{width:min(680px,92vw);max-height:86vh;overflow:auto;background:rgba(16,17,15,.97);border:1px solid var(--l);border-top:3px solid var(--acc);padding:20px 24px}
+.c2-modal-in h1{font-size:44px;margin:6px 0 10px;letter-spacing:.05em}.c2-modal-in h2{font-size:28px;margin:6px 0 10px;font-weight:700}.c2-modal-in p{color:#cfcab9;font-size:16px}
+.c2-two{display:grid;grid-template-columns:1fr 1fr;gap:18px}.c2-li{font-size:14px;padding:2px 0}.c2-li small{color:var(--dim,#9c978a)}
+.c2-odds{margin-top:10px;font-size:16px;padding:6px 10px;border:1px solid currentColor}
+.c2-report{max-height:50vh;overflow:auto;font-size:14px}
+.c2-choose{max-width:960px;margin:9vh auto;padding:0 24px}.c2-choose h1{font-size:54px;margin:6px 0 10px}.c2-sides{display:flex;gap:16px;margin:26px 0}
+.c2-side{flex:1;text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--l);color:var(--ink,#e8e4d8);padding:20px;cursor:pointer;font:inherit;border-top:3px solid #888}.c2-side.UA{border-top-color:var(--ua,#f2c81a)}.c2-side.RU{border-top-color:var(--ru,#f4f4ee)}.c2-side:hover{background:rgba(255,255,255,.08)}
+.c2-side-k{font-size:12px;letter-spacing:.28em;color:var(--acc)}.c2-side-t{font-size:30px;font-weight:800;margin:6px 0}.c2-side-s{font-size:16px;color:#cfcab9}.c2-side-r{font-size:13px;color:var(--dim,#9c978a);margin-top:4px}
+#c2.intro-on .c2-top,#c2.intro-on .c2-left,#c2.intro-on .c2-right,#c2.intro-on .c2-bottom,#c2.intro-on .c2-labels{opacity:0;pointer-events:none}
+.c2-top,.c2-left,.c2-right,.c2-bottom,.c2-labels{transition:opacity .8s}
+.c2-intro{position:absolute;inset:0;z-index:20;cursor:pointer;transition:opacity .7s}.c2-intro.out{opacity:0}
+.c2-black{position:absolute;inset:0;background:#000}
+.c2-bar{position:absolute;left:0;right:0;height:11vh;background:#000;z-index:1}.c2-bar.t{top:0}.c2-bar.b{bottom:0}
+.c2-title{position:absolute;left:8vw;top:46%;transform:translateY(-50%);opacity:0;z-index:2;text-shadow:0 2px 18px rgba(0,0,0,.9)}
+.c2-ik{font-size:15px;letter-spacing:.42em;color:var(--acc);text-transform:uppercase}.c2-ip{font-size:min(9vw,104px);font-weight:800;letter-spacing:.06em;line-height:1;margin:8px 0;color:#f4f0e4}.c2-idate{font-size:min(4vw,40px);letter-spacing:.32em;color:#e0dccd;font-weight:300}
+.c2-lines{position:absolute;left:8vw;right:8vw;bottom:13vh;z-index:2}.c2-lines p{font-size:19px;color:#e6e2d4;margin:6px 0;opacity:0;text-shadow:0 1px 6px #000;max-width:900px;font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;font-size:15.5px}
+.c2-skip{position:absolute;right:20px;bottom:3vh;font-size:12px;letter-spacing:.24em;color:rgba(255,255,255,.4);z-index:2;text-transform:uppercase}
+`;
+  document.head.appendChild(Object.assign(document.createElement('style'), { id: 'c2-css', textContent: css }));
+}
