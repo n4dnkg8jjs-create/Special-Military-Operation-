@@ -5,6 +5,7 @@ import { Campaign2, xpLevel, XP_NAMES, MAX_BATTLE, dateLabel } from './state.js'
 import { loadCampaigns } from './index.js';
 import { StrategicMap, natoSvg, echelon, COL } from './map3d.js';
 import { playIntroMusic, primeAudio, blip } from './audio.js';
+import { Tour, tutorialState } from './tutorial.js';
 
 const Q = new URLSearchParams(location.search);
 const h = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? '' : v); } if (html) e.innerHTML = html; return e; };
@@ -23,20 +24,28 @@ export async function openCampaign2(onLaunch) {
   const { defs, test } = await loadCampaigns();
   let C = Campaign2.load(defs);
   const res = Campaign2.takeResult();
-  let applied = null;
+  let applied = null, interrupted = null;
   if (C && res) { try { applied = C.applyResult(res) || res; } catch (e) { console.error(e); } }
-  else if (C?.battle) C.cancelBattle();
+  else if (C?.battle) { interrupted = Campaign2.pendingBattle(); if (!interrupted || interrupted.sector !== C.battle.cell) { interrupted = null; C.cancelBattle(); } }
   const pre = Q.get('cside');
   if (pre && defs[pre]) { C = new Campaign2(defs[pre]); for (let i = +(Q.get('cadvance') || 0); i > 0 && !C.outcome(); i--) C.endTurn(); C.save(); return start(root, C, onLaunch, { intro: !Q.has('nointro'), test }); }   // cadvance: headless preview of a later week
   if (!C) { chooseSide(root, defs, test, def => { primeAudio(); const c = new Campaign2(def); c.save(); start(root, c, onLaunch, { intro: true, test }); }); window.__done = true; return; }
-  start(root, C, onLaunch, { result: applied, test });
+  // a campaign whose intro was never watched to the end (reload during the cutscene) gets it again
+  start(root, C, onLaunch, { result: applied, interrupted, test, intro: !C.introSeen && C.turn === 1 && !C.stats.battles && !applied && !interrupted });
 }
 
 async function start(root, C, onLaunch, opts) {
   const get = u => fetch(u).then(r => (r.ok ? r.json() : null)).catch(() => null);
-  const [osm, geo] = await Promise.all([get(new URL(`./data/osm_${C.def.id}.json`, import.meta.url)), C.def.aor.geo ? get(C.def.aor.geo) : null]);
+  const [osm, geo] = await Promise.all([get(new URL(`./data/osm_${C.def.mapId || C.def.id}.json`, import.meta.url)), C.def.aor.geo ? get(C.def.aor.geo) : null]);
   const ui = new CampaignScreen(root, C, onLaunch, osm, opts, geo); window.__c2 = ui;
   return ui;
+}
+// versus (net/versus_ui.js): the command screen for one side of a shared game, in the #c2 root
+export async function openScreen(C, opts) {
+  injectCss(); document.getElementById('menu')?.classList.add('hidden');
+  let root = document.getElementById('c2'); if (!root) { root = h('div', { id: 'c2' }); document.body.appendChild(root); }
+  root.classList.remove('hidden'); root.innerHTML = '<div class="c2-boot">LOADING THE OPERATIONAL PICTURE…</div>';
+  return start(root, C, null, opts);
 }
 
 function chooseSide(root, defs, test, done) {
@@ -52,7 +61,8 @@ function chooseSide(root, defs, test, done) {
 
 export class CampaignScreen {
   constructor(root, C, onLaunch, osm, opts = {}, geo = null) {
-    this.root = root; this.C = C; this.onLaunch = onLaunch; this.tab = 'dir'; this.sel = null; this.selCell = null; this.pick = new Set(); this.opts = opts;
+    this.root = root; this.C = C; this.onLaunch = onLaunch; this.tab = 'dir'; this.sel = null; this.selCell = null; this.pick = new Set(); this.opts = opts; this.vs = opts.vs || null;
+    root.classList.toggle('vs', !!this.vs);
     root.innerHTML = '';
     this.mapEl = h('div', { class: 'c2-map' }); root.appendChild(this.mapEl);
     this.map = new StrategicMap(this.mapEl, C, osm, geo);
@@ -71,20 +81,39 @@ export class CampaignScreen {
       if (Q.get('cview')) this.map.jump(this.map.view(Q.get('cview')));
       if (Q.get('ccell') && C.cell(Q.get('ccell'))) { const p = this.map.cellCenter(Q.get('ccell')); this.map.jump({ x: p.x, z: p.z, dist: +(Q.get('cdist') || 6), yaw: +(Q.get('cyaw') || 0.3), pitch: +(Q.get('cpitch') || 0.75) }); }
       if (Q.get('csel')) { const f = C.forces[+Q.get('csel')]; if (f) this.select(f.id); }
-      if (opts.result) this.resultModal(opts.result);
-      this.checkOutcome();
+      if (opts.result) this.resultModal(opts.result, () => this.checkOutcome());
+      else if (opts.interrupted) this.interruptedModal(opts.interrupted);
+      else this.checkOutcome();
+      // reloaded after the intro but before the tour offer was answered: offer it again (first week only)
+      if (!this.vs && C.turn === 1 && !opts.result && !opts.interrupted && !Q.has('cside')) this.offerTutorial();
       requestAnimationFrame(() => requestAnimationFrame(() => { window.__done = true; }));
     }
+  }
+  // every change to the campaign goes through here: single player calls the campaign directly, versus hands the
+  // command to the session (applied at once, and by the host for the joiner)
+  act(name, ...args) {
+    const r = this.vs ? this.vs.act(name, args) : this.C[name](...args);
+    // the counters in the top bar and the tabs (LP, forces, orders) follow every change, not just the panel clicked
+    if (typeof r !== 'string') { this.renderTop(); this.renderLeft(); }
+    return r;
+  }
+  // versus: a new authoritative state for this side (from the host)
+  setCampaign(C) {
+    const sel = this.sel; this.C = C; this.map.C = C; if (this.tut) this.tut.C = C;
+    this.map.refresh(); this.render(); this.select(sel && C.tf(sel) ? sel : null);
   }
   // ------------------------------------------------------------------ top / bottom bars
   render() { this.renderTop(); this.renderLeft(); this.renderRight(); this.renderBottom(); }
   renderTop() {
     const C = this.C, D = C.def, wk = Math.min(C.turn, C.maxTurn);
-    this.top.innerHTML = `<div class="c2-id"><div class="c2-k">${esc(D.brigade?.short || D.brigade?.name || '')} · ${esc(D.region || '')}</div><div class="c2-t">${esc(D.intro?.place || D.aor.name)}</div></div>
+    this.top.innerHTML = `<div class="c2-id"><div class="c2-k">${esc([D.brigade?.short || D.brigade?.name, D.region].filter(Boolean).join(' · '))}</div><div class="c2-t">${esc(D.intro?.place || D.aor.name)}</div></div>
       <div class="c2-date"><div class="c2-d">${esc(dateLabel(C.date, true).toUpperCase())}</div><div class="c2-k">WEEK ${wk} OF ${C.maxTurn} · <span class="c2-season">${seasonName(C.date)}</span></div><div class="c2-prog"><i style="width:${(100 * (wk - 1) / Math.max(1, C.maxTurn - 1)).toFixed(1)}%"></i></div></div>
       <div class="c2-stats"><div><span>LP</span><b class="lp">${C.lp}</b></div><div><span>PER WEEK</span><b>+${C.lpIncome()}</b></div><div><span>BATTLES</span><b>${C.stats.won}/${C.stats.battles}</b></div><div><span>GRID HELD</span><b>${this.held()}</b></div></div>`;
-    const end = h('button', { class: 'c2-end', onclick: () => this.endTurn() }, 'END WEEK ▸'); this.top.appendChild(end);
+    if (this.vs) this.top.appendChild(h('div', { class: 'c2-vs ' + (this.vs.statusKind?.() || '') }, this.vs.status()));
+    const end = h('button', { class: 'c2-end' + (this.vs?.isReady?.() ? ' wait' : ''), title: this.vs ? (this.vs.isReady() ? 'Click to change your orders' : 'Finish planning: the week is carried out when both commanders have ended it') : 'End the week (Enter)', onclick: () => this.endTurn(true) }, this.vs ? this.vs.endLabel() : C.outcome() ? 'CAMPAIGN OVER ▸' : 'END WEEK ▸'); this.top.appendChild(end);
     const menu = h('div', { class: 'c2-menu' });
+    if (this.vs) { menu.appendChild(h('button', { class: 'c2-btn c2-helpbtn', title: 'How to play: the guided tour (F1)', 'aria-label': 'Help: guided tour', onclick: () => this.tutorial() }, '?')); menu.appendChild(h('button', { class: 'c2-btn', title: 'Leave the versus game (the host can resume it later)', onclick: () => this.vs.leave() }, 'Leave')); this.top.appendChild(menu); return; }
+    menu.appendChild(h('button', { class: 'c2-btn c2-helpbtn', title: 'How to play: the guided tour (F1)', 'aria-label': 'Help: guided tour', onclick: () => this.tutorial() }, '?'));
     menu.appendChild(h('button', { class: 'c2-btn', title: 'Back to the main menu (the campaign is saved)', onclick: () => { location.href = location.pathname; } }, 'Menu'));
     menu.appendChild(h('button', { class: 'c2-btn', title: 'Abandon this campaign', onclick: () => { if (confirm('Abandon this campaign? All progress will be lost.')) { Campaign2.clear(); location.href = location.pathname + '?campaign=1'; } } }, 'Abandon'));
     this.top.appendChild(menu);
@@ -94,14 +123,15 @@ export class CampaignScreen {
     this.bottom.innerHTML = '';
     const views = h('div', { class: 'c2-views' });
     for (const [k, l] of [['front', 'Task forces'], ['aor', 'Sector'], ['theatre', 'Whole front']]) views.appendChild(h('button', { class: 'c2-btn', onclick: () => this.map.flyTo(this.map.view(k), 1.4) }, l));
-    views.appendChild(h('button', { class: 'c2-btn' + (this.map.showSupply ? ' on' : ''), title: 'Supply overlay (L)', onclick: () => this.toggleSupply() }, 'Supply'));
+    views.appendChild(h('button', { class: 'c2-btn c2-supply' + (this.map.showSupply ? ' on' : ''), title: 'Supply overlay (L)', 'aria-pressed': this.map.showSupply ? 'true' : 'false', onclick: () => this.toggleSupply() }, 'Supply'));
     this.bottom.appendChild(views);
     this.bottom.appendChild(h('div', { class: 'c2-help' }, `<b>Left-click</b> select · <b>Right-click</b> move / attack · <b>WASD</b>/drag/edges pan · <b>wheel</b> zoom · <b>Q/E</b> or right-drag rotate · <b>Tab</b> next task force · <b>Esc</b> deselect · <b>Enter</b> end week`));
   }
   toggleSupply() { this.map.showSupply = !this.map.showSupply; this.map.refresh(); this.renderBottom(); }
   // ------------------------------------------------------------------ left panel: tabs
   renderLeft() {
-    const C = this.C; this.left.innerHTML = '';
+    const C = this.C, keep = this.left.querySelector('.c2-pane'), scroll = keep && this.leftTab === `${this.tab}/${this.hcTab}` ? keep.scrollTop : 0;   // re-renders keep the list where it was
+    this.leftTab = `${this.tab}/${this.hcTab}`; this.left.innerHTML = '';
     const tabs = h('div', { class: 'c2-tabs' });
     const nAtt = C.pendingAttacks.length;
     for (const [k, l] of [['dir', `Directives${C.directives.length ? ` <i>${C.directives.length}</i>` : ''}`], ['tf', `Forces <i>${C.forces.length}</i>`], ['hc', 'High command'], ['log', 'Log']]) tabs.appendChild(h('button', { class: this.tab === k ? 'on' : '', onclick: () => { this.tab = k; this.renderLeft(); } }, l));
@@ -109,16 +139,16 @@ export class CampaignScreen {
     const pane = h('div', { class: 'c2-pane' });
     if (nAtt) pane.appendChild(this.attacksCard());
     pane.appendChild(({ dir: () => this.directivesPane(), tf: () => this.forcesPane(), hc: () => this.hcPane(), log: () => this.logPane() })[this.tab]());
-    this.left.appendChild(pane);
+    this.left.appendChild(pane); if (scroll) pane.scrollTop = scroll;
   }
   attacksCard() {
-    const C = this.C, card = h('div', { class: 'c2-card alert' }, `<div class="c2-ch">ENEMY ATTACKS EXPECTED</div><div class="c2-note">Intelligence reports attacks being prepared. Move a task force into the threatened square to fight the defence yourself; otherwise the line battalions hold it alone when the week ends.</div>`);
+    const C = this.C, card = h('div', { class: 'c2-card c2-alert' }, `<div class="c2-ch">ENEMY ATTACKS EXPECTED</div><div class="c2-note">Intelligence reports attacks being prepared. Move a task force into the threatened square to fight the defence yourself; otherwise the line battalions hold it alone when the week ends.</div>`);
     for (const a of C.pendingAttacks) {
       const own = C.forcesAt(a.to);
       const row = h('div', { class: 'c2-att' }, `<div><b>${esc(cellRef(C, a.to))}</b> ← ${esc(C.cellName(a.from))}<br><small>${STRENGTH[a.strength]} · ${own.length ? `defended by ${own.map(f => esc(f.name)).join(', ')}` : 'line battalions only'}</small></div>`);
       const b = h('div', { class: 'c2-row' });
       b.appendChild(h('button', { class: 'c2-btn', onclick: () => { this.map.flyTo({ ...this.map.cellCenter(a.to), dist: 9 }, 1); this.clickCell(a.to); } }, 'Show'));
-      if (own.length) b.appendChild(h('button', { class: 'c2-btn pri', onclick: () => this.fightDefence(a) }, 'Fight defence'));
+      if (own.length) { b.appendChild(h('button', { class: 'c2-btn pri', title: 'Fight the defence on the RTS battle map', onclick: () => this.fightDefence(a) }, 'Fight defence')); b.appendChild(h('button', { class: 'c2-btn', title: 'Let the staff resolve the defence now', onclick: () => this.autoDefence(a) }, 'Auto-resolve')); }
       row.appendChild(b); card.appendChild(row);
     }
     return card;
@@ -129,7 +159,7 @@ export class CampaignScreen {
     for (const a of C.directives) {
       const d = C.directiveDef(a.id); if (!d) continue; const st = C.directiveStatus(a);
       const card = h('div', { class: 'c2-card dir' }, `<div class="c2-ck">${esc(d.from || 'Higher command')} · issued ${esc(dateLabel(a.issuedDate))}</div><div class="c2-ch">${esc(d.title)}</div><div class="c2-order">${esc(d.text || '')}</div>
-        <div class="c2-kv"><span>${esc(kindLabel(d.kind))}</span><b>${esc(st.txt)}</b></div><div class="c2-kv"><span>Deadline</span><b>${esc(dateLabel(a.deadline))} (${st.weeksLeft} wk)</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP${d.reward?.units?.length ? ` + ${d.reward.units.length} unit(s)` : ''}${d.reward?.unlock?.length ? ' + equipment' : ''}</b></div>`);
+        <div class="c2-kv"><span>${esc(kindLabel(d.kind))}</span><b>${esc(st.txt)}</b></div><div class="c2-kv"><span>Deadline</span><b class="${st.weeksLeft <= 1 ? 'warn' : ''}">${esc(dateLabel(a.deadline))} (${st.weeksLeft ? `${st.weeksLeft} wk` : 'this week'})</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP${d.reward?.units?.length ? ` + ${d.reward.units.length} unit(s)` : ''}${d.reward?.unlock?.length ? ' + equipment' : ''}</b></div>`);
       const tg = h('div', { class: 'c2-row' }); for (const t of d.targets || []) tg.appendChild(h('button', { class: 'c2-chip' + (C.owner[t] === 'player' ? ' ok' : ''), onclick: () => { this.map.flyTo({ ...this.map.cellCenter(t), dist: 8 }, 1); this.clickCell(t); } }, `${esc(cellRef(C, t))}`));
       card.appendChild(tg); p.appendChild(card);
     }
@@ -160,14 +190,14 @@ export class CampaignScreen {
     if (this.hcTab === 'units') for (const c of C.def.catalog) {
       const unlocked = C.available.includes(c.key) && (c.req || []).every(r => C.unlocked.includes(r)), dateOk = C.dateOk(c), ok = C.catalogAvailable(c), cost = C.unitCost(c);
       const row = h('div', { class: 'c2-card cat' + (unlocked ? '' : ' locked') }, `<div class="c2-ch"><span class="ic">${KIND_ICON[c.kind] || '·'}</span> ${esc(c.label)} <small>${cost} LP · ${c.eta ?? 1} wk</small></div><div class="c2-ck">${esc(KIND[c.kind] || c.kind)}${c.men ? ` · ${c.men} men` : ''}${c.vehicle ? ` · ${c.vehicle.toUpperCase()}` : ''}</div><div class="c2-desc">${esc(c.desc || '')}</div>${!unlocked ? `<div class="c2-req">Needs ${(c.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ') || 'authorisation from high command'}</div>` : !dateOk ? `<div class="c2-req">Available from ${esc(dateLabel(c.date))}</div>` : ''}`);
-      if (unlocked && dateOk) row.appendChild(h('button', { class: 'c2-btn pri', disabled: !ok || C.lp < cost, onclick: () => { const e = C.orderUnit(c.key); this.toast(e || `${c.label} ordered`, !e); this.render(); } }, ok ? `Order (${cost} LP)` : 'Limit reached'));
+      if (unlocked && dateOk) row.appendChild(h('button', { class: 'c2-btn pri', disabled: !ok || C.lp < cost, onclick: () => { const e = this.act('orderUnit', c.key); this.toast(e || `${c.label} ordered`, !e); this.render(); } }, ok ? `Order (${cost} LP)` : 'Limit reached'));
       p.appendChild(row);
     }
     if (this.hcTab === 'repl') {
       const units = C.units.filter(u => C.replaceCost(u) > 0);
       if (!units.length) p.appendChild(h('div', { class: 'c2-note' }, 'All units are at full strength.'));
       for (const u of units) { const tf = C.tfOf(u.uid), cost = C.replaceCost(u); const row = h('div', { class: 'c2-card' }, `<div class="c2-ch"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${esc(tf?.name || '')}</small></div><div class="c2-ck">${u.menMax ? `${u.men}/${u.menMax} men${u.wounded ? ` (+${u.wounded} wounded)` : ''}` : ''}${u.veh ? ` · vehicle ${u.veh.lost ? 'destroyed' : Math.round(u.veh.hp * 100) + '%'}` : ''}</div>`);
-        row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || (tf && (tf.supply ?? 1) < 0.5), onclick: () => { const e = C.replenish(u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, (tf && (tf.supply ?? 1) < 0.5) ? 'Out of supply' : `Replenish (${cost} LP)`)); p.appendChild(row); }
+        row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || (tf && (tf.supply ?? 1) < 0.5), onclick: () => { const e = this.act('replenish', u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, (tf && (tf.supply ?? 1) < 0.5) ? 'Out of supply' : `Replenish (${cost} LP)`)); p.appendChild(row); }
     }
     if (this.hcTab === 'tech') {
       const wrap = h('div', { class: 'c2-tech' }), branches = [...new Set(C.def.tech.map(t => t.branch || 'General'))];
@@ -176,7 +206,7 @@ export class CampaignScreen {
         for (const t of C.def.tech.filter(x => (x.branch || 'General') === b)) {
           const st = C.unlocked.includes(t.id) ? 'have' : C.orders.some(o => o.key === t.id) ? 'ordered' : !C.dateOk(t) && (t.req || []).every(r => C.unlocked.includes(r)) ? 'date' : C.techAvailable(t.id) ? 'avail' : 'locked';
           const n = h('div', { class: `c2-tn ${st}` }, `<div class="c2-tnh">${esc(t.name)} <small>${st === 'have' ? '✓ in service' : st === 'ordered' ? 'on the way' : st === 'date' ? `from ${esc(dateLabel(t.date))}` : `${t.lp} LP`}</small></div><div class="c2-desc">${esc(t.desc || '')}</div>${(t.req || []).length && st === 'locked' ? `<div class="c2-req">needs ${(t.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ')}</div>` : ''}`);
-          if (st === 'avail') n.appendChild(h('button', { class: 'c2-btn', disabled: C.lp < t.lp, onclick: () => { const e = C.orderTech(t.id); this.toast(e || `${t.name} requested`, !e); this.render(); } }, `Request (${t.lp} LP, ${t.eta ?? 1} wk)`));
+          if (st === 'avail') n.appendChild(h('button', { class: 'c2-btn', disabled: C.lp < t.lp, onclick: () => { const e = this.act('orderTech', t.id); this.toast(e || `${t.name} requested`, !e); this.render(); } }, `Request (${t.lp} LP, ${t.eta ?? 1} wk)`));
           col.appendChild(n);
         }
         wrap.appendChild(col);
@@ -206,8 +236,9 @@ export class CampaignScreen {
       <div class="c2-mp">${Array.from({ length: Math.ceil(mx) }, (_, i) => `<i class="${f.mp >= i + 1 - 1e-6 ? 'on' : f.mp > i + 1e-6 ? 'half' : ''}"></i>`).join('')}<span>${fmt(f.mp)} / ${mx} MP${f.attacked ? ' · has attacked' : ''}</span></div>
       <div class="c2-kv"><span>Supply</span><b class="${(f.supply ?? 1) >= 1 ? 'good' : (f.supply ?? 1) > 0 ? 'warn' : 'bad'}">${(f.supply ?? 1) >= 1 ? 'in supply' : (f.supply ?? 1) > 0 ? 'stretched — at the end of the supply line' : 'OUT OF SUPPLY: half movement, no replacements, battle penalties'}</b></div>`;
     card.querySelector('.c2-x').onclick = () => this.select(null);
+    if (f.planned) { const pl = h('div', { class: 'c2-plan' }, `<span>⚔ Attack planned: <b>${esc(cellRef(C, f.planned.cell))}</b>${f.planned.auto ? ' (staff-resolved)' : ''}</span>`); pl.appendChild(h('button', { class: 'c2-btn', onclick: () => { const e = this.act('cancelAttack', f.id); if (e) this.toast(e, false); this.select(f.id); } }, 'Call off')); card.appendChild(pl); }
     const st = h('div', { class: 'c2-seg' });
-    for (const [k, l, t] of [['attack', 'Ready', 'Ready to move and attack'], ['hold', 'Dig in', 'Hold: improves the square’s fortifications if it does not move'], ['rest', 'Rest', 'Rest and repair: vehicles repaired, wounded return faster (in supply, not moving)']]) st.appendChild(h('button', { class: f.stance === k ? 'on' : '', title: t, onclick: () => { C.setStance(f.id, k); this.render(); } }, l));
+    for (const [k, l, t] of [['attack', 'Ready', 'Ready to move and attack'], ['hold', 'Dig in', 'Hold: improves the square’s fortifications if it does not move'], ['rest', 'Rest', 'Rest and repair: vehicles repaired, wounded return faster (in supply, not moving)']]) st.appendChild(h('button', { class: f.stance === k ? 'on' : '', title: t, onclick: () => { this.act('setStance', f.id, k); this.render(); this.map.refresh(); } }, l));
     card.appendChild(st);
     const list = h('div', { class: 'c2-units' });
     for (const u of us) {
@@ -217,13 +248,13 @@ export class CampaignScreen {
       list.appendChild(row);
     }
     card.appendChild(list);
-    const acts = h('div', { class: 'c2-row' });
+    const acts = h('div', { class: 'c2-row c2-acts' });
     const picked = [...this.pick].filter(id => f.units.includes(id));
-    acts.appendChild(h('button', { class: 'c2-btn', disabled: !picked.length || picked.length >= f.units.length, title: 'Detach the ticked units into a new task force on this square', onclick: () => { const r = C.split(f.id, picked); if (typeof r === 'string') return this.toast(r, false); this.pick.clear(); this.select(r.id); this.toast(`${r.name} detached`); } }, `Split off ${picked.length || ''}`.trim()));
+    acts.appendChild(h('button', { class: 'c2-btn', disabled: !picked.length || picked.length >= f.units.length, title: 'Detach the ticked units into a new task force on this square', onclick: () => { const r = this.act('split', f.id, picked); if (typeof r === 'string') return this.toast(r, false); this.pick.clear(); this.select(r.id); this.toast(`${r.name} detached`); } }, `Split off ${picked.length || ''}`.trim()));
     for (const o of here) acts.appendChild(h('button', { class: 'c2-btn', title: `Combine ${o.name} and ${f.name} into one task force`, onclick: () => {
       const [into, from] = (o.units.length > f.units.length || (o.units.length === f.units.length && C.forces.indexOf(o) < C.forces.indexOf(f))) ? [o, f] : [f, o];   // the larger / older force keeps its name
-      const r = C.merge(into.id, from.id); if (typeof r === 'string') return this.toast(r, false); this.toast(`${from.name} combined into ${into.name}`); this.select(into.id); } }, `Merge ${esc(o.name)}`));
-    acts.appendChild(h('button', { class: 'c2-btn', onclick: () => { const n = prompt('Task force name', f.name); if (n) { C.rename(f.id, n); this.render(); this.map.refresh(); } } }, 'Rename'));
+      const r = this.act('merge', into.id, from.id); if (typeof r === 'string') return this.toast(r, false); this.toast(`${from.name} combined into ${into.name}`); this.select(into.id); } }, `Merge ${esc(o.name)}`));
+    acts.appendChild(h('button', { class: 'c2-btn', onclick: () => { const n = prompt('Task force name', f.name); if (n) { this.act('rename', f.id, n); this.render(); this.map.refresh(); } } }, 'Rename'));
     card.appendChild(acts);
     card.appendChild(h('div', { class: 'c2-note' }, here.length ? 'Other task forces share this square: merge them for a stronger attack.' : 'Tick units and split them off to send detachments to different squares; move task forces onto one square and merge them for a larger force.'));
     return card;
@@ -239,7 +270,7 @@ export class CampaignScreen {
       ${o !== 'player' ? `<div class="c2-kv"><span>Enemy strength</span><b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] : 'unknown — reconnoitre'}</b></div>` : `<div class="c2-kv"><span>Supply</span><b class="${sup >= 1 ? 'good' : sup > 0 ? 'warn' : 'bad'}">${sup >= 1 ? 'in supply' : sup > 0 ? 'stretched' : 'cut off'}</b></div>`}
       <div class="c2-kv"><span>Value</span><b>${c.vp || 0} VP · +${c.lp || 0} LP/wk</b></div>
       <div class="c2-kv"><span>Battle map</span><b>${esc(c.battleMap || '')}</b></div>${c.notes ? `<div class="c2-desc">${esc(c.notes)}</div>` : ''}`);
-    if (C.depotAllowed(id)) card.appendChild(h('button', { class: 'c2-btn', title: 'A forward supply depot extends the supply network from this square', onclick: () => { const e = C.buildDepot(id); this.toast(e || 'Forward depot established', !e); this.render(); this.map.refresh(); } }, 'Establish forward depot (30 LP)'));
+    if (C.depotAllowed(id)) card.appendChild(h('button', { class: 'c2-btn', title: 'A forward supply depot extends the supply network from this square', onclick: () => { const e = this.act('buildDepot', id); this.toast(e || 'Forward depot established', !e); this.render(); this.map.refresh(); } }, 'Establish forward depot (30 LP)'));
     const tf = this.sel && C.tf(this.sel);
     if (tf && o !== 'player') { const p = C.plan(tf.id, id); card.appendChild(h('button', { class: 'c2-btn pri', disabled: !p.ok, title: p.why || '', onclick: () => this.order(id) }, p.ok ? `Attack with ${esc(tf.name)}` : esc(p.why || 'Cannot attack'))); }
     return card;
@@ -251,11 +282,12 @@ export class CampaignScreen {
     this.sel = tfId; if (tfId) this.selCell = null;
     this.map.setSelection(tfId, tfId ? this.reachOf(tfId) : null); this.map.setSelectedCell(this.selCell); this.map.showPath(null);
     this.renderRight(); if (this.tab === 'tf') this.renderLeft();
+    this.tut?.poke?.();
   }
   reachOf(tfId) {
-    const C = this.C, tf = C.tf(tfId), out = new Map(); if (!tf) return out; const { dist } = C.reach(tf);
-    for (const [id, d] of Object.entries(dist)) if (id !== tf.cell && (d <= tf.mp + 1e-6 || C.plan(tfId, id).ok)) out.set(id, 'move');
-    if (!tf.attacked) for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player' && C.neighbors(c.id).some(n => dist[n] != null) && C.plan(tfId, c.id).ok) out.set(c.id, 'attack');
+    const C = this.C, tf = C.tf(tfId), out = new Map(); if (!tf) return out; const R = C.reach(tf), { dist } = R;
+    for (const [id, d] of Object.entries(dist)) if (id !== tf.cell && (d <= tf.mp + 1e-6 || C.plan(tfId, id, R).ok)) out.set(id, 'move');
+    if (!tf.attacked) for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player' && C.neighbors(c.id).some(n => dist[n] != null) && C.plan(tfId, c.id, R).ok) out.set(c.id, 'attack');
     return out;
   }
   clickCell(id) {
@@ -276,25 +308,31 @@ export class CampaignScreen {
     const p = C.plan(tf.id, id);
     if (!p.ok) { blip('error'); return this.toast(p.why || 'Cannot move there', false); }
     if (p.attack) return this.attackModal(tf, id, p);
-    C.move(tf.id, id); blip('move');
+    this.act('move', tf.id, id); blip('move');
     this.select(tf.id); this.renderTop();
   }
   // ------------------------------------------------------------------ battles
   estimate(tf, cellId) {
     const C = this.C, us = C.battleUnits(tf.units), sup = tf.supply ?? 1, fort = C.fort[cellId] || 0, c = C.cell(cellId);
     const urban = ['urban', 'industrial'].includes(c.terrain) ? 1 : c.terrain === 'village' || c.terrain === 'forest' ? 0.5 : 0;
-    const mine = us.reduce((a, u) => a + C.unitPower(u), 0) * (0.6 + 0.4 * sup), theirs = Math.max(0.5, C.garrison[cellId] || 1) * 2.1 + fort * 0.6 + urban * 0.8;
+    const foes = (C.foes || []).filter(f => f.cell === cellId);
+    const mine = us.reduce((a, u) => a + C.unitPower(u), 0) * (0.6 + 0.4 * sup), theirs = (foes.length ? foes.reduce((a, f) => a + f.power, 0) + 1.2 : Math.max(0.5, C.garrison[cellId] || 1) * 2.1) + fort * 0.6 + urban * 0.8;
     const r = mine / theirs; return { mine, theirs, r, label: r > 1.5 ? 'Favourable' : r > 1.1 ? 'Slight advantage' : r > 0.85 ? 'Even' : r > 0.6 ? 'Unfavourable' : 'Very unfavourable', cls: r > 1.1 ? 'good' : r > 0.85 ? 'warn' : 'bad', units: us };
   }
   attackModal(tf, cellId, plan) {
     const C = this.C, c = C.cell(cellId), est = this.estimate(tf, cellId), known = C.known(cellId);
     const m = this.modal(`<div class="c2-k">ATTACK ORDER · ${esc(dateLabel(C.date))}</div><h2>${esc(tf.name)} → ${esc(cellRef(C, cellId))}</h2>
       <div class="c2-two"><div><div class="c2-sub">Own force (${est.units.length} of ${tf.units.length} units deploy, max ${MAX_BATTLE})</div>${est.units.map(u => `<div class="c2-li"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${u.menMax ? `${u.men}/${u.menMax}` : ''}${u.veh ? ` · ${u.veh.lost ? 'no veh.' : Math.round(u.veh.hp * 100) + '%'}` : ''} · ${XP_NAMES[xpLevel(u.xp)]}</small></div>`).join('')}${(tf.supply ?? 1) < 0.5 ? '<div class="c2-li bad">Out of supply: less ammunition, fewer drones, lower morale</div>' : ''}</div>
-      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(c.battleMap || '')}</b></div>
+      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${this.vs && (C.foes || []).some(f => f.cell === cellId) ? `${(C.foes || []).filter(f => f.cell === cellId).reduce((a, f) => a + f.n, 0)} units of the other player` : this.vs ? `line battalions${known ? ` (${STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))]})` : ''}` : known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(c.battleMap || '')}</b></div>
       <div class="c2-odds ${est.cls}">${known ? `Staff estimate: <b>${est.label}</b>` : 'Staff estimate: <b>no reliable intelligence</b>'}</div></div></div>
-      <div class="c2-note">The task force moves to ${esc(C.cellName(plan.stage))} and attacks. Fight the battle yourself on the RTS map, or let the staff auto-resolve it (less LP, rougher losses). Win and the square is yours; the task force moves in.</div>`,
-      [['FIGHT THE BATTLE', 'pri', () => this.launchAttack(tf, cellId, false)], ['Auto-resolve', '', () => this.launchAttack(tf, cellId, true)], ['Cancel', '', () => {}]]);
+      <div class="c2-note">${this.vs ? `The task force moves to ${esc(C.cellName(plan.stage))} now and attacks when both commanders have ended the week. Against the other player's task forces it becomes a real battle for both of you (unless you leave it to the staff); squares held only by line battalions are staff-resolved.` : `The task force moves to ${esc(C.cellName(plan.stage))} and attacks. Fight the battle yourself on the RTS map, or let the staff auto-resolve it (less LP, rougher losses). Win and the square is yours; the task force moves in.`}</div>`,
+      this.vs ? [['PLAN ATTACK', 'pri', () => this.planAttack(tf, cellId, false)], ['Plan — staff-resolved', '', () => this.planAttack(tf, cellId, true)], ['Cancel', 'cancel', () => {}]]
+        : [['FIGHT THE BATTLE', 'pri', () => this.launchAttack(tf, cellId, false)], ['Auto-resolve', '', () => this.launchAttack(tf, cellId, true)], ['Cancel', 'cancel', () => {}]]);
     return m;
+  }
+  planAttack(tf, cellId, auto) {
+    const e = this.act('planAttack', tf.id, cellId, auto); if (e) return this.toast(e, false);
+    blip('attack'); this.toast(`${tf.name} will attack ${this.C.cellName(cellId)} when the week ends`); this.select(tf.id); this.renderTop();
   }
   launchAttack(tf, cellId, auto) {
     const C = this.C, p = C.move(tf.id, cellId); if (!p.ok) return this.toast(p.why || 'Cannot attack', false);
@@ -302,6 +340,15 @@ export class CampaignScreen {
     blip('attack');
     if (auto) { const r = C.autoResolve(cellId, 'attack'); this.afterBattle(r); return; }
     this.launch(setup);
+  }
+  autoDefence(a) {
+    const C = this.C; if (!C.forcesAt(a.to).length) return this.toast('No task force in that square', false);
+    blip('attack'); const r = C.autoResolve(a.to, 'defend', a.strength, null, { mode: 'defend', cell: a.to, attack: a.id, from: a.from }); this.afterBattle(r);
+  }
+  interruptedModal(setup) {
+    const C = this.C;
+    this.modal(`<div class="c2-k">${setup.mode === 'attack' ? 'ATTACK' : 'DEFENCE'} IN PROGRESS · ${esc(dateLabel(C.date))}</div><h2>${esc(setup.sectorName || C.cellName(setup.sector))}</h2><div class="c2-note">The battle was interrupted before it ended. Go back to the battle map and fight it from the start, or pull the task group out — a withdrawal counts as a lost battle (light losses, no LP).</div>`,
+      [['RETURN TO THE BATTLE', 'pri', () => this.launch(setup)], ['Withdraw', 'cancel', () => { const r = C.withdrawBattle(); this.afterBattle(r); }]]);
   }
   fightDefence(a) {
     const C = this.C, setup = C.defendSetup(a.id); if (!setup) return this.toast('No combat-ready task force in that square', false);
@@ -315,19 +362,19 @@ export class CampaignScreen {
   }
   afterBattle(r) {
     this.map.refresh(); this.render(); this.select(this.sel && this.C.tf(this.sel) ? this.sel : null);
-    if (r) this.resultModal(r);
-    this.checkOutcome();
+    if (r) this.resultModal(r, () => this.checkOutcome()); else this.checkOutcome();
   }
-  resultModal(r) {
+  resultModal(r, then = null) {
     const C = this.C, win = r.win, att = r.mode === 'attack';
     const rows = (r.units || []).map(u => { const f = C.unit(u.uid); return `<div class="c2-li"><span class="ic">${KIND_ICON[f?.kind] || '·'}</span> ${esc(f?.name || u.uid)} <small>${u.alive} fit · ${u.wounded} wounded${u.vehLost ? ' · <b class="bad">vehicle lost</b>' : ''}${u.kills ? ` · ${u.kills} kills` : ''}</small></div>`; }).join('');
-    this.modal(`<div class="c2-k">${r.auto ? 'AUTO-RESOLVED' : 'AFTER-ACTION REPORT'} · ${esc(cellRef(C, r.sector))}</div><h1 class="${win ? 'good' : 'bad'}">${win ? (att ? 'SQUARE TAKEN' : 'ATTACK REPULSED') : (att ? 'ATTACK FAILED' : 'POSITION LOST')}</h1>
-      <div class="c2-kv"><span>Enemy killed</span><b>${r.enemyKia || 0}</b></div><div class="c2-kv"><span>Enemy vehicles destroyed</span><b>${r.enemyVehLost || 0}</b></div>${rows ? `<div class="c2-sub">Own units</div>${rows}` : ''}`, [['CONTINUE', 'pri', () => {}]]);
+    this.modal(`<div class="c2-k">${r.auto ? 'AUTO-RESOLVED' : 'AFTER-ACTION REPORT'} · ${esc(cellRef(C, r.sector))}</div><h1 class="${win ? 'good' : 'bad'}">${r.withdrawn ? 'WITHDRAWN' : win ? (att ? 'SQUARE TAKEN' : 'ATTACK REPULSED') : (att ? 'ATTACK FAILED' : 'POSITION LOST')}</h1>
+      <div class="c2-kv"><span>Enemy killed</span><b>${r.enemyKia || 0}</b></div><div class="c2-kv"><span>Enemy vehicles destroyed</span><b>${r.enemyVehLost || 0}</b></div>${rows ? `<div class="c2-sub">Own units</div>${rows}` : ''}`, [['CONTINUE', 'pri', () => then?.()]]);
   }
   // ------------------------------------------------------------------ end of week
-  endTurn() {
-    const C = this.C; if (C.outcome()) return this.checkOutcome();
-    if (document.querySelector('.c2-modal')) return;
+  endTurn(button = false) {
+    const C = this.C; if (C.outcome()) return this.checkOutcome(true);
+    if (document.querySelector('.c2-modal') || this.tut?.open) return;
+    if (this.vs) { if (this.vs.isReady() && !button) return; blip('end'); this.vs.toggleReady(); this.renderTop(); return; }   // Enter only ends the week; the button also takes it back
     const unanswered = C.pendingAttacks.filter(a => !C.forcesAt(a.to).length).length;
     const go = () => {
       const n0 = C.log.length, d0 = C.date, nDir = C.directives.map(a => a.id);
@@ -336,9 +383,9 @@ export class CampaignScreen {
       this.map.setDate(C.date, true); this.select(this.sel && C.tf(this.sel) ? this.sel : null); this.map.refresh(); this.render();
       for (const e of C.lastNews || []) if (e.latlon) this.map.flashEvent(e.latlon, `${dateLabel(e.date.length > 7 ? e.date : e.date + '-01')}: ${e.text}`);
       const fresh = C.directives.filter(a => !nDir.includes(a.id));
-      this.turnReport(d0, entries, () => { if (fresh.length) this.directiveModal(fresh[0]); this.checkOutcome(); });
+      this.turnReport(d0, entries, () => { if (fresh.length && !C.outcome()) this.directiveModal(fresh[0]); else this.checkOutcome(); });
     };
-    if (unanswered && !this.confirmedWeek) { this.modal(`<div class="c2-k">END WEEK</div><h2>${unanswered} enemy attack${unanswered > 1 ? 's' : ''} expected on undefended squares</h2><div class="c2-note">The line battalions will try to hold them alone. Move a task force in to fight the defence, or end the week anyway.</div>`, [['End week', 'pri', go], ['Back', '', () => {}]]); return; }
+    if (unanswered && !this.confirmedWeek) { this.modal(`<div class="c2-k">END WEEK</div><h2>${unanswered} enemy attack${unanswered > 1 ? 's' : ''} expected on undefended squares</h2><div class="c2-note">The line battalions will try to hold them alone. Move a task force in to fight the defence, or end the week anyway.</div>`, [['End week', 'pri', go], ['Back', 'cancel', () => {}]]); return; }
     go();
   }
   turnReport(d0, entries, done) {
@@ -346,18 +393,18 @@ export class CampaignScreen {
     if (!entries.length) return done();
     this.modal(`<div class="c2-k">WEEKLY REPORT · ${esc(dateLabel(d0))} → ${esc(dateLabel(C.date))}</div><h2>Week ${C.turn - 1} summary</h2><div class="c2-report">${imp.map(e => `<div class="c2-l ${e.kind}">${esc(e.text)}</div>`).join('')}${rest > 0 ? `<div class="c2-l">+ ${rest} more entries in the log</div>` : ''}</div>`, [['CONTINUE', 'pri', done]]);
   }
-  directiveModal(a) {
+  directiveModal(a, then = null) {
     const C = this.C, d = C.directiveDef(a.id); if (!d) return;
     this.modal(`<div class="c2-k">NEW DIRECTIVE · ${esc(d.from || 'Higher command')} · ${esc(dateLabel(a.issuedDate))}</div><h2>${esc(d.title)}</h2><div class="c2-order lg">${esc(d.text || '')}</div>
       <div class="c2-kv"><span>Task</span><b>${esc(kindLabel(d.kind))}${(d.targets || []).length ? ': ' + d.targets.map(t => esc(C.cellName(t))).join(', ') : ''}</b></div><div class="c2-kv"><span>Deadline</span><b>${esc(dateLabel(a.deadline))}</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP</b></div>`,
-      [['ACKNOWLEDGED', 'pri', () => { this.tab = 'dir'; this.renderLeft(); const t = (d.targets || [])[0]; if (t) this.map.flyTo({ ...this.map.cellCenter(t), dist: 14 }, 1.4); }]]);
+      [['ACKNOWLEDGED', 'pri', () => { this.tab = 'dir'; this.renderLeft(); const t = (d.targets || [])[0]; if (t) this.map.flyTo({ ...this.map.cellCenter(t), dist: 14 }, 1.4); then?.(); }]]);
   }
-  checkOutcome() {
-    const C = this.C, o = C.outcome(); if (!o || this.outShown) return; this.outShown = true;
+  checkOutcome(again = false) {
+    const C = this.C, o = C.outcome(); if (!o || (this.outShown && !again) || document.querySelector('.c2-modal')) return; this.outShown = true;
     const s = C.score();
     this.modal(`<div class="c2-k">${esc(dateLabel(C.date, true).toUpperCase())}</div><h1 class="${o.win ? 'good' : 'bad'}">${esc(o.title)}</h1><p>${esc(o.text)}</p>
       <div class="c2-kv"><span>Battles won</span><b>${C.stats.won} of ${C.stats.battles}</b></div><div class="c2-kv"><span>Grid squares</span><b>+${C.stats.cellsTaken} taken / −${C.stats.cellsLost} lost (net ${s.cells >= 0 ? '+' : ''}${s.cells})</b></div><div class="c2-kv"><span>Directives</span><b>${s.ok} carried out · ${s.fail} failed</b></div><div class="c2-kv"><span>Enemy killed / vehicles</span><b>${C.stats.kills} / ${C.stats.vehKills}</b></div><div class="c2-kv"><span>Own losses / vehicles</span><b>${C.stats.losses} / ${C.stats.vehLost}</b></div>`,
-      [['NEW CAMPAIGN', 'pri', () => { Campaign2.clear(); location.href = location.pathname + '?campaign=1'; }], ['Look at the map', '', () => {}]]);
+      this.vs ? [['BACK TO THE MENU', 'pri', () => this.vs.leave(true)], ['Look at the map', 'cancel', () => {}]] : [['NEW CAMPAIGN', 'pri', () => { Campaign2.clear(); location.href = location.pathname + '?campaign=1'; }], ['Look at the map', 'cancel', () => {}]]);
   }
   // ------------------------------------------------------------------ intro cutscene
   intro() {
@@ -366,7 +413,7 @@ export class CampaignScreen {
     const ov = h('div', { class: 'c2-intro' }, `<div class="c2-bar t"></div><div class="c2-bar b"></div><div class="c2-black"></div>
       <div class="c2-title"><div class="c2-ik">${esc(D.brigade?.name || '')}</div><div class="c2-ip">${esc((I.place || D.aor.name).toUpperCase())}</div><div class="c2-idate">${esc(I.date || dateLabel(C.date, true))}</div></div>
       <div class="c2-lines">${(I.lines || []).slice(0, 3).map(l => `<p>${esc(l)}</p>`).join('')}</div><div class="c2-skip">click or press any key to skip</div>`);
-    this.root.appendChild(ov); this.root.classList.add('intro-on'); map.labels.style.visibility = 'hidden';
+    this.root.appendChild(ov); this.root.classList.add('intro-on'); map.labels.style.visibility = 'hidden'; this.inIntro = true;
     const th = map.view('theatre'), fr = map.view('front'), aor = map.view('aor');
     const start = { x: (th.x * 0.55 + aor.x * 0.45), z: (th.z * 0.55 + aor.z * 0.45), dist: th.dist * 0.75, yaw: -0.35, pitch: 1.2 };
     map.jump(start); map.locked = true;
@@ -378,10 +425,11 @@ export class CampaignScreen {
       map.jump({ x: start.x + (fr.x - start.x) * e, z: start.z + (fr.z - start.z) * e, dist: Math.exp(Math.log(start.dist) + (Math.log(fr.dist * 1.05) - Math.log(start.dist)) * e), yaw: start.yaw + (fr.yaw - start.yaw) * e, pitch: start.pitch + (fr.pitch - start.pitch) * e });
     };
     const finish = () => {
-      if (done) return; done = true; music.stop(0.9); map.locked = false; map.jump(fr);
+      if (done) return; done = true; this.inIntro = false; music.stop(0.9); map.locked = false; map.jump(fr);
       ov.classList.add('out'); setTimeout(() => { ov.remove(); this.root.classList.remove('intro-on'); map.labels.style.visibility = ''; }, 700);
       window.removeEventListener('keydown', skip, true); ov.removeEventListener('pointerdown', skip);
-      const first = C.directives[0]; if (first) setTimeout(() => this.directiveModal(first), 500);
+      C.introSeen = true; C.save();
+      const first = C.directives[0]; setTimeout(() => { if (first) this.directiveModal(first, () => this.offerTutorial()); else this.offerTutorial(); }, 500);
     };
     const skip = e => { e.preventDefault?.(); e.stopPropagation?.(); finish(); };
     window.addEventListener('keydown', skip, true); ov.addEventListener('pointerdown', skip);
@@ -399,20 +447,41 @@ export class CampaignScreen {
     };
     requestAnimationFrame(step);
   }
+  // ------------------------------------------------------------------ guided tour
+  tutorial(from = 0) {
+    if (this.tut?.open || this.inIntro) return;
+    if (document.querySelector('.c2-modal')) return this.toast('Close the open dialog first', false);
+    this.tut = new Tour(this, { onClose: how => { if (how === 'skipped' && from === 0) this.toast('Tour skipped — the ? button brings it back'); } }); this.tut.start(from);
+  }
+  // offered once, as soon as the screen is free (no dialog, intro over)
+  offerTutorial() {
+    if (tutorialState() || Q.has('notour')) return;
+    let n = 0; const t = () => { if (this.tut?.open || tutorialState()) return; if (document.querySelector('.c2-modal') || this.inIntro) { if (n++ < 60) setTimeout(t, 400); return; } this.tutorial(); };
+    setTimeout(t, 350);
+  }
   // ------------------------------------------------------------------ misc
   key(e) {
-    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || document.querySelector('.c2-intro')) return;
-    const m = document.querySelector('.c2-modal');
-    if (m) { if (e.key === 'Escape' || e.key === 'Enter') { m.querySelector('button.pri, button')?.click(); e.preventDefault(); } return; }
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || document.querySelector('.c2-intro') || this.tut?.open) return;
+    if (e.key === 'F1' || (e.key === '?' && !e.ctrlKey)) { e.preventDefault(); if (!document.querySelector('.c2-modal')) this.tutorial(); return; }
+    // modals: Enter = the primary button, Escape = cancel (or the only button); the topmost modal only
+    const ms = document.querySelectorAll('.c2-modal'), m = ms[ms.length - 1];
+    if (m) {
+      if (e.key === 'Enter') { if (e.target.closest?.('.c2-modal') && e.target.matches('button')) return; e.preventDefault(); m.querySelector('button.pri, button')?.click(); }   // a focused dialog button acts itself
+      else if (e.key === 'Escape') { e.preventDefault(); const bs = m.querySelectorAll('button'); (m.querySelector('button.cancel') || (bs.length === 1 ? bs[0] : null))?.click(); }
+      return;
+    }
+    const inUi = e.target !== document.body && e.target.closest?.('.c2-top, .c2-left, .c2-right, .c2-bottom');   // keyboard focus on a panel control: let it act
     if (e.key === 'Escape') { this.select(null); this.selCell = null; this.map.setSelectedCell(null); this.renderRight(); }
-    else if (e.key === 'Tab') { e.preventDefault(); const fs = this.C.forces; if (!fs.length) return; const i = fs.findIndex(f => f.id === this.sel); const f = fs[(i + (e.shiftKey ? fs.length - 1 : 1)) % fs.length]; this.select(f.id); this.map.flyTo({ ...this.map.cellCenter(f.cell), dist: Math.min(this.map.cam.dist, 14) }, 0.7); }
-    else if (e.key === 'Enter') this.endTurn();
+    else if (e.key === 'Tab') { if (inUi) return; e.preventDefault(); const fs = this.C.forces; if (!fs.length) return; const i = fs.findIndex(f => f.id === this.sel); const f = fs[(i + (e.shiftKey ? fs.length - 1 : 1)) % fs.length]; this.select(f.id); this.map.flyTo({ ...this.map.cellCenter(f.cell), dist: Math.min(this.map.cam.dist, 14) }, 0.7); }
+    else if (e.key === 'Enter') { if (inUi && e.target.matches('button, a, [tabindex]')) return; e.preventDefault(); this.endTurn(); }
     else if (e.key.toLowerCase() === 'l') this.toggleSupply();
   }
   modal(html, buttons) {
-    const m = h('div', { class: 'c2-modal' }), box = h('div', { class: 'c2-modal-in' }, html), row = h('div', { class: 'c2-row end' });
-    for (const [l, cls, f] of buttons) row.appendChild(h('button', { class: `c2-btn ${cls}`, onclick: () => { m.remove(); f(); } }, l));
-    if (buttons.length) box.appendChild(row); m.appendChild(box); this.root.appendChild(m); return m;
+    const m = h('div', { class: 'c2-modal', role: 'dialog', 'aria-modal': 'true' }), box = h('div', { class: 'c2-modal-in' }, html), row = h('div', { class: 'c2-row end' });
+    for (const [l, cls, f] of buttons) row.appendChild(h('button', { class: `c2-btn ${cls}`, onclick: () => { if (!m.isConnected) return; m.remove(); document.activeElement?.blur?.(); f(); } }, l));
+    if (buttons.length) box.appendChild(row); m.appendChild(box); this.root.appendChild(m);
+    requestAnimationFrame(() => { if (m.isConnected) (box.querySelector('button.pri') || box.querySelector('button'))?.focus({ preventScroll: true }); });
+    return m;
   }
   toast(msg, good = true) { this.toastEl.textContent = msg; this.toastEl.className = 'c2-toast show ' + (good ? '' : 'bad'); clearTimeout(this.tt); this.tt = setTimeout(() => { this.toastEl.className = 'c2-toast'; }, 2600); }
 }
@@ -445,6 +514,9 @@ export function injectCss() {
 .c2-tok.sel .c2-nato rect{stroke:var(--acc);stroke-width:3}.c2-tok.sel .c2-tok-n{background:var(--acc);color:#14130f;border-color:var(--acc)}.c2-tok.sel{filter:drop-shadow(0 0 6px rgba(216,178,90,.8))}
 .c2-tok.res .c2-tok-n{opacity:.8}.c2-tok.oos .c2-nato rect{fill:#6c7d93}
 .c2-tok:hover .c2-tok-n{border-color:#fff}
+.c2-tok.compact .c2-tok-n{visibility:hidden}.c2-tok.compact:hover .c2-tok-n{visibility:visible;position:relative;z-index:3}.c2-tok.compact:hover{z-index:3}
+.c2-tok-n.foe{background:rgba(40,10,8,.82);border-color:rgba(224,80,63,.6);color:#ffd6cf;font-weight:600}.c2-tok-ech.foe{color:#ffd6cf}.c2-stem.foe{background:linear-gradient(rgba(255,190,180,.9),rgba(255,190,180,.1))}
+.c2-tok.plan .c2-tok-n::after{content:" ⚔";color:#ff9c8c}
 .c2-en{translate:-50% -50%;display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}.c2-en-ech{font-size:10px;font-weight:800;color:#ffd6cf;line-height:9px;text-shadow:0 0 2px #000}.c2-en.unk{opacity:.8}
 .c2-obj{translate:-50% -100%}.c2-obj span{display:block;background:var(--acc);color:#14130f;font-weight:800;font-size:13px;padding:1px 6px 2px;clip-path:polygon(0 0,100% 0,100% 75%,50% 100%,0 75%);min-width:20px;text-align:center}.c2-obj.held span{background:#9fd07a}
 .c2-hq{translate:-50% -50%;font-size:10px;font-weight:800;color:#0d1520;background:var(--own);border:2px solid #0d1520;padding:0 3px;letter-spacing:.08em}
@@ -458,13 +530,17 @@ export function injectCss() {
 .c2-prog{height:3px;background:rgba(255,255,255,.1);margin-top:4px}.c2-prog i{display:block;height:100%;background:var(--acc)}
 .c2-stats{display:flex;gap:16px;margin-left:auto}.c2-stats div{display:flex;flex-direction:column;align-items:flex-end}.c2-stats span{font-size:10px;letter-spacing:.16em;color:var(--dim,#9c978a)}.c2-stats b{font-size:20px}.c2-stats .lp{color:var(--acc)}
 .c2-end{background:var(--acc);color:#14130f;border:0;font:inherit;font-weight:800;font-size:17px;letter-spacing:.12em;padding:10px 18px;cursor:pointer;flex:none}.c2-end:hover{filter:brightness(1.12)}
-.c2-menu{display:flex;gap:6px}
+.c2-menu{display:flex;gap:6px}.c2-end.wait{background:transparent;color:var(--acc);border:1px solid var(--acc);animation:c2wait 1.6s ease-in-out infinite}@keyframes c2wait{50%{opacity:.6}}
+.c2-vs{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim,#9c978a);letter-spacing:.04em;min-width:150px;max-width:280px;flex:0 1 auto;white-space:normal!important;line-height:1.25}.c2-vs span{white-space:normal!important}.c2-vs i{flex:none;width:8px;height:8px;border-radius:50%;background:#7dbd69}.c2-vs.wait i{background:var(--acc);animation:c2wait 1.1s infinite}.c2-vs.bad{color:#f2c6bf}.c2-vs.bad i{background:var(--en);animation:c2wait .8s infinite}
+#c2.vs .c2-stats div:nth-child(2),#c2.vs .c2-stats div:nth-child(3){display:none}#c2.vs .c2-id{max-width:18vw}#c2.vs .c2-top{gap:16px}
+.c2-plan{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;padding:5px 8px;border:1px solid rgba(224,80,63,.55);background:rgba(120,30,20,.2);font-size:13.5px}.c2-plan b{color:#ffb8ab}
+.c2-banner{position:absolute;left:50%;top:72px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;background:rgba(12,13,11,.95);border:1px solid var(--l);border-left:3px solid var(--acc);padding:8px 14px;font-size:14.5px;max-width:min(680px,90vw)}.c2-banner.bad{border-left-color:var(--en)}.c2-banner i{flex:none;width:9px;height:9px;border-radius:50%;background:var(--acc);animation:c2wait 1s infinite}.c2-banner.bad i{background:var(--en)}.c2-helpbtn{min-width:34px;font-weight:800;font-size:16px;padding:4px 0}
 .c2-btn{background:rgba(255,255,255,.06);border:1px solid var(--l);color:var(--ink,#e8e4d8);font:inherit;font-size:14px;padding:5px 11px;cursor:pointer;letter-spacing:.03em}.c2-btn:hover{border-color:rgba(232,228,216,.45)}.c2-btn.pri{background:var(--acc);color:#14130f;border-color:var(--acc);font-weight:700}.c2-btn.on{border-color:var(--acc);color:var(--acc)}.c2-btn[disabled]{opacity:.4;cursor:default}
-.c2-left{position:absolute;left:12px;top:76px;bottom:52px;width:370px;display:flex;flex-direction:column;background:var(--p);border:1px solid var(--l);backdrop-filter:blur(6px);z-index:2}
+.c2-left{position:absolute;left:12px;top:76px;bottom:52px;width:370px;display:flex;flex-direction:column;background:var(--p);border:1px solid var(--l);backdrop-filter:blur(6px);z-index:2;transform:translateZ(0)}
 .c2-tabs,.c2-subtabs{display:flex;border-bottom:1px solid var(--l)}.c2-tabs button,.c2-subtabs button{flex:1;background:none;border:0;color:var(--dim,#9c978a);font:inherit;font-size:14px;letter-spacing:.08em;padding:9px 4px;cursor:pointer;text-transform:uppercase}.c2-tabs button.on,.c2-subtabs button.on{color:var(--acc);box-shadow:inset 0 -2px var(--acc)}.c2-tabs i{font-style:normal;background:rgba(255,255,255,.12);padding:0 5px;margin-left:3px;font-size:12px}
 .c2-subtabs{margin:4px 0 8px}.c2-subtabs button{font-size:12.5px;padding:6px 2px}
 .c2-pane{flex:1;overflow:auto;padding:10px}.c2-pane::-webkit-scrollbar{width:6px}.c2-pane::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15)}
-.c2-card{background:rgba(255,255,255,.035);border:1px solid var(--l);padding:9px 11px;margin-bottom:9px}.c2-card.alert{border-color:rgba(224,80,63,.6);background:rgba(120,30,20,.18)}.c2-card.sel{border-color:var(--acc)}.c2-card.tf{cursor:pointer}.c2-card.tf:hover{border-color:rgba(232,228,216,.4)}
+.c2-card{background:rgba(255,255,255,.035);border:1px solid var(--l);padding:9px 11px;margin-bottom:9px}.c2-card.c2-alert{border-color:rgba(224,80,63,.6);background:rgba(120,30,20,.18)}.c2-card.sel{border-color:var(--acc)}.c2-card.tf{cursor:pointer}.c2-card.tf:hover{border-color:rgba(232,228,216,.4)}
 .c2-card.done{padding:6px 10px}.c2-card.done.ok .c2-ch{color:#b5d69a}.c2-card.done.bad .c2-ch{color:#e8a598}
 .c2-ch{font-weight:700;font-size:16px;letter-spacing:.02em}.c2-ch.lg{font-size:21px}.c2-ch small{font-weight:400;color:var(--dim,#9c978a);font-size:12.5px;margin-left:4px}.c2-ck{font-size:11.5px;letter-spacing:.1em;color:var(--dim,#9c978a);text-transform:uppercase}
 .c2-kv{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.06)}.c2-kv span{color:var(--dim,#9c978a)}.c2-kv b{font-weight:600;text-align:right}

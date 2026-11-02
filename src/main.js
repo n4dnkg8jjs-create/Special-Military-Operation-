@@ -110,7 +110,7 @@ $('startBtn').addEventListener('click', () => {
 });
 // ---------------------------------------------------------------- campaign
 const launchCampaignBattle = () => { location.href = `${location.pathname}?cbattle=1`; };
-const openCampaign = () => import('./campaign/v2/ui.js').then(m => m.openCampaign2(launchCampaignBattle));   // v2 grid campaign (versus stays on v1)
+const openCampaign = () => import('./campaign/v2/ui.js').then(m => m.openCampaign2(launchCampaignBattle));   // v2 grid campaign (versus: net/versus_ui.js on the same v2 grid)
 $('campaignBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } openCampaign(); });
 if (Q.has('campaign')) openCampaign();
 if (Q.has('ctest')) {   // headless test of a campaign battle without a stored campaign
@@ -149,7 +149,7 @@ if (Q.has('vsbattle') && window.parent?.__vs) {
     setTimeout(() => { if (!got) $('loadText').textContent = 'Still waiting for the host — their computer may be slow to load, or the connection dropped. Keep this open.'; }, 120000);
   } else {
     const iv = setInterval(() => P.peer.send('vsload', window.__loadF || 0), 700);   // the joiner sees how far the host's load is
-    go({ ...o.net, peer: P.peer }).then(() => clearInterval(iv), e => { clearInterval(iv); P.peer.send('vsfail', e.message); });
+    go({ ...o.net, peer: P.peer }).then(() => clearInterval(iv), e => { clearInterval(iv); P.peer.send('vsfail', e.message); P.fail?.(e.message); });
   }
 }
 // test hook: replay a recorded versus stream (tools/mp_record.mjs) into a joiner game — index.html?vsreplay&sim=N

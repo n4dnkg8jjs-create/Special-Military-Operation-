@@ -122,12 +122,17 @@ export class RoomPeer extends Link {
   }
   _fail(kind, msg) { if (this.closed) return; this.emit('fail', { kind, msg }); }
 
-  // host: register a fresh room code at the broker, then wait for the joiner
-  async host() {
+  // host: register a fresh room code at the broker (or `fixed`: the same code again, to resume a game / let the
+  // joiner reconnect after a dropped link), then wait for the joiner
+  async host(fixed = null) {
     this.emit('status', 'broker');
-    for (let i = 0; i < 6; i++) {
-      const code = newRoomCode();
-      try { this.pj = await this._broker(ID_PREFIX + code); this.code = code; break; } catch (e) { if (e.kind !== 'taken' || i === 5) { this._fail('broker', e.message); return null; } }
+    for (let i = 0; i < (fixed ? 8 : 6); i++) {
+      const code = fixed || newRoomCode();
+      try { this.pj = await this._broker(ID_PREFIX + code); this.code = code; break; } catch (e) {
+        if (this.closed) return null;
+        if (e.kind !== 'taken' || i === (fixed ? 7 : 5)) { this._fail(e.kind === 'taken' ? 'taken' : 'broker', e.message); return null; }
+        if (fixed) await new Promise(r => setTimeout(r, 2500));   // the broker still holds the old registration for a moment
+      }
     }
     if (this.closed) { this.pj.destroy(); return null; }
     this._watch(this.pj);

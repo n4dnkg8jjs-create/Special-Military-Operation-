@@ -132,7 +132,7 @@ export class Campaign2 {
     const a = this.tf(intoId), b = this.tf(fromId); if (!a || !b || a === b) return 'Pick two task forces';
     if (a.cell !== b.cell) return 'Task forces must be in the same grid cell to combine';
     const spent = Math.max(this.tfMpMax(a) - a.mp, this.tfMpMax(b) - b.mp, 0);
-    a.units.push(...b.units); a.mp = Math.max(0, this.tfMpMax(a) - spent); a.attacked = a.attacked || b.attacked; this.forces = this.forces.filter(f => f !== b);
+    a.units.push(...b.units); a.mp = Math.max(0, this.tfMpMax(a) - spent); a.attacked = a.attacked || b.attacked; a.planned ||= b.planned || null; this.forces = this.forces.filter(f => f !== b);
     this.note(`${b.name} combined into ${a.name}.`); this.save(); return a;
   }
   transfer(uid, toId) { const from = this.tfOf(uid), to = this.tf(toId); if (!from || !to || from === to) return 'Nothing to transfer'; if (from.cell !== to.cell) return 'Same grid cell only'; if (from.units.length === 1) return this.merge(toId, from.id); const spent = Math.max(this.tfMpMax(from) - from.mp, this.tfMpMax(to) - to.mp, 0); from.units = from.units.filter(u => u !== uid); to.units.push(uid); to.mp = Math.max(0, this.tfMpMax(to) - spent); from.mp = Math.max(0, this.tfMpMax(from) - spent); this.save(); return to; }
@@ -155,22 +155,23 @@ export class Campaign2 {
   }
   // Dijkstra over own cells from the task force's position
   reach(tf) {
-    const dist = { [tf.cell]: 0 }, prev = {}, open = [tf.cell], done = new Set();
-    while (open.length) {
-      open.sort((p, q) => dist[p] - dist[q]); const cur = open.shift(); if (done.has(cur)) continue; done.add(cur);
+    const dist = { [tf.cell]: 0 }, prev = {}, open = new Set([tf.cell]), done = new Set();
+    while (open.size) {
+      let cur = null; for (const o of open) if (cur == null || dist[o] < dist[cur]) cur = o; open.delete(cur); if (done.has(cur)) continue; done.add(cur);
       for (const n of this.neighbors(cur)) {
         if (this.owner[n] !== 'player') continue;
         const d = dist[cur] + this.enterCost(cur, n); if (!isFinite(d)) continue;
-        if (dist[n] == null || d < dist[n]) { dist[n] = d; prev[n] = cur; open.push(n); }
+        if (dist[n] == null || d < dist[n]) { dist[n] = d; prev[n] = cur; open.add(n); }
       }
     }
     return { dist, prev };
   }
   // the route to a cell: { ok, path:[ids], cost, attack, stage, mpLeft, why }
-  plan(tfId, toId) {
+  // R: a reach(tf) computed for this force just before (callers that plan many cells at once)
+  plan(tfId, toId, R = null) {
     const tf = this.tf(tfId); if (!tf) return { ok: false, why: 'No task force' };
     if (toId === tf.cell) return { ok: false, why: 'Already here' };
-    const full = tf.mp >= this.tfMpMax(tf) - 1e-6, { dist, prev } = this.reach(tf);
+    const full = tf.mp >= this.tfMpMax(tf) - 1e-6, { dist, prev } = R || this.reach(tf);
     const route = end => { const p = [end]; while (prev[p[0]]) p.unshift(prev[p[0]]); return p; };
     const tgt = this.owner[toId];
     if (tgt === 'player') {
@@ -201,10 +202,19 @@ export class Campaign2 {
   move(tfId, toId) {
     const tf = this.tf(tfId), p = this.plan(tfId, toId); if (!p.ok) return p;
     if (p.attack) { tf.mp -= this.reach(tf).dist[p.stage]; tf.cell = p.stage; tf.stance = 'attack'; this.save(); return p; }
-    tf.mp = Math.max(0, tf.mp - p.cost); tf.cell = toId; tf.stance = 'attack'; this.markRecon(tf.cell); this.save(); return p;
+    tf.mp = Math.max(0, tf.mp - p.cost); tf.cell = toId; tf.stance = 'attack'; this.markRecon(tf.cell, this.reconRange(tf)); this.save(); return p;
   }
-  resetMoves() { for (const f of this.forces) { f.mp = this.tfMpMax(f); f.attacked = false; } }
-  markRecon(cellId) { for (const n of [cellId, ...this.neighbors(cellId)]) if (this.owner[n] !== 'player') this.recon[n] = this.turn; }
+  resetMoves() { for (const f of this.forces) { f.mp = this.tfMpMax(f); f.attacked = false; f.planned = null; } }
+  // versus: attacks are planned during the week and carried out by the host when both commanders have ended it
+  planAttack(tfId, cellId, auto = false) {
+    const tf = this.tf(tfId), p = this.plan(tfId, cellId); if (!tf) return 'No task force'; if (!p.ok || !p.attack) return p.why || 'Cannot attack there';
+    this.move(tfId, cellId); tf.planned = { cell: cellId, auto: !!auto }; tf.attacked = true; tf.mp = 0;
+    this.note(`${tf.name} will attack ${this.cellName(cellId)} from ${this.cellName(tf.cell)} at the end of the week${auto ? ' (staff-resolved)' : ''}.`); return null;
+  }
+  cancelAttack(tfId) { const tf = this.tf(tfId); if (!tf?.planned) return 'No attack planned'; this.note(`${tf.name}: attack on ${this.cellName(tf.planned.cell)} called off.`); tf.planned = null; tf.attacked = false; return null; }
+  markRecon(cellId, r = 1) { const c = this.cell(cellId); if (!c) return; for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) { const n = this.cellAt(c.col + dx, c.row + dy)?.id; if (n && this.owner[n] !== 'player') this.recon[n] = this.turn; } }
+  // a task force with a drone team (or the recon-drone upgrade) observes two squares out, otherwise the next square
+  reconRange(tf) { return (this.mods().reconDrone || this.tfUnits(tf).some(u => u.kind === 'fpv' && this.combatReady(u))) ? 2 : 1; }
   known(cellId) { return this.owner[cellId] === 'player' || this.recon[cellId] != null || this.forces.some(f => this.adjacent(f.cell, cellId)); }
   // ------------------------------------------------------------------ logistics
   supplyRange() { return (this.def.aor.supplyRange || 8) + (this.mods().supplyRange || 0); }
@@ -212,12 +222,13 @@ export class Campaign2 {
     const src = [...(this.def.aor.supplySources || []), ...(this.depots || [])].filter(id => this.owner[id] === 'player');
     const dist = {}, open = [];
     for (const s of src) { dist[s] = 0; open.push(s); }
-    while (open.length) {
-      open.sort((p, q) => dist[p] - dist[q]); const cur = open.shift();
+    const q = new Set(open);
+    while (q.size) {
+      let cur = null; for (const o of q) if (cur == null || dist[o] < dist[cur]) cur = o; q.delete(cur);
       for (const n of this.neighbors(cur)) {
         if (this.owner[n] !== 'player') continue;
         const c = this.cell(n), d = dist[cur] + (c.road ? 1 : 2) * (this.cell(cur).col !== c.col && this.cell(cur).row !== c.row ? 1.4 : 1);
-        if (dist[n] == null || d < dist[n] - 1e-9) { dist[n] = d; open.push(n); }
+        if (dist[n] == null || d < dist[n] - 1e-9) { dist[n] = d; q.add(n); }
       }
     }
     const R = this.supplyRange();
@@ -274,6 +285,7 @@ export class Campaign2 {
   // ------------------------------------------------------------------ directives
   directiveDef(id) { return this.def.directives.find(d => d.id === id); }
   issueDirectives() {
+    if (this.date >= this.def.start.end) return;   // the operation is over: no new orders on its last day
     for (const d of this.def.directives) {
       if (this.directives.some(a => a.id === d.id) || this.doneDirectives[d.id]) continue;
       const is = d.issue || {}; let ok = false;
@@ -287,7 +299,7 @@ export class Campaign2 {
     }
   }
   activate(d) {
-    if (this.directives.some(a => a.id === d.id) || this.doneDirectives[d.id]) return;
+    if (this.directives.some(a => a.id === d.id) || this.doneDirectives[d.id] || this.date >= this.def.start.end) return;
     const deadline = d.deadlineDate || (d.deadline != null ? addDays(this.date, d.deadline * (this.def.start.turnDays || 7)) : this.def.start.end);
     this.directives.push({ id: d.id, issued: this.turn, issuedDate: this.date, deadline, progress: 0, held: 0 });
     this.note(`New directive from ${d.from || 'higher command'}: ${d.title}.`, 'directive');
@@ -296,14 +308,15 @@ export class Campaign2 {
     const d = this.directiveDef(a.id), T = d.targets || [];
     const held = T.filter(t => this.owner[t] === 'player').length;
     const txt = { capture: `${held}/${T.length} objectives taken`, hold: d.count ? `held ${a.held}/${d.count} wk` : `${held}/${T.length} held`, survive: `${held}/${T.length} held`, destroy: `${a.progress}/${d.count || 5} vehicles`, raid: `${a.progress}/${d.count || 1} raids`, recon: `${T.filter(t => this.recon[t] != null).length}/${T.length} observed` }[d.kind] || '';
-    return { held, txt, weeksLeft: Math.max(0, Math.ceil((parseDate(a.deadline) - parseDate(this.date)) / DAY / (this.def.start.turnDays || 7))) };
+    return { held, txt, weeksLeft: Math.max(0, Math.ceil((parseDate(a.deadline) - parseDate(this.date)) / DAY / (this.def.start.turnDays || 7))) };   // 0 = this is the last week
   }
   checkDirectives(ev = null, endOfTurn = false) {
     for (const a of [...this.directives]) {
       const d = this.directiveDef(a.id); if (!d) { this.directives = this.directives.filter(x => x !== a); continue; }
       const T = d.targets || [], allHeld = T.every(t => this.owner[t] === 'player');
-      const past = this.date >= a.deadline;
-      if (ev) { if (d.kind === 'destroy' && (!T.length || T.includes(ev.cell))) a.progress += ev.vehKills || 0; if (d.kind === 'raid' && ev.mode === 'attack' && T.includes(ev.cell)) a.progress++; }
+      const past = this.date > a.deadline || this.date >= this.def.start.end;   // the deadline's own week still counts
+      // (destroy: a counterattack launched from a target square counts too)
+      if (ev) { if (d.kind === 'destroy' && (!T.length || T.includes(ev.cell) || T.includes(ev.from))) a.progress += ev.vehKills || 0; if (d.kind === 'raid' && ev.mode === 'attack' && T.includes(ev.cell)) a.progress++; }
       let res = null;
       if (d.kind === 'capture') { if (allHeld) res = true; else if (past) res = false; }
       else if (d.kind === 'destroy') { if (a.progress >= (d.count || 5)) res = true; else if (past) res = false; }
@@ -367,7 +380,17 @@ export class Campaign2 {
     return this.battleSetup(a.to, uids, 'defend', a);
   }
   launch(setup) { try { ls()?.setItem(KEY2 + '.battle', JSON.stringify(setup)); } catch {} this.save(); }
-  cancelBattle() { this.battle = null; this.save(); }
+  cancelBattle() { this.battle = null; try { ls()?.removeItem(KEY2 + '.battle'); } catch {} this.save(); }
+  // a launched battle that never reported back (reload / back button / closed tab): the task group pulled out —
+  // counted as a lost battle with light losses (same as the Withdraw button on the battle map)
+  withdrawBattle() {
+    const B = this.battle; if (!B) return null;
+    const uids = B.mode === 'attack' ? (this.tf(B.tf)?.units || []) : this.forcesAt(B.cell).flatMap(f => f.units);
+    const r = { sector: B.cell, mode: B.mode, win: false, withdrawn: true, enemyKia: Math.round(rnd(0, 3)), enemyVehLost: 0, objectivesHeld: 0,
+      units: this.battleUnits(uids).map(u => { const cas = Math.round(u.men * rnd(0.04, 0.14)); return { uid: u.uid, alive: Math.max(0, u.men - cas), wounded: Math.min(cas, Math.round(cas * 0.6)), kills: 0, vehLost: false, vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.15), 0.1, 1)) : 1 }; }) };
+    try { ls()?.removeItem(KEY2 + '.battle'); } catch {}
+    return this.applyResult(r);
+  }
   // apply what happened in a battle (fought: src/game/campaignBattle.js collectResult, or auto-resolved)
   applyResult(r) {
     const B = (this.battle && this.battle.cell === r.sector) ? this.battle : { mode: r.mode, cell: r.sector };
@@ -392,6 +415,8 @@ export class Campaign2 {
         this.owner[cellId] = 'player'; this.garrison[cellId] = 0; this.fort[cellId] = Math.max(0, (this.fort[cellId] || 0) - 1); this.stats.cellsTaken++;
         if (tf) tf.cell = cellId; this.recon[cellId] = this.turn; this.markRecon(cellId);
         this.note(`${name} taken${tf ? ` by ${tf.name}` : ''}.`, 'good');
+        const off = this.pendingAttacks.filter(a => a.from === cellId || a.to === cellId);
+        if (off.length) { this.pendingAttacks = this.pendingAttacks.filter(a => !off.includes(a)); this.note(`The enemy attack being prepared from ${name} has been broken up.`, 'good'); }
       } else {
         const g = Math.max(0.3, (this.garrison[cellId] || 1) - (r.enemyKia || 0) / 14 - (r.enemyVehLost || 0) * 0.15);
         this.garrison[cellId] = g;
@@ -407,10 +432,11 @@ export class Campaign2 {
     }
     if (B.mode === 'defend' && !r.win) lp *= 0.4;                 // a lost position earns little
     if (r.lineOnly) lp = r.win ? 3 : 0;                             // held by the line battalions, not by a task force
+    if (r.withdrawn) lp = 0;
     lp = Math.round(lp * lpMul * (r.auto ? 0.7 : 1)); this.lp += lp; if (lp) this.note(`Battle report: +${lp} LP.`);
     this.battle = null; this.battleFought = true;
     this.computeSupply();
-    this.checkDirectives({ cell: cellId, mode: B.mode, vehKills: r.enemyVehLost || 0 });
+    this.checkDirectives({ cell: cellId, from: B.from, mode: B.mode, vehKills: r.enemyVehLost || 0 });
     this.issueDirectives(); this.save();
     return r;
   }
@@ -459,7 +485,7 @@ export class Campaign2 {
     // a cell without a task force is still held by the brigade's line battalions / territorial units
     const lineOnly = B.mode === 'defend' && !units.length, line = lineOnly ? 2.0 : 0;
     const win = (power + line) * rnd(0.75, 1.25) > enemy * rnd(0.75, 1.25);
-    const r = { sector: cellId, mode: B.mode, win, auto: true, lineOnly, enemyKia: Math.round(rnd(2, 6) * enemyStrength), enemyVehLost: RND() < 0.3 * enemyStrength ? 1 : 0, objectivesHeld: win ? 2 : (RND() < 0.4 ? 1 : 0),
+    const r = { sector: cellId, mode: B.mode, win, auto: true, lineOnly, enemyKia: Math.round(rnd(2, 6) * enemyStrength), enemyVehLost: (RND() < 0.3 * enemyStrength ? 1 : 0) + (win && RND() < 0.12 * enemyStrength ? 1 : 0), objectivesHeld: win ? 2 : (RND() < 0.4 ? 1 : 0),
       units: units.map(u => { const cas = Math.round(u.men * rnd(0.04, win ? 0.22 : 0.4)); const w = Math.round(cas * 0.6); return { uid: u.uid, alive: Math.max(0, u.men - cas), wounded: Math.min(cas, w), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && RND() < (win ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; }) };
     // casualties stay casualties: alive + wounded never exceed men
     for (const ur of r.units) { const u = this.unit(ur.uid); ur.wounded = Math.min(ur.wounded, Math.max(0, u.men - ur.alive)); }
@@ -471,15 +497,19 @@ export class Campaign2 {
     const p = atDate(E.pressure, date, 'p') ?? 0.15, r = atDate(E.reinforce, date, 'r') ?? 0.08;
     const cells = this.def.aor.cells;
     // reinforce and dig in: front garrisons move towards a level set by the date's pressure, the rear stays thin
-    const L = 1.2 + p * 5;
+    const L = 1.2 + p * 5, linked = this.enemyLinked();
     for (const c of cells) {
       if (this.owner[c.id] !== 'enemy') continue;
       const front = this.neighbors(c.id).some(n => this.owner[n] !== 'enemy');
-      let g = this.garrison[c.id] || 0; const tgt = (front ? L : 1.0) + (c.vp || 0) * 0.15;
+      let g = this.garrison[c.id] || 0;
+      // enemy logistics: a square cut off from the enemy's rear withers; a deep salient (mostly surrounded) is hard to reinforce
+      if (!linked.has(c.id)) { g = Math.max(0.5, g - rnd(0.15, 0.3)); if ((this.fort[c.id] || 0) > 0 && RND() < 0.2) this.fort[c.id]--; this.garrison[c.id] = g; continue; }
+      const salient = this.neighbors(c.id).filter(n => this.owner[n] === 'player').length >= 5;
+      const tgt = ((front ? L : 1.0) + (c.vp || 0) * 0.15) * (salient ? 0.8 : 1);
       g += (tgt - g) * clamp(r * 3, 0.05, 0.6) + rnd(-0.15, 0.15);
       if (front && g < 0.8) g = 0.8 + RND() * 0.3;
       this.garrison[c.id] = clamp(g, 0.3, 3);
-      if (front && (this.fort[c.id] || 0) < 3 && RND() < r * 0.6) this.fort[c.id] = (this.fort[c.id] || 0) + 1;
+      if (front && !salient && (this.fort[c.id] || 0) < 3 && RND() < r * 0.6) this.fort[c.id] = (this.fort[c.id] || 0) + 1;
     }
     // the brigade's line battalions dig in on quiet own front cells
     for (const c of cells) if (this.owner[c.id] === 'player' && (this.fort[c.id] || 0) < 1 && this.neighbors(c.id).some(n => this.owner[n] === 'enemy') && RND() < 0.12) this.fort[c.id] = 1;
@@ -517,6 +547,13 @@ export class Campaign2 {
       this.note(`Intelligence: enemy preparing an attack on ${this.cellName(k.c.id)} from ${this.cellName(k.from)} (${['', 'company', 'reinforced company', 'battalion'][strength]}).`, 'bad');
     }
   }
+  // enemy-held squares still connected to the enemy's rear edge (through enemy / contested squares)
+  enemyLinked() {
+    const A = this.def.aor, rear = { north: c => c.row === 0, south: c => c.row === A.rows - 1, east: c => c.col === A.cols - 1, west: c => c.col === 0 }[A.enemyEdge || 'south'];
+    const seen = new Set(A.cells.filter(c => rear(c) && this.owner[c.id] !== 'player').map(c => c.id)), q = [...seen];
+    while (q.length) { const cur = q.pop(); for (const n of this.neighbors(cur)) if (!seen.has(n) && this.owner[n] !== 'player') { seen.add(n); q.push(n); } }
+    return seen;
+  }
   // ------------------------------------------------------------------ end of turn
   endTurn() {
     if (this.outcome()) return;
@@ -528,7 +565,7 @@ export class Campaign2 {
       const moved = tf.mp < this.tfMpMax(tf) - 1e-6 || tf.attacked;
       if (tf.stance === 'hold' && !moved && (this.fort[tf.cell] || 0) < 2 && RND() < 0.6) { this.fort[tf.cell] = (this.fort[tf.cell] || 0) + 1; this.note(`${tf.name} dug in at ${this.cellName(tf.cell)} (fortifications ${this.fort[tf.cell]}).`); }
       if (tf.stance === 'rest' && !moved && (tf.supply ?? 0) >= 1) for (const u of this.tfUnits(tf)) { if (u.veh && !u.veh.lost) u.veh.hp = Math.min(1, u.veh.hp + 0.1); if (u.woundedT > 0) u.woundedT--; }
-      this.markRecon(tf.cell);
+      this.markRecon(tf.cell, this.reconRange(tf));
     }
     this.checkDirectives(null, true);
     this.turn++; this.battleFought = false;
@@ -556,7 +593,8 @@ export class Campaign2 {
     this.forces = this.forces.filter(f => f.units.length);
     // LP from held, supplied cells
     const inc = this.lpIncome(); if (inc) { this.lp += inc; this.note(`Supply from held cells: +${inc} LP.`); }
-    this.enemyPhase();
+    // versus: the other side is a human; on the operation's last day the enemy prepares nothing more (the campaign ends)
+    if (this.def.versus || this.date >= this.def.start.end) this.pendingAttacks = []; else this.enemyPhase();
     this.computeSupply(); this.resetMoves();
     this.checkDirectives(); this.issueDirectives(); this.newsUpTo(this.date);
     this.save();
@@ -568,7 +606,7 @@ export class Campaign2 {
     return used;
   }
   unitName(c) { const n = this.units.filter(u => u.key === c.key).length + 1; return `${c.label} ${n > 1 ? '#' + n : ''}`.trim(); }
-  note(text, kind = '') { this.log.push({ turn: this.turn, date: this.date, text, kind }); if (this.log.length > 300) this.log.shift(); }
+  note(text, kind = '') { this.logSeq = (this.logSeq || 0) + 1; this.log.push({ turn: this.turn, date: this.date, text, kind, n: this.logSeq }); if (this.log.length > 300) this.log.shift(); }
   // country-level news from the theatre as the date passes
   newsUpTo(date) {
     this.seenEvents ||= {}; const out = [];
@@ -582,6 +620,10 @@ export class Campaign2 {
     return { cells: own - startOwn, ok, fail, vp: cells.filter(c => this.owner[c.id] === 'player').reduce((a, c) => a + (c.vp || 0), 0) - cells.filter(c => c.owner === 'player').reduce((a, c) => a + (c.vp || 0), 0) };
   }
   outcome() {
+    if (this.def.versus) return this.vsOutcome || null;   // versus: decided by the host for both sides (versus.js)
+    return this.baseOutcome();
+  }
+  baseOutcome() {
     const cells = this.def.aor.cells, startOwn = cells.filter(c => c.owner === 'player').length, own = cells.filter(c => this.owner[c.id] === 'player').length;
     if (own < Math.max(2, startOwn * 0.35)) return { win: false, title: 'DEFEAT', text: 'The brigade’s sector has collapsed: most of the area of responsibility is in enemy hands.' };
     if (!this.units.some(u => this.alive(u)) && !this.orders.some(o => o.what === 'unit') && this.lp < 20) return { win: false, title: 'DEFEAT', text: 'The brigade is no longer combat-capable.' };

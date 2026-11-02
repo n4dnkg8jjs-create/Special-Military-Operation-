@@ -74,6 +74,8 @@ export class StrategicMap {
   V(ll, y = 0) { return new THREE.Vector3(this.X(ll[1]), y, this.Z(ll[0])); }
   cellCenter(id) { const c = this.C.cell(id); return new THREE.Vector3(this.x0 + (c.col + 0.5) * this.cw, 0, this.z0 + (c.row + 0.5) * this.ch); }
   cellAtWorld(x, z) { const col = Math.floor((x - this.x0) / this.cw), row = Math.floor((z - this.z0) / this.ch); return this.C.cellAt(col, row)?.id || null; }
+  // screen position (CSS px, relative to the viewport) of a cell centre or a world point; null if behind the camera
+  screenOf(id, y = 0) { const p = typeof id === 'string' ? this.cellCenter(id) : id.clone(); p.y = y; this.updateCamera(); p.project(this.camera); if (p.z > 1) return null; const r = this.canvas.getBoundingClientRect(); return { x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height }; }
   aorCenter() { return { x: (this.x0 + this.x1) / 2, z: (this.z0 + this.z1) / 2 }; }
   // ------------------------------------------------------------------ theatre
   buildTheatre() {
@@ -106,7 +108,9 @@ export class StrategicMap {
     const lg = new LineGeometry(); lg.setPositions(o.flatMap(([x, z]) => [x, 0.02, z]));
     const ol = new Line2(lg, this.lineMat(COL.accent, 2, 0.9)); this.scene.add(ol);
     // HTML labels
-    this.tLabels = (T.labels || []).map(l => this.label(this.V(l.latlon), l.text, `c2-tl c2-tl-${l.kind || 'city'}`, { kind: l.kind }));
+    // (decluttered on screen: listed order = priority, cities before rivers before oblast names)
+    const kr = { city: 0, river: 1, oblast: 2 };
+    this.tLabels = (T.labels || []).map((l, i) => this.label(this.V(l.latlon), l.text, `c2-tl c2-tl-${l.kind || 'city'}`, { kind: l.kind, prio: (kr[l.kind || 'city'] ?? 1) * 1000 + i, ...(l.kind === 'oblast' || l.kind === 'river' ? { ax: 0.5, ay: 0.5 } : { ax: 0, dx: 6, ay: 0.5 }) })).sort((a, b) => a.prio - b.prio);
   }
   lineMat(color, width, opacity = 1, dashed = false) { const m = new LineMaterial({ color, linewidth: width, transparent: opacity < 1, opacity, dashed, dashSize: 0.3, gapSize: 0.2, depthTest: false }); this.lineMats.push(m); return m; }
   // front line for a date: lines resampled to the same point count so they can be interpolated
@@ -326,7 +330,8 @@ export class StrategicMap {
   buildDynamic() {
     this.dyn = new THREE.Group(); this.scene.add(this.dyn);
     this.pathMat = this.lineMat('#ffffff', 3, 0.95, true); this.pathAtkMat = this.lineMat(COL.enemy, 4, 0.95);
-    this.cellLabels = []; for (const c of this.def.aor.cells) if (c.settlement) this.cellLabels.push(this.label(this.V(c.settlement.latlon || c.latlon, 0.05), c.settlement.name, `c2-sl c2-sl${Math.min(5, c.settlement.size || 1)}`, { size: c.settlement.size || 1 }));
+    this.cellLabels = []; for (const c of this.def.aor.cells) if (c.settlement) this.cellLabels.push(this.label(this.V(c.settlement.latlon || c.latlon, 0.05), c.settlement.name, `c2-sl c2-sl${Math.min(5, c.settlement.size || 1)}`, { size: c.settlement.size || 1, ax: 0.5, ay: 1.6 }));
+    this.cellLabels.sort((a, b) => b.size - a.size);
     this.tokens = []; this.badges = [];
   }
   label(pos, html, cls, meta = {}) { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; this.labels.appendChild(e); return { e, pos, ...meta }; }
@@ -340,28 +345,46 @@ export class StrategicMap {
     // task forces
     const byCell = {}; for (const f of C.forces) (byCell[f.cell] ||= []).push(f);
     for (const [cell, fs] of Object.entries(byCell)) fs.forEach((f, i) => {
-      const p = this.cellCenter(cell); p.x += (i - (fs.length - 1) / 2) * this.cw * 0.3; p.y = 0.02;
-      const e = document.createElement('div'); e.className = 'c2-tok' + (f.id === this.sel ? ' sel' : '') + (f.reserve ? ' res' : '') + ((f.supply ?? 1) < 0.5 ? ' oos' : '');
+      // a stack: side by side with a fixed on-screen spacing (never on top of each other at any zoom); only the selected
+      // task force (or the first one) shows its name, the others show it on hover
+      const p = this.cellCenter(cell); p.y = 0.02; const sx = (i - (fs.length - 1) / 2) * 46;
+      const lead = fs.some(x => x.id === this.sel) ? f.id === this.sel : i === 0;
+      const e = document.createElement('div'); e.className = 'c2-tok own' + (f.id === this.sel ? ' sel' : '') + (fs.length >= 2 && !lead ? ' compact' : '') + (f.planned ? ' plan' : '') + (f.reserve ? ' res' : '') + ((f.supply ?? 1) < 0.5 ? ' oos' : '');
+      if (lead && fs.length > 1) e.style.zIndex = '2';
       const us = C.tfUnits(f), mpMax = C.tfMpMax(f);
       e.innerHTML = `<div class="c2-tok-ech">${echelon(us.length)}</div>${natoSvg(us)}<div class="c2-tok-n">${esc(f.name)}</div><div class="c2-tok-mp">${pips(f.mp, mpMax)}${(f.supply ?? 1) < 0.5 ? '<b class="c2-oos">NO SUPPLY</b>' : ''}${f.attacked ? '<b class="c2-used">ATTACKED</b>' : ''}</div><div class="c2-stem"></div>`;
       e.title = `${f.name}: ${us.length} units · MP ${fmt(f.mp)}/${mpMax} · ${f.stance}`;
       e.addEventListener('pointerdown', ev => { ev.stopPropagation(); if (ev.button === 0) this.on.select?.(f.id); else if (ev.button === 2) { ev.preventDefault(); this.on.order?.(f.cell, f.id); } });
       e.addEventListener('contextmenu', ev => ev.preventDefault());
-      this.labels.appendChild(e); this.tokens.push({ e, pos: p, tok: true });
+      e.addEventListener('wheel', ev => this.onWheel(ev), { passive: false });   // zoom and the route preview work with the cursor over a token too
+      e.addEventListener('pointermove', ev => this.hoverAt(ev.clientX, ev.clientY));
+      this.labels.appendChild(e); this.tokens.push({ e, pos: p, tok: true, tf: f.id, sx });
       // ground marker
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.13, 24), new THREE.MeshBasicMaterial({ color: f.id === this.sel ? COL.accent : COL.own, transparent: true, opacity: 0.9, depthTest: false }));
-      ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, 0.01, p.z); ring.renderOrder = 5; this.dyn.add(ring);
+      ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, 0.01, p.z); ring.renderOrder = f.id === this.sel ? 6 : 5; this.dyn.add(ring);
     });
     // enemy strength (known cells) and unknown markers
     for (const c of this.def.aor.cells) {
       const o = C.owner[c.id]; if (o === 'player') continue;
       const known = C.known(c.id), g = C.garrison[c.id] || 0, p = this.cellCenter(c.id); p.y = 0.02;
       if (!known && !C.frontline(c.id)) continue;
+      if (C.foes && C.foes.some(f => f.cell === c.id)) continue;   // versus: the hostile task force token stands here instead
       const e = document.createElement('div'); e.className = 'c2-en' + (known ? '' : ' unk') + (o === 'contested' ? ' cont' : '');
       e.innerHTML = known ? `<div class="c2-en-ech">${['', 'I', 'I+', 'II'][clamp(Math.round(g), 1, 3)]}</div><svg viewBox="0 0 30 30" width="22" height="22"><path d="M15 2 L28 15 L15 28 L2 15 Z" fill="${o === 'contested' ? COL.contested : COL.enemy}" stroke="#1a0c0a" stroke-width="1.6"/><path d="M9 9 L21 21 M21 9 L9 21" stroke="#1a0c0a" stroke-width="1.6"/></svg>` : `<svg viewBox="0 0 30 30" width="18" height="18"><path d="M15 2 L28 15 L15 28 L2 15 Z" fill="rgba(224,80,63,0.25)" stroke="rgba(224,80,63,0.7)" stroke-width="1.4" stroke-dasharray="3 2"/><text x="15" y="20" text-anchor="middle" font-size="13" fill="#e8b0a8" font-weight="700">?</text></svg>`;
       e.title = known ? `${C.cellName(c.id)}: enemy ${['', 'company', 'reinforced company', 'battalion'][clamp(Math.round(g), 1, 3)]}${C.fort[c.id] ? `, fortifications ${C.fort[c.id]}` : ''}` : `${C.cellName(c.id)}: enemy strength unknown — reconnoitre`;
       this.labels.appendChild(e); this.badges.push({ e, pos: p, enemy: true });
     }
+    // versus: the other player's task forces this side can see (hostile frames)
+    const foeBy = {}; for (const f of C.foes || []) (foeBy[f.cell] ||= []).push(f);
+    for (const [cell, fs] of Object.entries(foeBy)) fs.forEach((f, i) => {
+      const p = this.cellCenter(cell); p.z -= this.ch * 0.05; p.y = 0.02; const sx = (i - (fs.length - 1) / 2) * 46;
+      const e = document.createElement('div'); e.className = 'c2-tok foe' + (i ? ' compact' : '');
+      e.innerHTML = `<div class="c2-tok-ech foe">${echelon(f.n)}</div>${natoSvg(f.units || [], 34, 34, true)}<div class="c2-tok-n foe">Enemy · ${f.n} unit${f.n === 1 ? '' : 's'}</div><div class="c2-stem foe"></div>`;
+      e.title = `Enemy task force: ${f.n} units (combat power ~${f.power})`;
+      e.addEventListener('pointerdown', ev => { ev.stopPropagation(); if (ev.button === 0) this.on.cell?.(cell); else if (ev.button === 2) { ev.preventDefault(); this.on.order?.(cell); } });
+      e.addEventListener('contextmenu', ev => ev.preventDefault()); e.addEventListener('wheel', ev => this.onWheel(ev), { passive: false }); e.addEventListener('pointermove', ev => this.hoverAt(ev.clientX, ev.clientY));
+      this.labels.appendChild(e); this.badges.push({ e, pos: p, foe: true, sx });
+    });
     // objectives of active directives
     const letters = {}; let li = 0;
     for (const a of C.directives) { const d = C.directiveDef(a.id); for (const t of d?.targets || []) { if (letters[t]) continue; letters[t] = d.kind === 'hold' || d.kind === 'survive' ? 'H' : d.kind === 'recon' ? 'R' : String.fromCharCode(65 + li++); } }
@@ -372,6 +395,8 @@ export class StrategicMap {
     // enemy attacks being prepared
     for (const a of C.pendingAttacks) this.arrow(this.cellCenter(a.from), this.cellCenter(a.to), COL.enemy, `${['', 'company', 'reinf. company', 'battalion'][a.strength]} attack expected`);
     if (this.path) this.showPath(this.path, true);
+    // place the new markers now (not on the next frame: they would flash in the top-left corner for a frame)
+    if (this.camera && this.W) { this.updateCamera(); this.placeLabels(performance.now()); }
   }
   arrow(a, b, color, text) {
     const d = new THREE.Vector3().subVectors(b, a); const L = d.length(); if (L < 1e-6) return; d.normalize();
@@ -412,11 +437,13 @@ export class StrategicMap {
     return { x: c.x, z: c.z, dist: Math.max(this.x1 - this.x0, this.z1 - this.z0) * 1.15, yaw: 0, pitch: 1.05 };
   }
   flyTo(v, dur = 1.2, done = null) {
+    this.stopFly();   // a new flight replaces the one in progress (two would fight over the camera)
     const from = { ...this.cam }; const to = { ...this.cam, ...v };
     this.tcam = { ...to }; this.flying = true;
-    this.anims.push({ t: 0, dur, step: k => { const e = ease(k); this.cam.x = lerp(from.x, to.x, e); this.cam.z = lerp(from.z, to.z, e); this.cam.dist = Math.exp(lerp(Math.log(from.dist), Math.log(to.dist), e)); this.cam.yaw = lerp(from.yaw, to.yaw, e); this.cam.pitch = lerp(from.pitch, to.pitch, e); }, done: () => { this.flying = false; Object.assign(this.tcam, to); done?.(); } });
+    this.anims.push({ cam: true, t: 0, dur, step: k => { const e = ease(k); this.cam.x = lerp(from.x, to.x, e); this.cam.z = lerp(from.z, to.z, e); this.cam.dist = Math.exp(lerp(Math.log(from.dist), Math.log(to.dist), e)); this.cam.yaw = lerp(from.yaw, to.yaw, e); this.cam.pitch = lerp(from.pitch, to.pitch, e); }, done: () => { this.flying = false; Object.assign(this.tcam, to); done?.(); } });
   }
-  jump(v) { Object.assign(this.cam, v); Object.assign(this.tcam, v); }
+  jump(v) { this.stopFly(); Object.assign(this.cam, v); Object.assign(this.tcam, v); this.dirty = true; }
+  stopFly() { if (!this.anims) return; this.anims = this.anims.filter(a => !a.cam); this.flying = false; }
   groundAt(sx, sy) {
     const r = this.canvas.getBoundingClientRect(), v = new THREE.Vector3(((sx - r.left) / r.width) * 2 - 1, -((sy - r.top) / r.height) * 2 + 1, 0.5).unproject(this.camera);
     const o = this.camera.position, d = v.sub(o).normalize(); if (d.y >= -1e-4) return null; const t = -o.y / d.y; return new THREE.Vector3(o.x + d.x * t, 0, o.z + d.z * t);
@@ -436,15 +463,14 @@ export class StrategicMap {
           const now = this.groundAt(e.clientX, e.clientY); if (now) { this.tcam.x += drag.g.x - now.x; this.tcam.z += drag.g.z - now.z; this.cam.x = this.tcam.x; this.cam.z = this.tcam.z; this.updateCamera(); }
         } else if ((drag.b === 1 || drag.b === 2) && drag.moved && !this.locked) { this.tcam.yaw = drag.cam.yaw - dx * 0.006; this.tcam.pitch = clamp(drag.cam.pitch + dy * 0.004, 0.35, 1.5); }
       }
-      const g = this.groundAt(e.clientX, e.clientY); const id = g ? this.cellAtWorld(g.x, g.z) : null;
-      if (id !== this.hover) { this.setHover(id); this.on.hover?.(id); }
+      this.hoverAt(e.clientX, e.clientY);
     });
     cv.addEventListener('pointerup', e => {
       if (drag && !drag.moved) { const g = this.groundAt(e.clientX, e.clientY), id = g ? this.cellAtWorld(g.x, g.z) : null; if (drag.b === 0) this.on.cell?.(id); else if (drag.b === 2 && id) this.on.order?.(id); }
       drag = null;
     });
     cv.addEventListener('pointerleave', () => { this.mouse.in = false; });
-    cv.addEventListener('wheel', e => {
+    cv.addEventListener('wheel', this.onWheel = e => {
       e.preventDefault(); if (this.locked) return;
       const k = Math.pow(1.0015, e.deltaY), g = this.groundAt(e.clientX, e.clientY), nd = clamp(this.tcam.dist * k, 1.2, this.maxDist());
       if (g && nd < this.tcam.dist) { const f = 1 - nd / this.tcam.dist; this.tcam.x += (g.x - this.tcam.x) * f; this.tcam.z += (g.z - this.tcam.z) * f; }
@@ -454,6 +480,7 @@ export class StrategicMap {
     window.addEventListener('keydown', this.onKey); window.addEventListener('keyup', this.onKey);
     this.onBlur = () => this.keys.clear(); window.addEventListener('blur', this.onBlur);
   }
+  hoverAt(x, y) { const g = this.groundAt(x, y), id = g ? this.cellAtWorld(g.x, g.z) : null; if (id !== this.hover) { this.setHover(id); this.on.hover?.(id); } }
   maxDist() { const tb = this.tb; return Math.max(tb.x1 - tb.x0, tb.z1 - tb.z0) * 1.3; }
   updateCamera() {
     const c = this.cam, cp = Math.cos(c.pitch);
@@ -498,17 +525,29 @@ export class StrategicMap {
     this.placeLabels(now);
   }
   placeLabels(now) {
-    const d = this.cam.dist, v = new THREE.Vector3(), W = this.W, H = this.H;
-    const put = (it, show) => {
-      if (show) { v.copy(it.pos).project(this.camera); show = v.z < 1 && v.x > -1.1 && v.x < 1.1 && v.y > -1.1 && v.y < 1.1; }
+    const d = this.cam.dist, v = new THREE.Vector3(), W = this.W, H = this.H, placed = [];
+    // name labels never overlap: a label whose box hits one already placed (higher priority) is hidden
+    const free = (it, x, y) => {
+      if (!it.w) { const was = it.e.style.display; it.e.style.display = ''; it.w = it.e.offsetWidth; it.h = it.e.offsetHeight; it.e.style.display = was; if (!it.w) return true; }
+      const bx = x - it.w * (it.ax ?? 0) + (it.dx || 0), by = y - it.h * (it.ay ?? 0.5), b = [bx - 3, by - 1, bx + it.w + 3, by + it.h + 1];
+      for (const p of placed) if (b[0] < p[2] && p[0] < b[2] && b[1] < p[3] && p[1] < b[3]) return false;
+      placed.push(b); return true;
+    };
+    const put = (it, show, declutter = false) => {
+      let x = 0, y = 0;
+      if (show) { v.copy(it.pos).project(this.camera); show = v.z < 1 && v.x > -1.1 && v.x < 1.1 && v.y > -1.1 && v.y < 1.1; x = (v.x + 1) / 2 * W + (it.sx || 0); y = (1 - v.y) / 2 * H; }
+      if (show && declutter === true) show = free(it, x, y);
       if (!show) { if (it.vis !== false) { it.e.style.display = 'none'; it.vis = false; } return; }
       if (it.vis !== true) { it.e.style.display = ''; it.vis = true; }
-      it.e.style.transform = `translate3d(${((v.x + 1) / 2 * W).toFixed(1)}px,${((1 - v.y) / 2 * H).toFixed(1)}px,0)`;
+      it.e.style.transform = `translate3d(${x.toFixed(1)}px,${y.toFixed(1)}px,0)`;
+      // task force tokens are obstacles for the place names (a name under a token is hidden, not drawn through it)
+      if (declutter === 'obstacle') { if (!it.w) { it.w = it.e.offsetWidth; it.h = it.e.offsetHeight; } if (it.w) placed.push([x - it.w / 2, y - it.h, x + it.w / 2, y - 18]); }
     };
-    for (const l of this.tLabels) put(l, l.kind === 'oblast' ? d > 120 : l.kind === 'river' ? d > 50 : d > 32);
-    for (const l of this.cellLabels) put(l, d < 14 + l.size * 9);
-    for (const t of this.tokens) put(t, d < 160);
-    for (const b of this.badges) { if (b.until && now > b.until) { b.e.remove(); this.badges.splice(this.badges.indexOf(b), 1); continue; } put(b, b.until ? true : b.enemy ? d < 70 : d < 160); }
+    for (const t of this.tokens) put(t, d < 160, 'obstacle');
+    for (const b of this.badges) if (b.foe) put(b, d < 160, 'obstacle');
+    for (const l of this.cellLabels) put(l, d < 14 + l.size * 9, true);
+    for (const l of this.tLabels) put(l, l.kind === 'oblast' ? d > 120 : l.kind === 'river' ? d > 50 : d > 32, true);
+    for (const b of this.badges) { if (b.foe) continue; if (b.until && now > b.until) { b.e.remove(); this.badges.splice(this.badges.indexOf(b), 1); continue; } put(b, b.until ? true : b.enemy ? d < 70 : d < 160); }
   }
   dispose() { this.dead = true; cancelAnimationFrame(this.raf); this.ro?.disconnect(); window.removeEventListener('keydown', this.onKey); window.removeEventListener('keyup', this.onKey); window.removeEventListener('blur', this.onBlur); this.renderer.dispose(); this.canvas.remove(); this.labels.remove(); }
 }
@@ -519,7 +558,12 @@ const fmt = v => (Math.round(v * 10) / 10).toString();
 const pips = (mp, max) => { let s = ''; for (let i = 0; i < Math.ceil(max); i++) s += `<i class="${mp >= i + 1 - 1e-6 ? 'on' : mp > i + 1e-6 ? 'half' : ''}"></i>`; return s; };
 export function echelon(n) { return n <= 2 ? '•••' : n <= 6 ? 'I' : 'II'; }
 // NATO-style friendly frame with an icon from the force's composition
-export function natoSvg(units, w = 40, h = 28) {
+export function natoSvg(units, w = 40, h = 28, hostile = false) {
+  if (hostile) {   // APP-6 hostile frame (diamond) with the composition icon
+    const k = { tank: 0, mech: 0, foot: 0 }; for (const u of units) { const vk = u.veh?.kind; if (vk === 'tank') k.tank++; else if (vk && vk !== 'spg') k.mech++; else k.foot++; }
+    const inner = k.tank > k.mech + k.foot ? '<ellipse cx="20" cy="20" rx="8" ry="4.5" fill="none" stroke="#1a0c0a" stroke-width="2"/>' : `<path d="M11 11 L29 29 M29 11 L11 29" stroke="#1a0c0a" stroke-width="2"/>${k.mech || k.tank ? '<ellipse cx="20" cy="20" rx="6.5" ry="3.6" fill="none" stroke="#1a0c0a" stroke-width="2"/>' : ''}`;
+    return `<svg class="c2-nato" viewBox="0 0 40 40" width="${w}" height="${h}"><path d="M20 1 L39 20 L20 39 L1 20 Z" fill="${COL.enemy}" stroke="#1a0c0a" stroke-width="2"/>${inner}</svg>`;
+  }
   const k = { tank: 0, mech: 0, foot: 0, art: 0, uav: 0 };
   for (const u of units) { const vk = u.veh && !u.veh.lost ? u.veh.kind : null; if (vk === 'tank') k.tank++; else if (vk === 'spg') k.art++; else if (vk) k.mech++; else if (u.kind === 'fpv') k.uav++; else k.foot++; }
   const inner = []; const armour = k.tank >= Math.max(k.mech, k.foot) && k.tank > 0, mech = k.mech > 0;
