@@ -10,7 +10,12 @@ export class Audio {
     try { if (localStorage.getItem('smo_noaudio') === '1') return; } catch { }   // headless multi-instance tests
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const ctx = this.ctx = new AC({ latencyHint: 'interactive' });
-    if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    // resume() stays pending until the user clicks (always the case in the versus battle iframe): never block loading
+    // on it — wait at most 300 ms, then resume on the first click / key press
+    if (ctx.state === 'suspended') {
+      await Promise.race([ctx.resume().catch(() => {}), new Promise(r => setTimeout(r, 300))]);
+      if (ctx.state === 'suspended') { const kick = () => { ctx.resume().catch(() => {}); if (ctx.state === 'running') for (const e of ['pointerdown', 'keydown']) removeEventListener(e, kick, true); }; for (const e of ['pointerdown', 'keydown']) addEventListener(e, kick, true); }
+    }
     this.master = ctx.createGain(); this.master.gain.value = 0.9;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.25;
     this.master.connect(comp).connect(ctx.destination);
