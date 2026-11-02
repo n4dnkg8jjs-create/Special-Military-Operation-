@@ -8,8 +8,9 @@ from meshlib import *
 from kit_design import *
 from kitparts import *
 import kit_atlas as KA
+from meshfix import fix_mb, unfight
 
-OUT = os.path.join(REPO, 'assets', 'env', 'panel_kit.glb')
+OUT = os.environ.get('OUT') or os.path.join(REPO, 'assets', 'env', 'panel_kit.glb')   # OUT=/tmp/x.glb NO_MANIFEST=1: QA build
 SEEDS = {t: 100 * (i + 1) for i, t in enumerate(TYPES)}
 
 
@@ -514,6 +515,14 @@ def main():
             col_index = list(dict.fromkeys([split(p.name)[0] for p in pieces]))
         col = col_index.index(base)
         loc = (col * 4.5, 0, -row * 5.0)
+        # z-fighting (layered broken edges / plates / frames lying flush on another island) and winding / inside-out
+        # shells; no reversed twins (pieces are instanced on every block: triangle budget unchanged)
+        if not os.environ.get('NO_MESHFIX'):
+            V0 = [np.array(v, float) for v in mb.V]; b0 = mb.bounds()
+            unfight(mb)
+            if st == 'intact' and any(np.abs(np.asarray(x) - np.asarray(y)).max() > 1e-6 for x, y in zip(b0, mb.bounds())):
+                mb.V[:] = V0; print(f'  unfight {name}: would change the intact frame (game normalisation) -> skipped')
+            fix_mb(mb, double=False, verbose=False)
         mb.to_object(name, [mat, mat2, mat3], location=loc)
         tris = mb.tris()
         b = (st and tris > budgets[st]) or tris > {'collapse_pile_large': 12000, 'collapse_pile_small': 6000, 'slab_hanging': 2000}.get(name, 1e9)
@@ -521,6 +530,8 @@ def main():
         print(f'{name:28s} tris {tris:5d}{"  OVER BUDGET" if b else ""}  bbox {np.round(mn, 2)} {np.round(mx, 2)}')
     size = export_glb(OUT)
     print('panel_kit.glb', size / 1e6, 'MB')
+    if os.environ.get('NO_MANIFEST'):
+        return info
     update_manifest('kit', {'width': W, 'height': H, 'thickness': T})
     update_manifest('panel_kit', {
         'file': 'panel_kit.glb', 'material': 'kit_panel (2048^2 atlas: albedo, normal, ORM) + kit_city (second 2048^2 atlas, used by the '

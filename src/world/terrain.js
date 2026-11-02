@@ -756,6 +756,24 @@ export class Terrain {
     const W = { rv_pallet: 1.2, rv_sheet: 0.95, rv_ply: 1.22, rv_door: 0.84, rv_branches: 1.3, rv_logs: 1.6, rv_mesh: 1.5 };
     const toWall = (x, z) => { for (let it = 0; it < 4; it++) { const S = this.cutSDF(x, z); if (Math.abs(S) < 0.01) break; const [gx, gz] = this.grad(x, z); x -= gx * S; z -= gz * S; } return [x, z]; };
     const floorAt = (x, z) => { const S = this.cutSDF(x, z), q = this._q; return q && S < 0 ? -q.depth : 0; };
+    // footprint samples of a piece at (x, z, ry, scale sx along local x): its own box from the GLB (this.dressBox(name) ->
+    // [x0, x1, z0, z1] in the template frame, set by the map) or the given symmetric half extents
+    const FP = [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]];
+    const box = (name, hx, hz) => this.dressBox?.(name) || [-hx, hx, -hz, hz];
+    const foot = (x, z, ry, B, f, sx = 1) => { const c = Math.cos(ry), s = Math.sin(ry); for (const [u, w] of FP) { const lx = (B[0] + (B[1] - B[0]) * u) * sx, lz = B[2] + (B[3] - B[2]) * w; if (f(x + lx * c + lz * s, z - lx * s + lz * c) === false) return false; } return true; };
+    // a piece lying on the spoil at a trench lip: slid outward (fx, fz) until its whole footprint clears the cut, base =
+    // the lowest top surface under it (nothing overhangs the trench or hangs off the parapet); null if no room
+    const lipSpot = (x, z, fx, fz, ry, B, sc, sink) => {
+      for (let k = 0; k < 12; k++, x += fx * 0.12, z += fz * 0.12) {
+        if (!foot(x, z, ry, B, (px, pz) => this.cutSDF(px, pz) > 0.1, sc)) continue;
+        let y = 1e9; foot(x, z, ry, B, (px, pz) => { y = Math.min(y, this.topH(px, pz, false)); }, sc);
+        return [x, Math.max(-0.2, y) - sink, z];
+      }
+      return null;
+    };
+    // a piece standing on a trench floor: every footprint point inside the cut, on (about) the same floor
+    // (checked against the rendered floor itself: a firing step / bay / sump overlapping the trench has its own depth)
+    const onFloor = (x, z, ry, B, depth, sx) => foot(x, z, ry, B, (px, pz) => this.cutSDF(px, pz) < -0.06 && Math.abs(floorAt(px, pz) + depth) < 0.12 && Math.abs(this.heightAt(px, pz) + depth) < 0.1, sx);
     for (const q of this.cuts) {
       // ---- revetment patches along the walls
       const style = q.revet || 'rough', set = SETS[style] || SETS.rough, dens = DENS[style] ?? 0.05, run = RUN[style] || [1, 3];
@@ -781,8 +799,10 @@ export class Terrain {
       // ---- sandbags / debris on some firing places (raw earth notch on the rest)
       if ((q.kind === 'bay' || (q.kind === 'pit' && q.tag?.fox)) && !q.covered && q.tag) {
         const t = q.tag, x = t.x + t.fx * (t.L + 0.35), z = t.z + t.fz * (t.L + 0.35), r = R();
-        if (r < (style === 'urban' ? 0.25 : 0.45)) place(R() < 0.6 ? 'sandbag_row' : 'sandbag_pile', x, this.topH(x, z, false) - 0.08, z, Math.atan2(t.fx, t.fz) + (R() - 0.5) * 0.3, 0, 0.8 + R() * 0.3);
-        else if (style === 'urban' && r < 0.75) place('debris_conc', x, this.topH(x, z, false) - 0.05, z, R() * 6.28);
+        if (r < (style === 'urban' ? 0.25 : 0.45)) {
+          const n = R() < 0.6 ? 'sandbag_row' : 'sandbag_pile', ry = Math.atan2(t.fx, t.fz) + (R() - 0.5) * 0.3, sc = 0.8 + R() * 0.3;
+          const at = lipSpot(x, z, t.fx, t.fz, ry, box(n, n === 'sandbag_row' ? 0.77 : 0.62, n === 'sandbag_row' ? 0.27 : 0.5), sc, 0.08); if (at) place(n, at[0], at[1], at[2], ry, 0, sc);
+        } else if (style === 'urban' && r < 0.75) { const ry = R() * 6.28, at = lipSpot(x, z, t.fx, t.fz, ry, box('debris_conc', 0.83, 0.46), 1, 0.05); if (at) place('debris_conc', at[0], at[1], at[2], ry); }
         if (q.kind === 'pit' && R() < 0.3) this.covers.push([t.x, t.z, -t.fz, t.fx, 1.6, R() < 0.5 ? 'branch_cover' : 'net_cover']);
       }
       // ---- floor: pallets / planks in the wet spots, litter against the walls, crates in the odd traverse
@@ -793,10 +813,14 @@ export class Terrain {
           const wet = vnoise(x * 0.45 + 7.7, z * 0.45 + 1.3), r = R();
           if (wet > 0.62 && r < 0.22) place(R() < 0.6 ? 'floor_pallet' : 'floor_planks', x, -q.depth + 0.01, z, ry + Math.PI / 2 + (R() - 0.5) * 0.25);
           else if (r < (style === 'urban' ? 0.07 : 0.045)) { const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) * 0.45; place(R() < 0.5 ? 'litter_a' : 'litter_b', x - uz * o * side, -q.depth + 0.01, z + ux * o * side, R() * 6.28); }
-          else if (r < 0.06 && q.kind === 'fire') { const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) * 0.35; place('ammo_crates', x - uz * o * side, -q.depth + 0.02, z + ux * o * side, ry + (R() - 0.5) * 0.5, 0, 0.9); }
+          else if (r < 0.06 && q.kind === 'fire') {   // crates stacked along the wall foot (long side along the trench)
+            const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) * 0.35, rr = ry + Math.PI / 2 + (R() - 0.5) * 0.3;
+            const B = box('ammo_crates', 1.13, 0.44); let done = false;
+            for (const oo of [o, o * 0.5, 0]) for (const sl of [0, -0.4, 0.4]) { if (done) break; const cx = x - uz * oo * side + ux * sl, cz = z + ux * oo * side + uz * sl; if (onFloor(cx, cz, rr, B, q.depth, 0.9)) { place('ammo_crates', cx, -q.depth + 0.02, cz, rr, 0, 0.9); done = true; } }
+          }
         }
         // urban positions: broken brick / concrete thrown out with the spoil
-        if (style === 'urban') for (let t = 0.8; t < L; t += 2.2) { if (R() > 0.4) continue; const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) + 0.7 + R() * 1.2, x = ax0 + ux * t - uz * o * side, z = az0 + uz * t + ux * o * side; if (this.cutSDF(x, z) < 0.5) continue; place('debris_conc', x, Math.max(0, this.topH(x, z, false)) - 0.06, z, R() * 6.28, 0, 0.7 + R() * 0.6); }
+        if (style === 'urban') for (let t = 0.8; t < L; t += 2.2) { if (R() > 0.4) continue; const side = R() < 0.5 ? 1 : -1, o = (q.w || 0.5) + 0.7 + R() * 1.2, x = ax0 + ux * t - uz * o * side, z = az0 + uz * t + ux * o * side; if (this.cutSDF(x, z) < 0.5) continue; const ry = R() * 6.28, sc = 0.7 + R() * 0.6, at = lipSpot(x, z, -uz * side, ux * side, ry, box('debris_conc', 0.83, 0.46), sc, 0.06); if (at) place('debris_conc', at[0], at[1], at[2], ry, 0, sc); }
         // overhead cover: a section every so often under a camo net / cut branches / a tarp / an anti-drone net
         if (L > 2.2) for (let t = 1.2; t < L - 1.2; t += 4.5) {
           const x = ax0 + ux * t, z = az0 + uz * t; if (this.cutSDF(x, z) > -0.25) continue;

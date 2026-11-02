@@ -6,6 +6,8 @@ sided: netting, cracked glazing).  Every asset is an empty named <asset id> hold
 (KHR_mesh_quantization puts its dequantisation transform on the child, so template instancing that strips the root
 transform stays correct).  Origin = ground centre of the footprint (bbox centre in x/z, shared by an asset and its
 _damaged / _burnt twin), +Y up, long axis along X, cars front = +X.
+Geometry QA: every mesh goes through meshfix.unfight (z-fighting) + meshfix.fix_mb (winding / holes) before export
+(NO_MESHFIX=1 skips both); check with python3 check_assets.py ../../../assets/env/modern.glb
 Run:  cd tools/blender/env && nice -n 10 python3 build_modern.py      -> assets/env/modern.glb + modern_manifest.json,
       then ./optimize_modern.sh  (WebP + quantisation)
       python3 build_modern.py car_ bus_                              -> previews/_test/modern_test.glb (subset, 'name$' exact)
@@ -16,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 import bpy
 from meshlib import reset_scene, make_material, REPO, mat_trs
+from meshfix import fix_mb, unfight
 import modern_atlas as MA
 import modern_geo as MG
 import modern_props as MP
@@ -37,6 +40,11 @@ def atlases():
 
 
 def to_blender(mb, mats, loc):
+    # flush trims / frames / plates off their walls (z-fighting), then winding / sidedness repair (holes, inside-out
+    # shells, open sheets seen from behind) -- the alpha material (1: netting, glazing) is double sided already
+    if not os.environ.get('NO_MESHFIX'):
+        unfight(mb, skip_mats=(1,))
+        fix_mb(mb, skip_mats=(1,))
     used = sorted(set(f[3] for f in mb.F))
     ob = mb.to_object(mb.name, mats, smooth_angle=35, location=loc)
     me = ob.data
@@ -95,12 +103,13 @@ def main(only=None):
                          'notes': MG.NODE_NOTES.get(mb.name) or MP.NODE_NOTES.get(mb.name, '')}
         print(f'{mb.name:26s} {mb.tris():6d} tris  size {np.round(sz_, 2)}{"  OVER BUDGET" if mb.tris() > lim else ""}')
     out = os.path.join(REPO, 'assets', 'env', 'modern.glb') if not only else os.path.join(REPO, 'previews', '_test', 'modern_test.glb')
+    out = os.environ.get('OUT') or out   # OUT=/tmp/x.glb: QA build elsewhere (manifest still written unless NO_MANIFEST)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', export_yup=True, export_apply=True, export_image_format='AUTO',
                               export_materials='EXPORT', export_cameras=False, export_lights=False, export_texcoords=True,
                               export_normals=True, export_vertex_color='ACTIVE', export_all_vertex_colors=False)
     print(os.path.basename(out), round(os.path.getsize(out) / 1e6, 2), 'MB')
-    if not only:
+    if not only and not os.environ.get('NO_MANIFEST'):
         man = {'file': 'modern.glb', 'nodes': info, 'notes': MG.NOTES, 'refs': MG.REFS}
         with open(os.path.join(REPO, 'assets', 'env', 'modern_manifest.json'), 'w') as fh:
             json.dump(man, fh, indent=1, ensure_ascii=False)

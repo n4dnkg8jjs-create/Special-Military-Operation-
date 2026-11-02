@@ -18,7 +18,7 @@
 //   - fields from the OSM farmland polygons (crop / stubble / ploughed / fallow, row direction along the field)
 import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary } from './city.js';
-import { Farmland } from './farmland.js';
+import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
 import { instance, trs, LODS } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -28,6 +28,59 @@ import ROBOTYNE from './real/robotyne_osm.js';
 import AVDIIVKA from './real/avdiivka_osm.js';
 
 export const REAL_DATA = { robotyne: ROBOTYNE, avdiivka: AVDIIVKA };
+// OSM tracks / service roads that stop in the open (the mapper stopped, or the way was clipped oddly) would read in the
+// game as a road running into a field and ending.  Every track / drive / gravel end must join another road, reach a
+// building / yard (farmyard, garage, plot), or run off the map edge:
+//   - an end within 40 m of another road is carried on to it (snapped to the nearest centre-line point)
+//   - an end in the open is carried on in its own direction to the map edge when that is under 360 m and passes no
+//     building / plot (the field track continues off the map); otherwise the stub is cut back to its last junction
+// Runs once per layout at load (idempotent); D.roadFix lists what was changed (QA).
+function cleanRoads(D) {
+  if (D.roadFix) return;
+  const fix = D.roadFix = [], half = D.size / 2, roads = D.roads;
+  const proj = (p, a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / L2)), x = a[0] + dx * t, z = a[1] + dz * t; return [x, z, Math.hypot(p[0] - x, p[1] - z)]; };
+  const nearRoad = (p, r) => { let best = null; for (const q of roads) { if (q === r || q.drop) continue; for (let k = 0; k < q.pts.length - 1; k++) { const [x, z, d] = proj(p, q.pts[k], q.pts[k + 1]); if (!best || d < best.d) best = { d, x, z, q }; } } return best; };
+  const built = (p, R) => D.buildings.some(b => Math.hypot(b.x - p[0], b.z - p[1]) < R + Math.max(b.L, b.D) / 2) || (D.plots || []).some(pl => inPoly(p[0], p[1], pl.pts));
+  for (const r of roads) {
+    if (!['track', 'drive', 'gravel'].includes(r.type)) continue;
+    for (const end of [0, 1]) {
+      const P = r.pts; if (P.length < 2) continue;
+      const p = end ? P[P.length - 1] : P[0], q = end ? P[P.length - 2] : P[1];
+      if (Math.max(Math.abs(p[0]), Math.abs(p[1])) > half - 25) continue;                 // runs off the map
+      if (Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) < 1) continue;   // loop
+      const n = nearRoad(p, r); if (n && n.d < n.q.w / 2 + 1.5) continue;                 // joins a road
+      if (built(p, 25)) continue;                                                           // to a yard / building
+      if (n && n.d < 40) { const pt = [+n.x.toFixed(1), +n.z.toFixed(1)]; if (end) P.push(pt); else P.unshift(pt); fix.push({ road: roads.indexOf(r), end, snap: pt }); continue; }
+      const dx = p[0] - q[0], dz = p[1] - q[1], L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+      let te = 1e9; for (const [u, c] of [[ux, p[0]], [uz, p[1]]]) if (Math.abs(u) > 1e-6) te = Math.min(te, ((u > 0 ? half : -half) - c) / u);
+      let clear = te < 360; for (let t = 5; clear && t < te; t += 5) if (built([p[0] + ux * t, p[1] + uz * t], 12)) clear = false;
+      if (clear) { const pt = [+(p[0] + ux * (te + 6)).toFixed(1), +(p[1] + uz * (te + 6)).toFixed(1)]; if (end) P.push(pt); else P.unshift(pt); fix.push({ road: roads.indexOf(r), end, extend: pt }); continue; }
+      // cut back to the last point that is on (near) another road; no junction at all -> drop the whole way
+      const idx = end ? [...P.keys()].reverse() : [...P.keys()]; let keep = -1;
+      for (const i of idx) { const m = nearRoad(P[i], r); if (m && m.d < m.q.w / 2 + 2) { keep = i; break; } }
+      if (keep < 0 || (end ? keep < 1 : keep > P.length - 2)) { r.drop = true; fix.push({ road: roads.indexOf(r), drop: true }); break; }
+      if (end) P.length = keep + 1; else P.splice(0, keep); fix.push({ road: roads.indexOf(r), end, cut: keep });
+    }
+  }
+  D.roads = roads.filter(r => !r.drop);
+  // ways of one kind that simply continue each other (a node shared by exactly two way ends) become one polyline, so
+  // the ribbon is mitred through the bend instead of two butt ends leaving a wedge-shaped gap on the outside
+  for (let merged = true; merged;) {
+    merged = false; const R = D.roads, ends = [];
+    R.forEach((r, i) => { if (r.pts.length > 1 && Math.hypot(r.pts[0][0] - r.pts[r.pts.length - 1][0], r.pts[0][1] - r.pts[r.pts.length - 1][1]) > 1) ends.push([i, 0], [i, 1]); });
+    const at = ([i, e]) => e ? R[i].pts[R[i].pts.length - 1] : R[i].pts[0];
+    for (let a = 0; a < ends.length && !merged; a++) {
+      const pa = at(ends[a]), here = ends.filter(q => Math.hypot(at(q)[0] - pa[0], at(q)[1] - pa[1]) < 0.6);
+      if (here.length !== 2) continue;
+      const [[i, ei], [j, ej]] = here, ri = R[i], rj = R[j]; if (i === j || ri.type !== rj.type || Math.abs(ri.w - rj.w) > 0.6) continue;
+      // nothing else passes through the node
+      if (R.some((q, k) => k !== i && k !== j && q.pts.some((p, n) => n < q.pts.length - 1 && proj(pa, p, q.pts[n + 1])[2] < q.w / 2))) continue;
+      const A = ei ? ri.pts : ri.pts.slice().reverse(), B = ej ? rj.pts.slice().reverse() : rj.pts;
+      ri.pts = [...A, ...B.slice(1)]; R.splice(j, 1); fix.push({ merge: [i, j] }); merged = true;
+    }
+  }
+}
+for (const D of Object.values(REAL_DATA)) cleanRoads(D);
 export const OSM_CREDIT = 'Map data © OpenStreetMap contributors (ODbL)';
 const SIDEWALK = 3.2;
 
@@ -212,10 +265,11 @@ const Real = {
       const P = r.pts; if (P.length < 2) continue;
       const hw = r.w / 2, x0 = P[0][0], x1 = P[P.length - 1][0], z0 = P[0][1], z1 = P[P.length - 1][1], horiz = Math.abs(x1 - x0) > Math.abs(z1 - z0) ? 1 : 0;
       if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') {
-        ribbon(B.asphalt, P, hw, 0.05, { horiz, ext: 0.5 });
+        // crossing ribbons of one class would be coplanar and z-fight at the junction: higher classes sit a few mm up
+        ribbon(B.asphalt, P, hw, r.type === 'paved' ? 0.058 : r.type === 'street' ? 0.054 : 0.05, { horiz, ext: 0.5 });
         if (urban && r.type !== 'drive') ribbon(B.walk, P, hw + SIDEWALK, 0.03, { horiz, tile: 4 });
         else if (urban) ribbon(B.walk, P, hw + 1.1, 0.03, { horiz, tile: 4 });
-        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.06, z, Math.atan2(-uz, ux))); });
+        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.066, z, Math.atan2(-uz, ux))); });
         if (urban && r.type !== 'drive') for (const sd of [-1, 1]) walk(P, 1, (x, z, ux, uz) => { const cx = x - uz * hw * sd, cz = z + ux * hw * sd; if (this.net.hit(cx, cz, 0.6, r) || this.rng() < 0.05) return; curbs.push(trs(cx, 0.08, cz, Math.atan2(-uz, ux), 1, 0, (this.rng() - 0.5) * 0.04)); });
       } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, r.type === 'gravel' ? 0.04 : 0.035, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
       // nav: vehicles prefer roads (2 paved, 1 dirt)
@@ -227,9 +281,17 @@ const Real = {
         }
       }
     }
+    // junction patches: where two or more carriageway ends meet at one node (corner of two streets, a fork) their butt
+    // ends leave notches on the outside; a disc just under the ribbons fills them (pavements the same)
+    { const ends = new Map();
+      for (const r of D.roads) if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) { const k = Math.round(p[0] * 2) + ',' + Math.round(p[1] * 2); (ends.get(k) || ends.set(k, []).get(k)).push([p, r]); }
+      const disc = (Bf, x, z, rad, y, tile) => { const n = 18, c = Bf.n; Bf.pos.push(x, y, z); Bf.uv.push(x / tile, z / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; Bf.pos.push(px, y, pz); Bf.uv.push(px / tile, pz / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); Bf.idx.push(c, c + 1 + (i + 1) % n, c + 1 + i); } };
+      for (const [, L] of ends) { if (L.length < 2) continue; const [p] = L[0], hw = Math.max(...L.map(([, r]) => r.w / 2));
+        disc(B.asphalt, p[0], p[1], hw, 0.047, 7);
+        if (urban) disc(B.walk, p[0], p[1], hw + (L.some(([, r]) => r.type !== 'drive') ? SIDEWALK : 1.1), 0.028, 4); } }
     const add = (buf, mat, ro = 0) => { const g = buf.geometry(); if (!g) return; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = ro; this.scene.add(m); return m; };
     add(B.walk, walkM); add(B.asphalt, asphalt); add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
-    if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3 })), dashes, { shadows: false, cell: 400 }); }
+    if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
     if (curbs.length) { const curbMat = T.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 }); instance(this.scene, new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.2, 0.22), curbMat), curbs, { cell: 320, cullDist: 520 }); }
   },
   // ---------------------------------------------------------------- buildings from footprints
@@ -285,10 +347,10 @@ const Real = {
         const bays = Math.max(1, Math.round(L / 6)), bw = L / bays;
         for (const sd of [-1, 1]) for (let i = 0; i < bays; i++) {
           const gone = R() < (ruined ? 0.35 : 0.08), hh = gone ? wallH * (0.15 + R() * 0.35) : wallH * (ruined ? 0.7 + R() * 0.3 : 1);
-          place(bw, hh, t, -L / 2 + (i + 0.5) * bw, 0, sd * (Dd / 2 - t / 2), wallG, col);
+          place(bw, hh + 0.4, t, -L / 2 + (i + 0.5) * bw, -0.4, sd * (Dd / 2 - t / 2), wallG, col);   // footing 0.4 m into the ground: no gap on uneven ground
           if (!gone && hh > 3) place(bw * 0.7, 1.1, 0.05, -L / 2 + (i + 0.5) * bw, Math.min(hh - 1.6, 2.4), sd * (Dd / 2 + 0.01), darkG, null);   // window band
         }
-        for (const sd of [-1, 1]) place(t, wallH, Dd, sd * (L / 2 - t / 2), 0, 0, wallG, col);
+        for (const sd of [-1, 1]) place(t, wallH + 0.4, Dd, sd * (L / 2 - t / 2), -0.4, 0, wallG, col);
         // roof: gable (two slopes) or flat slab with parapet; missing bays where it burnt / was hit
         if (!ruined) {
           const rb = Math.max(1, Math.round(L / 8)), rw = L / rb;
@@ -454,7 +516,9 @@ const Real = {
     const kinds = rural.length ? rural : cityT;
     const lodOf = n => this.hasTpl(n + '_lod1') ? n + '_lod1' : null;
     const items = [];
-    const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false; items.push([n, trs(x, 0, z, R() * 6.28, s)]); this.nav.circle(x, z, 0.45, BLOCK); this.solidAdd(x, z, 0.4, 0.4, 0, 'tree'); return true; };
+    const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false;
+      const t = this.tpl(n); if (this.crownHit(x, z, t ? this.canopyR(t, s) * 0.75 : 2)) return false;   // crown clear of roofs
+      items.push([n, trs(x, 0, z, R() * 6.28, s)]); this.nav.circle(x, z, 0.45, BLOCK); this.solidAdd(x, z, 0.4, 0.4, 0, 'tree'); return true; };
     const pick = (shell = 0.15) => { if (R() < shell && this.tpl('tree_acacia_shelled')) return 'tree_acacia_shelled'; return kinds[Math.floor(R() * Math.min(4, kinds.length))]; };
     // woods / forest / scrub polygons
     const MN = this.forestMN = Math.ceil(MAP_SIZE / 4), mask = this.forestMask = new Uint8Array(MN * MN), half = MAP_SIZE / 2;
@@ -531,7 +595,7 @@ const Real = {
     }
     // instance per species: near full model, mid / far lod1, coarse far blocks
     const by = new Map(), v = new THREE.Vector3();
-    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; (by.get(n) || by.set(n, []).get(n)).push(M); }
+    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; M.elements[13] = this.baseY(v.x, v.z, 0.35, 0.35); (by.get(n) || by.set(n, []).get(n)).push(M); }
     for (const [n, mats] of by) {
       const t = this.tpl(n); if (!t) continue;
       const lod = lodOf(n) ? this.tpl(lodOf(n)) : null, mid = this.hasTpl(n + '_mid') ? this.tpl(n + '_mid') : null;
@@ -590,7 +654,7 @@ const Real = {
       walk(P, step, (x, z, ux, uz) => {
         const ry = Math.atan2(-uz, ux) + Math.PI / 2;
         if (Math.abs(x) > half - 4 || Math.abs(z) > half - 4 || this.net.hit(x, z, 0.3) || this.solidHit(x, z, 0.6, 0.3, ry, 0.2) || this.terrain.cutSDF(x, z) < 1.5 || this.overlapsBuilding(x, z, 0.4, 0.4, 0.3)) { prev = null; return; }
-        const broken = R() < 0.15, M = trs(x, 0, z, ry, 1, broken ? (R() - 0.5) * 0.6 : (R() - 0.5) * 0.05, (R() - 0.5) * 0.06); mats.push(M);
+        const broken = R() < 0.15, M = trs(x, this.baseY(x, z, 0.2, 0.2), z, ry, 1, broken ? (R() - 0.5) * 0.6 : (R() - 0.5) * 0.05, (R() - 0.5) * 0.06); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK); this.solidAdd(x, z, 0.25, 0.25, 0, 'pole');
         const top = broken ? null : att.map(a => a.clone().applyMatrix4(M));
         if (prev && top) for (let q = 0; q < top.length; q++) { if (R() < 0.1) continue; const b = prev[q] && prev[q].distanceTo(top[q]) < 55 ? prev[q] : null; if (b) lines.push(catenary(b, top[q], 1.2 + R() * 0.7)); }
@@ -632,7 +696,7 @@ const Real = {
       let x = x0, z = z0, ok = false;
       for (let i = 0; i < 24 && !ok; i++) { if (i) { x = x0 + (R() - 0.5) * 30; z = z0 + (R() - 0.5) * 30; } ok = this.terrain.cutSDF(x, z) > 7 && !this.net.hit(x, z, 2) && !this.overlapsBuilding(x, z, 2, 4, 1) && !this.solidHit(x, z, 1.9, 3.9, ry, 0.3) && !this.inPlot(x, z); }
       if (!ok) continue;
-      const M = trs(x, H(x, z), z, ry, 1, (R() - 0.5) * 0.06, (R() - 0.5) * 0.08); add(k + '_h', t.hull, M);
+      const M = this.restM(x, z, ry, 1.6, 3.4, (R() - 0.5) * 0.06, (R() - 0.5) * 0.08); add(k + '_h', t.hull, M);
       if (t.turret && !off) add(k + '_t', t.turret, M.clone().multiply(new THREE.Matrix4().makeRotationY((R() - 0.5) * 1.2)));
       this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck'); this.nav.addOccluder(x, z, 1.6, 3.4, ry, 2.2, null);
       this.wreckSpots.push([x, z]);
@@ -762,7 +826,7 @@ export class RealRural extends Farmland {
     const pos = [], uv = [], idx = [], H = (x, z) => this.terrain.heightAt(x, z), R = this.rng;
     this.trailM = new Uint8Array(this.CN * this.CN); const samples = this.trailSamples = [];
     for (const T of this.trails) {
-      const curve = new THREE.CatmullRomCurve3(T.pts.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal'), L = curve.getLength(), n = Math.max(2, Math.ceil(L / 2.5)), pts = [];
+      const curve = new THREE.CatmullRomCurve3(T.pts.map(p => new THREE.Vector3(p[0], 0, p[1])), false, 'centripetal'), L = curve.getLength(), n = Math.max(2, Math.ceil(L / 1.6)), pts = [];   // 1.6 m: the ribbon follows small hollows (no span over a dip)
       let prev = -1, along = 0, last = null;
       for (let i = 0; i <= n; i++) {
         const p = curve.getPointAt(i / n), t = curve.getTangentAt(i / n), nx = -t.z, nz = t.x; if (last) along += p.distanceTo(last); last = p;
@@ -770,8 +834,9 @@ export class RealRural extends Farmland {
         const ok = Math.abs(p.x) < MAP_SIZE / 2 - 2 && Math.abs(p.z) < MAP_SIZE / 2 - 2 && this.terrain.cutSDF(p.x, p.z) > w * 0.5 + 1.4 && !this.terrain.relief(p.x, p.z, false) && !onRoad(p.x, p.z, 1) && !this.overlapsBuilding(p.x, p.z, w / 2, w / 2, 0.5) && !this.solidHit(p.x, p.z, w / 2, w / 2, 0, 0, k => k !== 'house');
         if (!ok) { prev = -1; continue; }
         pts.push([p.x, p.z]); const a = pos.length / 3;
-        for (const sd of [-1, 1]) { const x = p.x + nx * sd * w / 2, z = p.z + nz * sd * w / 2; pos.push(x, H(x, z) + 0.045, z); uv.push(sd < 0 ? 0 : 1, along / 4.5); }
-        if (prev >= 0) idx.push(prev, prev + 1, a, prev + 1, a + 1, a); prev = a;
+        // 5 vertices across (the ribbon is 4-5 m wide: two edge vertices bridged furrows / rims and left the middle buried)
+        for (const sd of [-1, -0.5, 0, 0.5, 1]) { const x = p.x + nx * sd * w / 2, z = p.z + nz * sd * w / 2; pos.push(x, H(x, z) + 0.045, z); uv.push((sd + 1) / 2, along / 4.5); }
+        if (prev >= 0) for (let k = 0; k < 4; k++) idx.push(prev + k, prev + k + 1, a + k, prev + k + 1, a + k + 1, a + k); prev = a;
         for (let o = -w / 2; o <= w / 2; o += 0.8) { const x = p.x + nx * o, z = p.z + nz * o, ci = this.nav.idx(x, z); if (ci >= 0 && this.nav.cost[ci] !== BLOCK) this.nav.road[ci] = Math.max(this.nav.road[ci], 1); const i2 = Math.floor((x + MAP_SIZE / 2) / this.CS), j2 = Math.floor((z + MAP_SIZE / 2) / this.CS); if (i2 >= 0 && j2 >= 0 && i2 < this.CN && j2 < this.CN) this.trailM[j2 * this.CN + i2] = 1; }
       }
       samples.push({ pts, w: T.w, mud: T.mud ?? 0.9 });
@@ -804,7 +869,7 @@ export class RealRural extends Farmland {
         const x = (f.rowsX ? a : b) + (R() - 0.5) * (f.type === 2 ? 3 : 0.5), z = (f.rowsX ? b : a) + (R() - 0.5) * (f.type === 2 ? 3 : 0.5);
         if (!inPoly(x, z, f.pts) || edgeDist(x, z, f.pts) < 5) continue;
         const pn = this.noise2(x / 26, z / 26, 11); if (pn < (f.type === 2 ? 0.45 : 0.22) || (pn < 0.35 && R() < 0.5)) continue;
-        if (onRoad(x, z, 2.5) || this.nearCrater(x, z, 0.9) || this.onTrail(x, z) || (this.inBurn(x, z) && R() < 0.8) || this.terrain.cutSDF(x, z) < 1.4) continue;
+        if (onRoad(x, z, 2.5) || this.nearCrater(x, z, 0.9) || this.onTrail(x, z) || (this.inBurn(x, z) && R() < 0.8) || this.terrain.cutSDF(x, z) < 1.4 || this.uneven(x, z, 0.8) > 0.25) continue;
         const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] !== 1) continue;
         this.put(name, x, z, R() * 6.28, { s: 0.8 + R() * 0.45, cost: 0, check: false, trench: false, inst, rx: (R() - 0.5) * 0.12, rz: (R() - 0.5) * 0.12 });
       }
@@ -834,7 +899,21 @@ export class RealRural extends Farmland {
     for (const l of [...this.osm.lines.filter(l => l.t === 'tree_row' || l.t === 'hedge' || l.t === 'stream'), ...(MAP.belts || []).map(p => ({ pts: p }))]) { vx.lineWidth = 20 * k; vx.globalAlpha = 1; path(vx, l.pts); vx.stroke(); }
     for (const a of this.osm.areas) if (['grass', 'meadow', 'wood', 'forest', 'scrub'].includes(a.t)) { vx.globalAlpha = 0.9; path(vx, a.pts, true); vx.fill(); }
     yx.globalAlpha = 1;
-    for (let i = 0; i < 30; i++) { const x0 = (R() - 0.5) * MAP_SIZE, z0 = (R() - 0.5) * MAP_SIZE, a = R() * 6.28, L = 60 + R() * 160; yx.globalAlpha = 0.3 + R() * 0.25; yx.lineWidth = 2.6 * k; yx.beginPath(); yx.moveTo(...P(x0, z0)); yx.quadraticCurveTo(...P(x0 + Math.cos(a) * L * 0.5 + (R() - 0.5) * 30, z0 + Math.sin(a) * L * 0.5 + (R() - 0.5) * 30), ...P(x0 + Math.cos(a) * L, z0 + Math.sin(a) * L)); yx.stroke(); }
+    // wheel ruts across the fields: road / track -> across the field -> the next road / track / trail (or off the map);
+    // never a line that starts or stops in the middle of a field (fieldRuts)
+    {
+      const roads = this.osm.roads.filter(r => r.type !== 'drive' && r.pts.length > 1), rows = [...this.osm.lines.filter(l => l.t === 'tree_row' || l.t === 'hedge'), ...(MAP.belts || []).map(p => ({ pts: p }))];
+      const nearLine = (x, z, L, d) => { for (let i = 0; i < L.pts.length - 1; i++) if (segD(x, z, L.pts[i][0], L.pts[i][1], L.pts[i + 1][0], L.pts[i + 1][1]) < d) return true; return false; };
+      const start = () => {
+        const r = roads[Math.floor(R() * roads.length)], i = Math.floor(R() * (r.pts.length - 1)), [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 8) return null;
+        const t = 0.1 + R() * 0.8, ux = (bx - ax) / L, uz = (bz - az) / L, sd = R() < 0.5 ? -1 : 1, nx = -uz * sd, nz = ux * sd, o = r.w / 2 + 0.6;
+        return [ax + (bx - ax) * t + nx * o, az + (bz - az) * t + nz * o, Math.atan2(nz, nx) + (R() - 0.5) * 0.24, r];
+      };
+      const hit = (x, z) => !!this.net.hit(x, z, 0.3) || this.onTrail(x, z);
+      const bad = (x, z) => !this.fieldIdx.at(x, z).length || this.overlapsBuilding(x, z, 1, 1, 2) || this.solidHit(x, z, 1.2, 1.2, 0, 0) || this.inPlot(x, z) || this.terrain.cutSDF(x, z) < 2.5 || rows.some(l => nearLine(x, z, l, 6));
+      this.ruts = fieldRuts(R, 30, start, (x, z) => hit(x, z), (x, z) => !hit(x, z) && bad(x, z), MAP_SIZE / 2);
+      for (const pts of this.ruts) { yx.globalAlpha = 0.3 + R() * 0.25; yx.lineWidth = 2.6 * k; path(yx, pts); yx.stroke(); }
+    }
     const Y = blurred(yards, 1.5 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.6 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data, F = fx.getImageData(0, 0, N, N).data;
     const byId = []; for (const f of this.fieldsR) byId[f.id] = f;
     for (let j = 0; j < N; j++) {

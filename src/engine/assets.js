@@ -47,6 +47,7 @@ export class Assets {
       progress(++done / (jobs.length + 6), k);
     }));
     this.rubbleKeys = rubbleList.filter(k => this.gltf[k]);
+    this.openBacks();
     // tiling textures
     for (const t of ['asphalt', 'concrete', 'brick', 'dirt', 'rubble', 'grass']) {
       this.tex[t] = await this.loadTexSet(t, renderer);
@@ -62,6 +63,27 @@ export class Assets {
       if (map) this.tex.crater = { map, normalMap };
     }
     this.buildKit();
+  }
+
+  // Env assets whose single-sided shells are open where the RTS camera looks in (tools/blender/env/check_assets.py:
+  // back faces >= 0.5 % of the silhouette from some view -- pipe ends, picket rails, sandbag cards, burnt car / bus /
+  // kiosk shells with the panels gone, open sheds, broken trunks): the far side's inner faces were culled and the
+  // model read as see-through.  Those nodes render double-sided (one cloned material per source material; geometry and
+  // triangle counts unchanged).  Not the panel kit: its facade pieces close into a shell with the interior volume.
+  openBacks() {
+    const SETS = {
+      city: ['fence_house_picket', 'pipe_straight_a', 'pipe_straight_burst', 'pipe_straight_torn'],
+      farmland: ['barn_kolkhoz_damaged', 'cross_roadside', 'machine_shed', 'tractor_mtz80', 'trailer_farm', 'trench_segment', 'woodpile'],
+      fortifications: ['mg_nest_roof', 'sandbag_pile', 'sandbag_row'],
+      modern: ['bus_burnt_modern', 'bus_stop_modern', 'car_hatch_modern_burnt', 'car_suv_modern_burnt', 'car_van_burnt', 'garage_row', 'kiosk_modern_burnt', 'pharmacy_kiosk', 'supermarket', 'waste_pad', 'window_sandbags'],
+      props: ['garage_unit'],
+      trees: ['stump_1', 'stump_2', 'tree_birch_snapped', 'tree_chestnut_broken', 'tree_chestnut_stripped', 'tree_poplar_broken', 'tree_poplar_stripped'],
+    };
+    const dbl = new Map(), two = m => { if (!m || m.side === THREE.DoubleSide) return m; let c = dbl.get(m); if (!c) { c = m.clone(); c.side = THREE.DoubleSide; dbl.set(m, c); } return c; };
+    for (const [k, names] of Object.entries(SETS)) {
+      const g = this.gltf[k]; if (!g) continue;
+      for (const n of names) for (const v of [n, n + '_lod1', n + '_mid']) g.scene.getObjectByName(v)?.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(two) : two(o.material); });
+    }
   }
 
   async loadTexSet(name, renderer, optional = false) {

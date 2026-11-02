@@ -62,7 +62,10 @@ Geometry QA / repair (all env builders except modern):
   meshfix.py: fix_mb(mb, skip_mats) is called on every MB right before to_object() in build_city/props/farmland/trees/
       wires/rubble: non-planar quads split on the short diagonal (twin quads no longer poke through), winding made
       consistent per patch, closed shells outward (volume), open patches oriented to the side visible from RTS camera
-      directions (BVH rays), faces whose back is still visible get a reversed twin.  drop(mb, part) lets a part fall onto
+      directions (BVH rays), faces whose back is still visible get a reversed twin.
+      unfight(mb, skip_mats) (z-fighting): faces lying coplanar on a same-facing face of ANOTHER island (frames / plates
+      / trims flush with a wall, sheets on a slab) -> the smaller island moves 12 mm out along the face normal.
+      build_modern.py runs unfight + fix_mb on every mesh (NO_MESHFIX=1 skips; OUT=/tmp/x.glb NO_MANIFEST=1 = QA build).  drop(mb, part) lets a part fall onto
       the mesh / ground (sandbags, debris, bricks, fallen sheets); settle_islands(mb) does it for whole debris piles.
 Farmland (map 2, src/world/farmland.js):
   python3 gen_farm_ground.py       -> assets/textures/{plowed,stubble,fallow,track}_{albedo,normal,orm}.jpg (1024^2, ORM 512^2;

@@ -205,6 +205,16 @@ export class Building {
       if (!this.isDestroyedTop('front', c)) addPar(-this.L / 2 + c * W, this.D / 2, 0, c);
       if (!this.isDestroyedTop('back', c)) addPar(-this.L / 2 + (c + 1) * W, -this.D / 2, Math.PI, c);
     }
+    // gable ends too (the roof slab edge was left bare there): shortened by the parapet depth at the corners, where
+    // the long-side parapets already run, so the two never overlap (coplanar copings would z-fight)
+    const ps = this.kit.pieces.roof_parapet?.size, pl = ps?.x || W, pd = Math.min(0.5, ps?.z || 0.3), M2 = new THREE.Matrix4(), S2 = new THREE.Matrix4();
+    for (let j = 0; j < this.depthModules; j++) for (const [side, px, pz, rot, dir, col] of [['right', this.L / 2, this.D / 2, Math.PI / 2, -1, this.modules - 1], ['left', -this.L / 2, -this.D / 2, -Math.PI / 2, 1, 0]]) {
+      if (this.isDestroyedTop(side, j)) continue;
+      const s0 = j === 0 ? pd : 0, len = W - s0 - (j === this.depthModules - 1 ? pd : 0); if (len < 0.2) continue;
+      const o = { slot: -1, cell: this.cell, col }; this.toWorld(px, top, pz + dir * j * W, tmpV); tmpQ.setFromAxisAngle(Y, this.rot + rot); tmpM.compose(tmpV, tmpQ, tmpS);
+      tmpM.multiply(M2.makeTranslation(s0, 0, 0)).multiply(S2.makeScale(len / pl, 1, 1));
+      pool.add('roof_parapet', tmpM, o, this.tint); this.parapets.push(o);
+    }
   }
   isDestroyedTop(side, col) { const p = this.panels.find(q => q.side === side && q.col === col && q.floor === this.floors - 1); return p && (p.state === 3 || p.gone); }
   // Interior: floor slabs + dark volume per column so holes read as rooms.
@@ -222,13 +232,17 @@ export class Building {
       tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]); darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);
     }
-    // roof, per module column (missing over collapsed parts)
+    // roof, per module column (missing over collapsed parts).  Inset into the wall thickness: a roof slab flush with the
+    // facades would share their outer plane over its 10 cm below the wall top and z-fight there (a flickering band under
+    // the parapet); the parapet covers the slab edge.
+    const ins = Math.min(0.2, (this.kit.T || 0.3) * 0.6);
     for (let c = 0; c < this.modules; c++) {
       const gone = this.pancaked && c >= this.pancaked[0] && c <= this.pancaked[1];
       const corner = this.collapsedCorner && (this.collapsedCorner === 'right' ? c >= this.modules - 2 : c <= 1);
       if (gone || corner) continue;
-      this.toWorld(-this.L / 2 + (c + 0.5) * W, this.floors * H + 0.05, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W + 0.01, 0.3, this.D)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
+      const a = Math.max(-this.L / 2 + ins, -this.L / 2 + c * W - 0.005), b = Math.min(this.L / 2 - ins, -this.L / 2 + (c + 1) * W + 0.005);
+      this.toWorld((a + b) / 2, this.floors * H + 0.05, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(b - a, 0.3, this.D - 2 * ins)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
     }
   }
   // damage variants (_v2/_v3) keep a facade from repeating the same hole over and over

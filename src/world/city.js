@@ -27,6 +27,8 @@ export function setMap(id) {
 }
 setMap('city');
 const SIDEWALK = 3.2;
+const ROOFED = /^(house|shed|garage|kiosk|pavilion|barn|church|machine|grain|water_tower|boiler|kindergarten|supermarket|pharmacy|sub|outhouse|greenhouse|bus_stop)/;
+const FOOT = []; for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) if (i || j) FOOT.push([i / 2, j / 2]);   // 5 x 5 grid over the footprint
 
 export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 export const onRoad = (x, z, pad = 0) => ROAD_TEST ? ROAD_TEST(x, z, pad) : ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
@@ -64,6 +66,63 @@ export class City {
     }
     return false;
   }
+  // Base height for an object standing on the ground (instanced props, houses, trees): the LOWEST ground under its
+  // footprint (centre, corners, edge midpoints of the oriented hx x hz box), so no edge or corner hangs in the air on a
+  // crater rim, a trench parapet or a balka slope -- the uphill side sinks in instead.  hx = hz = 0: centre only.
+  baseY(x, z, hx = 0, hz = 0, ry = 0) {
+    const T = this.terrain; let y = T.heightAt(x, z); if (!(hx > 0 || hz > 0)) return y;
+    const c = Math.cos(ry), s = Math.sin(ry);
+    // big footprints (combines, wrecks, large crater meshes): sample at <= ~1.6 m, not just 5 x 5 (a hollow between two
+    // samples left an edge 15-25 cm in the air)
+    const nx = Math.min(10, Math.max(2, Math.ceil(hx / 0.8))), nz = Math.min(10, Math.max(2, Math.ceil(hz / 0.8)));
+    if (nx === 2 && nz === 2) for (const [u, w] of FOOT) { const lx = u * hx, lz = w * hz; y = Math.min(y, T.heightAt(x + lx * c + lz * s, z - lx * s + lz * c)); }
+    else for (let i = -nx; i <= nx; i++) for (let j = -nz; j <= nz; j++) { const lx = i / nx * hx, lz = j / nz * hz; y = Math.min(y, T.heightAt(x + lx * c + lz * s, z - lx * s + lz * c)); }
+    return y;
+  }
+  // an object lying at (x, z) in any attitude (ry, rx, rz): lowered / raised so the lowest corner of its box rests on
+  // the lowest ground under the box (sunk by `sink`), e.g. a turret blown off and lying on its side
+  restOn(obj, x, z, ry, rx = 0, rz = 0, sink = 0.05, sc = 1) {
+    // the model's own vertices (object frame, subsampled), not its box: a box corner hangs below a rounded shape
+    const P = obj.userData.restPts ||= (() => { obj.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert(), m = new THREE.Matrix4(), v = new THREE.Vector3(), out = [];
+      obj.traverse(o => { if (!o.isMesh) return; m.multiplyMatrices(inv, o.matrixWorld); const pos = o.geometry.attributes.position, st = Math.max(1, Math.floor(pos.count / 600)); for (let i = 0; i < pos.count; i += st) { v.fromBufferAttribute(pos, i).applyMatrix4(m); out.push(v.x, v.y, v.z); } }); return out; })();
+    const M = trs(x, 0, z, ry, sc, rx, rz), e = M.elements; let lo = 1e9, g = 1e9;
+    for (let i = 0; i < P.length; i += 3) { const px = P[i], py = P[i + 1], pz = P[i + 2], wy = e[1] * px + e[5] * py + e[9] * pz; if (wy < lo) lo = wy; }
+    for (let i = 0; i < P.length; i += 3) { const px = P[i], py = P[i + 1], pz = P[i + 2], wy = e[1] * px + e[5] * py + e[9] * pz; if (wy < lo + 0.25) g = Math.min(g, this.terrain.heightAt(e[0] * px + e[4] * py + e[8] * pz + x, e[2] * px + e[6] * py + e[10] * pz + z)); }
+    e[13] = g - lo - sink; return M;
+  }
+  // height range of the ground over a disc of radius r (centre + 8 around): crop clumps / low props are not set on
+  // spoil berms, crater rims or bank slopes, where any one base height leaves part of them floating or buried
+  uneven(x, z, r) {
+    const T = this.terrain; let lo = T.heightAt(x, z), hi = lo;
+    for (let k = 0; k < 8; k++) { const h = T.heightAt(x + Math.cos(k * 0.785) * r, z + Math.sin(k * 0.785) * r); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    return hi - lo;
+  }
+  // footprint of a template in its own frame (centre offset + half extents, scaled), for baseY
+  footOf(t, s = 1) {
+    const f = t.userData.foot ||= (() => { t.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(t).applyMatrix4(new THREE.Matrix4().copy(t.matrixWorld).invert()); return [(b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2, (b.max.x - b.min.x) / 2, (b.max.z - b.min.z) / 2]; })();
+    return [f[0] * s, f[1] * s, f[2] * s, f[3] * s];
+  }
+  // baseY for template t placed at (x, z, ry, scale s)
+  tplBaseY(t, x, z, ry = 0, s = 1) {
+    const [ox, oz, hx, hz] = this.footOf(t, s), c = Math.cos(ry), sn = Math.sin(ry);
+    return this.baseY(x + ox * c + oz * sn, z - ox * sn + oz * c, hx, hz, ry);
+  }
+  // canopy radius of a tree template at scale s (75 % of its half width): trees keep this far from house boxes / blocks
+  // so crowns do not grow through roofs and walls
+  crownHit(x, z, cr) { return this.solidHit(x, z, cr, cr, 0, 0, k => !ROOFED.test(k)) || this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + cr && Math.abs(lz) < b.D / 2 + cr; }); }
+  canopyR(t, s = 1) { const b = t.userData.bb ||= new THREE.Box3().setFromObject(t); return Math.min(b.max.x - b.min.x, b.max.z - b.min.z) / 2 * 0.75 * s; }
+  // a rigid body resting on the ground (wrecks, cars): pitch / roll from the ground under its ends and sides, then
+  // lowered until no corner of the hx x hz footprint hangs in the air; jx / jz = extra random tilt
+  restM(x, z, ry, hx, hz, jx = 0, jz = 0) {
+    const H = (u, w) => this.terrain.heightAt(x + u * Math.cos(ry) + w * Math.sin(ry), z - u * Math.sin(ry) + w * Math.cos(ry));
+    const yf = H(0, hz), yb = H(0, -hz), yl = H(hx, 0), yr = H(-hx, 0);
+    const rx = -Math.atan2(yf - yb, 2 * hz) + jx, rz = Math.atan2(yl - yr, 2 * hx) + jz;
+    let y = (yf + yb + yl + yr) / 4;
+    const M = trs(x, y, z, ry, 1, rx, rz), p = new THREE.Vector3(); let gap = 0;
+    for (const [u, w] of FOOT) { p.set(u * hx, 0, w * hz).applyMatrix4(M); gap = Math.max(gap, p.y - this.terrain.heightAt(p.x, p.z)); }
+    if (gap > 0.02) { y -= gap - 0.02; M.elements[13] = y; }
+    return M;
+  }
   // ================================================================ ground relief API (for soldier / vehicle Y)
   // Height of the walkable ground (m) at world (x, z): 0 on the flat, negative on trench / ditch floors (-1.1 firing
   // cells, -1.55 communication trenches, -1.7 fire trenches, down to -2.6 in an AT ditch), positive on parapets, dugout
@@ -83,7 +142,7 @@ export class City {
     this.placeBuildings(); this.facadeDecals();
     this.fortifications();
     this.rubbleAndDebris();
-    this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.defences(); this.cityWrecks();
+    this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.flushTrees(); this.defences(); this.cityWrecks();
     this.craters(); this.paintGround(); this.skyline();
     this.nav.finalize();
   }
@@ -272,6 +331,8 @@ export class City {
       }
     }
     const wall = this.wallMat();
+    // dressing footprints (template frame, from fortifications.glb) so pieces land fully on the lip / floor
+    { const fg = this.assets.gltf.fortifications, bx = {}; T.dressBox = n => { if (n in bx) return bx[n]; const t = fg?.scene.getObjectByName(n); if (!t) return (bx[n] = null); t.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(t).applyMatrix4(new THREE.Matrix4().copy(t.matrixWorld).invert()); return (bx[n] = [b.min.x, b.max.x, b.min.z, b.max.z]); }; }
     T.finalize({ scene: this.scene, matTop: this.trenchTopMat(), matWall: wall, groundS: this.groundS });
     this.groundUniforms.tHole.value = T.mask;
     // dressing pieces (fortifications.glb, procedural stand-ins otherwise)
@@ -289,8 +350,12 @@ export class City {
   buildTeeth(g, cullDist = 1100) {
     const teeth = this.fortTeeth = this.terrain.teeth || []; if (!teeth.length) return;
     const VAR = ['dragon_tooth', 'dragon_tooth_b', 'dragon_tooth_rubble'], CELL = 90, M = new THREE.Matrix4();
-    const tpl = VAR.map(n => g?.scene.getObjectByName(n) || fortFallback(n));
+    const tpl = this._toothTpl = VAR.map(n => g?.scene.getObjectByName(n) || fortFallback(n));
     const cells = new Map(); this._teethHash = new Map();
+    // base on the finished ground: the lowest point under the pyramid's base (the layout y is relative to flat ground),
+    // a tilted / chipped tooth set deeper by what its tilt lifts the high edge
+    const tb = tpl[0] ? new THREE.Box3().setFromObject(tpl[0]) : null, th = tb ? Math.max(tb.max.x - tb.min.x, tb.max.z - tb.min.z) / 2 : 0.85;
+    teeth.forEach(t => { if (t.based) return; t.based = true; const r = th * t.s; t.g = this.baseY(t[0], t[1], r * 0.8, r * 0.8, t.ry); t.y += t.g + Math.sin(Math.abs(t.rx) + Math.abs(t.rz)) * r * -0.6; });
     teeth.forEach((t, i) => {
       t.i = i; t.hp = t.bad ? 0.6 : 1; t.state = t.bad ? 1 : 0; t.slot = [-1, -1, -1];
       const k = Math.floor(t[0] / CELL) + ',' + Math.floor(t[1] / CELL); let c = cells.get(k); if (!c) cells.set(k, c = { ids: [], k });
@@ -318,9 +383,12 @@ export class City {
   toothMatrix(t, state, out = new THREE.Matrix4(), from = null) {
     if (state === 0 || (state === 1 && !t.topple)) return out.copy(trs(t[0], t.y, t[1], t.ry, t.s, t.rx, t.rz));
     if (state === 1) { // toppled away from the blast: tipped over its far edge, half out of the ground
-      const [ax, az, a] = t.topple; return out.copy(trs(t[0] + ax * 0.25, t.y + 0.08, t[1] + az * 0.25, Math.atan2(ax, az), t.s, a, 0));
+      // rested on the ground it fell on (the far edge of the tipped pyramid dug 0.3 m into the churned earth), not at the upright base height
+      const [ax, az, a] = t.topple, tp = this._toothTpl?.[1];
+      if (tp && this.terrain) return out.copy(this.restOn(tp, t[0] + ax * 0.25, t[1] + az * 0.25, Math.atan2(ax, az), a, 0, 0.3, t.s));
+      return out.copy(trs(t[0] + ax * 0.25, t.y + 0.08, t[1] + az * 0.25, Math.atan2(ax, az), t.s, a, 0));
     }
-    return out.copy(trs(t[0], -0.06, t[1], t.ry + 1.3, t.s * (0.9 + (t.i % 5) * 0.05)));
+    return out.copy(trs(t[0], (t.g || 0) - 0.06, t[1], t.ry + 1.3, t.s * (0.9 + (t.i % 5) * 0.05)));
   }
   // show tooth t as variant v (removing it from the others)
   toothShow(t, v, Mt) {
@@ -591,7 +659,8 @@ export class City {
       if (this.warData && (warAt(this, MAP_SIZE, px, pz, 0) > 0.55 || warAt(this, MAP_SIZE, px, pz, 1) > 0.7 || warAt(this, MAP_SIZE, px, pz, 2) > 0.75)) continue;
       if (onRoad(px, pz, SIDEWALK + 0.4) || (this.lots || []).some(l => px > l[0] && px < l[2] && pz > l[1] && pz < l[3])) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
       if (this.terrain.cutSDF(px, pz) < 0.9) continue;
-      const s = 0.35 + this.rng() * 0.55; mats.push(trs(px, this.terrain.heightAt(px, pz) - 0.03, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
+      const s = 0.35 + this.rng() * 0.55; if (this.uneven(px, pz, 0.9 * s) > 0.25) continue;   // not across a spoil heap / mound edge
+      mats.push(trs(px, this.baseY(px, pz, 0.55 * s, 0.55 * s) - 0.03, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
       cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08));
     }
     // the lawns carry on past the playable edge (thinner, patchy) so the grass doesn't stop on a line
@@ -602,7 +671,7 @@ export class City {
         if (Math.max(Math.abs(px), Math.abs(pz)) < half + 2) continue;
         if (Math.abs(pz) < 15 || Math.abs(px - 85) < 11 || Math.abs(px + 204) < 7 || Math.abs(px - 202) < 7 || Math.abs(Math.abs(pz) - 197) < 7) continue;
         if (this.noise2(px * 0.03, pz * 0.03, 12) < 0.4) continue;
-        const s = 0.35 + this.rng() * 0.5; mats.push(trs(px, 0, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
+        const s = 0.35 + this.rng() * 0.5; mats.push(trs(px, this.baseY(px, pz, 0.55 * s, 0.55 * s) - 0.03, pz, this.rng() * 6.28, 1).multiply(new THREE.Matrix4().makeScale(s * 1.6, s, s * 1.6)));
         cols.push(new THREE.Color().setHSL(0.15 + (this.rng() - .5) * 0.03, 0.12 + this.rng() * 0.08, 0.9 + this.rng() * 0.08)); n++;
       }
     }
@@ -614,19 +683,27 @@ export class City {
     const curbMat = this.assets.tex.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
     const uvPlane = (w, d, scale) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / scale, uv.getY(i) * d / scale); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0, r.z0, r.x1, r.z1, 2);
+    // junctions: every surface drawn once (rectMinus) -- a road is cut where a higher-priority one crosses it (avenue >
+    // streets > driveways, then the longer one), pavements are cut by every carriageway and by higher-priority pavements
+    const prio = r => (r.w === 'avenue' ? 2 : r.type === 'drive' ? 0 : 1) * 1e5 + Math.max(r.x1 - r.x0, r.z1 - r.z0);
+    const swOf = r => r.type === 'drive' ? 1.3 : SIDEWALK, padR = (r, p) => ({ x0: r.x0 - p, x1: r.x1 + p, z0: r.z0 - p, z1: r.z1 + p });
+    const above = r => ROADS.filter(o => o !== r && (prio(o) > prio(r) || (prio(o) === prio(r) && ROADS.indexOf(o) > ROADS.indexOf(r))));
+    void uvPlane;
     for (const r of ROADS) {
-      const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      const sw = r.type === 'drive' ? 1.3 : SIDEWALK, s = new THREE.Mesh(roadFrame(uvPlane(w + sw * 2, d + sw * 2, 4), (Math.min(w, d) + sw * 2) / 2, w > d), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
+      const w = r.x1 - r.x0, d = r.z1 - r.z0, sw = swOf(r), R2 = padR(r, sw);
+      const g = roadPieces(R2, rectMinus(R2, [...ROADS, ...above(r).map(o => padR(o, swOf(o)))]), 4); if (!g) continue;
+      const s = new THREE.Mesh(roadFrame(g, (Math.min(w, d) + sw * 2) / 2, w > d), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
     }
     for (const r of ROADS) {
-      const w = r.x1 - r.x0, d = r.z1 - r.z0;
-      const a = new THREE.Mesh(roadFrame(uvPlane(w, d, 7), Math.min(w, d) / 2, w > d), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a);
+      const w = r.x1 - r.x0, d = r.z1 - r.z0, ab = above(r);
+      const g = roadPieces(r, rectMinus(r, ab), 7);
+      if (g) { const a = new THREE.Mesh(roadFrame(g, Math.min(w, d) / 2, w > d), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a); }
       // lane markings (worn) — not on the single-lane courtyard driveways
       if (r.type === 'drive') continue;
       const horiz = w > d; const len = horiz ? w : d;
-      const dash = new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.9, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -3 });
-      const mats = [];
-      for (let t = -len / 2 + 2; t < len / 2; t += 9) if (this.rng() > 0.25) mats.push(horiz ? trs((r.x0 + r.x1) / 2 + t, 0.06, (r.z0 + r.z1) / 2, 0) : trs((r.x0 + r.x1) / 2, 0.06, (r.z0 + r.z1) / 2 + t, Math.PI / 2));
+      const dash = this._dashM ||= new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.9, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+      const mats = [], inX = (x, z) => ab.some(o => x > o.x0 - 1.5 && x < o.x1 + 1.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5);
+      for (let t = -len / 2 + 2; t < len / 2; t += 9) if (this.rng() > 0.25) { const x = horiz ? (r.x0 + r.x1) / 2 + t : (r.x0 + r.x1) / 2, z = horiz ? (r.z0 + r.z1) / 2 : (r.z0 + r.z1) / 2 + t; if (!inX(x, z)) mats.push(trs(x, 0.06, z, horiz ? 0 : Math.PI / 2)); }
       const dg = new THREE.PlaneGeometry(3, 0.15); dg.rotateX(-Math.PI / 2);
       instance(this.scene, new THREE.Mesh(dg, dash), mats, { shadows: false });
     }
@@ -851,11 +928,21 @@ export class City {
       const roll = this.rng();
       const type = roll < 0.12 && T.leafy ? 'leafy' : roll < 0.22 && T.stump ? 'stump' : roll < 0.27 && T.fallen ? 'fallen' : 'bare';
       const list = T[type]; const k = Math.floor(this.rng() * list.length);
-      (by[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, this.rng() * 6.28, 0.85 + this.rng() * 0.35));
+      if (type !== 'stump' && type !== 'fallen') { const cr = this.canopyR(list[k], 1.05) * 0.75; if (this.crownHit(x, z, cr)) continue; }
+      const fr = type === 'fallen' ? 1.0 : 0.35, M = trs(x, this.baseY(x, z, fr, fr), z, this.rng() * 6.28, 0.85 + this.rng() * 0.35);
+      M.userData = type === 'stump' || type === 'fallen' ? null : [x, z, this.canopyR(list[k], Math.hypot(M.elements[0], M.elements[1], M.elements[2])) * 0.9];
+      (by[type + k] ||= { t: list[k], m: [] }).m.push(M);
       this.nav.circle(x, z, type === 'fallen' ? 1.2 : 0.5, type === 'fallen' ? 5 : BLOCK, true);
       this.solidAdd(x, z, type === 'fallen' ? 1.2 : 0.4, type === 'fallen' ? 1.2 : 0.4, 0, 'tree');
     }
-    for (const v of Object.values(by)) instance(this.scene, v.t, v.m);
+    this._treesBy = by;   // instanced after the dressing (private houses come later): crowns over a roof are dropped there
+  }
+  flushTrees() {
+    for (const v of Object.values(this._treesBy || {})) {
+      const m = v.m.filter(M => { const u = M.userData; if (!u || !this.solidHit(u[0], u[1], u[2], u[2], 0, 0, k => !ROOFED.test(k))) return true; this.nav.circle(u[0], u[1], 0.5, 1); return false; });
+      if (m.length) instance(this.scene, v.t, m);
+    }
+    this._treesBy = null;
   }
   // ---------------------------------------------------------------- poles & wires
   poles() {
@@ -874,7 +961,7 @@ export class City {
         if (onRoad(x, z, -0.5) || this.solidHit(x, z, 1.0, 0.25, rotY, 0.1)) { tops.push(null); continue; }
         this.solidAdd(x, z, 0.25, 0.25, 0, 'pole');
         const broken = this.rng() < 0.12, tilt = broken ? (this.rng() - .5) * 0.5 : (this.rng() - .5) * 0.04;
-        const M = trs(x, 0, z, rotY, 1, tilt, (this.rng() - .5) * 0.05); mats.push(M);
+        const M = trs(x, this.baseY(x, z, 0.2, 0.2), z, rotY, 1, tilt, (this.rng() - .5) * 0.05); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK);
         tops.push(broken ? null : att.map(a => a.clone().applyMatrix4(M)));
       }
@@ -915,7 +1002,7 @@ export class City {
       const k = Math.floor(this.rng() * list.length), bb0 = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]), ex = (bb0.max.x - bb0.min.x) / 2 * s, ez = (bb0.max.z - bb0.min.z) / 2 * s;
       if (navR && this.solidHit(x, z, ex, ez, ry, 0.1)) return;
       if (navR) this.solidAdd(x, z, ex, ez, ry, type);
-      (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, ry, s));
+      (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, this.tplBaseY(list[k], x, z, ry, s), z, ry, s));
       if (navR) { const bb = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]); const sx = (bb.max.x - bb.min.x) / 2 * s, sz = (bb.max.z - bb.min.z) / 2 * s; this.nav.rect(x, z, sx, sz, ry, cost, 0.2); for (let a = 0; a < 1; a++) { const idx = this.nav.idx(x, z); if (idx >= 0) this.nav.low[idx] = 1; } }
     };
     // a handful of shot-up wrecks on the arterials (not a scrapyard on every kerb)
@@ -971,7 +1058,7 @@ export class City {
       const crush = type === 'fenceH' || type === 'bench' || type === 'bin' ? 'any' : type === 'po2' ? 'tank' : null;
       if (this.solidHit(x, z, hx, hz, ry, 0.1, crush ? (k => k === 'fence') : null)) return false;
       this.solidAdd(x, z, hx, hz, ry, crush ? 'fence' : type);
-      const M = trs(x, 0, z, ry, s);
+      const M = trs(x, this.tplBaseY(t, x, z, ry, s), z, ry, s);
       if (crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush, type }); if (cost) this.nav.rect(x, z, hx, hz, ry, crush === 'any' ? Math.min(cost, 3) : cost, 0.15); return true; }
       (place[type + k] ||= { t, m: [] }).m.push(M);
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
@@ -1022,7 +1109,7 @@ export class City {
       const fx = /lamp/.test(n) ? 0.3 : hx, fz = /lamp/.test(n) ? 0.3 : hz; // lamps: only the post matters
       if (this.solidHit(x, z, fx, fz, ry, 0.1)) return false;
       this.solidAdd(x, z, fx, fz, ry, n);
-      (place[n] ||= { t, m: [] }).m.push(trs(x, 0, z, ry));
+      (place[n] ||= { t, m: [] }).m.push(trs(x, /lamp/.test(n) ? this.baseY(x, z, 0.2, 0.2) : this.tplBaseY(t, x, z, ry), z, ry));
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
       if (occ) this.nav.addOccluder(x, z, hx * 0.95, hz * 0.95, ry, (bb.max.y - bb.min.y) * 0.8, null);
       return true;
@@ -1130,7 +1217,7 @@ export class City {
     const T = this.propT, placeList = {};
     const put = (type, x, z, ry) => {
       const list = T[type]; if (!list) return; const k = Math.floor(this.rng() * list.length);
-      (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, 0, z, ry, 1));
+      (placeList[type + k] ||= { t: list[k], m: [] }).m.push(trs(x, this.tplBaseY(list[k], x, z, ry), z, ry, 1));
       const bb = list[k].userData.bb ||= new THREE.Box3().setFromObject(list[k]);
       const sx = (bb.max.x - bb.min.x) / 2, sz = (bb.max.z - bb.min.z) / 2;
       this.nav.rect(x, z, sx, sz, ry, type === 'hedgehog' ? BLOCK : 7, 0.1);
@@ -1161,7 +1248,7 @@ export class City {
       const ry = (horiz ? Math.PI / 2 : 0) + (R() - .5) * 0.7 + (R() < 0.5 ? Math.PI : 0);
       if (Math.abs(x) > MAP_SIZE / 2 - 20 || Math.abs(z) > MAP_SIZE / 2 - 20 || this.buildingAt(x, z, 5) || this.terrain.cutSDF(x, z) < 7 || this.solidHit(x, z, 1.9, 3.9, ry, 0.4) || !free(x, z, ry)) continue;
       if (this.wreckSpots.some(([a, b]) => Math.hypot(a - x, b - z) < 60) || OBJECTIVES.some(o => Math.hypot(o.x - x, o.z - z) < 12)) continue;
-      const k = keys[n % keys.length], M = trs(x, this.terrain.heightAt(x, z), z, ry);
+      const k = keys[n % keys.length], M = this.restM(x, z, ry, 1.6, 3.4);
       (by.get(k + 'h') || by.set(k + 'h', { g: WT[k].hull, m: [] }).get(k + 'h')).m.push(M);
       if (WT[k].turret) (by.get(k + 't') || by.set(k + 't', { g: WT[k].turret, m: [] }).get(k + 't')).m.push(M.clone().multiply(new THREE.Matrix4().makeRotationY((R() - .5) * 2)));
       this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck'); this.nav.addOccluder(x, z, 1.6, 3.4, ry, 2.2, null);
@@ -1174,17 +1261,26 @@ export class City {
     this.craterCap = MAP.kind === 'rural' ? 1400 : 400; this.craterMesh = craterMesh(this.scene, this.assets.tex.crater, craterTexture(), this.craterCap, 0xc2b8a8);
     for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
     for (let i = 0; i < 120; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 40), z = (this.rng() - .5) * (MAP_SIZE - 40), sz = 2 + this.rng() * 4; if (this.terrain.cutSDF(x, z) < sz + 2) continue; this.addCrater(x, z, sz); }
-    if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, 0, z, this.rng() * 6)); } instance(this.scene, T[0], m); }
+    if (T) { const m = []; for (let i = 0; i < 18; i++) { const x = (this.rng() - .5) * (MAP_SIZE - 60), z = (this.rng() - .5) * (MAP_SIZE - 60); const idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && !onRoad(x, z, 4)) m.push(trs(x, this.tplBaseY(T[0], x, z), z, this.rng() * 6)); } instance(this.scene, T[0], m); }
   }
   addCrater(x, z, size, cell = null) {
     if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size, cell]); return; }
     if (this.terrain && this.terrain.cutSDF(x, z) < size * 0.5) return; // decal would float over a trench
     const c = this.craterMesh; if (c.count >= this.craterCap) return;
+    // the decal is a flat card: on uneven ground (crater bowl / rim, parapet, rubble, balka slope) it would hang in the air
+    // or be swallowed -- lift it to the highest point under it, skip it where the ground is too uneven
+    let y0 = 0;
+    if (this.terrain) {
+      const r = size * (c.userData.atlas ? 1.25 : 1) * 0.42; let lo = 1e9, hi = -1e9;
+      for (let k = 0; k < 25; k++) { const a = k * 0.3927, rr = k === 24 ? 0 : k < 16 ? r : r * 0.5, h = this.terrain.heightAt(x + Math.cos(a) * rr, z + Math.sin(a) * rr); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+      if (hi - lo > 0.12) return;
+      y0 = hi;
+    }
     // atlas cell: 0 fresh big, 1 old (water), 2 small / mortar splash, 3 field crater (rural)
     const r = Math.random(), rural = MAP.kind === 'rural';
     if (cell == null) cell = size < 3.2 ? (r < 0.75 ? 2 : rural ? 3 : 0) : size > 7 ? (r < 0.45 ? 0 : rural ? 3 : 1) : (r < 0.3 ? 0 : r < 0.6 ? 1 : rural ? 3 : 2);
     const i = c.count++;
-    c.setMatrixAt(i, trs(x, 0.06 + (i % 64) * 0.0005, z, Math.random() * 6.28, size * (c.userData.atlas ? 1.25 : 1))); c.instanceMatrix.needsUpdate = true;
+    c.setMatrixAt(i, trs(x, y0 + 0.06 + (i % 64) * 0.0005, z, Math.random() * 6.28, size * (c.userData.atlas ? 1.25 : 1))); c.instanceMatrix.needsUpdate = true;
     const ac = c.geometry.attributes.aCell; ac.setX(i, cell); ac.needsUpdate = true;
   }
   // distant city silhouette beyond the playable area
@@ -1350,6 +1446,42 @@ export class City {
   }
 }
 
+// Axis-aligned road surfaces without overlap: rectangle r minus the rectangles in `cuts` (grid split on the cutters'
+// edges, uncovered cells merged along x per z band, then equal x runs merged down z) -> list of {x0, x1, z0, z1}.
+// Coplanar overlapping road / pavement planes z-fight at every junction (their edge wear differs), so each surface is
+// drawn once: the lower-priority road is cut where a higher-priority one crosses it.
+export function rectMinus(r, cuts) {
+  const cs = cuts.filter(c => c.x0 < r.x1 - 1e-6 && c.x1 > r.x0 + 1e-6 && c.z0 < r.z1 - 1e-6 && c.z1 > r.z0 + 1e-6);
+  if (!cs.length) return [{ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1 }];
+  const xs = new Set([r.x0, r.x1]), zs = new Set([r.z0, r.z1]);
+  for (const c of cs) { for (const x of [c.x0, c.x1]) if (x > r.x0 && x < r.x1) xs.add(x); for (const z of [c.z0, c.z1]) if (z > r.z0 && z < r.z1) zs.add(z); }
+  const X = [...xs].sort((a, b) => a - b), Z = [...zs].sort((a, b) => a - b), bands = [];
+  for (let j = 0; j < Z.length - 1; j++) {
+    const zm = (Z[j] + Z[j + 1]) / 2, runs = []; let a = null;
+    for (let i = 0; i < X.length - 1; i++) {
+      const xm = (X[i] + X[i + 1]) / 2, cov = cs.some(c => xm > c.x0 && xm < c.x1 && zm > c.z0 && zm < c.z1);
+      if (!cov && a === null) a = X[i]; if (cov && a !== null) { runs.push([a, X[i]]); a = null; }
+    }
+    if (a !== null) runs.push([a, X[X.length - 1]]);
+    bands.push(runs.map(([x0, x1]) => ({ x0, x1, z0: Z[j], z1: Z[j + 1] })));
+  }
+  const out = [];
+  for (const band of bands) for (const q of band) { const p = out.find(o => o.z1 === q.z0 && o.x0 === q.x0 && o.x1 === q.x1); if (p) p.z1 = q.z1; else out.push(q); }
+  return out;
+}
+// one plane geometry for a set of rectangles of road rd (positions relative to the road centre, UVs continuous in world
+// space exactly like a single uvPlane(w, d, scale) of the whole road would have them)
+export function roadPieces(rd, pieces, scale, segLen = 0) {
+  const cx = (rd.x0 + rd.x1) / 2, cz = (rd.z0 + rd.z1) / 2, gs = [];
+  for (const q of pieces) {
+    const w = q.x1 - q.x0, d = q.z1 - q.z0; if (w < 0.01 || d < 0.01) continue;
+    const g = new THREE.PlaneGeometry(w, d, segLen ? Math.max(1, Math.ceil(w / segLen)) : 1, segLen ? Math.max(1, Math.ceil(d / segLen)) : 1); g.rotateX(-Math.PI / 2); g.translate((q.x0 + q.x1) / 2 - cx, 0, (q.z0 + q.z1) / 2 - cz);
+    const pos = g.attributes.position, uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + cx - rd.x0) / scale, (rd.z1 - (pos.getZ(i) + cz)) / scale);
+    gs.push(g);
+  }
+  return gs.length ? (gs.length === 1 ? gs[0] : mergeGeometries(gs)) : null;
+}
 export function catenary(a, b, sag) {
   const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10; const p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); pts.push(p); } return pts;
 }

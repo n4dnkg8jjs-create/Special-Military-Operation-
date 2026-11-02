@@ -354,3 +354,142 @@ def settle_islands(mb, tol=0.008, ground=0.0, sink=0.01, skip_mats=(), verbose=T
     if verbose:
         print(f'  settle  {mb.name:28s} islands {len(isl):5d} lowered {moved:4d}')
     return moved
+
+
+def unfight(mb, skip_mats=(), push=0.012, eps=4e-4, verbose=True):
+    """Z-fighting repair: faces lying coplanar (< eps) on top of another same-facing face of a DIFFERENT island
+    (window frames / panels / plates / trims flush with a wall, roof sheets on a slab, stacked boxes) flicker in the
+    game.  The smaller island of each fighting pair is moved out along the shared face normal by `push` (1.2 cm: well
+    inside the depth precision of the RTS camera at 300+ m, invisible as an offset).  Faces of one island fighting
+    each other are left alone (reported).  Positions only; UVs, normals and node contracts are untouched."""
+    if not mb.F:
+        return 0
+    try:
+        from scipy.spatial import cKDTree
+    except ImportError:      # pragma: no cover
+        return 0
+    V = np.array(mb.V, float)
+    q = np.round(V / 1e-4).astype(np.int64)
+    _, wid = np.unique(q, axis=0, return_inverse=True); wid = wid.reshape(-1)
+    # islands over welded vertices (union-find)
+    par = np.arange(wid.max() + 1)
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]; a = par[a]
+        return a
+    for f in mb.F:
+        w = [int(wid[i]) for i in f[0]]
+        r0 = find(w[0])
+        for x in w[1:]:
+            r = find(x)
+            if r != r0:
+                par[r] = r0
+    # triangles (fan) with face / island ids
+    T, TF = [], []
+    for k, f in enumerate(mb.F):
+        if f[3] in skip_mats:
+            continue
+        idx = f[0]
+        for t in range(1, len(idx) - 1):
+            T.append((idx[0], idx[t], idx[t + 1])); TF.append(k)
+    if not T:
+        return 0
+    T = np.array(T); TF = np.array(TF)
+    P = V[T]
+    n = np.cross(P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]); ln = np.linalg.norm(n, axis=1)
+    ok = ln > 1e-10; P, T, TF, n, ln = P[ok], T[ok], TF[ok], n[ok], ln[ok]
+    N = n / ln[:, None]; A = 0.5 * ln; C = P.mean(1)
+    isl = np.array([find(int(wid[T[i, 0]])) for i in range(len(T))])
+    Lr = np.linalg.norm(P - C[:, None], axis=2).max(1)
+    R = float(np.percentile(Lr, 99.5)) * 2 if len(Lr) else 0
+    pairs = cKDTree(C).query_pairs(max(R, 1e-3), output_type='ndarray')
+    if not len(pairs):
+        return 0
+    i, j = pairs[:, 0], pairs[:, 1]
+    m = (N[i] * N[j]).sum(1) > 0.999
+    i, j = i[m], j[m]
+    m = np.abs(((C[j] - P[i, 0]) * N[i]).sum(1)) < eps
+    i, j = i[m], j[m]
+    if not len(i):
+        return 0
+
+    def inside(c, a, b, cc, nn, margin=0.1):
+        g = (a + b + cc) / 3
+        a = g + (a - g) * (1 - margin); b = g + (b - g) * (1 - margin); cc = g + (cc - g) * (1 - margin)
+        s1 = (np.cross(b - a, c - a) * nn).sum(1); s2 = (np.cross(cc - b, c - b) * nn).sum(1); s3 = (np.cross(a - cc, c - cc) * nn).sum(1)
+        return ((s1 > 0) & (s2 > 0) & (s3 > 0)) | ((s1 < 0) & (s2 < 0) & (s3 < 0))
+    hit = inside(C[i], P[j, 0], P[j, 1], P[j, 2], N[j]) | inside(C[j], P[i, 0], P[i, 1], P[i, 2], N[i])
+    i, j = i[hit], j[hit]
+    if not len(i):
+        return 0
+    # pairs inside one welded island (a plate / frame sharing a vertex or edge with the wall it lies on): move the smaller
+    # coplanar edge-connected patch of faces instead (its welded vertices; neighbouring faces stretch by the push)
+    si = isl[i] == isl[j]
+    if si.any():
+        Fn = {}; Fd = {}
+        for t in range(len(T)):
+            Fn.setdefault(int(TF[t]), N[t]); Fd.setdefault(int(TF[t]), float(N[t] @ P[t, 0]))
+        fpar = {}
+
+        def ff(a):
+            while fpar.setdefault(a, a) != a:
+                fpar[a] = fpar[fpar[a]]; a = fpar[a]
+            return a
+        edges = {}
+        for k, f in enumerate(mb.F):
+            if k not in Fn:
+                continue
+            w = [int(wid[v]) for v in f[0]]
+            for e in range(len(w)):
+                key = (min(w[e], w[(e + 1) % len(w)]), max(w[e], w[(e + 1) % len(w)]))
+                for o in edges.setdefault(key, []):
+                    if Fn[o] @ Fn[k] > 0.999 and abs(Fd[o] - Fd[k]) < eps:
+                        fpar[ff(o)] = ff(k)
+                edges[key].append(k)
+        parea = {}
+        for t in range(len(T)):
+            r = ff(int(TF[t])); parea[r] = parea.get(r, 0.0) + A[t]
+        pmove = {}
+        for a, b in zip(i[si], j[si]):
+            pa, pb = ff(int(TF[a])), ff(int(TF[b]))
+            if pa == pb:
+                continue
+            small, nrm = (pa, N[a]) if parea[pa] <= parea[pb] else (pb, N[b])
+            pmove.setdefault(small, nrm * push)
+        if pmove:
+            wmove = {}
+            for k, f in enumerate(mb.F):
+                if k in Fn and ff(k) in pmove:
+                    for v in f[0]:
+                        wmove.setdefault(int(wid[v]), pmove[ff(k)])
+            for vi in range(len(V)):
+                d = wmove.get(int(wid[vi]))
+                if d is not None:
+                    mb.V[vi] = np.array(mb.V[vi], float) + d
+        if verbose:
+            print(f'  unfight {mb.name:28s} same-island pairs {int(si.sum()):5d} patches moved {len(pmove):4d}')
+        i, j = i[~si], j[~si]
+        if not len(i):
+            return len(pmove)
+    iarea = {}
+    for t in range(len(T)):
+        iarea[isl[t]] = iarea.get(isl[t], 0.0) + A[t]
+    move = {}
+    for a, b in zip(i, j):
+        ia, ib = isl[a], isl[b]
+        small, nrm = (ia, N[a]) if iarea[ia] <= iarea[ib] else (ib, N[b])
+        if small not in move:
+            move[small] = nrm * push
+    if move:
+        vis = {}
+        for vi in range(len(V)):
+            r = find(int(wid[vi]))
+            if r in move:
+                vis.setdefault(r, []).append(vi)
+        for r, d in move.items():
+            for vi in vis.get(r, []):
+                mb.V[vi] = np.array(mb.V[vi], float) + d
+    if verbose:
+        print(f'  unfight {mb.name:28s} pairs {len(i):5d} islands moved {len(move):4d}')
+    return len(move)

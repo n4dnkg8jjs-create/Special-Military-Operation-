@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, mulberry, catenary } from './city.js';
+import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, mulberry, catenary, rectMinus, roadPieces } from './city.js';
 import { BLOCK } from './nav.js';
 import { instance, trs } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -121,8 +121,11 @@ export class Farmland extends City {
     // nor into another solid prop / trunk (houses, sheds, wells, cars, trees: see City.solidAdd)
     const tree = !!o.circle && /tree|leafy/.test(name), house = /^(house_|church)/.test(name), fx = tree ? 0.4 : house ? hx + 0.2 : hx * 0.95, fz = tree ? 0.4 : house ? hz + 0.2 : hz * 0.95;
     if (o.check !== false && !o.crush && this.solidHit(x, z, fx, fz, ry, tree ? 0.25 : 0.15)) return false;
+    if (tree && this.crownHit(x, z, this.canopyR(t, s) * 0.75)) return false;   // crown clear of roofs
     if (o.cost !== 0 && !o.crush && !/bush|fallen|haybale/.test(name)) this.solidAdd(x, z, fx, fz, ry, house ? 'house' : tree ? 'tree' : name);
-    const M = trs(x, o.y ?? this.terrain.heightAt(x, z), z, ry, s, o.rx || 0, o.rz || 0);
+    // base: lowest ground under the footprint (trees / bushes: under the trunk), never a corner in the air
+    const y = o.y ?? (tree || /bush|clump|tree_|leafy/.test(name) ? this.baseY(x, z, 0.35 * s, 0.35 * s) : this.tplBaseY(t, x, z, ry, s));
+    const M = trs(x, y, z, ry, s, o.rx || 0, o.rz || 0);
     if (o.crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush: o.crush, type: o.crush === 'tank' ? 'po2' : 'fenceH' }); this.nav.rect(x, z, hx, hz, ry, o.crush === 'any' ? 3 : 7, 0.1); return true; }
     const key = name + (o.group || '');
     (this.place[key] ||= { t, m: [], opts: o.inst || {}, lodName: o.lod, midName: o.mid ?? (o.lod && this.hasTpl(name + '_mid') ? name + '_mid' : null) }).m.push(M);
@@ -195,25 +198,25 @@ export class Farmland extends City {
   // lanes (ploughed, staked) in front of C and D where the earlier assaults were stopped. Burns: field fires.
   warLayout() {
     this.trails = [
-      // assault columns from the south
-      { w: 4.4, mud: 0.85, pts: [[-232, 606], [-227, 560], [-213, 500], [-196, 440], [-178, 372], [-152, 300]] },
-      { w: 4.4, mud: 0.85, pts: [[-330, 606], [-342, 552], [-366, 505], [-412, 474]] },
-      { w: 4.2, mud: 0.8, pts: [[268, 606], [272, 560], [266, 505], [258, 470]] },
-      { w: 4.2, mud: 0.75, pts: [[-28, 606], [-22, 556], [-4, 500], [14, 456]] },
+      // assault columns from the south (from off the map, through the staging ground: no trail starts in a field)
+      { w: 4.4, mud: 0.85, pts: [[-236, 704], [-232, 606], [-227, 560], [-213, 500], [-196, 440], [-178, 372], [-160, 323]] },
+      { w: 4.4, mud: 0.85, pts: [[-326, 704], [-330, 606], [-342, 552], [-366, 505], [-412, 474], [-424, 452]] },          // up to the C1 trench
+      { w: 4.2, mud: 0.8, pts: [[264, 704], [268, 606], [272, 560], [266, 505], [258, 470], [254, 432], [252, 401]] },
+      { w: 4.2, mud: 0.75, pts: [[-32, 704], [-28, 606], [-22, 556], [-4, 500], [14, 456], [20, 430], [22, 401]] },
       // the enemy's supply / assault tracks from the north down to the line
-      { w: 4.4, mud: 0.85, pts: [[-205, -606], [-214, -560], [-208, -500], [-196, -440], [-204, -412]] },
-      { w: 4.4, mud: 0.85, pts: [[262, -606], [256, -556], [241, -482], [251, -412]] },
-      { w: 4.0, mud: 0.7, pts: [[30, -606], [41, -540], [58, -470], [84, -410], [96, -372]] },
+      { w: 4.4, mud: 0.85, pts: [[-200, -704], [-205, -606], [-214, -560], [-208, -500], [-196, -440], [-204, -412], [-201, -403]] },   // to the NW communication trench
+      { w: 4.4, mud: 0.85, pts: [[266, -704], [262, -606], [256, -556], [241, -482], [251, -412], [250, -403]] },          // to the NE communication trench
+      { w: 4.0, mud: 0.7, pts: [[26, -704], [30, -606], [41, -540], [58, -470], [84, -410], [96, -372]] },
       // worn shortcuts across the fields
       { w: 3.2, mud: 0.45, pts: [[-121, 252], [-60, 263], [0, 281], [58, 300], [99, 310]] },
       { w: 3.0, mud: 0.4, pts: [[228, -98], [262, -108], [300, -126], [340, -140]] },
       { w: 3.2, mud: 0.45, pts: [[-356, -196], [-300, -228], [-240, -260], [-182, -290]] },
-      { w: 3.0, mud: 0.4, pts: [[-556, -120], [-520, -86], [-470, -60], [-420, -48]] },
-      { w: 3.0, mud: 0.4, pts: [[-357, 230], [-300, 250], [-250, 268], [-180, 300]] },
+      { w: 3.0, mud: 0.4, pts: [[-556, -120], [-520, -86], [-470, -60], [-420, -48], [-405, -28], [-404, 20], [-404, 62]] },   // then along the belt to the road
+      { w: 3.0, mud: 0.4, pts: [[-357, 230], [-300, 250], [-250, 268], [-180, 300], [-150, 323]] },
     ];
     this.lanes = [
-      { w: 4.6, pts: [[165, 531], [163, 490], [160, 450]] },
-      { w: 4.6, pts: [[-452, 532], [-454, 500], [-456, 472]] },
+      { w: 4.6, pts: [[166, 547], [165, 531], [163, 490], [160, 450], [160, 428]] },     // from the southern track up to the D1 position
+      { w: 4.6, pts: [[-451, 547], [-452, 532], [-454, 500], [-456, 472], [-453, 455]] },   // ... and the C1 position
     ];
     // field fires (shelling sets the dry stubble / dead sunflowers alight): scorched patches, crops thinned
     this.burns = [[-250, -250, 55], [60, -262, 42], [280, -238, 46], [-470, -252, 36], [-250, -82, 40], [282, -84, 36], [-80, -92, 30],
@@ -358,9 +361,21 @@ export class Farmland extends City {
     for (const g of this.gardenRects || []) { gx.globalAlpha = 0.9; gx.fillRect(...P(g[0], g[1]), (g[2] - g[0]) * k, (g[3] - g[1]) * k); }
     vx.fillStyle = '#fff'; for (const l of this.lawnRects || []) { vx.globalAlpha = 0.9; vx.fillRect(...P(l[0], l[1]), (l[2] - l[0]) * k, (l[3] - l[1]) * k); }  // grassy house yards
     for (const [x0, z0, x1, z1] of MAP.treelines) { vx.lineWidth = 22 * k; vx.globalAlpha = 1; vx.beginPath(); vx.moveTo(...P(x0, z0)); vx.lineTo(...P(x1, z1)); vx.stroke(); }
-    // wheel ruts / trampled lanes across fields
-    yx.strokeStyle = '#fff'; yx.lineCap = 'round';
-    for (let i = 0; i < 26; i++) { const x0 = (R() - .5) * MAP_SIZE, z0 = (R() - .5) * MAP_SIZE, a = Math.floor(R() * 4) * Math.PI / 2 + (R() - .5) * 0.5, L = 60 + R() * 160; yx.globalAlpha = 0.35 + R() * 0.25; yx.lineWidth = 2.6 * k; yx.beginPath(); yx.moveTo(...P(x0, z0)); yx.quadraticCurveTo(...P(x0 + Math.cos(a) * L * 0.5 + (R() - .5) * 30, z0 + Math.sin(a) * L * 0.5 + (R() - .5) * 30), ...P(x0 + Math.cos(a) * L, z0 + Math.sin(a) * L)); yx.stroke(); }
+    // wheel ruts / trampled lanes across fields: each one runs from a road / track across the field to the next road /
+    // track / trail (or off the map), never starting or stopping in the middle of a field
+    yx.strokeStyle = '#fff'; yx.lineCap = 'round'; yx.lineJoin = 'round';
+    {
+      const belts = MAP.treelines, Fo = MAP.forest, inR = (x, z, q, p = 0) => x > q[0] - p && x < q[2] + p && z > q[1] - p && z < q[3] + p;
+      const start = () => {
+        const r = ROADS[Math.floor(R() * ROADS.length)], horiz = r.x1 - r.x0 > r.z1 - r.z0, t = 0.03 + R() * 0.94, sd = R() < 0.5 ? -1 : 1, j = (R() - 0.5) * 0.24;
+        return horiz ? [r.x0 + t * (r.x1 - r.x0), sd > 0 ? r.z1 + 0.6 : r.z0 - 0.6, sd * Math.PI / 2 + j, r] : [sd > 0 ? r.x1 + 0.6 : r.x0 - 0.6, r.z0 + t * (r.z1 - r.z0), (sd > 0 ? 0 : Math.PI) + j, r];
+      };
+      const hit = (x, z, r0) => ROADS.some(r => r !== r0 && x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3) || this.nearTrail(x, z, -0.5);
+      const bad = (x, z) => belts.some(([a, b, c, d]) => this.segDist(x, z, [a, b], [c, d]) < 7) || (Fo && x > Fo.x0 - 4 && x < Fo.x1 + 4 && z > Fo.z0 - 4 && z < Fo.z1 + 4)
+        || (this.yardRects || []).some(q => inR(x, z, q, 2)) || (this.gardenRects || []).some(q => inR(x, z, q, 2)) || this.solidHit(x, z, 1.2, 1.2, 0, 0) || this.terrain.cutSDF(x, z) < 2.5;
+      this.ruts = fieldRuts(R, 26, start, hit, bad, MAP_SIZE / 2);
+      for (const pts of this.ruts) { yx.globalAlpha = 0.35 + R() * 0.25; yx.lineWidth = 2.6 * k; yx.beginPath(); pts.forEach((p, i) => i ? yx.lineTo(...P(p[0], p[1])) : yx.moveTo(...P(p[0], p[1]))); yx.stroke(); }
+    }
     const pt = this.paintTimes = {}, p0 = performance.now(); pt.draw = 0;
     const Y = blurred(yards, 1.5 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.2 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data;
     pt.read = Math.round(performance.now() - p0); pt.layers = Math.round(p0 - pa);
@@ -422,11 +437,13 @@ export class Farmland extends City {
       if (r.type === 'track') {
         const m = new THREE.Mesh(strip(wid + 1.2, len, 4.5), trackMat); m.position.set(cx, 0.035, cz); if (horiz) m.rotation.y = Math.PI / 2; m.receiveShadow = true; m.renderOrder = 1; this.scene.add(m);
       } else {
-        const g = new THREE.PlaneGeometry(w, d, horiz ? Math.ceil(w / 60) : 1, horiz ? 1 : Math.ceil(d / 60)); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 7, uv.getY(i) * d / 7);
-        roadFrame(g, wid / 2, horiz);
-        const m = new THREE.Mesh(g, asphalt); m.position.set(cx, 0.05, cz); m.receiveShadow = true; this.scene.add(m);
-        const dash = new THREE.MeshStandardMaterial({ color: 0xa9a598, roughness: 0.9, transparent: true, opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -3 });   // faded paint
-        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.55) mats.push(horiz ? trs(cx + t, 0.06, cz, 0) : trs(cx, 0.06, cz + t, Math.PI / 2));
+        // junction: the later paved road is cut where an earlier one crosses (no coplanar overlap -> no z-fighting)
+        const paved = ROADS.filter(o => o.type !== 'track'), above = paved.slice(0, paved.indexOf(r));
+        const g = roadPieces(r, rectMinus(r, above), 7, 60);
+        if (g) { roadFrame(g, wid / 2, horiz); const m = new THREE.Mesh(g, asphalt); m.position.set(cx, 0.05, cz); m.receiveShadow = true; this.scene.add(m); }
+        const dash = this._dashM ||= new THREE.MeshStandardMaterial({ color: 0xa9a598, roughness: 0.9, transparent: true, opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });   // faded paint
+        const inX = (x, z) => above.some(o => x > o.x0 - 1.5 && x < o.x1 + 1.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5);
+        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.55) { const x = horiz ? cx + t : cx, z = horiz ? cz : cz + t; if (!inX(x, z)) mats.push(trs(x, 0.06, z, horiz ? 0 : Math.PI / 2)); }
         const dg = new THREE.PlaneGeometry(3, 0.12); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, dash), mats, { shadows: false });
       }
     }
@@ -518,7 +535,7 @@ export class Farmland extends City {
   // per species: near (< 32 m) full model, mid (< 175 m) *_mid (bushes: lod1), far lod1 in 270 m blocks
   forestInstancing(items) {
     const by = new Map(), v = new THREE.Vector3();
-    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; (by.get(n) || by.set(n, []).get(n)).push(M); }
+    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; M.elements[13] = this.baseY(v.x, v.z, 0.35, 0.35); (by.get(n) || by.set(n, []).get(n)).push(M); }
     for (const [n, mats] of by) {
       const mid = this.hasTpl(n + '_mid') ? this.tpl(n + '_mid') : null, lod = this.tpl(n + '_lod1');
       instance(this.scene, this.tpl(n), mats, { lod, mid: mid || lod, nearDist: 12, lodDist: mid ? 175 : 70, cullDist: 1600, coarse: 3, midShadows: !/bush/.test(n), lodShadows: false });
@@ -622,7 +639,7 @@ export class Farmland extends City {
         if (pn < (f.type === T_FALLOW ? 0.45 : 0.22) || (pn < 0.35 && R() < 0.5)) continue; // trampled / burnt patches
         if (onRoad(x, z, 2.5) || this.inVillage(x, z) || this.inFarm(x, z) || this.inFarmstead(x, z) || this.inForest(x, z, 3) || this.nearCrater(x, z, 0.9)) continue;
         if (this.onTrail(x, z) || (this.inBurn(x, z) && R() < 0.8)) continue;   // driven flat / burnt off
-        if (this.terrain.cutSDF(x, z) < 1.4) continue;
+        if (this.terrain.cutSDF(x, z) < 1.4 || this.uneven(x, z, 0.8) > 0.25) continue;   // not on spoil / crater rims
         const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] !== 1) continue;
         this.put(name, x, z, R() * 6.28, { s: 0.8 + R() * 0.45, cost: 0, check: false, trench: false, inst, rx: (R() - .5) * 0.12, rz: (R() - .5) * 0.12 });
       }
@@ -644,7 +661,7 @@ export class Farmland extends City {
       for (let i = 0; i <= n; i++) {
         const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
         if (onRoad(x, z, -0.5) || Math.abs(x) > MAP_SIZE / 2 - 4 || Math.abs(z) > MAP_SIZE / 2 - 4 || this.solidHit(x, z, 1.0, 0.3, rotY, 0.2) || this.terrain.cutSDF(x, z) < 1.5) { tops.push(null); continue; }
-        const broken = this.rng() < 0.15, M = trs(x, 0, z, rotY, 1, broken ? (this.rng() - .5) * 0.6 : (this.rng() - .5) * 0.05, (this.rng() - .5) * 0.06); mats.push(M);
+        const broken = this.rng() < 0.15, M = trs(x, this.baseY(x, z, 0.2, 0.2), z, rotY, 1, broken ? (this.rng() - .5) * 0.6 : (this.rng() - .5) * 0.05, (this.rng() - .5) * 0.06); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK); tops.push(broken ? null : att.map(a => a.clone().applyMatrix4(M)));
       }
       for (let i = 0; i < tops.length - 1; i++) { const a = tops[i], b = tops[i + 1]; if (!a) continue; for (let q = 0; q < a.length; q++) { if (this.rng() < 0.1) continue; if (b && b[q]) lines.push(catenary(a[q], b[q], 1.4 + this.rng() * 0.6)); else { const e = a[q].clone().add(new THREE.Vector3((x1 - x0) / n * 0.35, 0, (z1 - z0) / n * 0.35)); e.y = 0.05; lines.push(catenary(a[q], e, 0.8)); } } }
@@ -657,7 +674,7 @@ export class Farmland extends City {
   props() {
     const T = this.templatesFrom('props', { car: /car|sedan|vaz|lada|zhiguli/i, bus: /bus(?!_?stop)|paz|minibus/i, hedgehog: /hedgehog/i, sandbag: /sandbag/i, tyre: /tyre|tire/i, crater: /crater/i });
     this.propT = T; const R = this.rng;
-    const one = (list, x, z, ry, cost = BLOCK) => { if (!list) return; const t = list[Math.floor(R() * list.length)]; const k = 'p_' + t.name; (this.place[k] ||= { t, m: [], opts: {} }).m.push(trs(x, this.terrain.heightAt(x, z), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.2); };
+    const one = (list, x, z, ry, cost = BLOCK) => { if (!list) return; const t = list[Math.floor(R() * list.length)]; const k = 'p_' + t.name; (this.place[k] ||= { t, m: [], opts: {} }).m.push(trs(x, this.tplBaseY(t, x, z, ry), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.2); };
     // burnt-out cars on the regional roads (shot up on the move), a bus at the village
     for (let i = 0; i < 14; i++) { const r = ROADS.filter(r => r.type !== 'track')[i % 2], horiz = (r.x1 - r.x0) > (r.z1 - r.z0); const t = R(), sd = R() < 0.5;
       const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (sd ? r.x0 + 1.2 : r.x1 - 1.2), z = horiz ? (sd ? r.z0 + 1.2 : r.z1 - 1.2) : r.z0 + t * (r.z1 - r.z0);
@@ -681,7 +698,7 @@ export class Farmland extends City {
       const belt = (x0, z0, x1, z1) => { const d = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(d / len), ang = Math.atan2(x1 - x0, z1 - z0) + (alongX ? -Math.PI / 2 : 0); for (let i = 0; i < n; i++) { if (R() < 0.15) continue; const f = (i + 0.5) / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; m.push(trs(x, 0, z, ang)); this.nav.circle(x, z, 0.9, 5); } };
       /* no concertina wire */ }
   }
-  putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; if (this.terrain.cutSDF(x, z) < 1.5) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, this.terrain.heightAt(x, z), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
+  putProp(type, x, z, ry, cost) { const list = this.propT?.[type]; if (!list) return; if (this.terrain.cutSDF(x, z) < 1.5) return; const t = list[0]; (this.place['pp_' + type] ||= { t, m: [], opts: {} }).m.push(trs(x, this.tplBaseY(t, x, z, ry), z, ry)); const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); this.nav.rect(x, z, (bb.max.x - bb.min.x) / 2, (bb.max.z - bb.min.z) / 2, ry, cost, 0.1); }
   putSandbag(x, z, r) { this.putProp('sandbag', x, z, r, 7); const i = this.nav.idx(x, z); if (i >= 0) this.nav.low[i] = 1; }
   // ---------------------------------------------------------------- war dressing
   // Knocked-out armour from earlier assaults (static, charred wrecks built from the vehicles' own *_wreck nodes), the
@@ -758,14 +775,14 @@ export class Farmland extends City {
     for (const [x, z, ry, k, off] of W) {
       const t = WT[k]; if (!t) continue;
       if (this.terrain.cutSDF(x, z) < 7 || onRoad(x, z, 1.8) || this.overlapsBuilding(x, z, 2, 4, 1) || this.solidHit(x, z, 1.8, 3.8, ry, 0.3) || this.teethNear(x, z, 6)) continue;
-      const y = H(x, z), M = trs(x, y, z, ry, 1, (R() - .5) * 0.06, (R() - .5) * 0.08);
+      const M = this.restM(x, z, ry, 1.6, 3.4, (R() - .5) * 0.06, (R() - .5) * 0.08);
       add(k + '_h', t.hull, M);
       if (t.turret) {
         if (!off) add(k + '_t', t.turret, M.clone().multiply(new THREE.Matrix4().makeRotationY((R() - .5) * 1.2)));
         else {   // turret blown off: lying upside down / on its side a few metres away
           const tc = t.turretC ||= (() => { const b = new THREE.Box3().setFromObject(t.turret), c = b.getCenter(new THREE.Vector3()); const g = new THREE.Group(); const inner = t.turret.clone(); inner.position.set(-c.x, -c.y, -c.z); g.add(inner); g.userData.h = (b.max.y - b.min.y) / 2; return g; })();
           const a = R() * 6.28, d = 4 + R() * 5, tx = x + Math.cos(a) * d, tz = z + Math.sin(a) * d, flip = R() < 0.5;
-          if (this.terrain.cutSDF(tx, tz) > 3 && !onRoad(tx, tz, 1)) { add(k + '_to', tc, trs(tx, H(tx, tz) + tc.userData.h * (flip ? 0.9 : 0.75), tz, R() * 6, 1, flip ? Math.PI : (R() - .5) * 0.5, flip ? 0 : 1.2 + R() * 0.4)); this.nav.circle(tx, tz, 1.6, BLOCK); }
+          if (this.terrain.cutSDF(tx, tz) > 3 && !onRoad(tx, tz, 1)) { add(k + '_to', tc, this.restOn(tc, tx, tz, R() * 6, flip ? Math.PI : (R() - .5) * 0.5, flip ? 0 : 1.2 + R() * 0.4, 0.08)); this.nav.circle(tx, tz, 1.6, BLOCK); }
         }
       }
       this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck');
@@ -791,8 +808,9 @@ export class Farmland extends City {
         const horiz = (r.x1 - r.x0) > (r.z1 - r.z0), cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, len = horiz ? r.x1 - r.x0 : r.z1 - r.z0;
         line(L.a, horiz ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], 5.5, 0.28);
         for (let i = 0; i < len / 26; i++) { const t = R(); const x = horiz ? r.x0 + t * len : cx, z = horiz ? cz : r.z0 + t * len; blob(L.a, x, z, 3 + R() * 6, 0.45 + R() * 0.35); if (R() < 0.35) blob(L.b, x, z, 1.5 + R() * 3, 0.85, 0.6); }
-        // field entrances: short churned spurs off the track into the field
-        for (let i = 0; i < len / 140; i++) { const t = R(), sd = R() < 0.5 ? -1 : 1, x = horiz ? r.x0 + t * len : cx, z = horiz ? cz : r.z0 + t * len, L2 = 14 + R() * 18; line(L.a, [[x, z], [x + (horiz ? (R() - .5) * 8 : sd * L2), z + (horiz ? sd * L2 : (R() - .5) * 8)]], 4, 0.6); }
+        // field entrances: a short churned apron off the track at the field gateway (5-9 m: a gateway, not a stub of a
+        // track running into the crop and stopping)
+        for (let i = 0; i < len / 140; i++) { const t = R(), sd = R() < 0.5 ? -1 : 1, x = horiz ? r.x0 + t * len : cx, z = horiz ? cz : r.z0 + t * len, L2 = 5 + R() * 4; line(L.a, [[x, z], [x + (horiz ? (R() - .5) * 3 : sd * L2), z + (horiz ? sd * L2 : (R() - .5) * 3)]], 6, 0.6); }
       }
       for (const a of ROADS) for (const b of ROADS) if (a !== b && a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1) { const x = (Math.max(a.x0, b.x0) + Math.min(a.x1, b.x1)) / 2, z = (Math.max(a.z0, b.z0) + Math.min(a.z1, b.z1)) / 2; if (Math.abs(x) > MAP_SIZE / 2 || Math.abs(z) > MAP_SIZE / 2) continue; blob(L.a, x, z, 9 + R() * 6, 0.85); blob(L.b, x + (R() - .5) * 6, z + (R() - .5) * 6, 3 + R() * 3, 0.8, 0.5); }
       for (const r of paved) { const horiz = (r.x1 - r.x0) > (r.z1 - r.z0); for (let i = 0; i < 18; i++) { const t = R(); const x = horiz ? r.x0 + t * (r.x1 - r.x0) : (R() < 0.5 ? r.x0 - 1.5 : r.x1 + 1.5), z = horiz ? (R() < 0.5 ? r.z0 - 1.5 : r.z1 + 1.5) : r.z0 + t * (r.z1 - r.z0); blob(L.b, x, z, 1.5 + R() * 2.5, 0.8, 0.6); } }
@@ -817,7 +835,7 @@ export class Farmland extends City {
     for (let [x, z, s] of this.craterList) {
       const rd = onRoad(x, z, 1); if (rd) s = Math.min(s, 2.4);   // on the asphalt: shallow scars only
       this.addCrater(x, z, s * 2.1, rd ? 2 : null);
-      if (s > 4.5 && T && nBig++ < 170) { big.push(trs(x, 0, z, this.rng() * 6, s / 4.5)); this.nav.circle(x, z, s * 0.8, 3, true); }
+      if (s > 4.5 && T && nBig++ < 170) { { const ry = this.rng() * 6; big.push(trs(x, this.tplBaseY(T[0], x, z, ry, s / 4.5), z, ry, s / 4.5)); } this.nav.circle(x, z, s * 0.8, 3, true); }
       else if (s > 2.5) this.nav.circle(x, z, s * 0.5, 2, true);
     }
     if (T && big.length) instance(this.scene, T[0], big, { cullDist: 750 });
@@ -848,6 +866,36 @@ export class Farmland extends City {
   }
 }
 
+// Wheel ruts / tramlines across a field (ground paint): from a point just off a road / track edge, straight (slightly
+// bowed) across the field to the next road / track / trail, or off the map edge -- a tractor's way between two tracks,
+// never a line that starts or stops in the open.  start() -> [x, z, heading (x = cos, z = sin), road] or null;
+// hit(x, z, road) -> on another road / track / trail; bad(x, z) -> blocked (buildings, belts, forest, trenches, yards).
+// Returns up to n polylines [[x, z], ...]; R = seeded rng.
+export function fieldRuts(R, n, start, hit, bad, half, { min = 45, max = 460, step = 2 } = {}) {
+  const out = [];
+  for (let tries = 0; out.length < n && tries < n * 40; tries++) {
+    const s = start(); if (!s) continue;
+    const [x0, z0, a, road] = s, ux = Math.cos(a), uz = Math.sin(a); let L = 0;
+    if (bad(x0 + ux * 3, z0 + uz * 3)) continue;
+    for (let t = step; t <= max; t += step) {
+      const x = x0 + ux * t, z = z0 + uz * t;
+      if (Math.abs(x) > half + 4 || Math.abs(z) > half + 4) { L = t; break; }    // runs off the map
+      if (t > 4 && hit(x, z, road)) { L = t + 1.5; break; }                       // reached the next road / track
+      if (bad(x, z)) break;
+    }
+    if (L < min) continue;
+    // gentle bow (zero at both ends) + small wander, so it reads as driven, not ruled
+    const bow = (R() - 0.5) * Math.min(14, L * 0.05), w1 = (R() - 0.5) * 2.5, nseg = Math.max(2, Math.ceil(L / 12)), pts = [];
+    let ok = true;
+    for (let i = 0; i <= nseg; i++) {
+      const f = i / nseg, o = Math.sin(Math.PI * f) * bow + Math.sin(Math.PI * 3 * f) * w1, x = x0 + ux * L * f - uz * o, z = z0 + uz * L * f + ux * o;
+      if (i > 0 && i < nseg && f * L > 6 && (1 - f) * L > 6 && bad(x, z)) { ok = false; break; }
+      pts.push([x, z]);
+    }
+    if (ok && !out.some(q => Math.hypot(q[0][0] - x0, q[0][1] - z0) < 40)) out.push(pts);
+  }
+  return out;
+}
 function craterTex() {
   const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
   for (let i = 0; i < 1100; i++) { const a = Math.random() * 6.28, r = 40 + Math.pow(Math.random(), 0.7) * 86; const v = 30 + Math.random() * 50; x.fillStyle = `rgba(${v + 12},${v + 6},${v},${0.18 + Math.random() * 0.45})`; x.beginPath(); x.arc(128 + Math.cos(a) * r, 128 + Math.sin(a) * r, 0.7 + Math.random() * 3, 0, 7); x.fill(); }

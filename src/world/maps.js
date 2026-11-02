@@ -104,7 +104,7 @@ export const MAPS = {
       { x0: -E_F, x1: E_F, z0: 321, z1: 326, type: 'track' },    // along the field side of the z 335 belt; the E–W ride through the forest
       { x0: -362, x1: -357, z0: -E_F, z1: E_F, type: 'track' },
       { x0: 357, x1: 362, z0: -E_F, z1: E_F, type: 'track' },
-      { x0: -127, x1: -122, z0: 67, z1: 303, type: 'track' },
+      { x0: -127, x1: -122, z0: 67, z1: 321, type: 'track' },    // village road -> the E-W track at z 321 (no stub in the field)
       { x0: 222, x1: 227, z0: -292, z1: 60, type: 'track' },
       { x0: 107, x1: 357, z0: -146, z1: -141, type: 'track' },
       { x0: -E_F, x1: E_F, z0: -550, z1: -545, type: 'track' },  // northern field track along the z -560 belt (enemy rear)
@@ -113,7 +113,7 @@ export const MAPS = {
       { x0: -562, x1: -557, z0: -E_F, z1: E_F, type: 'track' },  // western track, N–S ride through the forest
       { x0: -E_F, x1: E_F, z0: 547, z1: 552, type: 'track' },    // southern track behind the screening belt
       // village lanes
-      { x0: -330, x1: -40, z0: 150, z1: 155, type: 'track' },        // Novomykolaivka: vul. Sadova (south)
+      { x0: -357, x1: -40, z0: 150, z1: 155, type: 'track' },        // Novomykolaivka: vul. Sadova (south), from the x -360 track
       { x0: -205, x1: -200, z0: -45, z1: 190, type: 'track' },       // Novomykolaivka: vul. Shkilna (cross street)
       { x0: -10, x1: 100, z0: -200, z1: -195, type: 'track' },       // Kurylivka: west lane
     ],
@@ -315,12 +315,12 @@ export const MAPS = {
     // churned vehicle trails: the UA approaches from the north edge (field edges, tree belts, the highway verge) and the
     // Russian supply tracks from the south
     trails: [
-      { w: 4.4, mud: 0.85, pts: [[40, 700], [24, 610], [-20, 540], [-110, 492]] },
-      { w: 4.2, mud: 0.8, pts: [[245, 700], [262, 600], [262, 470], [258, 330], [262, 190]] },
-      { w: 4.2, mud: 0.8, pts: [[520, 700], [548, 560], [570, 420], [600, 300], [610, 236]] },
+      { w: 4.4, mud: 0.85, pts: [[40, 700], [24, 610], [-20, 540], [-110, 492], [-150, 468]] },                    // into the kolkhoz yard
+      { w: 4.2, mud: 0.8, pts: [[245, 700], [262, 600], [262, 470], [258, 330], [262, 190], [258, 100], [258, 0], [262, -38]] },   // down the belt to the E-W road
+      { w: 4.2, mud: 0.8, pts: [[520, 700], [548, 560], [570, 420], [600, 300], [606, 252], [588, 230], [555, 223], [500, 222]] },   // skirts the highway, back onto it along the AT ditch
       { w: 4.0, mud: 0.75, pts: [[-470, 700], [-470, 640], [-430, 590], [-360, 560]] },
-      { w: 4.2, mud: 0.8, pts: [[-300, -700], [-330, -600], [-390, -420], [-400, -260]] },
-      { w: 4.0, mud: 0.7, pts: [[150, -700], [170, -600], [200, -470], [240, -300], [262, -120]] },
+      { w: 4.2, mud: 0.8, pts: [[-300, -700], [-330, -600], [-390, -420], [-400, -260], [-390, -201]] },          // to the track junction
+      { w: 4.0, mud: 0.7, pts: [[150, -700], [170, -600], [200, -470], [240, -300], [262, -120], [262, -40]] },   // joins the belt trail at the E-W road
     ],
     // phase 1 = the northern edge (the player's approach), phase 2 = the centre of the village
     objectives: [

@@ -307,7 +307,30 @@ export function weatherEnv(assets) {
   for (const k of ['trees', 'farmland', 'city', 'fortifications']) assets.gltf[k]?.scene.traverse(o => { if (!o.isMesh) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
     if (!m || m.userData?.dried || !m.color || !(m.alphaTest > 0 || /foliage|leaf|leaves|crown|bush/i.test(m.name || ''))) continue;
     m.userData.dried = true; m.color.multiply(dry);
+    if (m.alphaTest > 0 && m.map) alphaCoverage(m);
   } });
+}
+// Alpha-tested cards (leaves, crops, wattle) lose coverage in the smaller mips: the averaged alpha drops under the cut-off
+// and crowns / belts thin out into sparse speckle at RTS distances.  Scale alpha up with the mip level actually sampled
+// (from the UV derivatives), so the card keeps its silhouette at distance (A. Golus' mip coverage fix).
+export function alphaCoverage(m) {
+  if (m.userData.alphaCov) return; m.userData.alphaCov = true;
+  const prev = m.onBeforeCompile, key = m.customProgramCacheKey ? m.customProgramCacheKey.bind(m) : null;
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <alphatest_fragment>', `
+      #if defined( USE_MAP ) && defined( USE_ALPHATEST )
+      {
+        vec2 acUv = vMapUv * vec2(textureSize(map, 0));
+        vec2 acDx = dFdx(acUv), acDy = dFdy(acUv);
+        float acMip = max(0.0, 0.5 * log2(max(dot(acDx, acDx), dot(acDy, acDy))));
+        diffuseColor.a *= 1.0 + min(acMip, 6.0) * 0.22;
+      }
+      #endif
+      #include <alphatest_fragment>`);
+  };
+  m.customProgramCacheKey = () => (key ? key() : '') + '_acov';
+  m.needsUpdate = true;
 }
 
 // de-quantised / de-interleaved float copy of a geometry (env GLBs are quantised: int16 normalised positions with the
@@ -347,6 +370,21 @@ export function burntHouse(tpl) {
     if (top > eave + 0.3 && sloped) continue;
     keep.push(i);
   }
+  // with the roof gone, whatever sat on it (ridge vents, dormers, chimney stacks standing on the slope, roof windows)
+  // would hang in the air: keep only the pieces (position-welded islands) that come down to the eaves / walls
+  {
+    const key = v => Math.round(v.x * 500) + ',' + Math.round(v.y * 500) + ',' + Math.round(v.z * 500), ids = new Map(), par = [];
+    const find = q => { while (par[q] !== q) { par[q] = par[par[q]]; q = par[q]; } return q; };
+    const vid = v => { const k = key(v); let q = ids.get(k); if (q === undefined) { q = par.length; par.push(q); ids.set(k, q); } return q; };
+    const tv = keep.map(i => [0, 1, 2].map(t => vid(a.fromBufferAttribute(pos, i + t))));
+    for (const [p0, p1, p2] of tv) { const r = find(p0); par[find(p1)] = r; par[find(p2)] = r; }
+    const low = new Map(); keep.forEach((i, j) => { const r = find(tv[j][0]); let m = low.get(r) ?? 1e9; for (let t = 0; t < 3; t++) m = Math.min(m, pos.getY(i + t)); low.set(r, m); });
+    const kept = keep.filter((i, j) => low.get(find(tv[j][0])) < eave + 0.3); keep.length = 0; keep.push(...kept);
+  }
+  // footprint of the walls (vertical faces between knee and eave height): the floor slab stays inside them (the
+  // template bbox includes roof overhangs, porches and steps)
+  const wb = new THREE.Box3();
+  for (const i of keep) { a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2); n.subVectors(c, b).cross(a.clone().sub(b)).normalize(); if (Math.abs(n.y) > 0.3) continue; for (const v of [a, b, c]) if (v.y > bb.min.y + 1.0 && v.y < eave - 0.2) wb.expandByPoint(v); }
   const g2 = new THREE.BufferGeometry();
   for (const k of Object.keys(all.attributes)) {
     const src = all.attributes[k], d = new Float32Array(keep.length * 3 * src.itemSize);
@@ -357,7 +395,7 @@ export function burntHouse(tpl) {
   const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_burnt';
   const shell = new THREE.Mesh(g2, m); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
   // charred floor / fallen roof debris inside the shell
-  const fl = new THREE.BoxGeometry((bb.max.x - bb.min.x) * 0.9, 0.5, (bb.max.z - bb.min.z) * 0.9); fl.translate((bb.max.x + bb.min.x) / 2, bb.min.y + 0.25, (bb.max.z + bb.min.z) / 2);
+  const fb = wb.isEmpty() ? bb : wb, fl = new THREE.BoxGeometry((fb.max.x - fb.min.x) * 0.92, 0.5, (fb.max.z - fb.min.z) * 0.92); fl.translate((fb.max.x + fb.min.x) / 2, bb.min.y + 0.25, (fb.max.z + fb.min.z) / 2);
   const floor = new THREE.Mesh(fl, charred(null)); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);
   return grp;
 }
