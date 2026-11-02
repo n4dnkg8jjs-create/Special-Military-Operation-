@@ -84,8 +84,9 @@ export async function openVersus() {
   const connected = (p, start) => {
     let went = false; const go = () => { if (went) return; went = true; start(); };
     window.__vsPeer = p;   // test hook
-    say('Connected — measuring ping…', 'ok');
-    p.on('ping', ms => { if (!went) { say(`Connected — ping ${ms} ms`, 'ok'); setTimeout(go, 900); } });
+    const via = () => p.mode === 'relay' ? ' (through relay)' : '';
+    say(`Connected${via()} — measuring ping…`, 'ok');
+    p.on('ping', ms => { if (!went) { say(`Connected${via()} — ping ${ms} ms`, 'ok'); setTimeout(go, 900); } });
     setTimeout(go, 2500);
     p.on('close', () => { if (!went) say('Connection lost. Try again.', 'bad'); });
   };
@@ -93,6 +94,7 @@ export async function openVersus() {
     broker: "Can't reach the room-code service (0.peerjs.com) — check your internet connection, or use Manual codes under Advanced.",
     notfound: `No game with code ${formatCode(code || '')} — check it with the host (the host must keep the lobby open).`,
     ice: STRICT_NAT,
+    relay: "Couldn't connect directly, and the backup relay servers couldn't be reached either. Check both internet connections and try again, or try another Wi-Fi.",
     busy: 'That game already has two players.',
   }[f.kind] || 'Connection failed: ' + (f.msg || f.kind));
 
@@ -100,8 +102,8 @@ export async function openVersus() {
   $('.vs-host').onclick = async () => {
     reset(); const p = peer = new RoomPeer('host'); busy = true; $('.vs-host').classList.add('hidden');
     say('Getting a room code…', 'busy');
-    p.on('status', s => { if (p !== peer) return; if (s === 'waiting') say('Waiting for opponent…', 'busy'); else if (s === 'connecting') say('Opponent found — connecting…', 'busy'); });
-    p.on('fail', f => { if (p !== peer) return; if (f.kind === 'ice') say(STRICT_NAT + ' Still waiting — they can try again with the same code.', 'bad'); else { say(failMsg(f), 'bad'); if (f.kind === 'broker' && !p.code) reset(); } });
+    p.on('status', s => { if (p !== peer) return; if (s === 'waiting') say('Waiting for opponent…', 'busy'); else if (s === 'connecting') say('Opponent found — connecting…', 'busy'); else if (s === 'relay') say('Direct link blocked by the network — connecting through the backup relay…', 'busy'); });
+    p.on('fail', f => { if (p !== peer) return; if (f.kind === 'ice' || f.kind === 'relay') say((f.kind === 'relay' ? failMsg(f) : STRICT_NAT) + ' Still waiting — they can try again with the same code.', 'bad'); else { say(failMsg(f), 'bad'); if (f.kind === 'broker' && !p.code) reset(); } });
     p.on('open', () => connected(p, () => hostSession(root, p, CAMPAIGNS, $('.vs-op').value, side())));
     const code = await p.host();
     if (!code || p !== peer) return;
@@ -124,7 +126,7 @@ export async function openVersus() {
     reset(); const p = peer = new RoomPeer('guest'); busy = true; $('.vs-joinbtn').disabled = true;
     codeIn.value = formatCode(code);
     say(`Looking for game ${formatCode(code)}…`, 'busy');
-    p.on('status', s => { if (p === peer && s === 'connecting') say(`Connecting to ${formatCode(code)}…`, 'busy'); });
+    p.on('status', s => { if (p !== peer) return; if (s === 'connecting') say(`Connecting to ${formatCode(code)}…`, 'busy'); else if (s === 'relay') say('Direct link blocked by the network — connecting through the backup relay…', 'busy'); });
     p.on('fail', f => { if (p !== peer) return; say(failMsg(f, code), 'bad'); reset(); });
     p.on('open', () => connected(p, () => guestSession(root, p, CAMPAIGNS)));
     p.join(code);

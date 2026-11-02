@@ -80,6 +80,20 @@ export function brokerOptions() {
 const BROKER_ERR = new Set(['network', 'server-error', 'socket-error', 'socket-closed', 'ssl-unavailable', 'disconnected', 'invalid-key']);
 const SNAP_ID = 64;              // negotiated id of our own unreliable channel on PeerJS' peer connection
 export const CONNECT_TIMEOUT = 15000;
+const RELAY_AFTER = 8000, RELAY_TIMEOUT = 20000, RELAY_SNAP_MS = 190, RELAY_CHUNK = 60000;
+// public MQTT-over-WebSocket brokers (free, no account); ?mqtt=ws://127.0.0.1:8888 (comma list) overrides, for tests
+const RELAYS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081/mqtt'];
+export function relayUrls() { const q = new URLSearchParams(location.search).get('mqtt'); return q ? q.split(',') : RELAYS; }
+export function newRelayKey() { const r = crypto.getRandomValues(new Uint8Array(16)); let s = ''; for (const b of r) s += CODE_ALPHABET[b % CODE_ALPHABET.length]; return s; }
+let mqLoading = null;
+export function loadMqtt() {
+  if (window.mqtt?.connect) return Promise.resolve(window.mqtt);
+  return (mqLoading ||= new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = new URL('../../vendor/mqtt/mqtt.min.js', import.meta.url).href;
+    s.onload = () => (window.mqtt?.connect ? res(window.mqtt) : rej(new Error('relay client failed to load')));
+    s.onerror = () => { mqLoading = null; rej(new Error('relay client failed to load')); }; document.head.appendChild(s);
+  }));
+}
 
 // Events beyond Link's: 'code' (host: room code ready), 'status' (text-ish state: 'broker' | 'waiting' | 'connecting'),
 // 'fail' ({ kind: 'broker' | 'notfound' | 'ice' | 'busy', msg }).
@@ -98,10 +112,10 @@ export class RoomPeer extends Link {
   }
   _watch(pj) {
     pj.on('error', e => {
-      if (this.open || this.closed) return;
+      if (this.open || this.closed || this.mode === 'relay') return;
       if (e.type === 'peer-unavailable') this._fail('notfound');
       else if (BROKER_ERR.has(e.type)) this._fail('broker', e.message);
-      else if (e.type === 'webrtc') this._fail('ice', e.message);
+      else if (e.type === 'webrtc') { if (!this.relayKey) this._fail('ice', e.message); }   // with a relay key the timer switches to the relay
       else console.warn('peerjs', e.type, e.message);
     });
     pj.on('disconnected', () => { if (!this.open && !this.closed && this.role === 'host') setTimeout(() => { if (!this.open && !this.closed && !pj.destroyed) try { pj.reconnect(); } catch { } }, 1500); });
@@ -131,16 +145,20 @@ export class RoomPeer extends Link {
     try { this.pj = await this._broker(null); } catch (e) { this._fail('broker', e.message); return; }
     if (this.closed) { this.pj.destroy(); return; }
     this._watch(this.pj); this.code = code;
-    this._wire(this.pj.connect(ID_PREFIX + code, { reliable: true, serialization: 'raw', label: 'ctl' }));
+    this.relayKey = newRelayKey();
+    this._wire(this.pj.connect(ID_PREFIX + code, { reliable: true, serialization: 'raw', label: 'ctl', metadata: { relay: this.relayKey } }));
   }
   _wire(conn) {
     this.conn = conn; this.emit('status', 'connecting');
-    const timer = setTimeout(() => { if (!this.open && this.conn === conn) { this._fail('ice'); if (this.role === 'host') { try { conn.close(); } catch { } this.conn = null; } } }, CONNECT_TIMEOUT);
-    conn.on('data', d => { if (typeof d === 'string' && d.includes('"__full"')) { this._fail('busy'); return; } this._recv(d); });
-    conn.on('error', e => { if (!this.open && this.conn === conn) this._fail('ice', e.message); });
-    conn.on('close', () => { if (this.conn === conn && this.open) this._lost('ctl'); });
+    if (this.role === 'host') this.relayKey = conn.metadata?.relay || null;
+    // no direct link after RELAY_AFTER (strict NAT / CGNAT on either side): carry the game over the public relay instead
+    const toRelay = () => { clearTimeout(timer); if (this.open || this.closed || this.conn !== conn || this.mode === 'relay') return; if (this.relayKey) this._startRelay(); else this._fail('ice'); };
+    const timer = setTimeout(toRelay, RELAY_AFTER);
+    conn.on('data', d => { if (this.mode === 'relay') return; if (typeof d === 'string' && d.includes('"__full"')) { this._fail('busy'); return; } this._recv(d); });
+    conn.on('error', () => { if (!this.open && this.conn === conn) toRelay(); });
+    conn.on('close', () => { if (this.conn === conn && this.open && this.mode !== 'relay') this._lost('ctl'); });
     conn.on('open', () => {
-      clearTimeout(timer); if (this.conn !== conn || this.closed) return;
+      clearTimeout(timer); if (this.conn !== conn || this.closed || this.mode === 'relay') return;
       this.ctl = conn.dataChannel;
       const pc = conn.peerConnection;
       pc.addEventListener('connectionstatechange', () => {
@@ -157,8 +175,64 @@ export class RoomPeer extends Link {
     });
   }
   _opened() { if (this.open) return; super._opened(); try { this.pj?.disconnect(); } catch { } }   // free the code at the broker
-  _sendCtl(m) { try { this.conn?.send(m); } catch (e) { console.warn(e); } }
-  close() { super.close(); try { this.conn?.close(); } catch { } try { this.pj?.destroy(); } catch { } }
+  _sendCtl(m) { if (this.mode === 'relay') return this._relayCtl(m); try { this.conn?.send(m); } catch (e) { console.warn(e); } }
+  sendSnap(t, d) {
+    if (this.mode !== 'relay') return super.sendSnap(t, d);
+    if (!this.open) return; const now = performance.now(); if (now - (this._lastSnap || 0) < RELAY_SNAP_MS) return; this._lastSnap = now;   // ~5 Hz over the relay
+    this._pub('s|' + JSON.stringify({ t, d }));
+  }
+  close() { super.close(); try { this.conn?.close(); } catch { } try { this.pj?.destroy(); } catch { } for (const c of this.mq || []) try { c.end(true); } catch { } }
+
+  // ---- relay mode: both players talk through public MQTT-over-WebSocket brokers (outbound wss only, so it works
+  // behind any NAT). The topic is a random 16-char key the joiner sent along with the handshake, so only the two
+  // players know it. We connect to every broker, listen on all of them, and send through the first one the
+  // opponent's messages arrived on. Reliable messages carry a sequence number (reordered / deduped on receipt).
+  async _startRelay() {
+    this.mode = 'relay'; this.emit('status', 'relay');
+    try { this.conn?.close(); } catch { }
+    let M; try { M = await loadMqtt(); } catch { this._fail('relay'); return; }
+    if (this.closed) return;
+    const me = this.role === 'host' ? 'h' : 'g', them = me === 'h' ? 'g' : 'h', base = `smo-vs/${this.relayKey}/`;
+    this.myTopic = base + me; this.mq = []; this.via = null; this.txSeq = 0; this.rxNext = 1; this.rxBuf = new Map(); this.parts = {};
+    for (const url of relayUrls()) {
+      let c; try { c = M.connect(url, { clientId: 'smo' + newRelayKey().slice(0, 10), reconnectPeriod: 3000, connectTimeout: 8000, clean: true, keepalive: 30 }); } catch { continue; }
+      this.mq.push(c);
+      c.on('connect', () => c.subscribe(base + them, { qos: 0 }, err => { if (!err) c._smoReady = true; }));
+      c.on('message', (_t, buf) => this._relayIn(c, buf.toString()));
+      c.on('error', () => { });
+    }
+    // say hello on every broker until the opponent answers; give up after RELAY_TIMEOUT
+    const t0 = performance.now();
+    this._hello = setInterval(() => {
+      if (this.closed || (this.open && this.heard)) return clearInterval(this._hello);
+      for (const c of this.mq) if (c._smoReady) try { c.publish(this.myTopic, 'hello|' + (this.heard ? 1 : 0)); } catch { }
+      if (!this.open && performance.now() - t0 > RELAY_TIMEOUT) { clearInterval(this._hello); this._endRelay(); this._fail('relay'); }
+    }, 700);
+  }
+  _endRelay() { for (const c of this.mq || []) try { c.end(true); } catch { } this.mq = []; this.via = null; this.heard = false; this.mode = null; this.conn = null; }   // host keeps its code: the joiner can retry
+  _relayIn(c, s) {
+    if (this.closed) return;
+    if (!this.via) this.via = c;
+    this.heard = true;
+    if (!this.open) { this._opened(); this.emit('status', 'relay-open'); }
+    const k = s.indexOf('|'), kind = s.slice(0, k), body = s.slice(k + 1);
+    if (kind === 'hello') return;
+    if (kind === 's') return this._recv(body);
+    if (kind[0] === 'c') {   // c<seq>|json  or  c<seq>.<i>/<n>|chunk
+      const [sq, part] = kind.slice(1).split('.'), seq = +sq;
+      let msg = body;
+      if (part) { const [i, n] = part.split('/').map(Number), P = this.parts[seq] ||= new Array(n); P[i] = body; if (P.filter(x => x != null).length < n) return; msg = P.join(''); delete this.parts[seq]; }
+      if (seq < this.rxNext || this.rxBuf.has(seq)) return;
+      this.rxBuf.set(seq, msg);
+      while (this.rxBuf.has(this.rxNext)) { const m = this.rxBuf.get(this.rxNext); this.rxBuf.delete(this.rxNext); this.rxNext++; this._recv(m); }
+    }
+  }
+  _relayCtl(m) {
+    const seq = ++this.txSeq;
+    if (m.length <= RELAY_CHUNK) return this._pub(`c${seq}|${m}`);
+    const n = Math.ceil(m.length / RELAY_CHUNK); for (let i = 0; i < n; i++) this._pub(`c${seq}.${i}/${n}|${m.slice(i * RELAY_CHUNK, (i + 1) * RELAY_CHUNK)}`);
+  }
+  _pub(s) { const c = this.via || this.mq?.find(x => x._smoReady); if (!c) return; try { c.publish(this.myTopic, s, { qos: 0 }); } catch (e) { console.warn(e); } }
 }
 
 // ---- manual copy-paste signalling (fallback)
