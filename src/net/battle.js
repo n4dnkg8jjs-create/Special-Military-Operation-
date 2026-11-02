@@ -69,7 +69,7 @@ function snapshot(g) {
   const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2)]); } }
   // support teams: status line + every launcher prop (tripod, tube, guidance unit, spent tubes...) in world space
   const sp = g.squads.filter(q => q.support).map(q => { const S = q.support; return [q.id, S.status?.() || '', S.launcher ? 1 : 0, S.launcher ? Object.entries(S.nodes || {}).map(([k, n]) => { n.o.getWorldPosition(W); n.o.getWorldQuaternion(Q); return [k, n.o.visible && n.o.parent ? 1 : 0, r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(x => Math.round(x * 1000) / 1000)]; }) : 0]; });
-  return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, sp, mo: g.mortarsEnemy ?? 0, over: g.over ? g.result : null };
+  return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, sp, mo: g.mortarsEnemy ?? 0, tk: g.tickets ? [r2(g.tickets.player), r2(g.tickets.enemy), g.tickets.max, g.ticketDrain?.player || 0, g.ticketDrain?.enemy || 0] : null, over: g.over ? g.result : null };
 }
 
 function applyCommand(game, byId, c) {
@@ -135,6 +135,7 @@ export function clientFrame(g, dt) {
   g.time = s.t; globalThis.__gameTime = g.time; g.stats = s.st;
   if (s.ph !== 'deploy' && g.phase === 'deploy') { g.phase = s.ph; for (const m of g.zoneMeshes || []) m.visible = false; g.hud?.battleStarted?.(); }
   g.phase = s.ph;
+  if (s.tk) { g.tickets = { player: s.tk[1], enemy: s.tk[0], max: s.tk[2] }; g.ticketDrain = { player: s.tk[4], enemy: s.tk[3] }; }   // host tickets, seen from the joiner's side
   s.o.forEach(([own, ctl, con], i) => { const o = g.objectives[i]; if (!o) return; o.owner = own === 'neutral' ? own : flip(own); o.control = -ctl; o.contested = !!con; o.ring?.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8); });
   const k = Math.min(1, dt * 10);
   for (const [id, morale, mounted, vis, men] of s.sq) {

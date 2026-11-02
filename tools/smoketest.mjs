@@ -9,7 +9,8 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = []; page.on('pageerror', e => errors.push(e.stack || e.message)); page.on('console', m => { if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errors.push(m.text()); });
 await page.goto(`http://localhost:${server.address().port}/index.html`);
-await page.check('input[value=RU]'); await page.selectOption('#quality', 'low'); await page.selectOption('#roundLen', '10');
+await page.click('#skirmishBtn'); await page.waitForTimeout(600);   // skirmish setup is its own menu view (UI v3)
+await page.check('input[value=RU]'); await page.evaluate(() => { document.getElementById('quality').value = 'low'; }); await page.selectOption('#roundLen', '10');
 const MAP = process.env.MAP || 'farmland';
 await page.click(`.mapcard[data-map=${MAP}]`); await page.screenshot({ path: 'previews/menu.png' });
 console.log('menu kicker:', await page.textContent('#mapKicker'));

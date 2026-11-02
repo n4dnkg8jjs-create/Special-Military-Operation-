@@ -28,6 +28,11 @@ export class Game {
     this.time = 0; this.roundLen = opts.minutes * 60; this.paused = false; this.over = false; this.timeScale = +(Q.get('speed') || 1);
     this.stats = { player: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 }, enemy: { kia: 0, wia: 0, evac: 0, kills: 0, vehLost: 0 } };
     this.mortars = TUNING.mortarStrikes; this.strikes = [];
+    // tickets (see TUNING.tickets): game.tickets = { player, enemy, max }, game.ticketDrain = { player, enemy } in
+    // tickets per minute currently draining each side (objective bleed + losses over the last minute)
+    const tmax = Math.round(TUNING.tickets * THREE.MathUtils.clamp((opts.minutes || 12) / 12, 0.75, 1.5) / 10) * 10;
+    this.tickets = { player: tmax, enemy: tmax, max: tmax }; this.ticketDrain = { player: 0, enemy: 0 };
+    this.ticketLog = { player: [], enemy: [] };   // [time, tickets] of recent losses (drain rate)
     this.noRender = Q.has('norender') || (() => { try { return localStorage.getItem('smo_norender') === '1'; } catch { return false; } })();
     setMap(opts.map || 'city'); this.map = MAP;
   }
@@ -47,7 +52,7 @@ export class Game {
     this.city = new (MAP.kind === 'rural' ? Farmland : City)(this.scene, this.assets, this.opts.quality);
     if (MAP.fog && this.scene.fog) this.scene.fog.density = MAP.fog;
     try { this.city.build(); } finally { this.genRandom = Math.random; }
-    this.nav = this.city.nav;
+    this.nav = this.city.nav; this.nav.roadDist?.();   // road-centre distance field for vehicle routing, built once up front
     this.vegOcc = vegetationLOS(this.nav);
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
@@ -193,6 +198,29 @@ export class Game {
     if (s.slotRef) { s.slotRef.occupant = null; s.slotRef = null; }
     if (s.trenchSlot) { s.trenchSlot.occupant = null; s.trenchSlot = null; }
     if (sq.destroyed && sq.side === 'player') this.hud?.alert(`${sq.name} has been wiped out`, 'bad');
+    const L = TUNING.ticketLoss;
+    this.ticketLoss(sq.side, L.soldier);
+    if (sq.destroyed && (sq.kind === 'atgm' || sq.kind === 'fpv' || sq.support) && !sq.ticketed) { sq.ticketed = true; this.ticketLoss(sq.side, L.support); }
+  }
+  // ---------------------------------------------------------------- tickets
+  ticketLoss(side, n) {
+    if (this.over || this.phase === 'deploy' || !n) return;
+    this.tickets[side] = Math.max(0, this.tickets[side] - n);
+    this.ticketLog[side].push([this.time, n]);
+  }
+  // weight of a held objective: a fresh capture bleeds the other side less than one held for a while
+  holdWeight(o) { const B = TUNING.ticketBleed; return B.fresh + (1 - B.fresh) * Math.min(1, (o.holdT || 0) / B.ramp); }
+  updateTickets(dt) {
+    const B = TUNING.ticketBleed, T = this.tickets; let wp = 0, we = 0;
+    for (const o of this.objectives) { if (o.contested) continue; if (o.owner === 'player') wp += this.holdWeight(o); else if (o.owner === 'enemy') we += this.holdWeight(o); }
+    const bleedE = Math.max(0, wp - we) * B.perObj, bleedP = Math.max(0, we - wp) * B.perObj;   // tickets per minute
+    T.enemy = Math.max(0, T.enemy - bleedE * dt / 60); T.player = Math.max(0, T.player - bleedP * dt / 60);
+    this.ticketBleedRate = { player: bleedP, enemy: bleedE };
+    for (const side of ['player', 'enemy']) {
+      const log = this.ticketLog[side]; while (log.length && log[0][0] < this.time - 60) log.shift();
+      const lost = log.reduce((a, e) => a + e[1], 0);
+      this.ticketDrain[side] = Math.round((side === 'player' ? bleedP : bleedE) + lost * 60 / Math.max(20, Math.min(60, this.time)));
+    }
   }
   bailOut(v, cas) {
     const sq = v.passengers; if (!sq) return;
@@ -212,6 +240,7 @@ export class Game {
   }
   onVehicleLost(v) {
     this.stats[v.side].vehLost++;
+    const L = TUNING.ticketLoss; this.ticketLoss(v.side, L[v.kind] ?? L.soft);
     for (const sq of this.squads) if (sq.side === v.side && !sq.destroyed && sq.center().distanceTo(v.pos) < 60) sq.addMorale(-12);
     for (const sq of this.squads) if (sq.side !== v.side && !sq.destroyed && sq.center().distanceTo(v.pos) < 120) sq.addMorale(8);
     if (v.side === 'player') this.hud?.alert(`${v.name} destroyed!`, 'bad');
@@ -319,24 +348,41 @@ export class Game {
       if (o.control < -25 || (o.owner === 'player' && o.control < 0)) o.owner = 'enemy';
       else if (o.control > 25 || (o.owner === 'enemy' && o.control > 0 && false)) o.owner = 'player';
       if (prev !== o.owner) {
-        if (o.owner === 'enemy') { this.hud?.alert(o.captured ? `Objective ${o.id} — ${o.name} LOST! Retake it within ${TUNING.lostObjectiveGrace}s` : `Enemy has seized ${o.name} — take it from them`, 'bad'); this.sfx('ui_alert'); }
-        else { this.hud?.alert(`Objective ${o.id} — ${o.name} ${o.captured ? 'retaken' : 'CAPTURED'}`, 'good'); o.lostT = 0; o.captured = true; this.sfx('radio'); }
-        if (this.phase === 'capture' && this.objectives.every(q => q.captured)) { this.phase = 'hold'; this.hud?.alert('Both objectives taken — dig in and HOLD until the end', 'good'); }
-      }
-      if (o.owner === 'enemy' && o.captured) o.lostT += dt; else o.lostT = 0;
+        o.holdT = 0;
+        if (o.owner === 'enemy') { this.hud?.alert(o.captured ? `Objective ${o.id} — ${o.name} LOST! The enemy holding it bleeds our tickets` : `Enemy has seized ${o.name} — every minute they hold it costs us tickets`, 'bad'); this.sfx('ui_alert'); }
+        else { this.hud?.alert(`Objective ${o.id} — ${o.name} ${o.captured ? 'retaken' : 'CAPTURED'} — holding it drains the enemy's tickets`, 'good'); o.lostT = 0; o.captured = true; this.sfx('radio'); }
+        if (this.phase === 'capture' && this.objectives.every(q => q.captured)) { this.phase = 'hold'; this.hud?.alert(`${this.objectives.length > 2 ? 'All' : 'Both'} objectives taken — hold them to bleed the enemy dry`, 'good'); }
+      } else if (o.owner !== 'neutral' && !o.contested) o.holdT = (o.holdT || 0) + dt;
+      o.lostT = 0;   // legacy field (the old retake countdown); losing a point now costs tickets instead
       o.ring.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8);
     }
   }
   checkEnd() {
-    if (this.over) return;
-    const lost = this.objectives.filter(o => o.owner !== 'player');
-    const playerAlive = this.unitsOf('player').length;
+    if (this.over || this.phase === 'deploy') return;
+    const T = this.tickets, pa = this.armyLeft('player'), ea = this.armyLeft('enemy'), tp = Math.round(T.player), te = Math.round(T.enemy);
+    // versus: the joiner gets the host's result with the title flipped, so the reason names the sides instead of 'you'
+    const vs = !!this.opts.net, P = vs ? `${this.playerFaction.name}'s` : 'Your', E = vs ? `${this.enemyFaction.name}'s` : 'Enemy', score = `Tickets ${tp} – ${te}.`;
     let result = null;
-    if (!playerAlive) result = { win: false, title: 'DEFEAT', why: 'Your company was destroyed.' };
-    else if (lost.some(o => o.captured && o.lostT > TUNING.lostObjectiveGrace)) result = { win: false, title: 'DEFEAT', why: `${lost[0].name} fell and was not retaken.` };
-    else if (lost.length === 2 && lost.every(o => o.captured && o.lostT > 30)) result = { win: false, title: 'DEFEAT', why: 'Both objectives were overrun.' };
-    else if (this.time >= this.roundLen) result = lost.length ? { win: false, title: 'DEFEAT', why: lost.some(o => !o.captured) ? `${lost.find(o => !o.captured).name} was never taken.` : 'An objective was in enemy hands when time ran out.' } : { win: true, title: 'VICTORY', why: 'Both objectives captured and held to the end of the round.' };
-    if (result) { this.over = true; this.result = result; this.sfx(result.win ? 'victory' : 'defeat'); this.hud?.showEnd(result); }
+    if (T.enemy <= 0 && T.player <= 0) result = { win: false, title: 'DEFEAT', why: `Both sides' tickets exhausted — neither can hold the ground. ${score}`, reason: 'tickets' };
+    else if (T.enemy <= 0) result = { win: true, title: 'VICTORY', why: `${E} tickets exhausted — losses and lost ground have broken ${vs ? 'it' : 'the enemy'}. ${score}`, reason: 'tickets' };
+    else if (T.player <= 0) result = { win: false, title: 'DEFEAT', why: `${P} tickets exhausted — losses and lost ground have broken the ${vs ? 'force' : 'company'}. ${score}`, reason: 'tickets' };
+    else if (!pa && !ea) result = { win: false, title: 'DEFEAT', why: `Both forces were destroyed. ${score}`, reason: 'army' };
+    else if (!pa) result = { win: false, title: 'DEFEAT', why: `${P} force is broken — no fighting units left. ${score}`, reason: 'army' };
+    else if (!ea) result = { win: true, title: 'VICTORY', why: `${E} force is destroyed — no fighting units left. ${score}`, reason: 'army' };
+    else if (this.time >= this.roundLen) {
+      const who = s => (vs ? (s === 'player' ? this.playerFaction.name : this.enemyFaction.name) : s === 'player' ? 'you' : 'the enemy');
+      if (tp > te) result = { win: true, title: 'VICTORY', why: `Time — more tickets remaining: ${who('player')} ${tp}, ${who('enemy')} ${te}.`, reason: 'time' };
+      else if (tp < te) result = { win: false, title: 'DEFEAT', why: `Time — ${who('enemy')} has more tickets remaining: ${te} vs ${tp}.`, reason: 'time' };
+      else { const def = this.campaign?.mode === 'defend'; result = { win: def, title: def ? 'VICTORY' : 'DEFEAT', why: `Time — tickets level at ${tp}; the ${def ? 'defence holds' : 'attack has stalled'}.`, reason: 'time' }; }
+    }
+    if (result) { result.tickets = { player: tp, enemy: te, max: T.max }; this.over = true; this.result = result; this.sfx(result.win ? 'victory' : 'defeat'); this.hud?.showEnd(result); }
+  }
+  // fighting units left: squads with an effective man, vehicles still crewed (an abandoned hull doesn't count)
+  armyLeft(side) {
+    let n = 0;
+    for (const s of this.squads) if (s.side === side && !s.destroyed) n++;
+    for (const v of this.vehicles) if (v.side === side && !v.destroyed && !v.abandoned && v.crew > 0) n++;
+    return n;
   }
   // ---------------------------------------------------------------- loop
   update(dt) {
@@ -354,6 +400,7 @@ export class Game {
     this.commander.update(dt);
     this.autoDef?.update(dt);
     this.updateObjectives(dt);
+    this.updateTickets(dt);
     if (!this.reinforced && this.time > this.roundLen * 0.45) { this.reinforced = true; this.reinforce(); }
     this.checkEnd();
   }

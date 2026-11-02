@@ -237,20 +237,47 @@ export class Vehicle {
     const def = this.def;
     let targetSpeed = 0, turn = 0;
     if (this.path && this.pathI < this.path.length && !this.immobile && !this.spgHold) {
-      const wp = this.path[this.pathI];
-      const dx = wp[0] - this.pos.x, dz = wp[1] - this.pos.z, d = Math.hypot(dx, dz);
-      const last = this.pathI === this.path.length - 1;
-      if (d < (last ? 1.5 : 4)) { this.pathI++; if (this.pathI >= this.path.length) this.path = null; }
-      const want = Math.atan2(dx, dz), err = angDiff(want, this.heading);
-      turn = THREE.MathUtils.clamp(err * 2, -1, 1);
-      const cornering = Math.abs(err) > 0.6 ? (def.wheeled ? 0.35 : 0) : 1;
-      targetSpeed = def.speed * (this.fast ? 1 : 0.7) * cornering * Math.min(1, d / 8 + (last ? 0 : 0.6));
+      // pure pursuit: steer at a point a look-ahead distance down the route (projected from where the hull is), so
+      // corners are rounded off on the road instead of overshooting a waypoint and swinging back, and a hull pushed
+      // off the line steers back onto it
+      const P = this.path, px = this.pos.x, pz = this.pos.z;
+      let t = 0, ax = px, az = pz, bx, bz;
+      for (;;) {
+        const b = P[this.pathI], a = this.pathI > 0 ? P[this.pathI - 1] : null; ax = a ? a[0] : px; az = a ? a[1] : pz; bx = b[0]; bz = b[1];
+        const sx = bx - ax, sz = bz - az, L2 = sx * sx + sz * sz;
+        t = L2 > 1e-6 ? ((px - ax) * sx + (pz - az) * sz) / L2 : 1;
+        const lastW = this.pathI === P.length - 1;
+        if (!lastW && (t >= 1 || Math.hypot(bx - px, bz - pz) < 3)) { this.pathI++; continue; }
+        break;
+      }
+      const last = this.pathI === P.length - 1, tc = Math.max(0, Math.min(1, t));
+      const qx = ax + (bx - ax) * tc, qz = az + (bz - az) * tc;
+      const dEnd = Math.hypot(P[P.length - 1][0] - px, P[P.length - 1][1] - pz);
+      if (last && Math.hypot(bx - px, bz - pz) < 1.5) { this.pathI++; this.path = null; }
+      let rem = 3.5 + Math.abs(this.speed) * 0.55, cx = qx, cz = qz, j = this.pathI;
+      for (let fx = qx, fz = qz; j < P.length; j++) { const d = Math.hypot(P[j][0] - fx, P[j][1] - fz); if (d >= rem) { cx = fx + (P[j][0] - fx) * rem / d; cz = fz + (P[j][1] - fz) * rem / d; break; } rem -= d; fx = cx = P[j][0]; fz = cz = P[j][1]; }
+      const off = Math.hypot(px - qx, pz - qz); if (off > 8) { cx = bx; cz = bz; }   // knocked well off the line: head for the next waypoint
+      const want = Math.atan2(cx - px, cz - pz), err = angDiff(want, this.heading);
+      turn = THREE.MathUtils.clamp(err * 2.2, -1, 1);
+      const cornering = Math.abs(err) > 0.6 ? (def.wheeled ? 0.35 : 0) : Math.abs(err) > 0.3 ? 0.7 : 1;
+      // brake ahead of a sharp bend at the next waypoint (and for the end of the route)
+      let bend = 1;
+      if (!last) { const n = P[this.pathI + 1], a1 = Math.atan2(bx - ax, bz - az), a2 = Math.atan2(n[0] - bx, n[1] - bz), ang = Math.abs(angDiff(a2, a1)), dB = Math.hypot(bx - px, bz - pz); if (ang > 0.35) { const vc = def.speed * Math.max(0.3, 1 - ang / 2.2); const vmax = Math.sqrt(vc * vc + 2 * def.accel * 1.6 * Math.max(0, dB - 3)); bend = Math.min(1, vmax / def.speed); } }
+      targetSpeed = def.speed * (this.fast ? 1 : 0.7) * cornering * Math.min(bend, Math.min(1, dEnd / 10 + 0.15));
       // rubble slows; roads are fast, open fields slower (wheels more than tracks)
-      const c = this.game.nav.cost[this.game.nav.idx(this.pos.x, this.pos.z)] || 1; if (c > 2) targetSpeed *= 0.55;
+      const nav = this.game.nav, ci = nav.idx(px, pz), c = nav.cost[ci] || 1; if (c > 2) targetSpeed *= 0.55;
       if (this.slope > 0.06) targetSpeed *= Math.max(0.3, 1 - this.slope * 2.2);   // grinding up a rubble heap
-      const rd = this.game.nav.roadAt(this.pos.x, this.pos.z); targetSpeed *= rd === 2 ? 1.25 : rd === 1 ? 1.08 : def.wheeled ? 0.85 : 0.92;
-      // wait for blocking friendly vehicles
-      for (const o of this.game.vehicles) if (o !== this && !o.destroyed) { const ox = o.pos.x - this.pos.x, oz = o.pos.z - this.pos.z, od = Math.hypot(ox, oz); if (od < def.radius + o.def.radius + 3 && (ox * Math.sin(this.heading) + oz * Math.cos(this.heading)) > 0) targetSpeed *= 0.15; }
+      const rd = nav.roadAt(px, pz); targetSpeed *= rd === 2 ? (def.wheeled ? 1.3 : 1.15) : rd === 1 ? (def.wheeled ? 1.1 : 1.05) : def.wheeled ? 0.78 : 0.9;
+      // friendly vehicles: wait behind one that is moving; go round one that is parked (or stuck) in the way
+      const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+      for (const o of this.game.vehicles) if (o !== this && !o.destroyed) {
+        const ox = o.pos.x - px, oz = o.pos.z - pz, od = Math.hypot(ox, oz), ahead = ox * sh + oz * ch;
+        if (od > def.radius + o.def.radius + 3 || ahead <= 0) continue;
+        const parked = Math.abs(o.speed) < 0.5 && (!o.path || (o.wdT || 0) > 2);
+        if (!parked) { targetSpeed *= 0.15; continue; }
+        const side = (ox * ch - oz * sh) > 0 ? -1 : 1;   // pass on the side away from it
+        turn = THREE.MathUtils.clamp(turn + side * 0.8, -1, 1); targetSpeed *= 0.45;
+      }
     } else if (this.order?.facing != null && !this.immobile) { const err = angDiff(this.order.facing, this.heading); if (Math.abs(err) > 0.05) turn = THREE.MathUtils.clamp(err * 2, -1, 1) * (def.wheeled ? 0 : 1); }
     if (this.crew < 2) targetSpeed *= 0.5;
     // stuck recovery: back up with opposite lock for a moment, then replan

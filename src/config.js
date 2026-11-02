@@ -144,7 +144,16 @@ export const TUNING = {
   suppressionDecay: 14,
   captureRadius: 26,
   captureRate: 0.9,          // control points per second per effective soldier (capped at 6)
-  lostObjectiveGrace: 90,    // seconds to retake an objective before defeat
+  lostObjectiveGrace: 90,    // (legacy, no longer a rule — battles are decided by tickets; kept for old HUD text)
+  // ---- tickets: each side starts with `tickets` (scaled with the round length, 12 min = 1x) and loses them for
+  // every man killed and vehicle / support team destroyed, and continuously while the other side holds more
+  // objectives. A side at 0 tickets, or with no fighting units left, loses; at the end of the clock the side with
+  // more tickets wins.
+  tickets: 500,
+  ticketLoss: { soldier: 3, tank: 30, ifv: 22, btr: 16, spg: 18, soft: 8, support: 10 },   // support = ATGM / FPV team wiped out (on top of its men)
+  // objective bleed: per objective of advantage, tickets per minute; a point counts `fresh` x on capture, rising to
+  // full weight after `ramp` seconds held without interruption (contested / neutral points count for nobody)
+  ticketBleed: { perObj: 24, ramp: 90, fresh: 0.35 },
   mortarStrikes: 3,
   // movement speeds (m/s)
   walk: 1.55, run: 4.2, crouchWalk: 1.2, crouchRun: 2.8, crawl: 0.45,

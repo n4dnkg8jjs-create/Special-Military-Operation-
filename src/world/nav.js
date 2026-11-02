@@ -2,6 +2,14 @@
 // directional cover map, and segment occlusion against building footprints.
 export const BLOCK = 255;
 export const TOOTH_R = 1.25;   // vehicle-blocking radius around a dragon's tooth (m)
+// Vehicle route costs (per metre, open ground = 1). Wheeled vehicles are road-bound (much cheaper on roads), tracked
+// ones only somewhat. laneW / edge: paved cells within laneW m (dirt tracks: trackW) of the edge cost up to (1 + edge) x more, keeping
+// routes on the middle of the carriageway. heur: A* heuristic weight per metre (just above the cheapest road cost: a
+// road that is reasonably close is found, a long search for a far one is not made).
+export const VEH_COST = {
+  wheeled: { paved: 0.3, dirt: 0.5 }, tracked: { paved: 0.6, dirt: 0.72 },
+  laneW: 4.5, trackW: 1.8, edge: 0.45, heur: { wheeled: 0.55, tracked: 0.75 }, longM: 200,
+};
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -182,6 +190,7 @@ export class NavGrid {
   // vehicle: false (infantry) | true | 'wheeled' | 'tracked'. true = tracked when clearance >= 1.95 (tanks ask for 2.0+),
   // else wheeled. Wheeled vehicles never enter trench cells; tracked ones cross trenches at a high cost.
   findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = this.maxIter || 120000) {
+    if (vehicle) return this.findPathV(sx, sz, tx, tz, clearance, vehicle === 'tracked' || (vehicle === true && clearance >= 1.95));
     const tracked = vehicle === 'tracked' || (vehicle === true && clearance >= 1.95), vrest = !!vehicle && !!this.clearV;
     if (vrest) { [sx, sz] = this.nearestFreeV(sx, sz, clearance, tracked, 8); [tx, tz] = this.nearestFreeV(tx, tz, clearance, tracked, 40); }
     else { [sx, sz] = this.nearestFree(sx, sz, clearance, 6); [tx, tz] = this.nearestFree(tx, tz, clearance, 40); }
@@ -226,6 +235,131 @@ export class NavGrid {
       i = this.idx(px, pz); if (this.passableV(i, clearance, tracked)) return [this.cx(i), this.cz(i)];
     }
     return [x, z];
+  }
+  // ---------------------------------------------------------------- vehicle routing
+  // Road-aware: per-metre cost of a cell for a vehicle (see VEH_COST). Road cells close to the road edge cost a bit
+  // more, so routes run down the middle of the carriageway rather than shaving the kerb / the fences at every bend.
+  roadDist() {   // dm from each road cell to the nearest non-road cell (0 off-road); roads are static after the build
+    if (!this._roadD) this._roadD = this.chamfer(i => !this.road[i]);
+    return this._roadD;
+  }
+  vCost(k, clearance, tracked) {
+    let c = this.cost[k]; if (c > 1) c *= 2.5;   // rubble, craters, crushable junk: slow for armour
+    if (this.veh && this.veh[k] === 1) c += 12;  // a tank crossing a trench: only when it saves a long detour
+    if (this.clear[k] < clearance + 1.2) c += 0.6;   // keep the hull off walls
+    const r = this.road[k];
+    if (r) { const e = this._roadD[k] * 0.1, R = VEH_COST[tracked ? 'tracked' : 'wheeled'][r === 2 ? 'paved' : 'dirt'], lw = r === 2 ? VEH_COST.laneW : VEH_COST.trackW; c *= R * (e < lw ? 1 + VEH_COST.edge * (1 - e / lw) : 1); }
+    return c;
+  }
+  // cost of driving the straight segment a->b (sampled every 0.5 m, same measure as a raw lattice path)
+  segCost(ax, az, bx, bz, clearance, tracked) {
+    const d = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(d / 0.5)), st = d / n; let c = 0;
+    for (let i = 0; i < n; i++) { const f = (i + 0.5) / n, k = this.idx(ax + (bx - ax) * f, az + (bz - az) * f); c += k < 0 ? 99 : this.vCost(k, clearance, tracked) * st; }
+    return c;
+  }
+  // A* for vehicles on a 2 m lattice (every other cell: a hull needs ~2 m clearance anyway, so nothing a vehicle could
+  // use is lost, and a cross-map query stays at a few ms), heuristic weighted to the cheapest road so the search
+  // finds a road that is reasonably close and not only the straight line. Then string-pulled on the 1 m grid with a
+  // cost check: a shortcut is only taken when it is no dearer than the stretch of route it replaces, so straight runs
+  // lose their zig-zags while the route keeps to the road instead of cutting across the fields beside it.
+  findPathV(sx, sz, tx, tz, clearance, tracked) {
+    const vrest = !!this.clearV, pass = vrest ? i => i >= 0 && this.passableV(i, clearance, tracked) : i => this.passable(i, clearance);
+    [sx, sz] = vrest ? this.nearestFreeV(sx, sz, clearance, tracked, 8) : this.nearestFree(sx, sz, clearance, 8);
+    [tx, tz] = vrest ? this.nearestFreeV(tx, tz, clearance, tracked, 40) : this.nearestFree(tx, tz, clearance, 40);
+    const s0 = this.idx(sx, sz), t0 = this.idx(tx, tz); if (s0 < 0 || t0 < 0) return null;
+    this.roadDist(); this._pv = vrest ? tracked : null;
+    try {
+      const dd = Math.hypot(tx - sx, tz - sz);
+      if (s0 === t0 || (dd < 14 && this.lineFree(sx, sz, tx, tz, clearance))) return [[sx, sz], [tx, tz]];
+      // long trips on a 4 m lattice (4x fewer nodes), short ones and any the coarse lattice can't solve on 2 m
+      const n = this.n, plan = this.vLattice ? [this.vLattice] : dd > VEH_COST.longM ? [4, 2] : [2], last = plan[plan.length - 1];
+      this.lastPassV = [];
+      for (const S of plan) {
+        const snap = k => { const i = k % n, j = (k / n) | 0, i0 = i - i % S, j0 = j - j % S; let best = -1, bd = 1e9;
+          for (let r = 0; r <= Math.ceil(8 / S) && best < 0; r++) for (let dj = -r; dj <= r + 1; dj++) for (let di = -r; di <= r + 1; di++) {
+            const ii = i0 + di * S, jj = j0 + dj * S; if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue; const kk = jj * n + ii;
+            if (!pass(kk)) continue; const d = (ii - i) ** 2 + (jj - j) ** 2; if (d < bd) { bd = d; best = kk; } }
+          return best; };
+        const s = snap(s0), t = snap(t0); if (s < 0 || t < 0) { if (S !== last) continue; return null; }
+        const gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed, N = n * n;
+        // per-query cache of the cell cost (-1 = the hull can't stand there), each cell is looked at ~10 times
+        if (!this._vc || this._vc.length !== N) { this._vc = new Float32Array(N); this._vs = new Uint32Array(N); }
+        const vc = this._vc, vs = this._vs, cost = this.cost, clr = this.clear, road = this.road, rdD = this._roadD, veh = this.veh;
+        const cv = vrest ? (tracked ? this.clearT : this.clearV) : null, cvMin = clearance * 10 * 0.8, wallC = clearance + 1.2;
+        const VC = VEH_COST[tracked ? 'tracked' : 'wheeled'], RP = VC.paved, RT = VC.dirt, LW = VEH_COST.laneW, TW = VEH_COST.trackW, ED = VEH_COST.edge;
+        const cc = k => {
+          if (vs[k] === gen) return vc[k];
+          vs[k] = gen; let c = cost[k];
+          if (c === BLOCK || clr[k] < clearance || (cv && cv[k] < cvMin)) return (vc[k] = -1);
+          if (c > 1) c *= 2.5; if (veh && veh[k] === 1) c += 12; if (clr[k] < wallC) c += 0.6;
+          const r = road[k]; if (r) { const e = rdD[k] * 0.1, lw = r === 2 ? LW : TW; c *= (r === 2 ? RP : RT) * (e < lw ? 1 + ED * (1 - e / lw) : 1); }
+          return (vc[k] = c);
+        };
+        const ti = t % n, tj = (t / n) | 0, W = VEH_COST.heur[tracked ? 'tracked' : 'wheeled'], R2 = Math.SQRT2 - 2;
+        const DI = [1, -1, 0, 0, 1, -1, 1, -1], DJ = [0, 0, 1, -1, 1, 1, -1, -1], C = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
+        const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1;
+        const h0 = (() => { const dx = Math.abs(s % n - ti), dz = Math.abs(((s / n) | 0) - tj); return (dx + dz + R2 * Math.min(dx, dz)) * W; })();
+        heap.push(h0, s);
+        let it = 0, best = s, bestH = h0, imp = 0; const maxIter = S > 2 ? 140000 : this.maxIterV || 260000, stall = S > 2 ? 16000 : 1e9;
+        while (heap.size && it++ < maxIter) {
+          const k = heap.pop(); if (cl[k] === gen) continue; cl[k] = gen;
+          if (k === t) { best = k; break; }
+          const ki = k % n, kj = (k / n) | 0;
+          { const dx = Math.abs(ki - ti), dz = Math.abs(kj - tj), hk = (dx + dz + R2 * Math.min(dx, dz)) * W; if (hk < bestH) { bestH = hk; best = k; imp = it; } else if (it - imp > stall) break; }
+          const gk = g[k];
+          for (let q = 0; q < 8; q++) {
+            const ii = ki + DI[q] * S, jj = kj + DJ[q] * S; if (ii < 0 || jj < 0 || ii >= n || jj >= n) continue;
+            const kk = jj * n + ii; if (cl[kk] === gen) continue;
+            // the hull drives through every cell of the step: all must take it, the step costs their sum
+            const dk = DJ[q] * n + DI[q]; let sc = 0, m = 1;
+            for (; m <= S; m++) { const c = cc(k + dk * m); if (c < 0) break; sc += c; } if (m <= S) continue;
+            if (q >= 4 && (cc(k + DI[q]) < 0 || cc(k + DJ[q] * n) < 0)) continue;
+            const ng = gk + C[q] * sc;
+            if (st[kk] !== gen || ng < g[kk]) { st[kk] = gen; g[kk] = ng; from[kk] = k; const dx = Math.abs(ii - ti), dz = Math.abs(jj - tj); heap.push(ng + (dx + dz + R2 * Math.min(dx, dz)) * W, kk); }
+          }
+        }
+        this.lastIterV = it; (this.lastPassV ||= []).push([S, it, best === t]);
+        const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
+        const pts = raw.map(k => [this.cx(k), this.cz(k)]);
+        if (s !== s0) pts.unshift([sx, sz]);
+        const reached = best === t; if (reached) pts.push([tx, tz]);
+        if (!reached && S !== last) continue;   // the coarse lattice found no way through (a narrow gap?): search finer
+        return this.smoothV(pts, clearance, tracked);
+      }
+      return null;
+    } finally { this._pv = null; }
+  }
+  smoothV(p, clearance, tracked) {
+    if (p.length < 3) return p;
+    const cum = [0]; for (let i = 1; i < p.length; i++) cum[i] = cum[i - 1] + this.segCost(p[i - 1][0], p[i - 1][1], p[i][0], p[i][1], clearance, tracked);
+    const out = [p[0]]; let a = 0; const LOOK = 48;
+    while (a < p.length - 1) {
+      let b = Math.min(p.length - 1, a + LOOK);
+      for (; b > a + 1; b--) {
+        if (!this.lineFree(p[a][0], p[a][1], p[b][0], p[b][1], clearance)) continue;
+        if (this.segCost(p[a][0], p[a][1], p[b][0], p[b][1], clearance, tracked) <= (cum[b] - cum[a]) * 1.02 + 0.2) break;
+      }
+      out.push(p[b]); a = b;
+    }
+    return this.centreOnRoad(out, clearance);
+  }
+  // pull route corners that lie on a road towards the middle of the carriageway (up to laneW from the edge), so the
+  // straight legs between them run down the road instead of along its kerb; a move is kept only if both legs stay clear
+  centreOnRoad(p, clearance) {
+    const rd = this._roadD, DX = [1, -1, 0, 0, 1, 1, -1, -1], DZ = [0, 0, 1, -1, 1, -1, 1, -1];
+    for (let i = 1; i < p.length - 1; i++) {
+      let [x, z] = p[i], k = this.idx(x, z); if (k < 0 || !this.road[k]) continue; const W = (this.road[k] === 2 ? VEH_COST.laneW : VEH_COST.trackW) * 10;
+      for (let step = 0; step < 8 && rd[k] < W; step++) {
+        let bk = -1, bv = rd[k];
+        for (let q = 0; q < 8; q++) { const kk = this.idx(x + DX[q], z + DZ[q]); if (kk >= 0 && rd[kk] > bv && this.cost[kk] !== BLOCK) { bv = rd[kk]; bk = kk; } }
+        if (bk < 0) break;
+        const nx = this.cx(bk), nz = this.cz(bk);
+        if (!this.lineFree(p[i - 1][0], p[i - 1][1], nx, nz, clearance) || !this.lineFree(nx, nz, p[i + 1][0], p[i + 1][1], clearance)) break;
+        x = nx; z = nz; k = bk;
+      }
+      p[i] = [x, z];
+    }
+    return p;
   }
   lineFree(ax, az, bx, bz, clearance) {
     const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5)), pv = this._pv;

@@ -58,9 +58,30 @@ export class Commander {
     }
     this.started = true;
   }
+  // Ticket sense: who is bleeding whom. 'attack' when the player's objectives drain us or we are behind with nothing
+  // to show for it (sitting still loses on time), 'hold' when our objectives bleed the player and we lead (no need
+  // to throw men away), else 'balanced'. low = few tickets left: every loss counts, units pull back earlier.
+  assess() {
+    const g = this.g, T = g.tickets, held = side => g.objectives.filter(o => o.owner === side && !o.contested).length;
+    const mine = held('enemy'), theirs = held('player'), lead = T ? T.enemy - T.player : 0;
+    this.bleeding = theirs > mine;
+    this.low = !!T && T.enemy < T.max * 0.3;
+    this.posture = this.bleeding || (lead < 0 && mine <= theirs) ? 'attack' : mine > theirs && lead > -T?.max * 0.05 ? 'hold' : 'balanced';
+    return this.posture;
+  }
+  cautious() { return this.low || this.posture === 'hold'; }
+  // the objective a unit should go for: one the player holds (it bleeds us), else a free one, else its own
+  pickObjective(from, cur) {
+    const g = this.g, d = o => Math.hypot(o.x - from.x, o.z - from.z);
+    const theirs = g.objectives.filter(o => o.owner === 'player').sort((a, b) => d(a) - d(b));
+    if (theirs.length) return theirs[0].id;
+    const free = g.objectives.filter(o => o.owner === 'neutral').sort((a, b) => d(a) - d(b));
+    return free.length && this.posture !== 'hold' ? free[0].id : cur;
+  }
   update(dt) {
     const g = this.g;
     if (!this.started) return;
+    this.assessT = (this.assessT || 0) - dt; if (this.assessT <= 0) { this.assessT = 3; this.assess(); }
     if (!this.counter && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {
       this.counter = true; const rem = Math.max(120, g.roundLen - g.time);
       this.waves = this.plan.map(([f, a, b, c, d]) => ({ t: g.time + 25 + f * rem, foot: a, mech: b, tank: c, assault: d }));
@@ -96,7 +117,7 @@ export class Commander {
   clusterScore(u) { const c = u.center(); let n = 0; for (const o of this.g.unitsOf('player')) if (o !== u && o.center().distanceTo(c) < 40) n++; return n + (u.type === 'vehicle' ? 0.5 : 0) + Math.random(); }
   spawnWave(w) {
     const g = this.g, sp = SPAWNS.attacker;
-    const target = () => { const held = g.objectives.filter(o => o.owner === 'player'); const l = held.length ? held : g.objectives; return l[this.n++ % l.length].id; };
+    const target = () => { const held = g.objectives.filter(o => o.owner === 'player'), free = g.objectives.filter(o => o.owner === 'neutral'); const l = held.length ? held : free.length ? free : g.objectives; return l[this.n++ % l.length].id; };
     const at = i => sp[(this.n + i) % sp.length];
     for (let i = 0; i < w.mech; i++) {
       const [x, z] = at(i), obj = target(); const v = g.makeVehicle('enemy', 'btr', x + (Math.random() - .5) * 6, z, 0);
@@ -151,7 +172,7 @@ export class Commander {
     if (b.kind === 'atgm' || b.kind === 'fpv') return this.thinkSupport(b);
     // keep attacking whichever objective the player holds
     const tgt = g.objectives.find(o => o.id === b.obj);
-    if (tgt.owner === 'enemy' && b.state !== 'hold') { const other = g.objectives.find(o => o.owner === 'player'); if (other) b.obj = other.id; }
+    if (tgt.owner === 'enemy' && b.state !== 'hold') b.obj = this.pickObjective(sq.center(), b.obj);
     if (b.kind === 'mech' && b.state === 'approach') {
       const v = b.v, [ox, oz] = this.objPos(b.obj);
       const arrived = !v.path || v.destroyed || v.immobile;
@@ -187,7 +208,8 @@ export class Commander {
     }
     // ---- badly hurt or shaken and outgunned: pull back to cover / a building on the own side and regroup
     const strength = sq.effective.length / sq.soldiers.length;
-    if ((strength <= 0.45 || sq.morale < 36) && b.state !== 'hold' && !sq.building) {
+    const careful = this.cautious();   // ahead on objectives / short of tickets: don't spend men needlessly
+    if ((strength <= (careful ? 0.55 : 0.45) || sq.morale < (careful ? 42 : 36)) && b.state !== 'hold' && !sq.building) {
       const thr = this.threatsNear(c, 120);
       if (thr.n > this.friendsNear(c, 90) || sq.morale < 30) {
         const home = this.stagingFor(b.obj), back = new THREE.Vector3(home[0] - c.x, 0, home[1] - c.z); const L = back.length() || 1; back.multiplyScalar(1 / L);
@@ -209,7 +231,14 @@ export class Commander {
       const target = this.g.city.buildings.filter(bl => bl.slots.some(sl => sl.occupant && sl.occupant.squad.side === 'player')).sort((p, q) => Math.hypot(p.x - ox, p.z - oz) - Math.hypot(q.x - ox, q.z - oz))[0];
       if (target && Math.hypot(target.x - c.x, target.z - c.z) < 110) { sq.orderGarrison(target); b.wait = 4; return; }
     }
-    if (b.state === 'hold') { if (g.objectives.every(o => o.owner === 'enemy')) return; if (Math.random() < 0.04) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = others[Math.floor(Math.random() * others.length)].id; if (sq.building) sq.leaveBuilding(); } } return; }
+    if (b.state === 'hold') {
+      if (g.objectives.every(o => o.owner === 'enemy')) return;
+      // the point we sit on bleeds the player: stay; the player's points bleed us: send men to contest them
+      const own = g.objectives.find(o => o.id === b.obj), guards = own ? this.friendsNear(new THREE.Vector3(own.x, 0, own.z), 45) : 0;
+      const p = this.posture === 'attack' ? (guards > 1 ? 0.2 : 0.08) : this.posture === 'hold' ? 0 : 0.04;
+      if (Math.random() < p) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = (others.find(o => o.owner === 'player') || others[Math.floor(Math.random() * others.length)]).id; if (sq.building) sq.leaveBuilding(); } }
+      return;
+    }
     if (dObj < 22) { b.state = 'hold'; const T = this.freeTrench(ox, oz, 70, sq); if (T && Math.random() < 0.7) { sq.orderTrench(T); return; } const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
     if (sq.building && sq.underFireT < 4 && Math.random() < 0.7) { b.wait = 5; return; }
     // in contact: fire and manoeuvre — one fire team keeps the enemy's heads down while the other bounds to
@@ -227,7 +256,7 @@ export class Commander {
         const bld = this.nearBuilding(c, 28, sq);
         if (bld && Math.random() < (local >= friends ? 0.75 : 0.4)) { sq.orderGarrison(bld); b.state = 'strongpoint'; b.holdT = g.time + 30 + Math.random() * 30; b.wait = 5; return; }
       }
-      if (local > friends + 1 && sq.morale < 60) { const cv = this.coverSpot(c, T, 14); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 12, true); b.wait = 8 + Math.random() * 6; return; }
+      if (local > friends + (careful ? 0 : 1) && sq.morale < (careful ? 70 : 60)) { const cv = this.coverSpot(c, T, 14); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 12, true); b.wait = 8 + Math.random() * 6; return; }
       const flank = b.flank || (Math.random() < 0.5 ? -1 : 1); b.flank = flank;
       const ax = T.x - c.x, az = T.z - c.z, L = Math.hypot(ax, az) || 1, ux = ax / L, uz = az / L;
       const want = Math.min(32, Math.max(12, L - 45));
@@ -279,7 +308,7 @@ export class Commander {
     // stand-off: never sit within RPG range of enemy infantry without own infantry close by
     if (t.rpg > 0 && sq.center().distanceTo(v.pos) > 35 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(v.pos.x - ox, 0, v.pos.z - oz).normalize(); const p = v.pos.clone().addScaledVector(back, 45); v.orderMove(p.x, p.z); return; }
     if (v.pos.distanceTo(c) > 70 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(c.x - ox, 0, c.z - oz).normalize(); const p = c.clone().addScaledVector(back, 35); v.orderMove(p.x, p.z); }
-    if (v.hp < v.def.hp * 0.4 && !b.retreated) { b.retreated = true; const [x, z] = this.stagingFor(b.obj); v.orderMove(x, z - 60); }
+    if (v.hp < v.def.hp * (this.cautious() ? 0.5 : 0.4) && !b.retreated) { b.retreated = true; const [x, z] = this.stagingFor(b.obj); v.orderMove(x, z - 60); }
   }
   // bailed-out enemy crews fall back towards their own lines and defend themselves
   adoptCrew(sq) {
@@ -336,8 +365,13 @@ export class Commander {
   }
   thinkVehicle(b) {
     const v = b.v; if (v.destroyed) { b.dead = true; return; }
-    if (v.crew < 2 || v.hp < v.def.hp * 0.35) { if (!b.retreating) { b.retreating = true; v.orderMove(b.home[0], b.home[1] - 80); } return; }
+    if (v.crew < 2 || v.hp < v.def.hp * (this.cautious() ? 0.45 : 0.35)) { if (!b.retreating) { b.retreating = true; v.orderMove(b.home[0], b.home[1] - 80); } return; }
     if (v.path) return;
+    // the player's objectives bleed us: shift the tank's overwatch onto one of them (stand-off, not a charge)
+    if (b.kind === 'tank' && this.bleeding && this.g.time > (b.shiftT || 0)) {
+      const o = this.g.objectives.find(q => q.id === b.obj);
+      if (o && o.owner !== 'player') { const n = this.pickObjective(v.pos, b.obj); if (n !== b.obj) { b.obj = n; b.home = OVERWATCH[n][Math.floor(Math.random() * 2)]; b.shiftT = this.g.time + 60; v.orderMove(b.home[0], b.home[1], 0, false); return; } }
+    }
     const t = this.threatsNear(v.pos, 75), f = this.friendsNear(v.pos, 40);
     if (t.rpg > 0 && f === 0) { // back off out of RPG range
       const away = new THREE.Vector3(0, 0, -1); for (const u of this.g.unitsOf('player')) if (u.type === 'squad' && u.center().distanceTo(v.pos) < 75) away.add(v.pos.clone().sub(u.center()).normalize());
