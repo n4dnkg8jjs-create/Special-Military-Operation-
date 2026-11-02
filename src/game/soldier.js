@@ -28,6 +28,7 @@ export function prepareSoldierAssets(assets) {
 // duration of a clip from the shared set (falls back to def when the clip is missing)
 export function clipDuration(name, def) { return SHARED?.clips[name]?.duration || def; }
 export function hasClip(name) { return !!SHARED?.clips[name]; }
+export function clipEvents(name) { return SHARED_EVENTS[name] || {}; }
 
 function pick(arr, r) { return arr[Math.floor(r * arr.length) % arr.length]; }
 

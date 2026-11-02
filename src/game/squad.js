@@ -1,11 +1,34 @@
 import * as THREE from 'three';
-import { Soldier, clipDuration, hasClip } from './soldier.js';
+import { Soldier, clipDuration, hasClip, clipEvents } from './soldier.js';
 import { TrenchMixin, trenchMen } from './trench.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING, WEAPONS } from '../config.js';
 import { AtgmTeam, FpvTeam } from './support.js';
 
 let NEXT_ID = 1;
 const V = new THREE.Vector3();
+// riders jumping off (tools/blender/soldiers/clips_vehicle.py dismount_jump_*): [side edge seats, stern edge seats] per vehicle model,
+// each authored against that hull (deck height, edge, what is under the legs); fallback seat offset [y, distance seat -> end root]
+const JUMP_CLIPS = {
+  btr82a: ['dismount_jump_btr', 'dismount_jump_rear_btr'], btr80_ua: ['dismount_jump_btr', 'dismount_jump_rear_btr'],
+  bmp3: ['dismount_jump_bmp3', 'dismount_jump_rear_bmp3'], bradley_ua: ['dismount_jump_bradley', 'dismount_jump_rear_bradley'],
+  t72b3: ['dismount_jump_tank', 'dismount_jump_rear_tank'], t72av_ua: ['dismount_jump_tank', 'dismount_jump_rear_tank'],
+};
+const JUMP_SEAT = { dismount_jump: [1.995, 1.6], dismount_jump_btr: [1.995, 1.6], dismount_jump_tank: [1.415, 1.2] };
+function jumpClip(v, rear) {
+  const L = JUMP_CLIPS[v.assetKey] || (v.kind === 'tank' ? JUMP_CLIPS.t72b3 : v.kind === 'ifv' ? JUMP_CLIPS.bmp3 : JUMP_CLIPS.btr82a);
+  for (const c of [L[rear ? 1 : 0], L[0], v.kind === 'tank' ? 'dismount_jump_tank' : 'dismount_jump']) if (hasClip(c)) return c;
+  return 'dismount_jump';
+}
+// hull footprint in the vehicle's own frame (x = left, z = forward; hull meshes only, no gun barrel), cached on the vehicle
+function hullBox(v) {
+  if (v._dmBox) return v._dmBox;
+  const box = new THREE.Box3(), inv = new THREE.Matrix4(), p = new THREE.Vector3();
+  v.root.updateMatrixWorld(true); inv.copy(v.root.matrixWorld).invert();
+  (v.hull || v.model).traverse(o => { if (!o.isMesh || /_LOD1$|_wreck$/i.test(o.name) || !o.visible) return; const pa = o.geometry.attributes.position, step = Math.max(1, Math.floor(pa.count / 400)); for (let i = 0; i < pa.count; i += step) box.expandByPoint(p.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv)); });
+  if (box.isEmpty()) box.set(new THREE.Vector3(-v.def.width / 2, 0, -v.def.length / 2), new THREE.Vector3(v.def.width / 2, 2, v.def.length / 2));
+  return v._dmBox = box;
+}
+const smooth01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 
 // An infantry squad (8 men). Owns orders, formation, morale and casualty handling.
 export class Squad {
@@ -173,15 +196,20 @@ export class Squad {
     this.mounted = false; v.passengers = null;
     if (!v.destroyed && Math.abs(v.speed) > 0.5) v.halt();
     facing ??= v.heading;
-    // men get off one after another (riders from the deck, the rest through the doors), not all in the same instant
+    // riders on the deck all jump off together, each from his own seat on the side he faces (stern row off the back), a few tenths
+    // of a second apart; the men inside get out through the doors one after another once the jumpers are clear of the doors
+    const riders = this.soldiers.filter(s => s.state !== 'evac' && s.inside === 'ride' && s.seat);
+    const rearRiders = riders.some(s => Math.cos(v.seatWorld(s.seat.i).heading - v.heading) < -0.7);
+    for (const s of riders) { s.dmWait = 0.05 + Math.random() * 0.3; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; }
+    // BTR side doors are under the side riders' landing spots; IFV rear doors / ramp swing through the stern riders' landing spots
+    const clear = !riders.length ? 0 : v.kind === 'btr' ? 2.6 : v.kind === 'ifv' && rearRiders ? 2.2 : 0;
     let k = 0;
     this.soldiers.forEach((s, i) => {
-      if (s.state === 'evac') return;
-      if (s.inside === 'ride' && s.seat) { s.dmWait = 0.15 + k * 0.42 + Math.random() * 0.25; s.dmKind = 'jump'; s.dmVeh = v; s.dmSeat = s.seat.i; k++; return; }
-      if (s.inside !== 'btr') return;
-      s.dmWait = (v.kind === 'ifv' ? (v.def.asset === 'bradley_ua' ? 1.9 : 1.0) : 0.4) + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
+      if (s.state === 'evac' || s.inside !== 'btr') return;
+      s.dmWait = clear + (v.kind === 'ifv' ? (v.def.asset === 'bradley_ua' ? 1.9 : 1.0) : 0.4) + k * 0.55 + Math.random() * 0.2; s.dmKind = 'door'; s.dmVeh = v; s.dmI = i; k++;
     });
-    if (this.soldiers.some(s => s.dmKind === 'door' && s.dmWait != null)) v.doorT = Math.max(v.doorT || 0, this.game.time + 1.6 + k * 0.6 + 2.5);   // IFV rear doors / ramp open only if men are inside
+    this.dmDoor = k ? { v, at: this.game.time + clear, until: this.game.time + clear + 1.6 + k * 0.6 + 2.5 } : null;   // IFV rear doors / ramp open only if men are inside
+    if (this.dmDoor && !clear) { v.doorT = Math.max(v.doorT || 0, this.dmDoor.until); this.dmDoor = null; }
     this.order = null; this.dmFacing = facing;
     this.game.sfx('hatch', v.pos);
   }
@@ -189,13 +217,29 @@ export class Squad {
   exitCarrier(s) {
     const v = s.dmVeh, g = this.game; s.dmWait = null;
     if (s.dmKind === 'jump' && s.seat) {
+      // the clip's root is its END point (on the ground, facing away from the hull); its frame 0 is ride_sit_edge with the seat point at
+      // events.seat_offset_from_root. Root = seat + that distance along the seat heading, at the ground height there: he lands exactly
+      // on the root and walks off from it. The (small) rest between the actual seat (deck height of this hull / seat row, terrain) and
+      // the clip's seat is an offset on the root that fades out while he slides to the edge, before he leaves the deck.
       const w = v.seatWorld(s.seat.i); const out = new THREE.Vector3(Math.sin(w.heading), 0, Math.cos(w.heading));
       const side = new THREE.Vector3(w.pos.x - v.pos.x, 0, w.pos.z - v.pos.z); if (side.lengthSq() > 0.01 && out.dot(side) < 0) out.negate();
-      // clip frame: the seat is 1.60 m (BTR deck) / 1.20 m (T-72 deck) behind the end root
-      const tank = v.kind === 'tank' && hasClip('dismount_jump_tank'), off = tank ? 1.2 : 1.6, clip = tank ? 'dismount_jump_tank' : 'dismount_jump';
-      s.pos.set(w.pos.x + out.x * off, 0, w.pos.z + out.z * off); s.heading = Math.atan2(out.x, out.z);
-      s.jumpClip = clip; s.jumpT = clipDuration(clip, 1.1);
-      s.inside = null; s.seat = null;
+      const rear = Math.cos(Math.atan2(out.x, out.z) - v.heading) < -0.7, clip = jumpClip(v, rear), ev = clipEvents(clip);
+      const so = ev.seat_offset_from_root || [0, ...(JUMP_SEAT[clip] || [1.995, 1.6]).map((x, j) => j ? -x : x)];
+      const dist = -so[2], nav = g.nav;
+      let rx = w.pos.x + out.x * dist, rz = w.pos.z + out.z * dist;
+      const ci = nav.idx(rx, rz);
+      if (ci < 0 || nav.cost[ci] === 255) [rx, rz] = nav.nearestFree(rx, rz, 0.45, 3);   // parked against a wall: land on the nearest free spot
+      const gy = g.city?.groundHeight ? g.city.groundHeight(rx, rz) : 0;
+      s.heading = Math.atan2(out.x, out.z);
+      const sx = rx - out.x * dist + out.z * so[0], sz = rz - out.z * dist - out.x * so[0];   // clip seat point in the world
+      s.jumpFix = { x: rx, y: gy, z: rz, ox: w.pos.x - sx, oy: w.pos.y - (gy + so[1]), oz: w.pos.z - sz, t0: g.time, T: Math.max(0.3, (ev.leave_seat || 0.9) - 0.05) };
+      s.pos.set(rx + s.jumpFix.ox, gy + s.jumpFix.oy, rz + s.jumpFix.oz);
+      s.jumpClip = clip; s.jumpT = clipDuration(clip, 2.2);
+      s.inside = null; s.seat = null; s.vel.set(0, 0, 0);
+      s.vehFrom = v; s.vehFromT = g.time + s.jumpT + 2.5;
+      // the root jumped from the seat to the landing point: switch to frame 0 of the clip at once (no cross-fade from the seated pose)
+      if (s.mixer) { s.play(clip, 0, 1, ['dismount_jump', 'crouch_idle']); s.mixer.update(0); }
+      s.sync();
     } else {
       const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, 0, d.z); s.inside = null;
       const rear = v.kind !== 'btr', ramp = v.def.asset === 'bradley_ua';   // the Bradley ramp is a slope: they just walk down it
@@ -428,12 +472,19 @@ export class Squad {
       const v = s.dmVeh;
       if (!v) s.dmWait = null;
       else {
-        s.dmWait -= dt;
+        // jumpers wait until the carrier has (nearly) stopped: the landing point is fixed on the ground when he leaves the seat
+        if (!(s.dmKind === 'jump' && !v.destroyed && Math.abs(v.speed) > 0.3)) s.dmWait -= dt;
+        if (this.dmDoor && g.time >= this.dmDoor.at) { this.dmDoor.v.doorT = Math.max(this.dmDoor.v.doorT || 0, this.dmDoor.until); this.dmDoor = null; }
         if (s.inside === 'ride' && s.seat) { const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = w.heading; s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); }
         else if (s.inside === 'btr') s.pos.copy(v.pos);
         if (s.dmWait <= 0 || v.destroyed) this.exitCarrier(s);
         else { s.sync(); return; }
       }
+    }
+    // jumping off the carrier: the root stays on the landing point (the clip carries him there); the seat-match offset fades out
+    if (s.jumpFix) {
+      const J = s.jumpFix, k = 1 - smooth01((g.time - J.t0) / J.T);
+      if (s.jumpT > 0 && s.state !== 'dead') s.pos.set(J.x + J.ox * k, J.y + J.oy * k, J.z + J.oz * k); else s.jumpFix = null;   // (jumpT cut to 0 = placed elsewhere)
     }
     s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt * (s.inBuilding ? 1.4 : 1));
     // heavily suppressed: duck behind the wall / window sill, pop up for a burst, duck again
@@ -472,9 +523,9 @@ export class Squad {
     else if (s.goalHeading != null) want = s.goalHeading;
     if (s.inBuilding && (s.target || s.groundAim)) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
     if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
-    s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);
+    if (!(s.jumpT > 0)) s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);   // root-motion exit clips: heading fixed
     // combat
-    if (s.effective && !this.routing && !s.dragging) g.combat.soldierCombat(s, dt);
+    if (s.effective && !this.routing && !s.dragging && !(s.jumpT > 0)) g.combat.soldierCombat(s, dt);
     else s.target = null;
     s.animate(dt, g.camDist(s.pos));
     s.sync();
@@ -507,8 +558,23 @@ export class Squad {
     } else s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
     // separation from squadmates & vehicles (never shoves anyone into a wall)
     const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
-    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
-    if (!s.rampWalk) for (const v of g.vehicles) { if (v.destroyed && !v.wreck) continue; const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
+    const sepK = s.vehFrom ? 0.3 : 1;   // men who just landed side by side drift apart slowly (they walk off anyway), not shoved
+    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
+    if (s.vehFrom && (g.time > s.vehFromT || s.vehFrom.pos.distanceToSquared(s.pos) > 64)) s.vehFrom = null;
+    if (!s.rampWalk) for (const v of g.vehicles) {
+      if (v.destroyed && !v.wreck) continue;
+      if (v === s.vehFrom) {   // just jumped off it: keep clear of the real hull (oriented box), gently - no shove off the landing point
+        const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, sh = Math.sin(v.heading), ch = Math.cos(v.heading);
+        const B = hullBox(v), lf = dx * sh + dz * ch, ll = dx * ch - dz * sh, M = 0.25, m = 1.5 * dt;   // root frame: +Z forward (sin h, cos h), +X = the vehicle's left (cos h, -sin h)
+        const pf = Math.min(lf - (B.min.z - M), B.max.z + M - lf), pl = Math.min(ll - (B.min.x - M), B.max.x + M - ll);
+        if (pf > 0 && pl > 0) {
+          const dl = pl < pf ? (ll - (B.min.x - M) < B.max.x + M - ll ? -1 : 1) * Math.min(pl, m) : 0, df = pl < pf ? 0 : (lf - (B.min.z - M) < B.max.z + M - lf ? -1 : 1) * Math.min(pf, m);
+          const px = df * sh + dl * ch, pz = df * ch - dl * sh;
+          if (free(s.pos.x + px, s.pos.z + pz)) { s.pos.x += px; s.pos.z += pz; }
+        }
+        continue;
+      }
+      const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, d = Math.hypot(dx, dz), r = v.def.radius + 0.9; if (d < r && d > 0.01) { const px = s.pos.x + dx / d * (r - d), pz = s.pos.z + dz / d * (r - d); if (free(px, pz)) { s.pos.x = px; s.pos.z = pz; } else if (free(s.pos.x + dz / d * (r - d), s.pos.z - dx / d * (r - d))) { s.pos.x += dz / d * (r - d); s.pos.z -= dx / d * (r - d); } } }
     // already inside a blocked cell (pushed, collapsed rubble, spawned badly): step out to the nearest free spot
     if (!free(s.pos.x, s.pos.z)) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 0.45, 8); s.pos.x = fx; s.pos.z = fz; if (s.goal) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } }
     const nx = s.pos.x + s.vel.x * dt, nz = s.pos.z + s.vel.z * dt;

@@ -161,7 +161,10 @@ export class Vehicle {
       deck.forEach((st, k) => {
         if (zs[k] > zMin + 0.25) return;
         const p = st.obj.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
-        const o = new THREE.Object3D(); o.position.set(p.x, p.y, Math.max(p.z - 0.6, box.min.z + 0.12)); o.rotation.y = Math.PI;
+        // per hull (from the GLB surfaces, tools/blender/soldiers/clips_vehicle.py dismount_jump_rear_*): [z, y] of the seat point on the
+        // stern edge - BTR engine-deck box, BMP-3 / Bradley roof edge (the generic rule left them floating behind it), T-72 fuel drums
+        const RE = { btr82a: [-3.62, 1.95], btr80_ua: [-3.62, 1.95], bmp3: [-3.24, null], bradley_ua: [-3.02, 1.98], t72b3: [-3.62, 1.745], t72av_ua: [-3.62, 1.745] }[this.assetKey];
+        const o = new THREE.Object3D(); o.position.set(p.x, RE ? RE[1] ?? p.y : p.y, RE ? RE[0] : Math.max(p.z - 0.6, box.min.z + 0.12)); o.rotation.y = Math.PI;
         this.root.add(o); st.obj = o; st.type = 'edge';
       });
     }

@@ -5262,7 +5262,7 @@
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 4399768,
+  "size_bytes": 4655152,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and the vehicle exits (hatch_exit*, dismount_*) keep root motion and end on the root",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
@@ -5728,8 +5728,8 @@
     }
    },
    "dismount_jump": {
-    "duration_s": 2.2,
-    "frames": 67,
+    "duration_s": 2.333,
+    "frames": 71,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -5737,15 +5737,17 @@
     "root_motion": true,
     "notes": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate. Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.995, -1.6] relative to the end root (root = seat + 1.60 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle). (copy of dismount_jump_btr)",
     "events": {
-     "hand_down": 0.52,
-     "leave_seat": 1.05,
-     "land": 1.55,
-     "step": 1.9000000000000001,
+     "hand_down": 0.4,
+     "leave_seat": 0.922,
+     "land": 1.465,
+     "step": 2.045,
      "seat_offset_from_root": [
       0.0,
       1.995,
       -1.6
      ],
+     "deck_drop_m": 2.013,
+     "rear": false,
      "end_pose": "crouch_walk frame 0",
      "end_speed_mps": 0.929
     },
@@ -5757,6 +5759,7 @@
       "btr80_ua"
      ],
      "side": -1,
+     "rear": false,
      "end_root_vehicle_xz": [
       -2.16,
       -0.45
@@ -10784,8 +10787,8 @@
     }
    },
    "dismount_jump_btr": {
-    "duration_s": 2.2,
-    "frames": 67,
+    "duration_s": 2.333,
+    "frames": 71,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -10793,15 +10796,17 @@
     "root_motion": true,
     "notes": "BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate. Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.995, -1.6] relative to the end root (root = seat + 1.60 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
     "events": {
-     "hand_down": 0.52,
-     "leave_seat": 1.05,
-     "land": 1.55,
-     "step": 1.9000000000000001,
+     "hand_down": 0.4,
+     "leave_seat": 0.922,
+     "land": 1.465,
+     "step": 2.045,
      "seat_offset_from_root": [
       0.0,
       1.995,
       -1.6
      ],
+     "deck_drop_m": 2.013,
+     "rear": false,
      "end_pose": "crouch_walk frame 0",
      "end_speed_mps": 0.929
     },
@@ -10813,6 +10818,7 @@
       "btr80_ua"
      ],
      "side": -1,
+     "rear": false,
      "end_root_vehicle_xz": [
       -2.16,
       -0.45
@@ -10838,8 +10844,8 @@
     }
    },
    "dismount_jump_tank": {
-    "duration_s": 1.9,
-    "frames": 58,
+    "duration_s": 2.133,
+    "frames": 65,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -10847,15 +10853,17 @@
     "root_motion": true,
     "notes": "T-72 edge seat ride_seat_1 (on the fender stowage boxes, 1.42 m out, 1.42 m high). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.415, -1.2] relative to the end root (root = seat + 1.20 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
     "events": {
-     "hand_down": 0.52,
-     "leave_seat": 0.9,
-     "land": 1.25,
-     "step": 1.5999999999999999,
+     "hand_down": 0.4,
+     "leave_seat": 0.827,
+     "land": 1.246,
+     "step": 1.826,
      "seat_offset_from_root": [
       0.0,
       1.415,
       -1.2
      ],
+     "deck_drop_m": 1.465,
+     "rear": false,
      "end_pose": "crouch_walk frame 0",
      "end_speed_mps": 0.929
     },
@@ -10867,6 +10875,7 @@
       "t72b3"
      ],
      "side": -1,
+     "rear": false,
      "end_root_vehicle_xz": [
       -2.62,
       -2.45
@@ -11234,6 +11243,344 @@
      "drop_weapon": 0.25,
      "body_ground": 0.0,
      "ragdoll": -1
+    }
+   },
+   "dismount_jump_bmp3": {
+    "duration_s": 2.167,
+    "frames": 66,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BMP-3 edge seat ride_seat_1 (hull roof 1.70 m, 1.30 m off the axis, deck edge 1.55 m, side wall 1.64 m). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.697, -0.98] relative to the end root (root = seat + 0.98 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.785,
+     "land": 1.285,
+     "step": 1.865,
+     "seat_offset_from_root": [
+      0.0,
+      1.697,
+      -0.98
+     ],
+     "deck_drop_m": 1.806,
+     "rear": false,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_bmp3",
+     "note": "BMP-3 edge seat ride_seat_1 (hull roof 1.70 m, 1.30 m off the axis, deck edge 1.55 m, side wall 1.64 m)",
+     "vehicles": [
+      "bmp3"
+     ],
+     "side": -1,
+     "rear": false,
+     "end_root_vehicle_xz": [
+      -2.28,
+      -1.25
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       1.25,
+       0.0,
+       -2.28
+      ],
+      "yaw_deg": 90.0
+     },
+     "seat_vehicle": [
+      -1.3,
+      1.697,
+      -1.25
+     ],
+     "seat_from_root": [
+      0.0,
+      1.697,
+      -0.98
+     ]
+    }
+   },
+   "dismount_jump_bradley": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "Bradley edge seat ride_seat_1 (hull roof 1.98 m, 1.30 m off the axis, roof edge 1.45 m, side skirt ledge 1.4 m high out to 1.77 m). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.979, -1.12] relative to the end root (root = seat + 1.12 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.76,
+     "land": 1.306,
+     "step": 1.886,
+     "seat_offset_from_root": [
+      0.0,
+      1.979,
+      -1.12
+     ],
+     "deck_drop_m": 2.032,
+     "rear": false,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_bradley",
+     "note": "Bradley edge seat ride_seat_1 (hull roof 1.98 m, 1.30 m off the axis, roof edge 1.45 m, side skirt ledge 1.4 m high out to 1.77 m)",
+     "vehicles": [
+      "bradley_ua"
+     ],
+     "side": -1,
+     "rear": false,
+     "end_root_vehicle_xz": [
+      -2.42,
+      -1.75
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       1.75,
+       0.0,
+       -2.42
+      ],
+      "yaw_deg": 90.0
+     },
+     "seat_vehicle": [
+      -1.3,
+      1.979,
+      -1.75
+     ],
+     "seat_from_root": [
+      0.0,
+      1.979,
+      -1.12
+     ]
+    }
+   },
+   "dismount_jump_rear_btr": {
+    "duration_s": 2.167,
+    "frames": 66,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BTR stern edge seat (engine deck box 1.95 m, z -3.62, back edge -3.85, facing backwards). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.95, -0.9] relative to the end root (root = seat + 0.90 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.76,
+     "land": 1.299,
+     "step": 1.879,
+     "seat_offset_from_root": [
+      0.0,
+      1.95,
+      -0.9
+     ],
+     "deck_drop_m": 1.994,
+     "rear": true,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_rear_btr",
+     "note": "BTR stern edge seat (engine deck box 1.95 m, z -3.62, back edge -3.85, facing backwards)",
+     "vehicles": [
+      "btr82a",
+      "btr80_ua"
+     ],
+     "side": null,
+     "rear": true,
+     "end_root_vehicle_xz": [
+      0.3,
+      -4.52
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.3,
+       0.0,
+       -4.52
+      ],
+      "yaw_deg": 180.0
+     },
+     "seat_vehicle": [
+      0.3,
+      1.95,
+      -3.62
+     ],
+     "seat_from_root": [
+      0.0,
+      1.95,
+      -0.9
+     ]
+    }
+   },
+   "dismount_jump_rear_bmp3": {
+    "duration_s": 2.133,
+    "frames": 65,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "BMP-3 stern edge seat (deck 1.75 m, z -3.24, back edge -3.37, rear doors below). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.75, -0.86] relative to the end root (root = seat + 0.86 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.76,
+     "land": 1.261,
+     "step": 1.841,
+     "seat_offset_from_root": [
+      0.0,
+      1.75,
+      -0.86
+     ],
+     "deck_drop_m": 1.815,
+     "rear": true,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_rear_bmp3",
+     "note": "BMP-3 stern edge seat (deck 1.75 m, z -3.24, back edge -3.37, rear doors below)",
+     "vehicles": [
+      "bmp3"
+     ],
+     "side": null,
+     "rear": true,
+     "end_root_vehicle_xz": [
+      0.62,
+      -4.1
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.62,
+       0.0,
+       -4.1
+      ],
+      "yaw_deg": 180.0
+     },
+     "seat_vehicle": [
+      0.62,
+      1.75,
+      -3.24
+     ],
+     "seat_from_root": [
+      0.0,
+      1.75,
+      -0.86
+     ]
+    }
+   },
+   "dismount_jump_rear_bradley": {
+    "duration_s": 2.2,
+    "frames": 67,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "Bradley stern edge seat (roof 1.98 m, z -3.02, rounded back edge -3.12 .. -3.25, ramp below). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.98, -1.0] relative to the end root (root = seat + 1.00 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.76,
+     "land": 1.306,
+     "step": 1.886,
+     "seat_offset_from_root": [
+      0.0,
+      1.98,
+      -1.0
+     ],
+     "deck_drop_m": 2.03,
+     "rear": true,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_rear_bradley",
+     "note": "Bradley stern edge seat (roof 1.98 m, z -3.02, rounded back edge -3.12 .. -3.25, ramp below)",
+     "vehicles": [
+      "bradley_ua"
+     ],
+     "side": null,
+     "rear": true,
+     "end_root_vehicle_xz": [
+      0.45,
+      -4.02
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.45,
+       0.0,
+       -4.02
+      ],
+      "yaw_deg": 180.0
+     },
+     "seat_vehicle": [
+      0.45,
+      1.98,
+      -3.02
+     ],
+     "seat_from_root": [
+      0.0,
+      1.98,
+      -1.0
+     ]
+    }
+   },
+   "dismount_jump_rear_tank": {
+    "duration_s": 2.133,
+    "frames": 65,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "T-72 stern seat on the external fuel drums (1.745 m, z -3.62, drums end -3.98). Starts in ride_sit_edge frame 0 with the seat point at [0.0, 1.745, -1.0] relative to the end root (root = seat + 1.00 m outward along the seat heading, on the ground). Root motion: the whole path is in the Hips translation track; the game places the soldier root ONCE at the end position (clip frame origin, on the ground, heading = +Z of the clip) and keeps it still for the clip; nothing to add per frame. Ends in crouch_walk frame 0 moving forward at crouch_walk ground speed 0.929 m/s (switch to crouch_walk / crouch_idle).",
+    "events": {
+     "hand_down": 0.4,
+     "leave_seat": 0.76,
+     "land": 1.256,
+     "step": 1.836,
+     "seat_offset_from_root": [
+      0.0,
+      1.745,
+      -1.0
+     ],
+     "deck_drop_m": 1.791,
+     "rear": true,
+     "end_pose": "crouch_walk frame 0",
+     "end_speed_mps": 0.929
+    },
+    "vehicle": {
+     "layout_of": "dismount_jump_rear_tank",
+     "note": "T-72 stern seat on the external fuel drums (1.745 m, z -3.62, drums end -3.98)",
+     "vehicles": [
+      "t72av_ua",
+      "t72b3"
+     ],
+     "side": null,
+     "rear": true,
+     "end_root_vehicle_xz": [
+      0.95,
+      -4.62
+     ],
+     "vehicle_in_clip_frame": {
+      "pos": [
+       0.95,
+       0.0,
+       -4.62
+      ],
+      "yaw_deg": 180.0
+     },
+     "seat_vehicle": [
+      0.95,
+      1.745,
+      -3.62
+     ],
+     "seat_from_root": [
+      0.0,
+      1.745,
+      -1.0
+     ]
     }
    }
   },

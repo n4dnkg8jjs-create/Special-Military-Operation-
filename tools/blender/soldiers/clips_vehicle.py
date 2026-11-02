@@ -27,8 +27,9 @@ from clips_extra import hand_q, arm_to, leg_to, to_clip, keyed, spline_keys, add
 
 Y = np.array([0, 1.0, 0])
 G = 9.81
-CLIPS = ('hatch_exit', 'hatch_exit_tank', 'hatch_exit_btr', 'dismount_jump', 'dismount_jump_btr', 'dismount_jump_tank',
-         'dismount_door', 'dismount_rear')
+JUMPS = ('dismount_jump_btr', 'dismount_jump_tank', 'dismount_jump_bmp3', 'dismount_jump_bradley',
+         'dismount_jump_rear_btr', 'dismount_jump_rear_bmp3', 'dismount_jump_rear_bradley', 'dismount_jump_rear_tank')
+CLIPS = ('hatch_exit', 'hatch_exit_tank', 'hatch_exit_btr', 'dismount_jump') + JUMPS + ('dismount_door', 'dismount_rear')
 PALM_UP = 0.022          # palm centre above a surface it presses on
 
 
@@ -45,10 +46,24 @@ LAYOUT = {
     'hatch_exit_btr': dict(veh=('btr82a', 'btr80_ua'), side=-1, end=(-2.15, 1.98), hatch=(-0.45, 2.03, 1.98), rim_r=0.28,
                            carve=[('cyl', (-0.45, 1.98), 0.28, 1.7, 4.0), ('cyl', (-0.45, 1.98), 0.60, 0.3, 1.96)], ignore={},
                            note='BTR-80/82 commander hatch (hull roof, front right, rim 2.03 m); driver hatch = the mirror (side +1)'),
+    # riders jumping off (ride_sit_edge seat point = the seat empty; side seats: exit to the right side, the left side is the mirror;
+    # rear = the stern edge seats vehicle.js seats() re-seats the back row on, facing backwards, exit along -Z)
     'dismount_jump_btr': dict(veh=('btr82a', 'btr80_ua'), side=-1, end=(-2.16, -0.45), seat=(-0.56, 1.995, -0.45), carve=[], ignore={},
                               note='BTR edge seat ride_seat_1 (roof, 0.56 m off the hull axis, 2.0 m); legs over the sloped upper side plate'),
     'dismount_jump_tank': dict(veh=('t72av_ua', 't72b3'), side=-1, end=(-2.62, -2.45), seat=(-1.42, 1.415, -2.45), carve=[], ignore={},
                                note='T-72 edge seat ride_seat_1 (on the fender stowage boxes, 1.42 m out, 1.42 m high)'),
+    'dismount_jump_bmp3': dict(veh=('bmp3',), side=-1, end=(-2.28, -1.25), seat=(-1.30, 1.697, -1.25), carve=[], ignore={},
+                               note='BMP-3 edge seat ride_seat_1 (hull roof 1.70 m, 1.30 m off the axis, deck edge 1.55 m, side wall 1.64 m)'),
+    'dismount_jump_bradley': dict(veh=('bradley_ua',), side=-1, end=(-2.42, -1.75), seat=(-1.30, 1.979, -1.75), carve=[], ignore={},
+                                  note='Bradley edge seat ride_seat_1 (hull roof 1.98 m, 1.30 m off the axis, roof edge 1.45 m, side skirt ledge 1.4 m high out to 1.77 m)'),
+    'dismount_jump_rear_btr': dict(veh=('btr82a', 'btr80_ua'), rear=True, end=(0.30, -4.52), seat=(0.30, 1.95, -3.62), carve=[], ignore={},
+                                   note='BTR stern edge seat (engine deck box 1.95 m, z -3.62, back edge -3.85, facing backwards)'),
+    'dismount_jump_rear_bmp3': dict(veh=('bmp3',), rear=True, end=(0.62, -4.10), seat=(0.62, 1.75, -3.24), carve=[], ignore={},
+                                    note='BMP-3 stern edge seat (deck 1.75 m, z -3.24, back edge -3.37, rear doors below)'),
+    'dismount_jump_rear_bradley': dict(veh=('bradley_ua',), rear=True, end=(0.45, -4.02), seat=(0.45, 1.98, -3.02), carve=[], ignore={},
+                                       note='Bradley stern edge seat (roof 1.98 m, z -3.02, rounded back edge -3.12 .. -3.25, ramp below)'),
+    'dismount_jump_rear_tank': dict(veh=('t72av_ua', 't72b3'), rear=True, end=(0.95, -4.62), seat=(0.95, 1.745, -3.62), carve=[], ignore={},
+                                    note='T-72 stern seat on the external fuel drums (1.745 m, z -3.62, drums end -3.98)'),
     'dismount_door': dict(veh=('btr82a', 'btr80_ua'), side=-1, end=(-1.95, -0.20), door=(-1.06, 0.85, -0.20), door_w=0.74, door_top=1.75,
                           carve=[('box', (-1.0, 1.0), (0.50, 1.95), (-0.80, 0.40)), ('box', (-1.70, -0.95), (0.84, 1.76), (-0.57, 0.17))], ignore={},
                           note='BTR-80/82 side door between axles 2 and 3 (dismount_R empty = end root), sill 0.85 m, opening top 1.75 m'),
@@ -60,21 +75,30 @@ LAYOUT['dismount_jump'] = LAYOUT['dismount_jump_btr']
 
 
 def v2c(name, v):
-    """vehicle space -> clip frame"""
-    L = LAYOUT[name]; s = L['side']; ex, ez = L['end']
+    """vehicle space -> clip frame (rear exits: clip +Z = vehicle -Z, clip +X = vehicle -X)"""
+    L = LAYOUT[name]; ex, ez = L['end']
     v = np.asarray(v, float)
+    if L.get('rear'):
+        return np.stack([ex - v[..., 0], v[..., 1], ez - v[..., 2]], -1)
+    s = L['side']
     return np.stack([-s * (v[..., 2] - ez), v[..., 1], s * (v[..., 0] - ex)], -1)
 
 
 def c2v(name, c):
-    L = LAYOUT[name]; s = L['side']; ex, ez = L['end']
+    L = LAYOUT[name]; ex, ez = L['end']
     c = np.asarray(c, float)
+    if L.get('rear'):
+        return np.stack([ex - c[..., 0], c[..., 1], ez - c[..., 2]], -1)
+    s = L['side']
     return np.stack([ex + s * c[..., 2], c[..., 1], ez - s * c[..., 0]], -1)
 
 
 def preview_transform(name):
     """vehicle placement in the clip frame for preview_vehicle.html: (vp x,y,z, vyaw deg)"""
-    L = LAYOUT[name]; s = L['side']; ex, ez = L['end']
+    L = LAYOUT[name]; ex, ez = L['end']
+    if L.get('rear'):
+        return (ex, 0.0, ez), 180.0
+    s = L['side']
     return (s * ez, 0.0, -s * ex), (90.0 if s < 0 else -90.0)
 
 
@@ -809,9 +833,6 @@ def rifle_arms(rig, gq, root, t, gun_w, left_keys, w_grip, ride=None, poleR_off=
     return out, err, (gun_q, gun_p), dict(palm=ltgt, planted=planted)
 
 
-GUNS = {'compact': (np.array([-0.10, 1.16, 0.24]), qeuler(-20, 28, -20, order='YXZ'))}   # muzzle up across the chest (one hand, jumping)
-
-
 def finish_into(rig, gq, root, t, lq_end, root_end, T0, rifle=True):
     """blend the local pose (all joints) and the hips onto (lq_end, root_end) from T0 to the last frame (exact at the end).
     rifle: the arms are re-solved on the blended body (low ready, both hands on the rifle, crouch_walk's poles) instead of blended
@@ -847,55 +868,109 @@ def cw_end():
     return c['lq'][0], c['root'][0], float(c['speed']), feet
 
 
+GUNS = {'compact': (np.array([-0.10, 1.16, 0.24]), qeuler(-20, 28, -20, order='YXZ')),     # muzzle up across the chest (one hand)
+        'jump': (np.array([-0.14, 1.12, 0.20]), qeuler(-58, 22, -12, order='YXZ'))}       # one-hand port, muzzle high (jumping)
+
+
+def _edge_z(name):
+    """clip-frame z of the deck edge in front of the seat: last point (straight out from the seat) whose surface is within 0.10 m
+    of the seat height"""
+    L = LAYOUT[name]
+    Sv = v2c(name, L['seat'])
+    z = Sv[2]
+    while z < -0.2 and _surf(name, 0.0, z + 0.01) > Sv[1] - 0.10:
+        z += 0.01
+    return float(z)
+
+
+_JT = {}
+
+
+def _butt_floor(name, zh):
+    """highest deck point under the seated buttocks with the hips at clip z zh (seat point 0.035 m ahead of the hips)"""
+    return max(_surf(name, x, zh + 0.035 + dz) for x in (-0.10, 0.0, 0.10) for dz in (-0.08, 0.0, 0.06))
+
+
+def jump_times(name):
+    """phase times (s) and key heights of a dismount_jump variant, from its seat / deck edge / drop height:
+    hand (left palm on the deck), sc0 (butt starts sliding to the edge), edge (butt at the edge), off (leaves the deck),
+    td (touchdown), absorb (deepest), step (left foot steps out), dur"""
+    if name in _JT:
+        return _JT[name]
+    L = LAYOUT[name]
+    Sv = v2c(name, L['seat'])
+    ze = _edge_z(name)
+    h0z = Sv[2] - 0.035
+    z_hip_edge = max(h0z, ze - 0.10)
+    y_hip_edge = _butt_floor(name, z_hip_edge) + 0.118
+    h_off = y_hip_edge + 0.05
+    land_y = 0.85
+    drop = h_off - land_y
+    vy0 = 0.30                                                   # small upward push off the deck
+    flight = (vy0 + np.sqrt(vy0 ** 2 + 2 * G * drop)) / G
+    scoot = z_hip_edge - h0z
+    T = dict(hand=0.40, sc0=0.42)
+    T['edge'] = T['sc0'] + max(0.18, scoot / 0.95)
+    T['off'] = T['edge'] + 0.16
+    T['td'] = T['off'] + flight
+    T['absorb'] = T['td'] + 0.15 + 0.04 * min(drop, 1.3)
+    T['step'] = T['td'] + 0.58
+    T['dur'] = round((T['step'] + 0.30) * FPS) / FPS
+    T.update(seat=Sv, z_edge=ze, z_hip_edge=z_hip_edge, y_hip_edge=y_hip_edge, h_off=h_off, land_y=land_y, drop=drop, flight=flight, scoot=scoot,
+             absorb_y=0.62 - 0.10 * min(drop, 1.3))
+    _JT[name] = T
+    return T
+
+
 def dismount_jump(rig, lm, name='dismount_jump_btr'):
-    """rider on the edge seat (ride_sit_edge frame 0 at the seat): looks down, left hand off the rifle and onto the roof / box
-    beside the hip, scoots to the edge, pushes off, drops (BTR 2.0 m roof: clears the sloped side plate and chine; T-72 1.42 m
-    fender boxes), lands and absorbs, comes up and steps off into crouch_walk (last frame == crouch_walk frame 0, entered at its
-    ground speed), rifle at low ready."""
+    """rider on an edge seat (ride_sit_edge frame 0 at the seat point) gets off: looks down at his landing spot, right hand takes the
+    rifle to a one-hand port (muzzle high), left hand comes off the handguard and plants on the deck beside the hip, the butt
+    slides to the edge on that arm (re-plants at the edge on a long BTR slide), weight forward, push off the palm (and the boots on
+    a sloped plate), short ballistic drop with the knees coming up and the legs reaching for the ground, lands left-right, deep
+    absorb (pelvis to 0.50-0.56 m, trunk folding forward, left hand down for balance), comes up into a crouch with the rifle at
+    low ready and steps off into crouch_walk (last frame == crouch_walk frame 0, entered at its ground speed).
+    Side variants: legs over the side (BTR: boots on the sloped upper side plate), rear variants: legs over the stern."""
     _RIG[0] = rig
     L = LAYOUT[name]
     I = rig.I
-    btr = 'btr' in name
-    Sv = v2c(name, L['seat'])                 # seat point in the clip frame
+    T = jump_times(name)
+    Sv = T['seat']
     S = lambda x, z: _surf(name, x, z)
     ride = _clip_pose('ride_sit_edge')
-    from clips_extra import SEAT_HIPS, EDGE_FEET
     lq_end, root_end, speed, feet_end = cw_end()
-    if btr:
-        dur, T_OFF, T_TD = 2.20, 1.05, 1.55
-        z_edge = v2c(name, (-0.92, 0, L['end'][1]))[2]           # roof edge (-1.24)
-        hip_edge = (0, S(0, z_edge - 0.06) + 0.118, z_edge - 0.06)
-        land = (0, 0.86, -0.42)
-    else:
-        dur, T_OFF, T_TD = 1.90, 0.90, 1.25
-        z_edge = v2c(name, (-1.72, 0, L['end'][1]))[2]           # outer edge of the fender boxes (-0.90)
-        hip_edge = (0, S(0, z_edge - 0.06) + 0.118, z_edge - 0.06)
-        land = (0, 0.86, -0.40)
+    dur = T['dur']
     F = int(round(dur * FPS)) + 1
     t = np.arange(F) / FPS
+    T_HAND, T_SC0, T_EDGE, T_OFF, T_TD, T_ABS, T_STEP = (T[k] for k in ('hand', 'sc0', 'edge', 'off', 'td', 'absorb', 'step'))
+    z_edge = T['z_edge']
     h0 = Sv + ride['root'][0]                 # hips at frame 0 (seat frame root + seat point)
-    T_STEP = dur - 0.30                       # left foot steps forward into the crouch_walk stance
+    hip_edge = np.array([0.0, T['y_hip_edge'], T['z_hip_edge']])
+    land = np.array([0.0, T['land_y'], -0.42])
     # ---------------------------------------------------------------- hips
-    t_sc = 0.48 if btr else 0.44              # scoot starts
-    t_ed = T_OFF - 0.20
-    keys = [(0.0, h0), (t_sc, h0 + [0, 0.005, 0.02]), (t_ed, hip_edge), (T_OFF - 0.08, np.array(hip_edge) + [0, -0.02, 0.05]),
-            (T_OFF, np.array(hip_edge) + [0, 0.03, 0.10]), (T_TD, land), (T_TD + 0.16, (0, 0.56, land[2] + 0.02)),
-            (T_STEP, (0, 0.66, -0.22)), (dur, root_end)]
+    keys = [(0.0, h0), (T_HAND, h0 + [0, -0.004, 0.004]), (T_SC0, h0 + [0, -0.002, 0.012]), (T_EDGE, hip_edge),
+            (T_OFF - 0.07, hip_edge + [0, 0.025, 0.05]), (T_OFF, hip_edge + [0, 0.05, 0.11]), (T_TD, land),
+            (T_ABS, (0, T['absorb_y'], land[2] + 0.05)), (T_STEP, (0, 0.66, -0.20)), (dur, root_end)]
     root = root_path(keys, dur, flights=[(T_OFF, T_TD)])
-    # end velocity = crouch_walk ground speed (the game then moves the root at that speed)
-    n = 6
-    root[-n:, 2] = np.minimum(root[-n:, 2], root_end[2] - speed * (dur - t[-n:]) * 0 + root[-n:, 2])
-    # ---------------------------------------------------------------- trunk / head (start = ride_sit_edge frame 0 locals, see below)
+    # sliding on the deck: the buttocks never sink into a bump / the edge chamfer
+    lift = np.zeros(F)
+    for f in np.where((t > 0.05) & (t < T_OFF))[0]:
+        lift[f] = max(0.0, _butt_floor(name, root[f, 2]) + 0.113 - root[f, 1])
+    lift = np.maximum.reduce([np.roll(lift, k) for k in range(-3, 4)]) if lift.any() else lift
+    root[:, 1] += np.convolve(np.pad(lift, 3, mode='edge'), np.ones(7) / 7, 'valid')
+    # ---------------------------------------------------------------- trunk / head
     P = lambda **kw: kw
     sit = dict(Hips=(-14, 0, 0), LowerBack=(10, 0, 0), Spine=(8, 0, 0), Spine1=(5, 0, 0), Neck=(-2, 0, 0), Head=(4, 0, 0))
-    bk = [(0.0, sit), (0.25, P(Hips=(-10, 6, 0), LowerBack=(12, 2, 0), Spine=(10, 2, 0), Spine1=(6, 0, 0), Neck=(4, 4, 0), Head=(14, 6, 0))),
-          (t_ed, P(Hips=(-6, 0, 0), LowerBack=(16, 0, 0), Spine=(12, 0, 0), Spine1=(8, 0, 0), Neck=(2, 0, 0), Head=(16, 0, 0))),
-          (T_OFF - 0.08, P(Hips=(10, 0, 0), LowerBack=(16, 0, 0), Spine=(12, 0, 0), Spine1=(8, 0, 0), Neck=(-6, 0, 0), Head=(14, 0, 0))),
-          (T_OFF, P(Hips=(16, 0, 0), LowerBack=(10, 0, 0), Spine=(6, 0, 0), Spine1=(4, 0, 0), Neck=(-8, 0, 0), Head=(10, 0, 0))),
-          ((T_OFF + T_TD) / 2, P(Hips=(4, 0, 0), LowerBack=(4, 0, 0), Spine=(3, 0, 0), Spine1=(2, 0, 0), Neck=(-4, 0, 0), Head=(10, 0, 0))),
-          (T_TD, P(Hips=(18, 0, 0), LowerBack=(6, 0, 0), Spine=(5, 0, 0), Spine1=(3, 0, 0), Neck=(-10, 0, 0), Head=(4, 0, 0))),
-          (T_TD + 0.16, P(Hips=(40, -4, 0), LowerBack=(12, 0, 0), Spine=(10, 0, 0), Spine1=(6, 0, 0), Neck=(-22, 0, 0), Head=(-2, 0, 0))),
-          (T_STEP, P(Hips=(30, -4, 0), LowerBack=(10, 0, 0), Spine=(8, 0, 0), Spine1=(5, 0, 0), Neck=(-16, 0, 0), Head=(-2, 6, 0))),
+    mid = (T_OFF + T_TD) / 2
+    bk = [(0.0, sit),
+          (T_HAND, P(Hips=(-9, 10, 3), LowerBack=(13, 3, 0), Spine=(11, 3, 0), Spine1=(6, 0, 0), Neck=(6, 4, 0), Head=(20, 4, 0))),     # looks down
+          (T_EDGE, P(Hips=(-3, 5, 2), LowerBack=(17, 1, 0), Spine=(13, 0, 0), Spine1=(7, 0, 0), Neck=(4, 0, 0), Head=(20, 0, 0))),
+          (T_OFF - 0.06, P(Hips=(10, 2, 0), LowerBack=(16, 0, 0), Spine=(12, 0, 0), Spine1=(7, 0, 0), Neck=(-4, 0, 0), Head=(16, 0, 0))),  # weight forward
+          (T_OFF + 0.04, P(Hips=(18, 0, 0), LowerBack=(10, 0, 0), Spine=(7, 0, 0), Spine1=(4, 0, 0), Neck=(-8, 0, 0), Head=(14, 0, 0))),
+          (mid, P(Hips=(16, 0, -2), LowerBack=(7, 0, 0), Spine=(5, 0, 0), Spine1=(3, 0, 0), Neck=(-10, 0, 0), Head=(16, 0, 0))),         # eyes on the ground
+          (T_TD, P(Hips=(22, 0, 0), LowerBack=(8, 0, 0), Spine=(6, 0, 0), Spine1=(3, 0, 0), Neck=(-12, 0, 0), Head=(8, 0, 0))),
+          (T_ABS, P(Hips=(44, -4, 0), LowerBack=(15, 0, 0), Spine=(12, 0, 0), Spine1=(8, 0, 0), Neck=(-26, 0, 0), Head=(-6, 0, 0))),    # absorb
+          (T_ABS + 0.18, P(Hips=(38, -4, 0), LowerBack=(12, 0, 0), Spine=(10, 0, 0), Spine1=(6, 0, 0), Neck=(-20, 0, 0), Head=(-4, 6, 0))),
+          (T_STEP, P(Hips=(30, -4, 0), LowerBack=(10, 0, 0), Spine=(8, 0, 0), Spine1=(5, 0, 0), Neck=(-16, 0, 0), Head=(-2, 8, 0))),    # scans
           (dur, P(Hips=(24, -2, 0), LowerBack=(8, 0, 0), Spine=(6, 0, 0), Spine1=(4, 0, 0), Neck=(-12, 0, 0), Head=(0, 0, 0)))]
     # ---------------------------------------------------------------- feet
     W = lambda tt, x, z, e=(0, 0, 0), hold=True, **kw: dict(t=tt, p=(x, 0, z), hf=S, e=e, hold=hold, **kw)
@@ -903,54 +978,67 @@ def dismount_jump(rig, lm, name='dismount_jump_btr'):
     R_ = lambda tt, x, y, z, e=(30, 0, 0), **kw: dict(t=tt, p=(x, y, z), f='r', e=e, **kw)
     gqr = rig.global_from_local(ride['lq'][:1]); gpr = fk_global(rig.sk, gqr, ride['root'][:1])
     fe = {}
+    sup_any = False
     for side, sx in (('Left', 1), ('Right', -1)):
         a0 = Sv + gpr[0, I[side + 'Foot']]
         q0 = gqr[0, I[side + 'Foot']]
         ae, qe = feet_end[side]
-        if btr:      # feet rest on the side plate, slide down it while scooting, push off
-            down = [W(t_ed, sx * 0.14, z_edge + 0.38, e=(49, 0, 0)), W(T_OFF - 0.02, sx * 0.14, z_edge + 0.38, e=(49, 0, 0), hold=False)]
-        else:        # shins hang over the box face; the heels touch the box face at the edge
-            down = [dict(t=t_ed, p=(sx * 0.15, a0[1] - 0.02, a0[2] + 0.12), e=(30, 0, 0))]
-        if btr:      # ride_sit_edge frame 0 has the boots ~5 cm into the BTR side plate: set them onto it during the first 0.2 s
-            k = [dict(t=0.0, p=a0, q=q0), W(0.22, a0[0], a0[2], e=(34, -8, 0)), W(t_sc - 0.05, a0[0], a0[2], e=(34, -8, 0), hold=False)] + down
-        else:
-            k = [dict(t=0.0, p=a0, q=q0, hold=True), dict(t=t_sc - 0.05, p=a0, q=q0)] + down
-        k += [R_(T_OFF + 0.12, sx * 0.14, -0.62, 0.30, e=(20, 0, 0)), R_((T_OFF + T_TD) / 2 + 0.03, sx * 0.13, -0.80, 0.18, e=(10, 0, 0)),
-              R_(T_TD - 0.06, sx * 0.12, -0.84, 0.16 if side == 'Left' else 0.21, e=(4, -8 * sx, 0))]
+        sup = S(a0[0], a0[2]) > a0[1] - 0.16          # the seated boot rests on (or in) a surface: BTR sloped side plate
+        sup_any |= sup
+        if sup:      # boots set onto the plate, slide down it while the butt goes to the edge, push off it
+            k = [dict(t=0.0, p=a0, q=q0), W(0.20, a0[0], a0[2], e=(34, -8, 0)), W(T_SC0 - 0.02, a0[0], a0[2], e=(34, -8, 0), hold=False),
+                 W(T_EDGE, sx * 0.14, z_edge + 0.38, e=(49, 0, 0)), W(T_OFF - 0.02, sx * 0.14, z_edge + 0.38, e=(49, 0, 0), hold=False)]
+        else:        # boots hang in the air over the edge: shins swing under, the legs drop as he slides off
+            k = [dict(t=0.0, p=a0, q=q0, hold=True), dict(t=T_SC0 - 0.04, p=a0, q=q0),
+                 R_(T_EDGE, sx * 0.15, -0.47, 0.50, e=(24, 0, 0)), R_(T_OFF - 0.03, sx * 0.14, -0.55, 0.42, e=(20, 0, 0))]
+        k += [R_(T_OFF + 0.10, sx * 0.14, -0.50, 0.34, e=(22, 0, 0)), R_(mid + 0.02, sx * 0.13, -0.60, 0.26, e=(16, 0, 0)),     # knees up
+              R_(T_TD - 0.06, sx * 0.12, -0.77, 0.15 if side == 'Left' else 0.21, e=(10, -8 * sx, 0))]                        # reaching
         if side == 'Left':
             k += [Wg(T_TD, 0.12, land[2] + 0.12, e=(0, -8, 0)), Wg(T_STEP, 0.12, land[2] + 0.12, e=(0, -8, 0), hold=False),
                   dict(t=dur - 0.08, p=ae, q=qe, hold=True, lift=0.06), dict(t=dur, p=ae, q=qe)]
         else:
-            k += [Wg(T_TD + 0.02, -0.12, -0.19, e=(0, 10, 0)), Wg(dur - 0.14, -0.12, -0.19, e=(0, 10, 0), hold=False),
+            k += [Wg(T_TD + 0.03, -0.12, -0.19, e=(0, 10, 0)), Wg(dur - 0.14, -0.12, -0.19, e=(0, 10, 0), hold=False),
                   dict(t=dur, p=ae, q=qe)]
         fe[side] = k
     gq, root, info = choreo(rig, dur, root, bk, fe, None)
-    # start pose: exactly ride_sit_edge frame 0 (seat frame) -> blend from it over the first 0.25 s
-    w0 = 1 - smooth(np.clip(t / 0.25, 0, 1))
-    lq = rig.local(gq); lr = ride['lq'][0]
-    gq_r = rig.global_from_local(np.repeat(lr[None], F, 0))
+    # start pose: exactly ride_sit_edge frame 0 (seat frame) -> blend from it over the first 0.22 s
+    w0 = 1 - smooth(np.clip(t / 0.22, 0, 1))
+    lr = ride['lq'][0]
     # ---------------------------------------------------------------- arms + rifle
     from clips_extra import hips_frame_gun
     from qmath import qlook
     d = np.array([1.0, 0.03, 0.2]); d /= np.linalg.norm(d)
-    lap_q, lap_p = hips_frame_gun(rig, gq, root, np.array([-0.14, 0.30, 0.20]) + Sv * 0 + (root[0] - root[0]), qlook(d, np.array([0, 0.6, -0.8])),
+    lap_q, lap_p = hips_frame_gun(rig, gq, root, np.array([-0.14, 0.30, 0.20]), qlook(d, np.array([0, 0.6, -0.8])),
                                   rig.global_from_local(rig.local(rig.global_from_local(np.array([C.pose_lq(rig, sit)[0][0]]))))[0, I['Hips']])
-    lap_p = lap_p - root + root          # (carried by the pelvis)
-    w_port = smooth(np.clip((t - 0.15) / 0.30, 0, 1))
-    w_low = smooth(np.clip((t - (T_TD + 0.05)) / 0.35, 0, 1))
-    gun_w = [(np.ones(F), ('ride', lap_q, lap_p)), (w_port, 'compact'), (w_low, 'low_ready')]
+    w_port = smooth(np.clip((t - 0.08) / 0.30, 0, 1))
+    w_low = smooth(np.clip((T_TD + 0.14 - t) * -1 / 0.40, 0, 1))
+    gun_w = [(np.ones(F), ('ride', lap_q, lap_p)), (w_port, 'jump'), (w_low, 'low_ready')]
     xh = 0.25
-    zh = h0[2] + 0.06 if btr else h0[2] + 0.05
     PDn = ((0.2, 0, 1.0), (0, -1.0, 0))
-    lk = [dict(t=0.52, p=(xh, S(xh, zh) + PALM_UP, zh), hp=PDn, hold=True),
-          dict(t=t_ed - 0.12, p=(xh, S(xh, zh) + PALM_UP, zh), hp=PDn),
-          dict(t=t_ed + 0.04, p=(xh, S(xh, z_edge - 0.10) + PALM_UP, z_edge - 0.10), hp=PDn, hold=True),
-          dict(t=T_OFF - 0.10, p=(xh, S(xh, z_edge - 0.10) + PALM_UP, z_edge - 0.10), hp=PDn),
-          dict(t=T_OFF + 0.15, p=(0.40, 0.05, 0.20), f='c', hp=((0.5, 0.1, 0.8), (-0.8, -0.3, 0.0))),
-          dict(t=dur, p=(0.30, -0.1, 0.30), f='c', hp=((0.3, -0.3, 0.9), (-0.8, -0.3, 0.0)))]
-    w_grip = 1 - smooth(np.clip((t - 0.04) / 0.48, 0, 1)) * (1 - smooth(np.clip((t - (T_OFF + 0.20)) / 0.25, 0, 1)))
-    gq2, err, gun, lh = rifle_arms(rig, gq, root, t, gun_w, lk, w_grip)
-    # frame 0 .. 0.25 s: from the exact ride_sit_edge frame 0 pose (legs, trunk, arms) into the dismount
+    z1 = h0[2] + 0.07
+    if T['scoot'] > 0.20:        # long slide (BTR): plant beside the hip, re-plant at the edge, push off it
+        z2 = z_edge - 0.05
+        lk = [dict(t=T_HAND, p=(xh, S(xh, z1) + PALM_UP, z1), hp=PDn, hold=True),
+              dict(t=T_SC0 + 0.45 * (T_EDGE - T_SC0), p=(xh, S(xh, z1) + PALM_UP, z1), hp=PDn),
+              dict(t=T_EDGE + 0.02, p=(xh, S(xh, z2) + PALM_UP, z2), hp=PDn, hold=True, lift=0.05),
+              dict(t=T_OFF - 0.04, p=(xh, S(xh, z2) + PALM_UP, z2), hp=PDn)]
+    else:                        # short slide: one plant, the arm straightens as the hips go forward, push off it
+        z1 = min(h0[2] + 0.10, z_edge - 0.10)
+        lk = [dict(t=T_HAND, p=(xh, S(xh, z1) + PALM_UP, z1), hp=PDn, hold=True),
+              dict(t=T_OFF - 0.07, p=(xh, S(xh, z1) + PALM_UP, z1), hp=PDn)]
+    # off the handguard via palm-in (the grip -> palm-down turn is ~180 deg: two halves, no shortest-path flip)
+    lk = [dict(t=0.0, p=(0.16, -0.22, 0.32), f='c', hp=((0.15, -0.3, 1.0), (-1.0, 0.0, 0.1))),
+          dict(t=0.14, p=(0.20, -0.26, 0.30), f='c', hp=((0.15, -0.3, 1.0), (-1.0, 0.0, 0.1)))] + lk
+    lk += [dict(t=T_OFF + 0.16, p=(0.42, -0.02, 0.20), f='c', hp=((0.5, 0.1, 0.8), (-0.8, -0.3, 0.0))),           # out for balance
+           dict(t=T_TD + 0.10, p=(0.34, -0.20, 0.36), f='c', hp=((0.0, -0.5, 0.85), (-0.7, 0.3, 0.3))),            # down / forward on the landing
+           dict(t=dur, p=(0.20, -0.2, 0.34), f='c', hp=((-0.6, -0.3, 0.7), (0.1, 0.85, 0.5)))]                     # (handguard grip orientation)
+    w_grip = 1 - smooth(np.clip((t - 0.04) / 0.36, 0, 1)) * (1 - smooth(np.clip((t - (T_TD + 0.24)) / 0.28, 0, 1)))
+    gq2, err, gun, lh = rifle_arms(rig, gq, root, t, gun_w, lk, w_grip, poleL_free=(0.65, 0.05, -0.15))   # free / planted left elbow out to the side
+    # free left arm (between the handguard, the deck plants and the balance / landing reach): no IK whip of the forearm twist
+    pl = np.convolve(np.pad(lh['planted'].astype(float), 4, mode='edge'), np.ones(9) / 9, 'valid') > 0
+    ws = (1 - pl) * np.clip((0.995 - w_grip) / 0.05, 0, 1) * (t < dur - 0.24)
+    gq2 = A.smooth_locals(rig, gq2, ('LeftArm', 'LeftForeArm', 'LeftHand'), 2.0, ws)
+    # frame 0 .. 0.22 s: from the exact ride_sit_edge frame 0 pose (legs, trunk, arms) into the dismount
     lq2 = rig.local(gq2)
     for i in range(lq2.shape[1]):
         lq2[:, i] = np.array([qslerp(lq2[f, i], lr[i], w0[f]) for f in range(F)])
@@ -960,17 +1048,14 @@ def dismount_jump(rig, lm, name='dismount_jump_btr'):
     gq2, root = finish_into(rig, gq2, root, t, lq_end, root_end, dur - 0.20)
     info['hands'] = {'Left': dict(palm=lh['palm'], q=np.zeros((F, 4)), planted=lh['planted'])}
     info['rifle_err'] = err
-    ev = {'hand_down': 0.52, 'leave_seat': T_OFF, 'land': T_TD, 'step': T_STEP, 'seat_offset_from_root': np.round(Sv, 3).tolist(),
-          'end_pose': 'crouch_walk frame 0', 'end_speed_mps': round(speed, 3)}
+    ev = {'hand_down': round(T_HAND, 3), 'leave_seat': round(T_OFF, 3), 'land': round(T_TD, 3), 'step': round(T_STEP, 3),
+          'seat_offset_from_root': np.round(Sv, 3).tolist(), 'deck_drop_m': round(float(T['drop'] + T['land_y'] - 0.118), 3),
+          'rear': bool(L.get('rear')), 'end_pose': 'crouch_walk frame 0', 'end_speed_mps': round(speed, 3)}
     return gq2, root, info, ev, dur
 
 
-def dismount_jump_btr(rig, lm):
-    return dismount_jump(rig, lm, 'dismount_jump_btr')
-
-
-def dismount_jump_tank(rig, lm):
-    return dismount_jump(rig, lm, 'dismount_jump_tank')
+def _jump_fn(name):
+    return lambda rig, lm: dismount_jump(rig, lm, name)
 
 
 DOOR_STEP = (0.45, -0.68)    # folded-down lower door leaf (BTR-80/82): step height and its centre (clip z), 0.21 m outside the sill
@@ -1125,7 +1210,7 @@ def vehicle_record_extra(name):
     d = dict(layout_of=name, note=L.get('note'))
     if L.get('veh'):
         vp, vyaw = preview_transform(name)
-        d.update(vehicles=list(L['veh']), side=L['side'], end_root_vehicle_xz=list(L['end']), vehicle_in_clip_frame=dict(pos=list(vp), yaw_deg=vyaw))
+        d.update(vehicles=list(L['veh']), side=L.get('side'), rear=bool(L.get('rear')), end_root_vehicle_xz=list(L['end']), vehicle_in_clip_frame=dict(pos=list(vp), yaw_deg=vyaw))
         for k in ('hatch', 'seat', 'door'):
             if k in L:
                 d[k + '_vehicle'] = list(L[k]); d[k + '_from_root'] = np.round(v2c(name, L[k]), 3).tolist()
@@ -1142,8 +1227,8 @@ def vehicle_clips(rig, lm, want, built=None):
     _RIG[0] = rig
     out = {}
     src = {'hatch_exit': ('hatch_exit_tank', hatch_exit_tank), 'hatch_exit_tank': ('hatch_exit_tank', hatch_exit_tank), 'hatch_exit_btr': ('hatch_exit_btr', hatch_exit_btr),
-           'dismount_jump': ('dismount_jump_btr', dismount_jump_btr), 'dismount_jump_btr': ('dismount_jump_btr', dismount_jump_btr),
-           'dismount_jump_tank': ('dismount_jump_tank', dismount_jump_tank), 'dismount_door': ('dismount_door', dismount_door), 'dismount_rear': ('dismount_rear', dismount_rear)}
+           'dismount_jump': ('dismount_jump_btr', _jump_fn('dismount_jump_btr')), 'dismount_door': ('dismount_door', dismount_door), 'dismount_rear': ('dismount_rear', dismount_rear)}
+    src.update({n: (n, _jump_fn(n)) for n in JUMPS})
     cache = {}
     for name in CLIPS:
         if not want(name):
@@ -1162,11 +1247,13 @@ def vehicle_clips(rig, lm, want, built=None):
 CHECK = {   # left palm on the handguard windows (s), start / end continuity, required events
     'hatch_exit_tank': dict(grip=None, events=('hatch_open', 'out', 'ground', 'draw'), snap=[(0.60, 1.60, 40.0), (2.40, 2.55, 40.0), (3.70, 3.90, 50.0)]),
     'hatch_exit_btr': dict(grip=None, events=('hatch_open', 'out', 'ground', 'draw'), snap=[(0.60, 1.60, 40.0), (2.98, 3.12, 40.0), (3.47, 3.67, 50.0)]),
-    'dismount_jump_btr': dict(grip=[(0.0, 0.05), (1.50, 9)], start='ride_sit_edge', end='crouch_walk', events=('land',), snap=[(1.47, 1.67, 50.0)]),
-    'dismount_jump_tank': dict(grip=[(0.0, 0.05), (1.35, 9)], start='ride_sit_edge', end='crouch_walk', events=('land',), snap=[(1.17, 1.37, 50.0)]),
     'dismount_door': dict(grip=[(0.0, 0.03), (1.0, 9)], end='crouch_walk', events=('out', 'ground'), snap=[(0.70, 0.98, 40.0)]),
     'dismount_rear': dict(grip=[(0.0, 9)], end='crouch_walk', events=('out', 'ground')),
 }
+for _n in JUMPS:     # left palm back on the handguard from touchdown + 0.52 s; landing impact window
+    _T = jump_times(_n)
+    CHECK[_n] = dict(grip=[(0.0, 0.03), (_T['td'] + 0.54, 9)], start='ride_sit_edge', end='crouch_walk', events=('land',),
+                     snap=[(_T['td'] - 0.03, _T['absorb'] + 0.04, 50.0)])
 ALIAS = {'hatch_exit': 'hatch_exit_tank', 'dismount_jump': 'dismount_jump_btr'}
 PEN_TOL = 0.045          # body joints (with radii) into the voxelised vehicle (2.5 cm voxels; sitting / sliding contacts ~3-4 cm)
 
