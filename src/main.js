@@ -126,7 +126,7 @@ if (Q.has('cbattle')) {
 }
 // ---------------------------------------------------------------- versus (2 players): lobby, and battles in an iframe
 $('versusBtn')?.addEventListener('click', () => { try { localStorage.setItem('smo_quality', $('quality').value); } catch { } import('./net/versus_ui.js').then(m => m.openVersus()); });
-if (Q.has('versus')) import('./net/versus_ui.js').then(m => m.openVersus());
+if (Q.has('versus') || Q.has('join')) import('./net/versus_ui.js').then(m => m.openVersus());
 if (Q.has('vsbattle') && window.parent?.__vs) {
   const P = window.parent.__vs, o = P.opts, quality = localStorage.getItem('smo_quality') || 'medium';
   const go = net => start({ ...o, minutes: 12, quality, net }).then(() => {
