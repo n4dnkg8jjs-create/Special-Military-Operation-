@@ -13,8 +13,9 @@ export const PLACED = [];
 export function instance(scene, template, matrices, opts = {}) {
   PLACED.push({ template, matrices, opts });
   // group placements by spatial cell so each InstancedMesh can be frustum/shadow culled
-  const cells = new Map(), v = new THREE.Vector3();
-  matrices.forEach((M, i) => { v.setFromMatrixPosition(M); const k = Math.floor(v.x / CELL) + ',' + Math.floor(v.z / CELL); (cells.get(k) || cells.set(k, []).get(k)).push(i); });
+  // opts.cell: own cell size (m) for many small, cheap instances (fewer, larger InstancedMeshes = fewer draw calls)
+  const cells = new Map(), v = new THREE.Vector3(), CS = opts.cell || CELL;
+  matrices.forEach((M, i) => { v.setFromMatrixPosition(M); const k = Math.floor(v.x / CS) + ',' + Math.floor(v.z / CS); (cells.get(k) || cells.set(k, []).get(k)).push(i); });
   const groups = new Map(), K = opts.coarse && opts.lod ? opts.coarse : 0;
   if (K) {
     const by = new Map(); matrices.forEach((M, i) => { v.setFromMatrixPosition(M); const k = Math.floor(v.x / (CELL * K)) + ',' + Math.floor(v.z / (CELL * K)); (by.get(k) || by.set(k, []).get(k)).push(M); });
@@ -29,8 +30,8 @@ export function instance(scene, template, matrices, opts = {}) {
       const far = opts.lod ? instanceOne(scene, opts.lod, sub, { ...o, shadows: opts.lodShadows ?? o.shadows }) : [];
       const mid = opts.mid ? instanceOne(scene, opts.mid, sub, { ...o, shadows: opts.midShadows ?? o.shadows }) : [];
       const d1 = opts.lodDist || opts.cullDist;
-      const L = { near, mid, far, cx: (cx + 0.5) * CELL, cz: (cz + 0.5) * CELL, dm: opts.mid ? Math.min(opts.nearDist || 60, d1) : d1, d1, d2: opts.cullDist || 1e9, state: -1 };
-      if (K) { L.group = groups.get(Math.floor(cx / K) + ',' + Math.floor(cz / K)); L.group.cells.push(L); }
+      const L = { near, mid, far, cx: (cx + 0.5) * CS, cz: (cz + 0.5) * CS, dm: opts.mid ? Math.min(opts.nearDist || 60, d1) : d1, d1, d2: opts.cullDist || 1e9, state: -1, hr: CS * 0.5 };
+      if (K) { L.group = groups.get(Math.floor((cx + 0.5) * CS / (CELL * K)) + ',' + Math.floor((cz + 0.5) * CS / (CELL * K))); L.group?.cells.push(L); }
       LODS.push(L);
     }
   }
@@ -39,7 +40,7 @@ export function instance(scene, template, matrices, opts = {}) {
 // call once per frame (cheap: a few hundred cells)
 export function updateLods(cam) {
   for (const L of LODS) {
-    const d = Math.max(0, Math.hypot(cam.x - L.cx, cam.z - L.cz, cam.y * 0.6) - CELL * 0.5);
+    const d = Math.max(0, Math.hypot(cam.x - L.cx, cam.z - L.cz, cam.y * 0.6) - (L.hr ?? CELL * 0.5));
     const st = d < (L.dm ?? L.d1) ? 0 : d < L.d1 ? 1 : d < L.d2 ? 2 : 3;
     if (st === L.state) continue; L.state = st;
     for (const m of L.near) m.visible = st === 0;

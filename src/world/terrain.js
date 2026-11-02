@@ -243,7 +243,7 @@ export class Terrain {
   // height-only features
   relief(x, z, meshOnly) {
     const l = this.hRel.get(hkey(x, z)); if (!l) return null;
-    let neg = 0, pos = 0, hit = false;
+    let neg = 0, pos = 0, hit = false, hard = false;
     for (const r of l) {
       if (meshOnly && r.mesh === false) continue;
       if (x < r.bb[0] || x > r.bb[2] || z < r.bb[1] || z > r.bb[3]) continue;
@@ -253,20 +253,20 @@ export class Terrain {
         // machine-dug, but slumped: the edges wander a little
         best += (vnoise(x * 0.35 + 2.2, z * 0.35 + 6.1) - 0.5) * 0.7;
         if (best > r.reach) continue; hit = true;
-        if (best < r.top) neg = Math.min(neg, best < r.bot ? -r.depth : -r.depth * Math.pow(Math.max(0, 1 - (best - r.bot) / (r.top - r.bot)), 0.85));
+        if (best < r.top) { neg = Math.min(neg, best < r.bot ? -r.depth : -r.depth * Math.pow(Math.max(0, 1 - (best - r.bot) / (r.top - r.bot)), r.soft ? 1.6 : 0.85)); if (!r.soft) hard = true; }
         const bd = best - r.top - 0.4; if (side === r.bermSide && bd > 0 && bd < r.bermW) pos = Math.max(pos, r.bermH * Math.sin(Math.PI * bd / r.bermW) ** 0.8 * (0.75 + 0.5 * vnoise(x * 0.45 + 1.3, z * 0.45 + 8.8)));
       } else if (r.type === 'crater') {
         const dx = x - r.x, dz = z - r.z, d = Math.hypot(dx, dz); if (d > r.reach) continue;
         const a = Math.atan2(dz, dx), rr = r.r * (0.86 + 0.28 * vnoise(Math.cos(a) * 1.7 + r.x, Math.sin(a) * 1.7 + r.z)), t = d / rr;
         const h = (t < 1 ? -r.depth * Math.pow(1 - t * t, 1.25) : 0) + r.rim * Math.exp(-(((t - 1.0) / (t < 1 ? 0.22 : 0.45)) ** 2)) * (0.6 + 0.6 * vnoise(x * 1.3, z * 1.3));
-        hit = true; if (h < 0) neg = Math.min(neg, h); else pos = Math.max(pos, h);
+        hit = true; if (h < 0) { neg = Math.min(neg, h); hard = true; } else pos = Math.max(pos, h);
       } else { // mound: rounded box
         const c = Math.cos(r.rot), s = Math.sin(r.rot), dx = x - r.x, dz = z - r.z, lx = (dx * c - dz * s) / r.hx, lz = (dx * s + dz * c) / r.hz;
         const e = Math.pow(Math.abs(lx), 4) + Math.pow(Math.abs(lz), 4); if (e >= 1) continue; hit = true;
         pos = Math.max(pos, r.h * Math.pow(1 - e, 0.6));
       }
     }
-    return hit ? [neg, pos] : null;
+    return hit ? [neg, pos, !hard] : null;   // [2]: only soft relief (balka: a gentle, drivable hollow) below ground here
   }
   // both top heights at once: [terrain-mesh version, heightfield version] (one parapet + one relief pass)
   topH2(x, z) {
@@ -437,6 +437,12 @@ export class Terrain {
     const r = { type: 'ditch', pts, top: (o.top || 5.6) / 2, bot: (o.bot || 0.9) / 2, depth: o.depth || 2.6, bermSide: o.bermSide || 1, bermW: o.bermW || 4.5, bermH: o.bermH || 0.9 };
     r.reach = r.top + 0.4 + r.bermW + 0.6;
     for (const run of this.runs(pts, r.reach)) this.addRelief({ ...r, pts: run });
+  }
+  // balka (steppe gully along a stream): wide, smooth hollow, no berm; drivable ('soft' relief, see relief / markNav)
+  balka(pts, o = {}) {
+    const r = { type: 'ditch', pts, top: (o.top || 30) / 2, bot: (o.bot || 7) / 2, depth: o.depth || 2.6, bermSide: 0, bermW: 0, bermH: 0, soft: true };
+    r.reach = r.top + 1;
+    for (const run of this.runs(pts, o.gap ?? 6)) if (run.length > 1) this.addRelief({ ...r, pts: run });
   }
   // shell crater: bowl + thrown-out rim (r = bowl radius, m)
   crater(x, z, r, o = {}) {
@@ -609,7 +615,8 @@ export class Terrain {
         const cx = nav.cx(i), cz = nav.cz(i), S = this.cutSDF(cx, cz), q = this._q;
         if (S < 0.15 && q) { nav.cost[i] = Math.max(nav.cost[i] === BLOCK ? 1 : nav.cost[i], q.K.cost); nav.veh[i] = Math.max(nav.veh[i], q.K.veh); nav.trench[i] = Math.max(1, Math.min(255, Math.round(q.depth * 10))); nav.low[i] = 1; continue; }
         const rel = this.relief(cx, cz, false);
-        if (rel && rel[0] < -0.7) { nav.cost[i] = Math.max(nav.cost[i], 6); nav.veh[i] = 2; nav.low[i] = 1; nav.trench[i] = Math.min(255, Math.round(-rel[0] * 10)); }
+        if (rel && rel[2] && rel[0] < -0.35) { nav.cost[i] = Math.max(nav.cost[i], 2); nav.low[i] = 1; }   // balka floor / slopes: slow going, cover
+        else if (rel && rel[0] < -0.7) { nav.cost[i] = Math.max(nav.cost[i], 6); nav.veh[i] = 2; nav.low[i] = 1; nav.trench[i] = Math.min(255, Math.round(-rel[0] * 10)); }
         else if (rel && rel[0] < -0.35) { nav.low[i] = 1; nav.cost[i] = Math.max(nav.cost[i], 2); }
         else if (rel && rel[1] > 0.5) { nav.veh[i] = Math.max(nav.veh[i], 1); }
       }

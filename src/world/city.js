@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
-import { Building, KitPool } from './buildings.js';
+import { Building, KitPool, setKitCell } from './buildings.js';
 import { instance, trs, LODS } from './instancer.js';
 import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -11,8 +11,16 @@ import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFr
 // Active map: live bindings, set by setMap() before the world is built.
 export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
 let BUILDINGS, E;
+// Real-place maps (maps.js `real`, src/world/real.js) register their world classes here; City / Farmland construction
+// is redirected to them (game.js picks City or Farmland by MAP.kind).  ROAD_TEST: their polyline road network replaces
+// the axis-aligned ROADS rectangles in onRoad().
+export const REAL_WORLDS = {};
+let ROAD_TEST = null;
+export function setRoadTest(f) { ROAD_TEST = f; }
 export function setMap(id) {
+  ROAD_TEST = null;
   MAP = MAPS[id] || MAPS.city;
+  setKitCell(MAP.real ? 180 : 90);
   MAP_SIZE = MAP.sizeM; BOUNDS = MAP.bounds; ROADS = MAP.roads; OBJECTIVES = MAP.objectives;
   DEPLOY_ZONES = JSON.parse(JSON.stringify(MAP.deployZones)); SPAWNS = MAP.spawns; BUILDINGS = MAP.buildings; E = MAP_SIZE / 2 + 2;
   return MAP;
@@ -21,10 +29,12 @@ setMap('city');
 const SIDEWALK = 3.2;
 
 export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-export const onRoad = (x, z, pad = 0) => ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
+export const onRoad = (x, z, pad = 0) => ROAD_TEST ? ROAD_TEST(x, z, pad) : ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
 
 export class City {
   constructor(scene, assets, quality) {
+    const Real = MAP.real && !new.target.isReal && REAL_WORLDS[MAP.kind];
+    if (Real) return new Real(scene, assets, quality);
     this.scene = scene; this.assets = assets; this.quality = quality;
     this.rng = mulberry(7031);
     this.nav = new NavGrid(MAP_SIZE, 1);
@@ -642,15 +652,15 @@ export class City {
     const kit = this.assets.kit;
     this.pool = new KitPool(this.scene, kit);
     const signNames = Object.keys(kit.pieces).filter(k => /^sign_.*_intact$/.test(k));
-    for (const [x, z, rot, modules, floors, depthModules, sections, kind, dmg, extra] of BUILDINGS) {
+    for (const [x, z, rot, modules, floors, depthModules, sections, kind, dmg, extra] of this.buildingRows || BUILDINGS) {
       const b = new Building({ x, z, rot, modules, floors, depthModules, sections, kind, ...(extra || {}), signNames }, kit);
       b.predamage(dmg);
       this.buildings.push(b);
     }
     // a pancaked section on the nine-storey at (30,-68) and the one at (-150,-60)
-    for (const [i, a, c] of MAP.pancakes || []) this.buildings[i]?.pancake(a, c);
+    for (const [i, a, c] of this.pancakes || MAP.pancakes || []) this.buildings[i]?.pancake(a, c);
     const aabb = b => { const c = Math.abs(Math.cos(b.rot)), sn = Math.abs(Math.sin(b.rot)); const hx = (b.L * c + b.D * sn) / 2, hz = (b.L * sn + b.D * c) / 2; return [b.x - hx, b.x + hx, b.z - hz, b.z + hz]; };
-    this.buildings.forEach((b, i) => { const A = aabb(b);
+    if (!this.buildingRows) this.buildings.forEach((b, i) => { const A = aabb(b);
       this.buildings.forEach((o, j) => { if (j <= i) return; const B = aabb(o); if (A[0] < B[1] && A[1] > B[0] && A[2] < B[3] && A[3] > B[2]) console.warn('building overlap', i, j); });
       for (const r of ROADS) if (A[0] < r.x1 + SIDEWALK && A[1] > r.x0 - SIDEWALK && A[2] < r.z1 + SIDEWALK && A[3] > r.z0 - SIDEWALK) console.warn('building on road', i, JSON.stringify(r)); });
     for (const b of this.buildings) b.requestKit(this.pool);
@@ -790,7 +800,7 @@ export class City {
       const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
       add(w.x, w.z, s, this.rng() * 6.28, b, 'street');
     }
-    for (const [t, l] of place) instance(this.scene, t, l);
+    for (const [t, l] of place) instance(this.scene, t, l, this.rubbleInst?.(t, l) || {});   // (real-place maps: far LOD / bigger cells)
     this.rubbleInstances = [...place.values()];
   }
   // Dynamic rubble when panels are destroyed during play.

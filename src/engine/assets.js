@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as Fallback from './fallback.js';
+import { MAP } from '../world/city.js';
 
 // Loads GLB assets produced by tools/blender/*. Every asset has a procedural fallback so the game
 // always runs; the HUD logs which ones were substituted.
@@ -25,7 +26,11 @@ export class Assets {
       ['kornet', 'assets/soldiers/kornet.glb'], ['stugna', 'assets/soldiers/stugna.glb'], ['atgm_tube_carried', 'assets/soldiers/atgm_tube_carried.glb'],
       ['fpv_drone', 'assets/soldiers/fpv_drone.glb'], ['fpv_controller', 'assets/soldiers/fpv_controller.glb'], ['fpv_goggles', 'assets/soldiers/fpv_goggles.glb'],
     ];
-    if (opts.rural) jobs.push(['farmland', 'assets/env/farmland.glb']); else jobs.push(['modern', 'assets/env/modern.glb']);
+    // a map may ask for the other kit's env sets too (maps.js `assets`, e.g. the real-place maps: farmland.glb sheds /
+    // fences / orchard trees in the Avdiivka private sector, modern.glb in an urban map)
+    const extra = MAP?.assets || [];
+    if (opts.rural || extra.includes('farmland')) jobs.push(['farmland', 'assets/env/farmland.glb']);
+    if (!opts.rural || extra.includes('modern')) jobs.push(['modern', 'assets/env/modern.glb']);
     jobs.push(['fortifications', 'assets/env/fortifications.glb']);   // trench revetment, dugout roofs, dragon's teeth
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};
     // researched armour layouts for the newer vehicles (zones / parts in the armor.js frame)
@@ -49,7 +54,7 @@ export class Assets {
     }
     { const c = await this.loadTexSet('curb', renderer, true); if (c) this.tex.curb = c; }
     // farmland ground sets are optional (the ground shader has procedural fallbacks)
-    if (opts.rural) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
+    if (opts.rural || extra.includes('farmland')) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
     // shell-crater decal atlas (2 x 2, RGBA albedo + normal; tools/blender/env/crater_tex.py), optional
     {
       const one = (url, srgb) => new Promise(res => texLoader.load(url, t => { t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); if (srgb) t.colorSpace = THREE.SRGBColorSpace; res(t); }, undefined, () => res(null)));

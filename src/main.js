@@ -4,6 +4,7 @@ import { Game } from './game/game.js';
 import { HUD } from './ui/hud.js';
 import { Input } from './ui/input.js';
 import { MAPS } from './world/maps.js';
+import './world/real.js';   // real-place maps (OSM layouts): registers their world builders + picker previews
 import { Campaign } from './campaign/state.js';
 import { Campaign2 } from './campaign/v2/state.js';
 import { collectResult } from './game/campaignBattle.js';

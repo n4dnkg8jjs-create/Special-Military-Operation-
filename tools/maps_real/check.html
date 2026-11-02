@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>real map check</title>
+<base href="/">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head><body style="margin:0;background:#222">
+<canvas id="view" style="width:100%;height:100%"></canvas>
+<div id="loading"></div><div id="loadBar"></div><div id="loadText"></div>
+<script type="module">
+// Build a real-place map headless and report: build times, placement counts, trench systems, and vehicle / infantry
+// navigation from both deploy zones (actual unit start positions) to every objective (nav.findPath).
+//   node tools/preview.mjs "page:/tools/maps_real/check.html?map=robotyne" out.png
+import { Game } from '/src/game/game.js';
+import '/src/world/real.js';
+import { PLACED } from '/src/world/instancer.js';
+const Q = new URLSearchParams(location.search), map = Q.get('map') || 'robotyne';
+const errors = []; window.addEventListener('error', e => errors.push(String(e.message)));
+const game = window.game = new Game({ side: Q.get('side') || 'UA', minutes: 12, quality: Q.get('quality') || 'low', map });
+const t0 = performance.now();
+await game.init(() => {});
+const buildMs = Math.round(performance.now() - t0), C = game.city, nav = game.nav;
+if (Q.has('shot')) {   // clean frame (no HUD): ?shot=x,z,dist,yaw,pitch
+  const [x, z, d, yaw, pitch] = Q.get('shot').split(',').map(Number);
+  if (Q.has('nofog')) game.scene.fog.density = 0;
+  game.cam.lookAt(x, z); game.cam.tDist = d; game.cam.tYaw = yaw; game.cam.tPitch = pitch; for (let i = 0; i < 60; i++) game.cam.update(0.05);
+  game.noRender = false; game.frame(0.0001); game.renderer.render(0.016, game.time);
+  const ri = game.renderer.r.info; window.__info = { map, buildMs, calls: ri.render.calls, tris: ri.render.triangles, buildTimes: C.buildTimes };
+  window.__done = true;
+}
+else {
+const placed = {}; for (const p of PLACED) { const k = p.template.name || p.template.type; placed[k] = (placed[k] || 0) + p.matrices.length; }
+const objs = game.objectives, res = [];
+const starts = side => {
+  const v = game.vehicles.filter(u => u.side === side).map(u => ({ n: u.kind, x: u.pos.x, z: u.pos.z, clr: u.kind === 'tank' || u.kind === 'spg' ? 2.1 : 1.9, veh: u.kind === 'tank' || u.kind === 'spg' ? 'tracked' : 'wheeled' }));
+  const inf = game.squads.filter(s => s.side === side && !s.mounted).slice(0, 2).map(s => { const c = s.center(); return { n: 'inf:' + s.kind, x: c.x, z: c.z, clr: 0.45, veh: false }; });
+  return [...v, ...inf];
+};
+for (const side of ['player', 'enemy']) for (const s of starts(side)) for (const o of objs) {
+  const p = nav.findPath(s.x, s.z, o.x, o.z, s.clr, s.veh, 900000);
+  const end = p && p[p.length - 1], d = end ? Math.hypot(end[0] - o.x, end[1] - o.z) : 1e9;
+  let L = 0; if (p) for (let i = 1; i < p.length; i++) L += Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]);
+  res.push({ side, from: s.n + '@' + Math.round(s.x) + ',' + Math.round(s.z), to: o.id, ok: d < (o.r || 26), d: Math.round(d), len: Math.round(L) });
+}
+const fails = res.filter(r => !r.ok);
+window.__info = { map, buildMs, buildTimes: C.buildTimes, terrain: C.terrain.times, buildings: C.buildings.length, trenchSystems: (C.trenchSystems || []).map(t => `${t.name}:${t.kind}:${t.obj}:${t.slots.length}`), teeth: (C.fortTeeth || []).length,
+  houses: (C.houseSpots || []).length, halls: (C.hallRects || []).length, crush: (C.crushables || []).length, placed, nav: { total: res.length, ok: res.length - fails.length, fails }, errors, missing: game.assets.missing };
+window.__done = true;
+}
+</script>
+</body></html>

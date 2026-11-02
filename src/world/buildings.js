@@ -7,7 +7,9 @@ export const STATES = ['intact', 'damaged', 'holed', 'destroyed'];
 // Pool of InstancedMeshes keyed by (piece, spatial cell), kept compact with swap-remove.
 // Cells give each InstancedMesh a tight bounding sphere so off-screen / out-of-shadow-range
 // blocks are culled from both the main and the shadow pass.
-const CELL = 90;
+let CELL = 90;
+// real-place maps (larger, many more blocks) use bigger cells: fewer InstancedMeshes / draw calls, coarser culling
+export function setKitCell(c) { CELL = c; }
 export class KitPool {
   constructor(scene, kit) { this.scene = scene; this.kit = kit; this.req = new Map(); this.groups = new Map(); this.dirty = new Set(); }
   static cellOf(x, z) { return `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`; }
