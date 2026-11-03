@@ -1,0 +1,60 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>real map clipping dump</title>
+<base href="/">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head><body style="margin:0;background:#222">
+<canvas id="view" style="width:100%;height:100%"></canvas>
+<script type="module">
+// Clipping audit, step 1 (headless): build a real-place map exactly like the game (seeded) and dump every solid
+// footprint the world generator placed, for tools/maps_real/clipcheck.py (shapely intersections):
+//   kit      panel blocks / schools / civic (city.buildings: x, z, L, D, rot)
+//   hall     procedural halls + garage rows (hallRects)
+//   inst     every instancer.js placement (template bounding box footprint x instance matrix), name = template
+//   crush    fences / gates / PO-2 walls (crushables)
+//   roads    carriageways (centre line + width) and pavements, rail corridors -- from the layout data (osm)
+//   node tools/preview.mjs "page:/tools/maps_real/clipcheck.html?map=avdiivka" /tmp/x.png > dump.json
+import * as THREE from 'three';
+const Q = new URLSearchParams(location.search);
+const { Renderer } = await import('/src/engine/renderer.js');
+const { Assets } = await import('/src/engine/assets.js');
+const CITY = await import('/src/world/city.js'), { setMap, City, mulberry } = CITY;
+const { Farmland } = await import('/src/world/farmland.js');
+await import('/src/world/real.js');
+const { PLACED } = await import('/src/world/instancer.js');
+window.__done = false; const info = window.__info = {};
+try {
+  const map = Q.get('map') || 'avdiivka'; setMap(map); const MAP = CITY.MAP;
+  const quality = Q.get('quality') || 'low';
+  Object.defineProperty(window, 'innerWidth', { value: 1400 }); Object.defineProperty(window, 'innerHeight', { value: 800 });
+  const R = new Renderer(document.getElementById('view'), quality);
+  const assets = new Assets(); await assets.load(() => {}, R.r, { rural: MAP.kind === 'rural' });
+  const rnd = Math.random; Math.random = mulberry(MAP.sizeM * 31 + (MAP.kind === 'rural' ? 7 : 3));
+  const t0 = performance.now();
+  const city = new (MAP.kind === 'rural' ? Farmland : City)(R.scene, assets, quality); city.build(); Math.random = rnd;
+  info.buildMs = Math.round(performance.now() - t0); info.map = map; info.buildTimes = city.buildTimes;
+  const r2 = v => Math.round(v * 100) / 100;
+  info.kit = city.buildings.map(b => [r2(b.x), r2(b.z), r2(b.L), r2(b.D), +b.rot.toFixed(4), b.kind, b.floors, b.osm?.name || '']);
+  info.hall = (city.hallRects || []).map(([x, z, L, D, rot, , tag]) => [r2(x), r2(z), r2(L), r2(D), +rot.toFixed(4), tag || 'hall']);
+  info.cuts = (city.terrain.cuts || []).map(q => q.pts.map(p => [r2(p[0]), r2(p[1])]));
+  // footprint in the template's own frame, as the instancer renders it (meshes relative to the template root)
+  const bbOf = t => { if (t.userData.bbL) return t.userData.bbL; t.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(t.matrixWorld).invert(), bb = new THREE.Box3();
+    t.traverse(o => { if (!o.isMesh) return; o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld))); });
+    return (t.userData.bbL = bb); };
+  info.tplOff = {};
+  const corners = (bb, M) => [[bb.min.x, bb.min.z], [bb.max.x, bb.min.z], [bb.max.x, bb.max.z], [bb.min.x, bb.max.z]].map(([x, z]) => { const v = new THREE.Vector3(x, 0, z).applyMatrix4(M); return [r2(v.x), r2(v.z)]; });
+  info.inst = [];
+  for (const P of PLACED) {
+    const t = P.template, name = t.name || t.userData?.name || t.type, bb = bbOf(t); if (bb.isEmpty()) continue;
+    const h = bb.max.y - bb.min.y; if (t.userData.bb && !(name in info.tplOff)) { const c = new THREE.Vector3(); bb.getCenter(c); info.tplOff[name] = [r2(c.x), r2(c.z), r2(bb.max.x - bb.min.x), r2(bb.max.z - bb.min.z)]; }
+    for (const M of P.matrices) { const p = new THREE.Vector3().setFromMatrixPosition(M); info.inst.push([name, r2(p.x), r2(p.z), corners(bb, M), r2(h * new THREE.Vector3().setFromMatrixColumn(M, 1).length())]); }
+  }
+  info.crush = (city.crushables || []).map(c => [c.t.name || 'fence', r2(c.x), r2(c.z), corners(bbOf(c.t), c.M)]);
+  const D = city.osm; info.size = MAP.sizeM;
+  if (D) { info.roads = D.roads.map(r => [r.pts, r.w, r.type, r.sw ?? null]); info.rails = D.lines.filter(l => /^rail/.test(l.t)).map(l => l.pts); }
+  info.trees = PLACED.length;
+} catch (e) { info.error = String(e.stack || e); }
+window.__done = true;
+</script>
+</body></html>

@@ -12,7 +12,7 @@ case $M in
   robotyne) SIDE=UA; HALF=700
     VIEWS="crossroads:64,-8,95,0.55,0.72 school:-300,-66,95,2.5,0.75 westline:600,150,85,3.4,0.7 kolkhoz:-176,452,120,0.25,0.62" ;;
   avdiivka) SIDE=RU; HALF=640
-    VIEWS="stadium:-318,-352,110,0.4,0.7 oldtown:288,168,95,0.6,0.72 delita:-228,226,100,0.3,0.68 garages:-112,-76,95,1.9,0.72" ;;
+    VIEWS="stadium:-31,-282,110,0.4,0.7 schools:-327,150,110,0.5,0.62 delita:60,262,110,0.2,0.6 garages:162,-20,100,1.9,0.7 private:430,0,100,0.6,0.7" ;;
 esac
 for w in $WHAT; do case $w in
   overview) run "sim=0.1&nofog&nofx&cam=0,0,$((HALF * 3)),0,1.56" $OUT/${M}_overview.png

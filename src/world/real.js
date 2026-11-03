@@ -21,6 +21,7 @@ import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catena
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
 import { instance, trs, LODS } from './instancer.js';
+import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv } from './wear.js';
 import { MAPS } from './maps.js';
@@ -83,6 +84,8 @@ function cleanRoads(D) {
 for (const D of Object.values(REAL_DATA)) cleanRoads(D);
 export const OSM_CREDIT = 'Map data © OpenStreetMap contributors (ODbL)';
 const SIDEWALK = 3.2;
+// pavement width per street (osm2map / refine.py r.sw: narrower where the blocks come close, a verge in the private sector)
+const swOf = r => r.sw ?? (r.type === 'drive' ? 1.1 : SIDEWALK);
 
 // ================================================================ geometry helpers
 export function inPoly(x, z, P) {
@@ -202,6 +205,36 @@ function boxGeo(w, h, d, M, tile = 3, color = null) {
 }
 function canvasTex(w, h, draw, repeat = true) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; }
 
+// Kit blocks are whole panel modules (W wide): fit each footprint rectangle of a building (several for L / U / H
+// outlines) to whole modules without growing it into its surroundings, and keep the parts of one outline joined:
+// a part end (or long side) that abuts another part stays where it is and the part shrinks / grows at its free end, so
+// an L / U joint neither overlaps (end wall through the neighbour's facade) nor opens a gap.  Returns
+// [[x, z, L, D, rot]...] with L, D the final module lengths (L = whole modules along local X).
+export function fitParts(b, W, maxDepth = 5) {
+  const parts = b.parts || [[b.x, b.z, b.L, b.D]], c = Math.cos(b.rot), s = Math.sin(b.rot);
+  // building frame: lx along b.rot's local X, lz along local Z (Building.toLocal)
+  const R = parts.map(([x, z, L, D]) => { const dx = x - b.x, dz = z - b.z, lx = dx * c - dz * s, lz = dx * s + dz * c; return { x0: lx - L / 2, x1: lx + L / 2, z0: lz - D / 2, z1: lz + D / 2 }; });
+  const snap = (len, n0, max) => { let n = Math.max(2, Math.min(max, Math.round(len / W))); if (n * W > len + 0.9 && n > 2) n--; return n * W; };
+  // does part i touch another part at its side (axis 'x' | 'z', end -1 | 1)?
+  const touch = (i, ax, end) => R.some((q, j) => {
+    if (j === i) return false; const p = R[i];
+    if (ax === 'x') { const e = end < 0 ? p.x0 : p.x1, f = end < 0 ? q.x1 : q.x0; return Math.abs(e - f) < 0.8 && Math.min(p.z1, q.z1) - Math.max(p.z0, q.z0) > 1; }
+    const e = end < 0 ? p.z0 : p.z1, f = end < 0 ? q.z1 : q.z0; return Math.abs(e - f) < 0.8 && Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0) > 1;
+  });
+  const out = [];
+  R.forEach((p, i) => {
+    const long = p.x1 - p.x0 >= p.z1 - p.z0;   // the kit's L runs along the longer side
+    const fit = (a0, a1, ax, max) => {
+      const len = a1 - a0, T = snap(len, 0, max), lo = touch(i, ax, -1), hi = touch(i, ax, 1);
+      if (lo && !hi) return [a0, a0 + T]; if (hi && !lo) return [a1 - T, a1];
+      const m = (a0 + a1) / 2; return [m - T / 2, m + T / 2];
+    };
+    const [x0, x1] = fit(p.x0, p.x1, 'x', long ? 999 : maxDepth), [z0, z1] = fit(p.z0, p.z1, 'z', long ? maxDepth : 999);
+    const lx = (x0 + x1) / 2, lz = (z0 + z1) / 2, wx = b.x + lx * c + lz * s, wz = b.z - lx * s + lz * c;
+    out.push(long ? [wx, wz, x1 - x0, z1 - z0, b.rot] : [wx, wz, z1 - z0, x1 - x0, b.rot + Math.PI / 2]);
+  });
+  return out;
+}
 // ================================================================ shared world-building (mixed into both classes)
 const Real = {
   realSetup() {
@@ -267,10 +300,9 @@ const Real = {
       if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') {
         // crossing ribbons of one class would be coplanar and z-fight at the junction: higher classes sit a few mm up
         ribbon(B.asphalt, P, hw, r.type === 'paved' ? 0.058 : r.type === 'street' ? 0.054 : 0.05, { horiz, ext: 0.5 });
-        if (urban && r.type !== 'drive') ribbon(B.walk, P, hw + SIDEWALK, 0.03, { horiz, tile: 4 });
-        else if (urban) ribbon(B.walk, P, hw + 1.1, 0.03, { horiz, tile: 4 });
+        if (urban && swOf(r) > 0.05) ribbon(B.walk, P, hw + swOf(r), 0.03, { horiz, tile: 4 });
         if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.066, z, Math.atan2(-uz, ux))); });
-        if (urban && r.type !== 'drive') for (const sd of [-1, 1]) walk(P, 1, (x, z, ux, uz) => { const cx = x - uz * hw * sd, cz = z + ux * hw * sd; if (this.net.hit(cx, cz, 0.6, r) || this.rng() < 0.05) return; curbs.push(trs(cx, 0.08, cz, Math.atan2(-uz, ux), 1, 0, (this.rng() - 0.5) * 0.04)); });
+        if (urban && r.type !== 'drive' && swOf(r) >= 1.5) for (const sd of [-1, 1]) walk(P, 1, (x, z, ux, uz) => { const cx = x - uz * hw * sd, cz = z + ux * hw * sd; if (this.net.hit(cx, cz, 0.6, r) || this.rng() < 0.05) return; curbs.push(trs(cx, 0.08, cz, Math.atan2(-uz, ux), 1, 0, (this.rng() - 0.5) * 0.04)); });
       } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, r.type === 'gravel' ? 0.04 : 0.035, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
       // nav: vehicles prefer roads (2 paved, 1 dirt)
       const v = RW[r.type] || 1, pad = v === 1 ? 0.6 : 0;
@@ -288,7 +320,7 @@ const Real = {
       const disc = (Bf, x, z, rad, y, tile) => { const n = 18, c = Bf.n; Bf.pos.push(x, y, z); Bf.uv.push(x / tile, z / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; Bf.pos.push(px, y, pz); Bf.uv.push(px / tile, pz / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); Bf.idx.push(c, c + 1 + (i + 1) % n, c + 1 + i); } };
       for (const [, L] of ends) { if (L.length < 2) continue; const [p] = L[0], hw = Math.max(...L.map(([, r]) => r.w / 2));
         disc(B.asphalt, p[0], p[1], hw, 0.047, 7);
-        if (urban) disc(B.walk, p[0], p[1], hw + (L.some(([, r]) => r.type !== 'drive') ? SIDEWALK : 1.1), 0.028, 4); } }
+        const sw = Math.max(...L.map(([, r]) => swOf(r))); if (urban && sw > 0.05) disc(B.walk, p[0], p[1], hw + sw, 0.028, 4); } }
     const add = (buf, mat, ro = 0) => { const g = buf.geometry(); if (!g) return; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = ro; this.scene.add(m); return m; };
     add(B.walk, walkM); add(B.asphalt, asphalt); add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
     if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
@@ -311,24 +343,41 @@ const Real = {
       if (this.urban && cls === 'shop' && area > 260) cls = 'store';
       const kit = cls === 'block' || cls === 'school' || cls === 'civic' || cls === 'village';
       if (kit) {
-        const parts = b.parts || [[b.x, b.z, b.L, b.D]], lv = b.lv || (cls === 'block' ? 5 : cls === 'school' ? (this.urban ? 3 : 2) : cls === 'village' ? (b.L > 27 ? 2 : 1) : 2);
-        const rot0 = face(b.x, b.z, b.rot), dmg = this.urban ? dm[0] + R() * (dm[1] - dm[0]) : 1.0 + R() * 0.6;
-        const kind = cls === 'school' ? 'school' : cls === 'village' ? 'brick' : lv >= 12 && b.L < 26 ? 'tower' : lv >= 7 ? 'nine' : cls === 'civic' ? 'brick' : (Math.abs(Math.round(b.x * 7 + b.z * 3)) % 3 === 0 ? 'brick' : 'khrushchyovka');
+        const lv = b.lv || (cls === 'block' ? 5 : cls === 'school' ? (this.urban ? 3 : 2) : cls === 'village' ? (b.L > 27 ? 2 : 1) : 2);
+        const rot0 = face(b.x, b.z, b.rot);
+        // damage: imagery-ranked where the layout has it (b.dmg 0..1, refine.py), else the map's random range
+        const dmg = this.urban ? (b.dmg != null ? dm[0] * 0.6 + b.dmg * (dm[1] * 1.25 - dm[0] * 0.6) : dm[0] + R() * (dm[1] - dm[0])) : 1.0 + R() * 0.6;
+        // construction: 4-storey and lower = brick (1950s-60s), 5-storey = brick or panel khrushchyovka, 7+ = panel nine-storey
+        const kind = cls === 'school' ? 'school' : cls === 'village' ? 'brick' : lv >= 12 && b.L < 26 ? 'tower' : lv >= 7 ? 'nine' : cls === 'civic' || lv <= 4 ? 'brick' : (Math.abs(Math.round(b.x * 7 + b.z * 3)) % 3 === 0 ? 'brick' : 'khrushchyovka');
         const shops = cls === 'civic' && /retail|commercial|commerce/.test(b.b || '') || (cls === 'block' && lv >= 9 && R() < 0.5);
-        for (const [x, z, L0, D0] of parts) {
-          let L = L0, Dd = D0, rot = rot0;
-          if (Dd > L) { [L, Dd] = [Dd, L]; rot += Math.PI / 2; }
-          const modules = Math.max(2, Math.round(L / W)), depthModules = Math.max(2, Math.min(kind === 'tower' ? 6 : 5, Math.round(Dd / W)));
-          const floors = Math.max(1, Math.min(16, Math.round(lv)));
+        const floors = Math.max(1, Math.min(16, Math.round(lv))), maxDepth = kind === 'tower' ? 6 : 5;
+        for (const [x, z, L, Dd, rot] of fitParts({ ...b, rot: rot0 }, W, maxDepth)) {
+          const modules = Math.max(2, Math.round(L / W)), depthModules = Math.max(2, Math.min(maxDepth, Math.round(Dd / W)));
           rows.push([x, z, rot, modules, floors, depthModules, Math.max(1, Math.round(modules / 6)), kind, dmg, { shops, osm: b }]);
         }
       } else if (cls === 'hall' || cls === 'store') halls.push({ ...b, cls });
       else if (cls === 'garages') garages.push(b);
       else tplQ.push({ ...b, cls });
     }
+    // whole-module rounding can still push a block into a separate neighbouring outline (another block, a hall, a garage
+    // row): shorten it by a module at the end facing the conflict (up to 3 modules)
+    { const obb = (x, z, L, Dd, rot) => ({ x, z, L, D: Dd, c: Math.cos(rot), s: Math.sin(rot) });
+      const sep = (A, B) => { for (const [c, s] of [[A.c, A.s], [-A.s, A.c], [B.c, B.s], [-B.s, B.c]]) {   // SAT on the 4 axes (x' = c x - s z)
+          const pr = (O) => { const ex = Math.abs(O.c * c + O.s * s) * O.L / 2 + Math.abs(-O.s * c + O.c * s) * O.D / 2; const m = O.x * c - O.z * s; return [m - ex, m + ex]; };
+          const [a0, a1] = pr(A), [b0, b1] = pr(B); if (a1 <= b0 + 0.05 || b1 <= a0 + 0.05) return true; } return false; };
+      const others = [...halls, ...garages].flatMap(h => (h.parts || [[h.x, h.z, h.L, h.D]]).map(([x, z, L, Dd]) => ({ o: obb(x, z, L, Dd, h.rot), osm: h })));
+      for (let pass = 0; pass < 3; pass++) for (const r of rows) {
+        const A = obb(r[0], r[1], r[3] * W, r[5] * W, r[2]);
+        const hit = [...rows.filter(q => q !== r && q[9].osm !== r[9].osm).map(q => obb(q[0], q[1], q[3] * W, q[5] * W, q[2])), ...others.map(o => o.o)].find(B => !sep(A, B));
+        if (!hit || r[3] <= 2 || (r[10] = (r[10] || 0) + 1) > 3) continue;
+        const along = (hit.x - r[0]) * Math.cos(r[2]) - (hit.z - r[1]) * Math.sin(r[2]), sd = along > 0 ? -1 : 1;   // move away from it
+        r[3] -= 1; r[0] += Math.cos(r[2]) * sd * W / 2; r[1] -= Math.sin(r[2]) * sd * W / 2; r[6] = Math.max(1, Math.round(r[3] / 6));
+      }
+      for (const r of rows) r.length = 10; }
     // pancaked entrance sections on a few long blocks (urban maps)
     this.pancakes = [];
-    if (this.urban) rows.forEach((r, i) => { if (r[7] !== 'school' && r[3] >= 14 && r[4] >= 5 && R() < 0.12) { const a = 2 + Math.floor(R() * (r[3] - 6)); this.pancakes.push([i, a, a + 1 + Math.floor(R() * 2)]); } });
+    // (imagery-ranked layouts: the worst-hit blocks; otherwise 12 % at random)
+    if (this.urban) rows.forEach((r, i) => { const d = r[9].osm?.dmg; if (r[7] !== 'school' && r[3] >= 8 && r[4] >= 4 && (d != null ? d > 0.82 && R() < 0.75 : r[3] >= 14 && R() < 0.12)) { const a = 1 + Math.floor(R() * Math.max(1, r[3] - 4)); this.pancakes.push([i, a, Math.min(r[3] - 2, a + 1 + Math.floor(R() * 2))]); } });
   },
   // ---------------------------------------------------------------- procedural halls (industrial, barns, stores)
   hallsReal() {
@@ -388,22 +437,26 @@ const Real = {
   // ---------------------------------------------------------------- garage cooperatives: rows of garage units
   garagesReal() {
     const R = this.rng, have = this.tpl('garage_unit'); if (!have) return;
-    const bb = have.userData.bb, uw = bb.max.x - bb.min.x, ud = bb.max.z - bb.min.z;
+    const F = ['garage_unit', 'garage_unit_damaged'].map(n => this.tplFoot(n)).filter(Boolean);
+    const uw = Math.max(...F.map(f => 2 * Math.max(-f[0], f[2]))), ud = Math.max(...F.map(f => 2 * Math.max(-f[1], f[3])));
     for (const g of this.garageList || []) {
       for (const [x, z, L0, D0] of g.parts || [[g.x, g.z, g.L, g.D]]) {
         let L = L0, Dd = D0, rot = g.rot; if (Dd > L) { [L, Dd] = [Dd, L]; rot += Math.PI / 2; }
-        const rowsN = Dd > ud * 1.7 ? 2 : 1, n = Math.max(1, Math.floor(L / uw)), c = Math.cos(rot), s = Math.sin(rot);
+        // units fitted inside the OSM outline: one or two back-to-back rows, scaled (0.7..1) so no unit pokes out
+        const rowsN = Dd > ud * 1.7 ? 2 : 1, c = Math.cos(rot), s = Math.sin(rot);
+        let sc = Math.min(1, Dd / (rowsN * ud)), n = Math.max(1, Math.floor(L / (uw * sc) + 0.15)); sc = Math.max(0.6, Math.min(sc, L / (n * uw)));
+        if (L < uw * 0.6 || Dd < ud * 0.6) continue;
         for (let rI = 0; rI < rowsN; rI++) {
-          const off = rowsN === 2 ? (rI ? 1 : -1) * ud / 2 : 0, ry = rot + (rowsN === 2 ? (rI ? 0 : Math.PI) : (R() < 0.5 ? 0 : Math.PI));
+          const off = rowsN === 2 ? (rI ? 1 : -1) * ud * sc / 2 : 0, ry = rot + (rowsN === 2 ? (rI ? 0 : Math.PI) : (R() < 0.5 ? 0 : Math.PI));
           for (let i = 0; i < n; i++) {
             const lx = -L / 2 + (i + 0.5) * (L / n), px = x + lx * c + off * s, pz = z - lx * s + off * c;
             const dmg = R() < (this.dmg.burnt ?? 0.25) + 0.1;
-            this.put(dmg ? 'garage_unit_damaged' : 'garage_unit', px, pz, ry, { check: false, cost: BLOCK, inst: { cell: 260, cullDist: 900 } });
+            this.put(dmg ? 'garage_unit_damaged' : 'garage_unit', px, pz, ry, { s: sc, check: false, cost: BLOCK, inst: { cell: 260, cullDist: 900 } });
           }
         }
         this.nav.rect(x, z, L / 2, Dd / 2, rot, BLOCK, 0.1);
         this.nav.addOccluder(x, z, L / 2, Dd / 2, rot, 2.6, null);
-        (this.hallRects ||= []).push([x, z, L, Dd, rot, false]);
+        (this.hallRects ||= []).push([x, z, L, Dd, rot, false, 'garages']);
       }
     }
   },
@@ -427,7 +480,9 @@ const Real = {
         let best = null;
         for (const t of HT) for (const sw of [0, 1]) {
           const tl = sw ? t.sz : t.sx, td = sw ? t.sx : t.sz, e = Math.abs(Math.log(b.L / tl)) + Math.abs(Math.log(b.D / td)) + R() * 0.25;
-          if (!best || e < best.e) best = { t, sw, e, s: Math.max(0.82, Math.min(1.22, Math.sqrt((b.L * b.D) / (tl * td)))) };
+          // scaled to the footprint area, but never past the outline (eaves 0.3 m): no wall through the neighbour / street
+          const fitS = Math.min((b.L + 0.3) / tl, (b.D + 0.3) / td);
+          if (!best || e < best.e) best = { t, sw, e, s: Math.max(0.6, Math.min(1.22, fitS, Math.sqrt((b.L * b.D) / (tl * td)))) };
         }
         if (!best) continue;
         // syn plots carry the street-facing rotation; OSM houses: front (+Z of the template) towards the nearest road
@@ -443,9 +498,10 @@ const Real = {
         this.houseSpots.push([x, z, state === 2]);
       } else if (b.cls === 'shed') {
         const n = this.urban ? (R() < 0.5 ? 'garage_unit' : 'shed_wood') : (b.L > 5 ? 'shed_wood' : 'outhouse');
-        this.put(R() < dRub && this.tpl(n + '_damaged') ? n + '_damaged' : n, x, z, b.rot, { roadPad: 0.3, inst: { cell: 300, cullDist: 800 } });
-      } else if (b.cls === 'kiosk') this.put(R() < 0.5 ? 'kiosk_burnt' : 'kiosk_press', x, z, facing(x, z, b.rot), { roadPad: 0, inst: { cell: 300 } });
-      else if (b.cls === 'shop') this.put(R() < 0.45 ? 'pavilion_burnt' : 'pavilion_closed', x, z, facing(x, z, b.rot), { roadPad: 0, occ: 3, inst: { cell: 300 } });
+        if (this.railNear(x, z, 6.5)) continue;
+        this.put(R() < dRub && this.tpl(n + '_damaged') ? n + '_damaged' : n, x, z, b.rot, { roadPad: 2.2, inst: { cell: 300, cullDist: 800 } });
+      } else if (b.cls === 'kiosk') this.put(R() < 0.5 ? 'kiosk_burnt' : 'kiosk_press', x, z, facing(x, z, b.rot), { roadPad: 1.6, inst: { cell: 300 } });
+      else if (b.cls === 'shop') this.put(R() < 0.45 ? 'pavilion_burnt' : 'pavilion_closed', x, z, facing(x, z, b.rot), { roadPad: 2, occ: 3, inst: { cell: 300 } });
       else if (b.cls === 'church') this.put('church_small', x, z, facing(x, z, b.rot), { occ: true });
       else if (b.cls === 'silo') this.put(this.urban ? 'water_tower_damaged' : 'grain_silo', x, z, b.rot, { circle: Math.max(2, b.L / 2) });
       else if (b.cls === 'ruin') rubble(x, z, Math.min(2.2, Math.sqrt(b.L * b.D) / 7));
@@ -470,18 +526,18 @@ const Real = {
       const gateT = h ? ((h.x - a[0]) * ux + (h.z - a[1]) * uz) / fr : fr / 2;
       for (let t = L / 2; t < fr - L / 2 + 0.01; t += L) {
         const x = a[0] + ux / fr * t + nx * 0.5, z = a[1] + uz / fr * t + nz * 0.5;
-        if (R() < (wrecked ? 0.55 : 0.14) || this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.overlapsBuilding(x, z, L / 2, 0.3, 0)) continue;
+        if (R() < (wrecked ? 0.55 : 0.14) || this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.segBlocked(x, z, ux / fr, uz / fr, L) || this.solidHit(x, z, L / 2, 0.12, ry, 0.05, k => k === 'fence')) continue;
         if (Math.abs(t - gateT) < L * 0.6 && !urban) { this.put('gate_village', x, z, ry, { crush: 'any', check: false }); continue; }
         if (Math.abs(t - gateT) < L * 0.6) continue;   // urban: open gateway
         if (this.houseNear(x, z, ry)) continue;
-        this.put(fn, x, z, ry + (R() - 0.5) * (wrecked ? 0.25 : 0.05), { crush: 'any', check: false });
+        if (this.put(fn, x, z, ry + (R() - 0.5) * (wrecked ? 0.25 : 0.05), { crush: 'any', check: false })) this.solidAdd(x, z, L / 2, 0.1, ry, 'fence');
       }
       // side fences along the yard (first ~20 m)
       if (!urban || R() < 0.5) for (const [e0, sgn] of [[a, 1], [b, -1]]) for (let w = 3; w < Math.min(urban ? 9 : 22, dep - 2); w += L) {
         if (R() < (wrecked ? 0.6 : 0.3)) continue;
         const x = e0[0] + nx * w + ux / fr * 0.4 * sgn, z = e0[1] + nz * w + uz / fr * 0.4 * sgn;
-        if (this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.overlapsBuilding(x, z, L / 2, 0.3, 0) || this.houseNear(x, z, ry + Math.PI / 2)) continue;
-        this.put(fn, x, z, ry + Math.PI / 2, { crush: 'any', check: false });
+        if (this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.segBlocked(x, z, nx, nz, L) || this.solidHit(x, z, L / 2, 0.12, ry + Math.PI / 2, 0.05, k => k === 'fence') || this.houseNear(x, z, ry + Math.PI / 2)) continue;
+        if (this.put(fn, x, z, ry + Math.PI / 2, { crush: 'any', check: false })) this.solidAdd(x, z, L / 2, 0.1, ry + Math.PI / 2, 'fence');
       }
       // behind the house: outbuildings; then the garden (paint) with fruit trees
       const hx = h ? h.x : a[0] + ux / 2 + nx * 10, hz = h ? h.z : a[1] + uz / 2 + nz * 10, back = h ? ((h.x - a[0]) * nx + (h.z - a[1]) * nz) + 9 : 18;
@@ -507,6 +563,21 @@ const Real = {
       if (urban && !wrecked && h && R() < 0.12) { const x = a[0] + ux / fr * (gateT + 4) + nx * 4, z = a[1] + uz / fr * (gateT + 4) + nz * 4; this.put(R() < 0.6 ? 'car_parked_lada' : 'car_vaz2107_burnt', x, z, ry + Math.PI / 2 + (R() - 0.5) * 0.3, { cost: BLOCK, roadPad: 0.3 }); }
     }
   },
+  // a straight piece (fence panel, wall, pipe) of length len centred at x, z along (ux, uz): any point of it in a
+  // panel block (rotated rectangles, not the axis box of the piece) or a hall / garage row?
+  segBlocked(x, z, ux, uz, len) {
+    for (const t of [-0.5, -0.25, 0, 0.25, 0.5]) { const px = x + ux * len * t, pz = z + uz * len * t; if (this.overlapsBuilding(px, pz, 0.15, 0.15, 0.1)) return true;
+      for (const [hx, hz, L, Dd, rot] of this.hallRects || []) { const dx = px - hx, dz = pz - hz, c = Math.cos(rot), s = Math.sin(rot); if (Math.abs(dx * c - dz * s) < L / 2 + 0.25 && Math.abs(dx * s + dz * c) < Dd / 2 + 0.25) return true; } }
+    return false;
+  },
+  // template footprint in its own frame (the instancer draws the meshes relative to the template root): [x0, z0, x1, z1]
+  tplFoot(name) {
+    const t = this.tpl(name); if (!t) return null; if (t.userData.footL) return t.userData.footL;
+    t.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(t.matrixWorld).invert(), bb = new THREE.Box3();
+    t.traverse(o => { if (!o.isMesh) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld))); });
+    return (t.userData.footL = bb.isEmpty() ? null : [bb.min.x, bb.min.z, bb.max.x, bb.max.z]);
+  },
+  railNear(x, z, d) { for (const l of this.osm.lines) if (/^rail/.test(l.t)) for (let i = 0; i < l.pts.length - 1; i++) if (segD(x, z, l.pts[i][0], l.pts[i][1], l.pts[i + 1][0], l.pts[i + 1][1]) < d) return true; return false; },
   inPlotPoly(p, x, z, m = 0) { return inPoly(x, z, p.pts) && edgeDist(x, z, p.pts) > m; },
   // ---------------------------------------------------------------- vegetation: woods, tree rows, belts, street trees
   vegetationReal() {
@@ -583,7 +654,7 @@ const Real = {
     if (urban) {
       for (const r of D.roads) {
         if (r.type !== 'street' && r.type !== 'paved') continue;
-        for (const sd of [-1, 1]) walk(r.pts, 10 + R() * 3, (x, z, ux, uz) => { if (R() > 0.6) return; const o = r.w / 2 + SIDEWALK + 1.6, px = x - uz * o * sd, pz = z + ux * o * sd; tree(R() < 0.75 ? (R() < 0.6 ? 'leafy_summer_chestnut' : 'leafy_summer_birch') : cityT[2 + Math.floor(R() * 4)], px, pz, 0.85 + R() * 0.3); });
+        for (const sd of [-1, 1]) walk(r.pts, 10 + R() * 3, (x, z, ux, uz) => { if (R() > 0.6) return; const o = r.w / 2 + swOf(r) + 1.6, px = x - uz * o * sd, pz = z + ux * o * sd; tree(R() < 0.75 ? (R() < 0.6 ? 'leafy_summer_chestnut' : 'leafy_summer_birch') : cityT[2 + Math.floor(R() * 4)], px, pz, 0.85 + R() * 0.3); });
       }
       for (let i = 0; i < 900; i++) {
         const x = (R() - 0.5) * (MAP_SIZE - 30), z = (R() - 0.5) * (MAP_SIZE - 30);
@@ -636,10 +707,10 @@ const Real = {
         // walls: precast PO-2 panels (only tanks push through); fences: profiled sheet / mesh (anything flattens them)
         const wall = l.t === 'wall', n = wall ? (R() < 0.7 ? 'fence_po2_a' : 'fence_po2_b') : (R() < 0.6 ? 'fence_house_prof' : 'fence_house_plain'), t = this.tpl(n); if (!t) continue;
         const len = Math.max(2, t.userData.bb.max.x - t.userData.bb.min.x);
-        walk(l.pts, len, (x, z, ux, uz) => { if (R() < (wall ? 0.18 : 0.3) || this.net.hit(x, z, 0.6) || this.terrain.cutSDF(x, z) < 2 || this.overlapsBuilding(x, z, len / 2, 0.3, 0.2) || this.solidHit(x, z, len / 2, 0.2, Math.atan2(-uz, ux), 0.05)) return; this.put(wall && R() < 0.15 ? 'fence_po2_broken' : !wall && R() < 0.2 ? 'fence_house_broken' : n, x, z, Math.atan2(-uz, ux), { crush: wall ? 'tank' : 'any', check: false }); });
+        walk(l.pts, len, (x, z, ux, uz) => { if (R() < (wall ? 0.18 : 0.3) || this.net.hit(x, z, 0.6) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len) || this.solidHit(x, z, len / 2, 0.2, Math.atan2(-uz, ux), 0.05, k => k === 'fence')) return; if (this.put(wall && R() < 0.15 ? 'fence_po2_broken' : !wall && R() < 0.2 ? 'fence_house_broken' : n, x, z, Math.atan2(-uz, ux), { crush: wall ? 'tank' : 'any', check: false })) this.solidAdd(x, z, len / 2, 0.12, Math.atan2(-uz, ux), 'fence'); });
       } else if (l.t === 'pipe') {
         const t = this.tpl('pipe_straight_a'); if (!t) continue; const bb = t.userData.bb, len = Math.max(2, Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)), alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z);
-        walk(l.pts, len, (x, z, ux, uz) => { if (this.net.hit(x, z, 1) || this.terrain.cutSDF(x, z) < 2) return; const ry = Math.atan2(-uz, ux) + (alongX ? 0 : Math.PI / 2); this.put(R() < 0.12 ? 'pipe_straight_torn' : 'pipe_straight_a', x, z, ry, { cost: 5, low: true, check: false, inst: { cell: 300 } }); });
+        walk(l.pts, len, (x, z, ux, uz) => { if (this.net.hit(x, z, 1) || this.net.hit(x + ux * len * 0.6, z + uz * len * 0.6, 0.8) || this.net.hit(x - ux * len * 0.6, z - uz * len * 0.6, 0.8) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len * 1.3) || this.solidHit(x, z, len / 2, 0.3, Math.atan2(-uz, ux), 0.05)) return; const ry = Math.atan2(-uz, ux) + (alongX ? 0 : Math.PI / 2); this.put(R() < 0.12 ? 'pipe_straight_torn' : 'pipe_straight_a', x, z, ry, { cost: 5, low: true, check: false, inst: { cell: 300 } }); });
       }
     }
   },
@@ -653,7 +724,7 @@ const Real = {
       let prev = null;
       walk(P, step, (x, z, ux, uz) => {
         const ry = Math.atan2(-uz, ux) + Math.PI / 2;
-        if (Math.abs(x) > half - 4 || Math.abs(z) > half - 4 || this.net.hit(x, z, 0.3) || this.solidHit(x, z, 0.6, 0.3, ry, 0.2) || this.terrain.cutSDF(x, z) < 1.5 || this.overlapsBuilding(x, z, 0.4, 0.4, 0.3)) { prev = null; return; }
+        if (Math.abs(x) > half - 4 || Math.abs(z) > half - 4 || this.net.hit(x, z, 1.3) || this.solidHit(x, z, 0.6, 0.3, ry, 0.2) || this.terrain.cutSDF(x, z) < 1.5 || this.overlapsBuilding(x, z, 0.4, 0.4, 0.3)) { prev = null; return; }
         const broken = R() < 0.15, M = trs(x, this.baseY(x, z, 0.2, 0.2), z, ry, 1, broken ? (R() - 0.5) * 0.6 : (R() - 0.5) * 0.05, (R() - 0.5) * 0.06); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK); this.solidAdd(x, z, 0.25, 0.25, 0, 'pole');
         const top = broken ? null : att.map(a => a.clone().applyMatrix4(M));
@@ -666,7 +737,7 @@ const Real = {
     // distribution lines along the main streets, on the verge
     for (const r of this.osm.roads) {
       if (!(r.type === 'paved' || (this.urban ? r.type === 'street' : r.type === 'gravel' && lineLen(r.pts) > 250))) continue;
-      const sd = R() < 0.5 ? -1 : 1, o = r.w / 2 + (this.urban ? SIDEWALK + 0.7 : 2.2);
+      const sd = R() < 0.5 ? -1 : 1, o = r.w / 2 + (this.urban ? swOf(r) + 0.7 : 2.2);
       const P = r.pts.map((p, i) => { const q = r.pts[Math.min(i + 1, r.pts.length - 1)], pr = r.pts[Math.max(i - 1, 0)], dx = q[0] - pr[0], dz = q[1] - pr[1], L = Math.hypot(dx, dz) || 1; return [p[0] - dz / L * o * sd, p[1] + dx / L * o * sd]; });
       run(P, this.urban ? 34 : 40);
     }
@@ -985,6 +1056,8 @@ export class RealUrban extends City {
   build() {
     const times = this.buildTimes = {}, step = (k, f) => { const t = performance.now(); f(); times[k] = Math.round(performance.now() - t); };
     this.realSetup();
+    // ~80 panel blocks over 1.3 km: bigger kit cells (one InstancedMesh per kit piece per 320 m cell) keep the draw calls down
+    setKitCell(320);
     this.grassMax = this.quality === 'low' ? 50000 : this.quality === 'medium' ? 80000 : 110000; this.grassCull = 280; this.noOuterGrass = true;
     this.lots = []; weatherEnv(this.assets);
     step('ground', () => { this.ground(); this.roadsReal(); });
@@ -995,8 +1068,8 @@ export class RealUrban extends City {
     step('houses', () => { this.smallBuildings(); this.plotsReal(); });
     step('rubble', () => this.rubbleAndDebris());
     step('rail', () => this.railReal());
-    step('vegetation', () => this.vegetationReal());
-    step('props', () => { this.polesReal(); this.linesReal(); this.propsUrban(); this.warReal(); this.cityWrecksReal(); });
+    step('vegetation', () => { this.linesReal(); this.vegetationReal(); });   // walls / fences / gas pipes first: trees keep clear
+    step('props', () => { this.polesReal(); this.propsUrban(); this.warReal(); this.cityWrecksReal(); });
     step('flush', () => { this.flush(); this.moundsFlush(); });
     step('craters', () => this.craters());
     step('paint', () => this.paintGround());
@@ -1011,13 +1084,13 @@ export class RealUrban extends City {
     // playgrounds, sports pitches (goals), parking lots with cars
     for (const a of D.areas) {
       const [x0, z0, x1, z1] = polyBB(a.pts), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-      if (a.t === 'playground') this.put(this.tpl('playground_modern') && R() < 0.6 ? 'playground_modern' : 'playground_climbing_frame', cx, cz, R() * 6, { cost: 6, roadPad: 1 });
+      if (a.t === 'playground') this.put(this.tpl('playground_modern') && R() < 0.6 ? 'playground_modern' : 'playground_climbing_frame', cx, cz, R() * 6, { cost: 6, roadPad: 3.5 });
       else if (a.t === 'pitch' && polyArea(a.pts) > 600) { const L = Math.max(x1 - x0, z1 - z0), ax = (x1 - x0) > (z1 - z0); for (const sd of [-1, 1]) this.put(R() < 0.5 ? 'goal_a' : 'goal_b', cx + (ax ? sd * (L / 2 - 4) : 0), cz + (ax ? 0 : sd * (L / 2 - 4)), (ax ? Math.PI / 2 : 0) + (sd > 0 ? Math.PI : 0), { cost: 4, check: false }); }
       else if (a.t === 'parking' && polyArea(a.pts) > 300) for (let i = 0; i < Math.min(8, polyArea(a.pts) / 120); i++) { const x = x0 + R() * (x1 - x0), z = z0 + R() * (z1 - z0); if (inPoly(x, z, a.pts)) this.put(['car_parked_lada', 'car_parked_lada_red', 'car_parked_moskvich', 'car_vaz2107_burnt', 'car_hatch_modern_burnt'][Math.floor(R() * 5)], x, z, R() < 0.5 ? 0 : Math.PI, { cost: BLOCK, roadPad: 0 }); }
     }
     // benches / bins / lamps on the block lawns, kiosks at the stops, bus stops
-    for (const p of D.pois) if (p[3] === 'bus_stop' || p[3] === 'tram_stop') { const n = this.net.near(p[1], p[2], 20); if (n) { const sd = Math.sign((p[1] - n.px) * -n.uz + (p[2] - n.pz) * n.ux) || 1, o = n.hw + SIDEWALK + 1.2; this.put(this.tpl('bus_stop_modern') ? 'bus_stop_modern' : 'bus_stop', n.px - n.uz * o * sd, n.pz + n.ux * o * sd, Math.atan2(-n.uz, n.ux) + (sd > 0 ? Math.PI : 0), { cost: BLOCK, roadPad: 0 }); } }
-    for (const b of this.buildings) for (const e of b.entrances) if (R() < 0.35) { const o = b.toWorld(0, 0, 0), dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; this.put(R() < 0.5 ? 'bench_concrete' : 'bin_a', e.x + dx / d * 3 + (R() - 0.5) * 4, e.z + dz / d * 3, b.rot, { cost: 4, low: true, roadPad: 0 }); }
+    for (const p of D.pois) if (p[3] === 'bus_stop' || p[3] === 'tram_stop') { const n = this.net.near(p[1], p[2], 20); if (n) { const sd = Math.sign((p[1] - n.px) * -n.uz + (p[2] - n.pz) * n.ux) || 1, o = n.hw + swOf(n.r || {}) + 1.2; this.put(this.tpl('bus_stop_modern') ? 'bus_stop_modern' : 'bus_stop', n.px - n.uz * o * sd, n.pz + n.ux * o * sd, Math.atan2(-n.uz, n.ux) + (sd > 0 ? Math.PI : 0), { cost: BLOCK, roadPad: 0 }); } }
+    for (const b of this.buildings) for (const e of b.entrances) if (R() < 0.35) { const o = b.toWorld(0, 0, 0), dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; this.put(R() < 0.5 ? 'bench_concrete' : 'bin_a', e.x + dx / d * 3 + (R() - 0.5) * 4, e.z + dz / d * 3, b.rot, { cost: 4, low: true, roadPad: 0.9 }); }
     for (let i = 0; i < 40; i++) { const x = (R() - 0.5) * (MAP_SIZE - 60), z = (R() - 0.5) * (MAP_SIZE - 60), idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && T.tyre && !this.inPlot(x, z)) this.putProp('tyre', x, z, R() * 6, 0); }
   }
   putProp(type, x, z, ry, cost) { Farmland.prototype.putProp.call(this, type, x, z, ry, cost); }
@@ -1049,7 +1122,7 @@ export class RealUrban extends City {
     // lawns: everything is lawn / verge, minus carriageways + pavements, building aprons, hard surfaces
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
     lx.globalCompositeOperation = 'destination-out'; lx.fillStyle = '#000'; lx.strokeStyle = '#000'; lx.lineCap = 'round'; lx.lineJoin = 'round';
-    for (const r of D.roads) { const sw = r.type === 'street' || r.type === 'paved' ? SIDEWALK + 0.6 : r.type === 'drive' ? 1.6 : 0.8; lx.lineWidth = (r.w + sw * 2) * k; path(lx, r.pts); lx.stroke(); }
+    for (const r of D.roads) { const sw = r.type === 'street' || r.type === 'paved' || r.type === 'drive' ? swOf(r) + 0.5 : 0.8; lx.lineWidth = (r.w + sw * 2) * k; path(lx, r.pts); lx.stroke(); }
     for (const b of this.buildings) { lx.save(); lx.translate(...P(b.x, b.z)); lx.rotate(-b.rot); lx.fillRect((-b.L / 2 - 1.3) * k, (-b.D / 2 - 1.3) * k, (b.L + 2.6) * k, (b.D + 2.6) * k); lx.restore(); }
     for (const [x, z, L, Dd, rot] of this.hallRects || []) { lx.save(); lx.translate(...P(x, z)); lx.rotate(-rot); lx.fillRect((-L / 2 - 3) * k, (-Dd / 2 - 3) * k, (L + 6) * k, (Dd + 6) * k); lx.restore(); }
     for (const a of D.areas) if (['parking', 'garages', 'industrial', 'construction', 'railway', 'landfill', 'platform', 'sand'].includes(a.t)) { path(lx, a.pts, true); lx.fill(); }

@@ -21,6 +21,8 @@ from shapely.ops import unary_union
 from shapely import affinity
 
 REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
+# storeys of the blocks OSM has no building:levels for (way id -> storeys), read off imagery shadows (see refine.py)
+LEVELS = {}
 MARGIN = 24
 CFG = {
     # Robotyne (Zaporizhzhia oblast): the village on the T-04-08 Orikhiv - Tokmak road, UA counter-offensive Jun-Aug 2023.
@@ -34,15 +36,18 @@ CFG = {
                                       [(130, -480), (300, -480), (430, -480), (440, -60), (130, -60)],  # fields / tree belt between Silska and the T-04-08
                                       [(324, -724), (724, -724), (724, 724), (586, 724), (483, 75), (458, -63)]],   # west of the T-04-08: open fields
                                 sparse=[([(300, -60), (520, -60), (600, 724), (300, 724)], 0.22), ([(-724, -95), (470, -95), (470, 22), (-724, 22)], 0.4)])),
-    # Avdiivka (Donetsk oblast): south-eastern edge of the town -- the eastern microdistricts, the stadium and garage
-    # cooperatives, the Yasynuvata - Avdiivka railway, the old town on vul. Soborna and the dachas / private sector
-    # facing the Promzona and Tsarska Okhota (the 2023-24 southern / eastern approach).
-    'avdiivka': dict(side='RU', lat=48.1289, lon=37.7519, size=1280, rot=0, files=['avdiivka_se.json'],
-                     # the old town east of the railway is only partly mapped house by house: infer the rest (urban plots, 18-24 m)
+    # Avdiivka (Donetsk oblast), v2 extent: the south-eastern microdistrict (five-storey khrushchyovkas and nine-storey
+    # panel blocks between vul. Vorobyova / Molodizhna / Hrushevskoho: schools No. 2 and 5, the Kazka children's home,
+    # kindergartens), the Khimik stadium, the garage cooperatives and the (disused since 2014) Yasynuvata railway, the
+    # private sector east of the line, and the open field south of vul. Vorobyova (the southern approach, 2023-24).
+    # Source: api.openstreetmap.org map.json tiles merged into osm/avdiivka_v2.json (2026-11).  Storeys missing in OSM
+    # were read off imagery shadows (LEVELS below); the private sector here is mapped house by house (no inferred plots
+    # west of the railway, only in the few unmapped street fronts east of it).
+    'avdiivka': dict(side='RU', lat=48.1294, lon=37.7479, size=1280, rot=0, files=['avdiivka_v2.json'], v2=True,
                      plots=dict(frontage=(18, 25), setback=(4, 7), depth=(30, 45), house=(9.5, 8), streets=('residential', 'living_street', 'unclassified', 'tertiary'),
-                                excl=[[(-664, -664), (-15, -664), (-15, 280), (-664, 280)],               # west of the railway: microdistricts
-                                      [(-664, 280), (60, 280), (60, 664), (-664, 664)]],                 # railway corridor + fields to the south-west
-                                sparse=[])),
+                                excl=[[(-664, -664), (300, -664), (300, 330), (-664, 330)],               # west of the railway: microdistricts, garages
+                                      [(-664, 330), (240, 330), (240, 664), (-664, 664)]],                 # the field south of Vorobyova
+                                sparse=[], only_gaps=True)),
 }
 
 def r1(v): return round(v, 1)
@@ -185,6 +190,8 @@ def run(name):
         if area < 4: continue
         try: lv = float(t.get('building:levels', '').split(';')[0]) if t.get('building:levels') else None
         except ValueError: lv = None
+        if lv is None and C.get('v2') and w['id'] in LEVELS: lv = float(LEVELS[w['id']])
+        if C.get('v2') and lv is not None and lv < 1: lv = 1.0
         cls = classify(t, area, lv)
         mr = poly.minimum_rotated_rectangle
         cs = list(mr.exterior.coords)
@@ -195,6 +202,7 @@ def run(name):
         rot = math.atan2(-ax[1], ax[0])          # Building.toWorld: local +X -> (cos rot, -sin rot)
         c = mr.centroid
         rec = dict(x=r1(c.x), z=r1(c.y), L=r1(L), D=r1(D), rot=round(rot, 4), cls=cls, a=round(area))
+        if C.get('v2'): rec['id'] = w['id']; rec['_poly'] = poly
         if lv: rec['lv'] = lv
         nm = t.get('name:uk') or t.get('name')
         if nm: rec['name'] = nm
@@ -232,7 +240,7 @@ def run(name):
         elif t.get('barrier') == 'hedge': typ = 'hedge'
         elif t.get('waterway') in ('stream', 'river', 'ditch', 'drain', 'canal'): typ = 'stream'
         elif t.get('railway') in ('rail', 'light_rail'): typ = 'rail_siding' if t.get('service') in ('siding', 'yard', 'spur') else 'rail'
-        elif t.get('railway') in ('disused', 'abandoned'): typ = 'rail_old'
+        elif t.get('railway') in ('disused', 'abandoned'): typ = 'rail' if C.get('v2') and t.get('usage') == 'main' and t.get('railway') == 'disused' else 'rail_old'
         elif t.get('railway') == 'platform': typ = 'platform'
         elif t.get('barrier') in ('wall', 'retaining_wall'): typ = 'wall'
         elif t.get('barrier') == 'fence': typ = 'fence'
@@ -305,6 +313,7 @@ def run(name):
                     dens = 0.93
                     for sp, d in sparse:
                         if sp.contains(Point(hx, hz)): dens = d
+                    if PL.get('only_gaps') and any(math.hypot(b['x'] - hx, b['z'] - hz) < 45 for b in out['buildings'] if b['cls'] in ('house', 'shed')): t += fr; continue
                     ok = abs(hx) < half - 6 and abs(hz) < half - 6 and not exP.intersects(hp) and not roadP.intersects(hp) and free(hp.buffer(2.5))
                     if ok and rnd.random() < dens:
                         dep = rnd.uniform(*PL['depth'])
@@ -337,6 +346,10 @@ def run(name):
             if exP.intersects(q.buffer(-3)) or roadP.intersects(q.buffer(-2)): continue
             out['plots'].append(dict(pts=[[r1(x), r1(z)] for x, z in list(q.exterior.coords)[:-1]], h=i, f=[r1(-nx), r1(-nz)]))
 
+    if C.get('v2'):
+        from refine import refine
+        refine(out, o, C)
+    for b in out['buildings']: b.pop('_poly', None)
     dst = os.path.join(REPO, 'src', 'world', 'real', f'{name}_osm.js')
     js = json.dumps(out, ensure_ascii=False, separators=(',', ':'))
     with open(dst, 'w') as f:
