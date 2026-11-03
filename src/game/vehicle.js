@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import * as Fallback from '../engine/fallback.js';
-import { VEHICLES, WEAPONS } from '../config.js';
+import { VEHICLES, WEAPONS, TUNING } from '../config.js';
 import { angDiff, Squad } from './squad.js';
 import { initArmor } from './armor.js';
 import { hasClip } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 import { SpgMixin } from './artillery.js';
+import { applyVehicleKits } from './vehicleKit.js';
 
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
@@ -72,6 +73,7 @@ export class Vehicle {
     if (kind === 'tank') this.cage = 0.55;
     else if (kind === 'btr' && !this.fallback && this.turret && Math.random() < 0.35) this.addCage();
     this.immob = {}; initArmor(this);
+    applyVehicleKits(this);   // campaign tech-tree upgrades (cope cage, ERA, ...) on vehicles spawned mid-battle; deployCampaign's are fitted in applyMods
     if (kind === 'spg') { this.spgInit(); if (this.crewList && this.def.crew > 3) this.crewList.push({ role: 'loader', hp: 100 }, { role: 'loader', hp: 100 }); this.crew = this.crewList?.length ?? 3; }
     this.thinkT = Math.random();
   }
@@ -280,6 +282,18 @@ export class Vehicle {
       }
     } else if (this.order?.facing != null && !this.immobile) { const err = angDiff(this.order.facing, this.heading); if (Math.abs(err) > 0.05) turn = THREE.MathUtils.clamp(err * 2, -1, 1) * (def.wheeled ? 0 : 1); }
     if (this.crew < 2) targetSpeed *= 0.5;
+    // an FPV drone coming for us (support.js sets droneThreat each frame it chases): a moving vehicle weaves at full speed,
+    // swapping lock every second or so, and in the drone's terminal dive breaks hard away from the side it comes in on
+    const th = this.droneThreat;
+    if (th && this.game.time - th.t < 0.3 && TUNING.droneEvade !== false && this.path && !this.immobile && !this.spgHold && this.crew >= 2 && !(this.reverseT > 0) && this.speed > 1.5) {
+      if (!this.evadeLog?.has(th.id)) { (this.evadeLog ||= new Set()).add(th.id); if (this.side === 'player') this.game.hud?.alert(`${this.name}: FPV drone inbound — evading`, 'bad'); }
+      this.evadeT = (this.evadeT || 0) + dt;
+      if (!(this.evadeT < this.evadeSw)) { this.evadeDir = -(this.evadeDir || 1); this.evadeSw = this.evadeT + 0.8 + Math.random() * 0.9; }
+      let dir = this.evadeDir;
+      if (th.phase === 'dive' && th.dist < 50) { const dx = th.x - this.pos.x, dz = th.z - this.pos.z, side = Math.cos(this.heading) * dx - Math.sin(this.heading) * dz; const away = side > 0 ? -1 : 1; dir = th.dist < 22 ? -away : away; }   // break away, then a late juke back the other way
+      turn = THREE.MathUtils.clamp(turn + dir * 0.9, -1, 1);
+      targetSpeed = Math.max(targetSpeed, def.speed * (def.wheeled ? 0.9 : 0.85));
+    } else if (this.evadeT) { this.evadeT = 0; this.evadeSw = 0; }
     // stuck recovery: back up with opposite lock for a moment, then replan
     if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, this.def.wheeled ? 'wheeled' : 'tracked'); }
     else if (this.path && !this.immobile && !this.spgHold) {
@@ -547,10 +561,11 @@ export class Vehicle {
   }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
-    if (!catastrophic && !this.abandoned) this.bailCrew(0.6); else this.abandoned = true;
+    const crewSurv = catastrophic ? 0 : 0.6;   // the crew's chance to get out; men in the troop compartment get the same (game.passengersOnKill)
+    if (!catastrophic && !this.abandoned) this.bailCrew(crewSurv); else this.abandoned = true;
     this.destroyed = true; this.target = null; this.path = null; this.speed = 0; this.burning = Math.max(this.burning, 0.01); this.bannerNote = null;
     const g = this.game;
-    if (this.passengers) g.bailOut(this, catastrophic ? 0.8 : 0.4);
+    if (this.passengers) g.passengersOnKill(this, crewSurv, catastrophic);
     g.onVehicleLost(this);
     this.showWreck();
     if (catastrophic && this.turret) {

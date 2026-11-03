@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { WEAPONS } from '../config.js';
 import { MAP } from '../world/city.js';
+import { trunkHit } from '../world/vegetation.js';
 
 // Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 3 drones).
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+const TUNING_EVADE_MISS = 0.3;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
 const UP = new THREE.Vector3(0, 1, 0);
 
 function evTime(g, clip, ev, def) { const man = g.assets.manifest.soldiers || {}, mc = man.soldier_anims?.clips || man.clips || {}; return mc[clip]?.events?.[ev] ?? def; }
@@ -276,6 +278,8 @@ export class AtgmTeam {
       const cx = m.pos.x + seg.x * k, cy = m.pos.y + seg.y * k, cz = m.pos.z + seg.z * k;
       if (Math.hypot(cx - tp.x, cz - tp.z) < Math.max(1.8, m.t.def.width * 0.55) && cy < m.t.def.height + 0.4) { hitT = true; next.set(cx, cy, cz); } }
     if (occ && !occ.foliage && !occ.smokeUntil && m.age > 0.15) return this.detonate(next, null, occ);
+    { const th = m.age > 0.1 ? trunkHit(m.pos.x, m.pos.y, m.pos.z, next.x, next.y, next.z, 0) : null;   // a tree trunk in the way: the warhead goes off on it
+      if (th && !(hitT && m.pos.distanceTo(next) < Math.hypot(th.x - m.pos.x, th.y - m.pos.y, th.z - m.pos.z))) { g.combat.trunkBursts = (g.combat.trunkBursts || 0) + 1; return this.detonate(next.set(th.x, th.y, th.z), null); } }
     if (hitT) return this.detonate(next, m.t);
     if (next.y < 0.05 || m.age > 12) return this.detonate(next.setY(Math.max(0.1, next.y)), null);
     m.pos.copy(next); m.mesh.position.copy(m.pos); m.mesh.lookAt(m.pos.clone().add(m.dir));
@@ -318,7 +322,9 @@ export class FpvTeam {
     for (const u of g.enemiesOf(sq.side)) {
       if (u.destroyed || !g.seen(sq.side, u, from)) continue;
       const c = u.type === 'vehicle' ? u.pos : u.center(); const d = c.distanceTo(from); if (d > this.W.range || d < 30) continue;
-      if (u.type === 'squad' && (u.mounted || u.building)) continue;
+      // squads in panel blocks are out of reach; men at the windows of a cottage are not (fly it in through the window) -
+      // unless they are down in the cellar
+      if (u.type === 'squad' && (u.mounted || (u.building && !(u.building.house && u.effective.some(m => m.inBuilding && !m.cellar && !m.cellarMove))))) continue;
       const taken = g.squads.some(o => o !== sq && o.side === sq.side && (o.support?.missile?.t === u || o.support?.drone?.target === u));
       const sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) : 60 + u.effective.length * 8) - d * 0.08;
       if (sc > bs) { bs = sc; best = u; }
@@ -345,7 +351,9 @@ export class FpvTeam {
       const lx = lo[0], lz = lo[1];
       return new THREE.Vector3(t.pos.x + lx * c + lz * s, t.def.height + 0.1, t.pos.z - lx * s + lz * c);
     }
-    const men = t.effective.filter(m => !m.inside); const m = men[Math.floor(Math.random() * men.length)] || t.effective[0];
+    const men = t.effective.filter(m => !m.inside && !m.cellar), win = !men.length && t.building?.house ? t.effective.filter(m => m.inBuilding && !m.cellar) : null;
+    if (win?.length) { const m = win[Math.floor(Math.random() * win.length)]; this.drone.man = m; return this.g.combat.windowPoint(m, new THREE.Vector3(), 1.2); }   // in through his window
+    const m = men[Math.floor(Math.random() * men.length)] || t.effective[0];
     this.drone.man = m; return m ? m.pos.clone().setY(0.9) : t.center().setY(0.9);
   }
   flyDrone(dt) {
@@ -371,7 +379,7 @@ export class FpvTeam {
       const tc = tgt.type === 'vehicle' ? tgt.pos : (d.man?.effective ? d.man.pos : tgt.center());
       const hd = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z);
       // terminal attack: a steep dive (roof / engine deck), only once the drone can see down onto the target
-      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < (tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? 0.2 : 0.08) : 0.12) / (1 + (M[sd]?.fpvHit || 0)) || Math.random() < (M[od]?.ewJam || 0); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
+      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? 0.2 : 0.08) : 0.12) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || Math.random() < (M[od]?.ewJam || 0); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
       if (d.phase === 'climb') { want = tmpA.set(0, 9, 0); if (d.pos.y > Math.min(d.alt, 16)) d.phase = 'cruise'; }
       else if (d.phase === 'cruise') { // fly level at altitude; climb over anything tall in the way
         const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1, vy = THREE.MathUtils.clamp((d.alt - d.pos.y) * 1.2, -5, 9);
@@ -381,11 +389,15 @@ export class FpvTeam {
         const sp = d.pos.y < d.alt - 6 ? 12 : 30; want = tmpA.set((tc.x - d.pos.x) / h * sp, vy, (tc.z - d.pos.z) / h * sp);
       }
       else { // terminal dive, tracking the target
-        if (tgt.type === 'vehicle' && !d.miss) { const p = this.aimPoint(tgt); d.aim.lerp(p, 0.04); }
-        else if (d.man?.effective && !d.miss && !d.dodged) d.aim.set(d.man.pos.x, 0.9, d.man.pos.z);
+        // vehicles: the pilot leads a moving hull (aims where it will be when he arrives) and corrects at a rate that doesn't
+        // depend on the frame rate; a driver who jinks in the last second leaves him aiming at empty road (vehicle.drive evade)
+        if (tgt.type === 'vehicle' && !d.miss) { const p = this.aimPoint(tgt), tgo = Math.min(1.5, d.pos.distanceTo(p) / 34), sp = tgt.speed || 0; p.x += Math.sin(tgt.heading) * sp * tgo * 0.8; p.z += Math.cos(tgt.heading) * sp * tgo * 0.8; d.aim.lerp(p, 1 - Math.exp(-dt * 4)); }
+        else if (d.man?.effective && !d.man.inBuilding && !d.miss && !d.dodged) d.aim.set(d.man.pos.x, 0.9, d.man.pos.z);
         want = tmpA.subVectors(d.aim, d.pos).normalize().multiplyScalar(34);
       }
       d.vel.lerp(want, Math.min(1, dt * 2.5));
+      // the targeted vehicle's crew sees / hears it coming: vehicle.drive() weaves and breaks away while this is fresh
+      if (tgt.type === 'vehicle' && (d.phase === 'dive' || (d.phase === 'cruise' && Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) < 160))) tgt.droneThreat = { t: g.time, phase: d.phase, x: d.pos.x, z: d.pos.z, dist: d.pos.distanceTo(tc), id: d };
       this.reactions(d, dt);
       if (d.phase === 'fall') return this.moveDrone(d, dt);
     }
@@ -432,6 +444,7 @@ export class FpvTeam {
     const g = this.g; this.drone = null; this.scanT = 45 + Math.random() * 25;
     g.scene.remove(d.mesh); d.snd?.stop();
     const t = d.target;
+    if (t.type === 'vehicle') (g.fpvLog ||= []).push({ hit: d.phase === 'dive' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7, miss: !!d.miss, moving: Math.abs(t.speed || 0) > 2, evaded: !!t.evadeLog?.has(d), d: +at.distanceTo(t.pos).toFixed(1), phase: d.phase });
     (g.supportLog ||= []).push(`${Math.round(g.time)} ${this.sq.side[0]} FPV ${d.phase} y${at.y.toFixed(1)} d${Math.round(at.distanceTo(t.type === 'vehicle' ? t.pos : t.center()))} ${t.type === 'vehicle' ? t.kind : 'inf'}${d.miss ? ' miss' : ''}${d.dodged ? ' dodged' : ''}${t.cage ? ' cage' : ''}`);
     if (d.phase === 'dive' && t.type === 'vehicle' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7) {
       const from = at.clone().addScaledVector(d.vel.clone().normalize(), -4);

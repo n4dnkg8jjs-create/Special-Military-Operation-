@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { vegetationLOS } from '../world/vegetation.js';
+import { vegetationLOS, vegetationTrunks } from '../world/vegetation.js';
 import { deployCampaign } from './campaignBattle.js';
 import { hostBattle, clientBattle, clientFrame } from '../net/battle.js';
 import { Renderer } from '../engine/renderer.js';
@@ -13,8 +13,11 @@ import { Audio } from '../audio/sfx.js';
 import { Squad } from './squad.js';
 import { Vehicle } from './vehicle.js';
 import { Combat } from './combat.js';
+import { CQB } from './cqb.js';
+import { buildHouses } from '../world/houses.js';
 import { prepareSoldierAssets } from './soldier.js';
 import { Commander, AutoDefender } from './ai.js';
+import { setupMedevac } from './medevac.js';
 import { FACTIONS, TUNING } from '../config.js';
 
 const Q = new URLSearchParams(location.search);
@@ -53,10 +56,11 @@ export class Game {
     if (MAP.fog && this.scene.fog) this.scene.fog.density = MAP.fog;
     try { this.city.build(); } finally { this.genRandom = Math.random; }
     this.nav = this.city.nav; this.nav.roadDist?.();   // road-centre distance field for vehicle routing, built once up front
-    this.vegOcc = vegetationLOS(this.nav);
+    this.vegOcc = vegetationLOS(this.nav); this.trunkN = vegetationTrunks();   // tree trunks stop rounds (combat.js)
+    this.houses = buildHouses(this);   // private houses: garrisonable, with a cellar (world/houses.js)
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
-    this.combat = new Combat(this);
+    this.combat = new Combat(this); this.cqb = new CQB(this);   // building clearing (game/cqb.js)
     this.cam = new RTSCamera(this.renderer.camera, canvas, BOUNDS);
     prepareSoldierAssets(this.assets);
     this.objectives = OBJECTIVES.map(o => ({ ...o, control: 0, owner: 'neutral', lostT: 0, contested: false, captured: false }));
@@ -64,6 +68,7 @@ export class Game {
     this.objectiveMarkers();
     this.zoneMarkers();
     this.deploy();
+    this.medevac = setupMedevac(this);   // casualty-evacuation pickup + medics for both sides (game/medevac.js)
     const net = this.opts.net;
     this.commander = net ? { update() {}, begin() {}, adoptCrew() {}, plan: [], waveI: 0 } : new Commander(this);   // versus: the other side is a human
     if (net) this.reinforced = true;   // no scripted reinforcements in versus
@@ -166,6 +171,8 @@ export class Game {
     this.hud?.alert('Reinforcements arriving from the south', 'good'); this.sfx('radio');
     this.hud?.rebuildCards();
   }
+  // panel blocks + private houses (anything a squad can garrison / storm)
+  allBuildings() { return this.houses?.list.length ? (this._allB ||= [...this.city.buildings, ...this.houses.list]) : this.city.buildings; }
   unitsOf(side) { return [...this.squads.filter(s => s.side === side && !s.destroyed), ...this.vehicles.filter(v => v.side === side && !v.destroyed)]; }
   enemiesOf(side) { const o = side === 'player' ? 'enemy' : 'player'; return this.unitsOf(o); }
   rallyPoint(side) { const p = side === 'player' ? SPAWNS.defender : SPAWNS.attacker; const c = p[Math.floor(Math.random() * p.length)]; return [c[0], c[1] + (side === 'player' ? -15 : 15)]; }
@@ -229,9 +236,30 @@ export class Game {
     if (sq.side === 'player') this.hud?.alert(`${sq.name} bailed out of burning ${v.name}`, 'bad');
     sq.addMorale(-15);
   }
+  // the vehicle is knocked out with the squad aboard. Men inside (BMP / BTR / Bradley troop compartment) get out exactly as
+  // often as the crew does (crewSurvival: the same roll vehicle.bailCrew uses; 0 when it brews up / the ammo goes); the
+  // rest stay in the wreck. Riders on the deck are thrown or jump clear: they mostly survive the kill itself — the price
+  // of riding on top is being in the open to small arms and fragments the whole way (combat.js hitChance / explode).
+  passengersOnKill(v, crewSurvival, catastrophic, owner = null) {
+    const sq = v.passengers; if (!sq) return;
+    const R = TUNING.riderKillSurvival || { normal: 0.85, catastrophic: 0.65 };
+    const fate = new Map();
+    for (const s of sq.soldiers) if (s.aboard && s.effective) fate.set(s, s.inside === 'ride' ? (Math.random() < (catastrophic ? R.catastrophic : R.normal) ? 'ok' : 'hurt') : (Math.random() < crewSurvival ? 'out' : 'lost'));
+    (this.vkLog ||= []).push({ v: v.kind, cat: catastrophic, inside: [...fate.values()].filter(f => f === 'out' || f === 'lost').length, out: [...fate.values()].filter(f => f === 'out').length, ride: [...fate.values()].filter(f => f === 'ok' || f === 'hurt').length, rideOk: [...fate.values()].filter(f => f === 'ok').length });
+    sq.dismount(v.heading + Math.PI);
+    for (const [s, f] of fate) {
+      if (f === 'lost') {   // killed in the troop compartment: the body stays in the wreck
+        s.dmWait = null; s.die(null, { blast: true }); s.inside = 'btr'; s.lostInVeh = true; this.onDeath(s, owner, false);
+      } else if (f === 'hurt') this.combat.hitSoldier(s, { dmg: [40, 150], type: 'blast' }, v.pos, true, owner);
+      else if (f === 'out' && Math.random() < 0.3) { s.hp -= 25 + Math.random() * 25; if (s.state === 'ok' && s.hp < 55) s.state = 'light'; }   // burns, concussion
+    }
+    if (sq.side === 'player') this.hud?.alert(`${sq.name}: ${[...fate.values()].filter(f => f === 'lost').length ? 'men lost in' : 'got out of'} the burning ${v.name}`, 'bad');
+    sq.addMorale(-15);
+  }
   passengerCasualties(v, p, owner) {
     const sq = v.passengers; if (!sq) return;
-    for (const s of sq.soldiers) if (s.aboard && s.effective && Math.random() < p * (s.inside === 'ride' ? 1.4 : 1)) {
+    // a hit in the troop compartment: the men inside take the spall / blast; riders on the deck above only the odd fragment
+    for (const s of sq.soldiers) if (s.aboard && s.effective && Math.random() < p * (s.inside === 'ride' ? 0.5 : 1)) {
       s.hp -= 40 + Math.random() * 120;
       if (s.hp <= -20) { s.die(); this.onDeath(s, owner, false); } else if (s.hp <= 0) { s.state = 'critical'; s.bleed = 120; sq.onCasualty(s, false); this.stats[sq.side].wia++; }
     }
@@ -286,7 +314,10 @@ export class Game {
     }
     for (const u of this.unitsOf(other)) {
       const ca = this.city.concealAt;
-      const pts = u.type === 'vehicle' ? [[u.pos.x, (u.pos.y || 0) + 1.6, u.pos.z, null, ca ? Math.max(0.8, ca.call(this.city, u.pos.x, u.pos.z)) : 1]] : u.effective.filter(s => s.inside !== 'btr').slice(0, 4).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null, (ca && !s.inBuilding && !s.aboard ? ca.call(this.city, s.pos.x, s.pos.z) : 1) * (s.stance === 'prone' ? 0.75 : s.stance === 'crouch' ? 0.9 : 1)]);
+      // every man counts (it used to be the first 4 only: a squad whose first four were behind a wall vanished with
+      // the rest standing in the open); big squads: 8 per tick, rotating
+      const men = u.type === 'vehicle' ? null : u.effective.filter(s => s.inside !== 'btr' && !s.cellar), mo = men && men.length > 8 ? ((this.spotRot = (this.spotRot || 0) + 1) % men.length) : 0;
+      const pts = u.type === 'vehicle' ? [[u.pos.x, (u.pos.y || 0) + 1.6, u.pos.z, null, ca ? Math.max(0.8, ca.call(this.city, u.pos.x, u.pos.z)) : 1]] : (men.length > 8 ? men.slice(mo).concat(men.slice(0, mo)).slice(0, 8) : men).map(s => [s.pos.x, s.pos.y + s.headHeight(), s.pos.z, s.inBuilding ? u.building : null, (ca && !s.inBuilding && !s.aboard ? ca.call(this.city, s.pos.x, s.pos.z) : 1) * (s.stance === 'prone' ? 0.75 : s.stance === 'crouch' ? 0.9 : 1)]);
       // detection is a meter, not a switch: it fills faster for close, moving or firing targets, needs line
       // of sight, falls off with distance and concealment, and drains when nobody is looking
       let seen = false, best = 0;
@@ -307,16 +338,34 @@ export class Game {
         if (best >= 9) break;
       }
       u.detect ||= {}; const dm = u.detect[side] || 0;
-      u.detect[side] = best > 0 ? Math.min(1.6, dm + best * 0.5 * (0.6 + Math.random() * 0.8)) : Math.max(0, dm - 0.35);
+      // drain: slower for a target that was being tracked (the meter no longer bounces across the threshold)
+      u.detect[side] = best > 0 ? Math.min(1.6, dm + best * 0.5 * (0.6 + Math.random() * 0.8)) : Math.max(0, dm - (tracked ? 0.2 : 0.35));
       seen = u.detect[side] >= 1;
       u.seenBy ||= {};
       if (seen) u.seenBy[side] = this.time;
-      if (side === 'player') { u.spotted = u.seenBy.player != null && this.time - u.seenBy.player < 3; if (u.type === 'squad') for (const s of u.soldiers) s.visible = u.spotted || s.state === 'dead'; }
+      if (side === 'player') {
+        // hysteresis: once spotted a unit stays shown until the meter has really drained (or 3 s after the last sighting),
+        // then it leaves a fading last-known-position marker instead of just popping out of existence
+        const was = !!u.spotted;
+        u.spotted = (u.seenBy.player != null && this.time - u.seenBy.player < 3) || (was && u.detect.player > 0.25);
+        if (was && !u.spotted && !u.destroyed) this.lastKnown(u); else if (u.spotted && u.lkm) this.dropLastKnown(u);
+        if (u.type === 'squad') for (const s of u.soldiers) s.visible = (u.spotted && !s.cellar) || s.state === 'dead';
+      }
     }
   }
+  // last-known-position marker: a red ring where an enemy unit was last seen, fading over ~12 s
+  lastKnown(u) {
+    if (this.noRender && !this.renderer) return;
+    const p = u.type === 'vehicle' ? u.pos : u.center(), r = u.type === 'vehicle' ? 4 : 3.2;
+    let m = u.lkm; if (!m) { m = new THREE.Mesh(this._lkG ||= new THREE.RingGeometry(0.82, 1, 40), new THREE.MeshBasicMaterial({ color: 0xc8483a, transparent: true, opacity: 0.55, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.renderOrder = 4; this.scene.add(m); u.lkm = m; (this.lkms ||= new Set()).add(u); }
+    m.scale.setScalar(r); m.position.set(p.x, (this.city.groundHeight?.(p.x, p.z) || 0) + 0.25, p.z); m.userData.t0 = this.time; m.visible = true;
+  }
+  dropLastKnown(u) { if (!u.lkm) return; this.scene.remove(u.lkm); u.lkm.material.dispose(); u.lkm = null; this.lkms?.delete(u); }
+  updateLastKnown() { if (this.lkms) for (const u of [...this.lkms]) { const a = (this.time - u.lkm.userData.t0) / 12; if (a >= 1 || u.destroyed) this.dropLastKnown(u); else u.lkm.material.opacity = 0.55 * (1 - a); } }
   updateSpotting() {
+    this.updateLastKnown();
     this.spotFor('player'); this.spotFor('enemy');
-    for (const sq of this.squads) if (sq.side === 'player') for (const s of sq.soldiers) s.visible = true;
+    for (const sq of this.squads) if (sq.side === 'player') for (const s of sq.soldiers) s.visible = !s.cellar;   // (men down in a cellar: not drawn)
   }
   // can `side` currently engage unit u (spotted recently or very close)?
   seen(side, u, from) { if (u.seenBy?.[side] != null && this.time - u.seenBy[side] < 4) return true; if (!from) return false; const p = u.type === 'vehicle' ? u.pos : (u._c ||= new THREE.Vector3()) && u.center(u._c); return Math.hypot(from.x - p.x, from.z - p.z) < 35; }
@@ -334,10 +383,10 @@ export class Game {
     for (const o of this.objectives) {
       let p = 0, e = 0;
       for (const sq of this.squads) {
-        if (sq.mounted || sq.routing || sq.destroyed) continue;
+        if (sq.mounted || sq.routing || sq.destroyed || sq.noncombat) continue;
         for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr' && Math.hypot(s.pos.x - o.x, s.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (sq.side === 'player') p++; else e++; }
       }
-      for (const v of this.vehicles) if (!v.destroyed && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (v.side === 'player') p += 1.5; else e += 1.5; }
+      for (const v of this.vehicles) if (!v.destroyed && !v.noncombat && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (v.side === 'player') p += 1.5; else e += 1.5; }
       o.contested = p > 0 && e > 0; o.p = p; o.e = e;
       const rate = TUNING.captureRate;
       if (e > 0 && p === 0) o.control -= rate * Math.min(6, e) * dt;
@@ -380,8 +429,8 @@ export class Game {
   // fighting units left: squads with an effective man, vehicles still crewed (an abandoned hull doesn't count)
   armyLeft(side) {
     let n = 0;
-    for (const s of this.squads) if (s.side === side && !s.destroyed) n++;
-    for (const v of this.vehicles) if (v.side === side && !v.destroyed && !v.abandoned && v.crew > 0) n++;
+    for (const s of this.squads) if (s.side === side && !s.destroyed && !s.noncombat) n++;   // (medevac crews / trucks don't count)
+    for (const v of this.vehicles) if (v.side === side && !v.destroyed && !v.abandoned && v.crew > 0 && !v.noncombat) n++;
     return n;
   }
   // ---------------------------------------------------------------- loop
@@ -411,6 +460,9 @@ export class Game {
     for (const sq of this.squads) for (const s of sq.soldiers) {
       sph.center.set(s.pos.x, s.pos.y + 0.9, s.pos.z);
       s.inView = this._frustum.intersectsSphere(sph);
+      // apply it here every frame: sync() only runs inside update(), so while paused / after the end a man culled
+      // off-screen stayed invisible when the camera panned onto him ('units turn invisible')
+      s.root.visible = s.visible && s.inside !== 'btr' && (s.state !== 'evac' || !!s.onBed) && s.inView;   // onBed: casualty lying on the medevac pickup
       const near = Math.hypot(s.pos.x - f.x, s.pos.z - f.z) < 70 + this.cam.dist * 0.3;
       if (near !== s.shadowOn) { s.shadowOn = near; s.root.traverse(o => { if (o.isMesh) o.castShadow = near; }); }
     }
@@ -430,9 +482,9 @@ export class Game {
   }
   frame(dt) {
     this.supT = (this.supT || 0) - dt; if (this.supT <= 0) { this.supT = 0.5; this.supportEmitters(); }
-    this.cullSoldiers();
     this.update(dt);
     this.cam.update(Math.min(dt, 0.05));
+    this.cullSoldiers();   // after the camera moved (was before update: a frame late, and nothing re-applied it while paused)
     this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); if (this.city.windUniform) this.city.windUniform.value += dt; this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
     const cp = this.renderer.camera.position; updateLods(cp);
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);

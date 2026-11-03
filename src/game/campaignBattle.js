@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { MAP, DEPLOY_ZONES, OBJECTIVES } from '../world/city.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
 import { xpLevel } from '../campaign/state.js';
+import { applyVehicleKits } from './vehicleKit.js';
 
 const ROLES = { mech: SQUAD_ROLES, imech: SQUAD_ROLES, assault: ASSAULT_ROLES, atgm: ATGM_ROLES, fpv: FPV_ROLES };
 
@@ -82,6 +83,7 @@ export function applyMods(game, M, side) {
   }
   for (const v of game.vehicles) {
     if (v.side !== side) continue;
+    applyVehicleKits(v);   // vehicle upgrades from the campaign tech tree (M.kits): kit meshes + effects
     if (M.copeCage) v.cage = Math.min(0.9, (v.cage || 0) + M.copeCage);
     if (v.kind === 'spg' && M.artyAmmo) v.weapons[0].ammo = Math.round(v.weapons[0].ammo * (1 + M.artyAmmo));
   }
@@ -91,11 +93,18 @@ export function applyMods(game, M, side) {
 // what happened to each persistent unit
 export function collectResult(game, side = 'player') {
   const C = game.campaign, os = side === 'player' ? 'enemy' : 'player', P = game.stats[side], E = game.stats[os], units = {};
-  const rec = uid => (units[uid] ||= { uid, alive: 0, wounded: 0, kills: 0, vehLost: false, vehHp: 1 });
+  const rec = uid => (units[uid] ||= { uid, alive: 0, wounded: 0, saved: 0, diedOfWounds: 0, kills: 0, vehLost: false, vehHp: 1 });
+  // wounded still lying out on the field at the end (never evacuated) may not make it: more of them when the ground is lost;
+  // men evacuated (state 'evac': by their carrier or the medevac pickup, game/medevac.js -> soldier.saved) all come back
+  const won = side === 'player' ? !!game.result?.win : !game.result?.win, dow = s => s.state === 'critical' ? (won ? 0.25 : 0.6) : s.state === 'stable' ? (won ? 0.05 : 0.3) : 0;
   for (const sq of game.squads) {
     if (sq.side !== side || sq.rec == null) continue;
     const u = rec(sq.rec);
-    for (const s of sq.soldiers) { if (s.state === 'dead') continue; if (s.state === 'critical' || s.state === 'stable' || s.state === 'evac') u.wounded++; else u.alive++; }
+    for (const s of sq.soldiers) {
+      if (s.state === 'dead') continue;
+      if (s.state === 'critical' || s.state === 'stable' || s.state === 'evac') { if (s.state !== 'evac' && Math.random() < dow(s)) { u.diedOfWounds++; continue; } u.wounded++; if (s.saved || s.onBed) u.saved++; }
+      else u.alive++;
+    }
     u.kills += Math.round(sq.stats.kills || 0);
   }
   for (const v of game.vehicles) {

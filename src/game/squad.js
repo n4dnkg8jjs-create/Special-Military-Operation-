@@ -234,6 +234,8 @@ export class Squad {
     this.leaveTrench();
     if (!this.building) return;
     const b = this.building;
+    for (const s of this.soldiers) if (s.cellar || s.cellarMove) { const h = (s.cellar || s.cellarMove.house).cellar.hatch; s.cellar = null; s.cellarMove = null; if (!s.slotRef || !s.inBuilding) s.pos.set(h.x, h.y, h.z); }
+    this.inCellar = false;
     for (const s of this.soldiers) if (s.slotRef) {
       s.slotRef.occupant = null; s.slotRef = null;
       if (s.inBuilding) { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); s.inside = null; }
@@ -402,6 +404,48 @@ export class Squad {
     this.focus = target;
   }
   halt() { this.leaveTrench(); this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
+  // ------------------------------------------------------------ cellar (private houses, world/houses.js)
+  // the men at the windows climb down the hatch: no firing, nothing seen, shells and drones barely reach them; up again to fight
+  toCellar() {
+    const b = this.building; if (!b?.cellar) return false;
+    let n = 0;
+    for (const s of this.effective) if (s.inBuilding && s.bld === b && !s.cellar && !s.cellarMove) { const h = b.cellar.hatch; s.cellarMove = { t: -Math.random() * 0.8, T: 0.9 + s.pos.distanceTo(h) / 2.2, a: s.pos.clone(), b: h.clone(), down: true, house: b }; s.target = null; n++; }
+    if (n) { this.inCellar = true; if (this.side === 'player') this.game.hud?.alert(`${this.name}: down into the cellar`); }
+    return n > 0;
+  }
+  fromCellar() {
+    let n = 0;
+    for (const s of this.soldiers) {
+      if (!s.cellar || !s.effective) continue;
+      const b = s.cellar, h = b.cellar.hatch; s.cellar = null; s.pos.set(h.x, h.y, h.z);
+      const sl = s.inBuilding ? s.inside : null; const to = sl ? b.slotPos(sl, new THREE.Vector3()) : h.clone();
+      s.cellarMove = { t: -Math.random() * 0.6, T: 0.7 + h.distanceTo(to) / 2.2, a: h.clone(), b: to, down: false, house: b }; n++;
+    }
+    this.inCellar = false; if (n && this.side === 'player') this.game.hud?.alert(`${this.name}: up from the cellar, back at the windows`);
+    return n > 0;
+  }
+  toggleCellar() { if (!this.building?.house) return false; return this.soldiers.some(s => s.cellar || s.cellarMove?.down) ? this.fromCellar() : this.toCellar(); }
+  cellarStep(s, dt) {
+    const M = s.cellarMove; M.t += dt; const k = Math.max(0, Math.min(1, M.t / M.T));
+    s.pos.lerpVectors(M.a, M.b, k); s.stance = 'crouch';
+    s.vel.subVectors(M.b, M.a).setY(0); const L = s.vel.length(); if (L > 0.01 && k > 0 && k < 1) s.vel.multiplyScalar(1.6 / L); else s.vel.set(0, 0, 0);
+    if (k >= 1) {
+      s.cellarMove = null; s.vel.set(0, 0, 0);
+      if (M.down) { s.cellar = M.house; s.pos.set(M.b.x, M.house.cellar.y, M.b.z); }
+      else if (s.inBuilding) { const o = s.bld.outward(s.inside.panel); s.heading = Math.atan2(o.x, o.z); }
+    }
+  }
+  // computer-run squads in a house: into the cellar under shelling / a drone overhead, back up when infantry closes in
+  cellarThink() {
+    const g = this.game, b = this.building, c = b.cellar.hatch;
+    if (this.side === 'player' || g.opts.net) return;
+    const shelled = g.time - (b.shelledT ?? -99) < 10;
+    let drone = false; for (const q of g.squads) { const d = q.support?.drone; if (d && q.side !== this.side && d.phase !== 'launch' && Math.hypot(d.pos.x - c.x, d.pos.z - c.z) < 90) { drone = true; break; } }
+    let foe = 1e9; for (const q of g.squads) if (q.side !== this.side && !q.destroyed && !q.mounted) for (const s of q.effective) foe = Math.min(foe, Math.hypot(s.pos.x - c.x, s.pos.z - c.z));
+    const down = this.soldiers.some(s => s.cellar || s.cellarMove?.down);
+    if (!down && (shelled || drone) && foe > 55) this.toCellar();
+    else if (down && (foe < 45 || (!shelled && !drone && g.time - (b.shelledT ?? -99) > 18))) this.fromCellar();
+  }
   // ------------------------------------------------------------ morale
   addMorale(d, why) { if (this.destroyed) return; this.morale = THREE.MathUtils.clamp(this.morale + d, 0, 100); }
   onCasualty(s, killed) {
@@ -416,7 +460,7 @@ export class Squad {
     let supp = 0; for (const s of e) supp += s.suppression; supp /= e.length;
     this.underFireT += dt;
     let d = 0;
-    d -= supp * 0.035;
+    d -= supp * TUNING.moraleSuppDrain;
     if (this.ammoFrac() < 0.15) d -= 0.6;
     if (this.flankDirs.length >= 2) { const a = this.flankDirs; let spread = 0; for (let i = 1; i < a.length; i++) { let x = Math.abs(a[i] - a[0]) % (Math.PI * 2); if (x > Math.PI) x = Math.PI * 2 - x; spread = Math.max(spread, x); } if (spread > 1.6) d -= 0.9; }
     this.flankDirs.length = 0;
@@ -436,7 +480,16 @@ export class Squad {
     // local odds
     if (e.length <= 3) d -= 0.5;
     this.morale = THREE.MathUtils.clamp(this.morale + d * dt, 0, 100);
-    if (!this.routing && this.morale < TUNING.routThreshold) this.startRout();
+    // breaking point: a rout check every few seconds rather than an automatic rout - a leader on his feet, walls / a trench
+    // around them and experience let a shaken squad hang on (morale nudged back above the line) instead of running
+    if (!this.routing && this.morale < TUNING.routThreshold) {
+      if ((this.routCheckT = (this.routCheckT || 0) - dt) <= 0) {
+        this.routCheckT = 3;
+        const hold = TUNING.routHold.base + (this.leader?.role.leader && this.leader.effective ? TUNING.routHold.leader : 0) + (this.building || this.trench ? TUNING.routHold.cover : 0) + (this.vet || 0) * 0.04;
+        if (Math.random() < hold) { this.morale = TUNING.routThreshold + 5; this.routHeld = (this.routHeld || 0) + 1; }
+        else this.startRout();
+      }
+    }
     else if (this.routing && this.morale > 42 && this.underFireT > 8) { this.routing = false; this.order = null; this.morale = 45; if (this.side === 'player') this.game.hud?.alert(`${this.name} has rallied`, 'good'); }
   }
   startRout() {
@@ -451,6 +504,7 @@ export class Squad {
   }
   // ------------------------------------------------------------ per-frame
   update(dt) {
+    if (this.medevac) return this.medevac.updateCrew(dt);   // medevac pickup crew: driven by its truck (game/medevac.js)
     this.support?.update(dt);
     if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
     this.updateMorale(dt);
@@ -458,6 +512,8 @@ export class Squad {
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
     if (this.order?.type === 'clear') this.clearTick(dt);
+    if (this.order?.type === 'storm') this.game.cqb?.tick(this, dt);   // room-by-room clearing (cqb.js)
+    else if (this.order?.type !== 'garrison' && this.soldiers.some(s => s.cqb && s.effective)) this.game.cqb?.exitAll(this);   // order changed mid-clearing: out by the door
     for (const s of this.soldiers) this.updateSoldier(s, dt);
     this.resupplyTick(dt);
   }
@@ -520,7 +576,7 @@ export class Squad {
     // pending wounded -> assign a buddy to drag them to cover / the carrier
     if (!this.routing) for (const w of this.soldiers) {
       if (w.state !== 'critical' || w.dragger) continue;
-      const helpers = this.effective.filter(s => !s.dragging && !s.inside);
+      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)));   // (not the men clearing a building)
       if (!helpers.length) break;
       helpers.sort((a, b) => (b.role.medic ? 20 : 0) - (a.role.medic ? 20 : 0) + a.pos.distanceTo(w.pos) - b.pos.distanceTo(w.pos));
       const h = helpers[0]; if (h.pos.distanceTo(w.pos) > 60) continue;
@@ -550,6 +606,7 @@ export class Squad {
       }
     }
     if (this.trench) this.trenchThink();
+    if (this.building?.cellar) this.cellarThink();
   }
   // individual initiative: a man caught in the open while his squad is halted and taking fire scrambles to the
   // nearest real cover against his target (a few metres, never far from where he was ordered)
@@ -620,7 +677,7 @@ export class Squad {
       }
     }
     // still aboard although the squad is not mounted and nobody is getting him off (should not happen): off he gets
-    if (s.aboard && s.state !== 'evac' && !this.mounted && s.hatchWait == null && s.dmWait == null) {
+    if (s.aboard && s.state !== 'evac' && !s.lostInVeh && !this.mounted && s.hatchWait == null && s.dmWait == null) {
       const v = this.carrier; if (v) { s.dmVeh = v; s.dmKind = s.inside === 'ride' && s.seat ? 'jump' : 'door'; s.dmI = this.soldiers.indexOf(s); this.exitCarrier(s); } else { s.inside = null; s.seat = null; }
     }
     // jumping off the carrier: the root stays on the landing point (the clip carries him there); the seat-match offset fades out
@@ -650,11 +707,15 @@ export class Squad {
     // dragging logic (medic / buddy)
     if (s.dragging) this.dragStep(s, dt);
     // garrison: entering the building through the entrance
-    if (s.slotRef && !s.inside && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {
+    if (s.slotRef && !s.inside && !s.cqb && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2 && g.cqb) { s.path = null; s.goal = null; g.cqb.entryWalk(this, s, s.slotRef.panel.b, s.slotRef); }   // in by the door, then walks (up the stairs) to his window
+    if (s.slotRef && !s.inside && !s.cqb && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {
       s.inside = s.slotRef; s.path = null; s.goal = null;
       const bb = s.slotRef.panel.b; bb.slotPos(s.slotRef, s.pos); s.heading = Math.atan2(bb.outward(s.slotRef.panel).x, bb.outward(s.slotRef.panel).z);
     }
-    if (s.inBuilding) {
+    if (s.cqb) g.cqb.step(this, s, dt);                 // inside, clearing rooms / walking to a window (cqb.js)
+    else if (s.cellarMove) this.cellarStep(s, dt);      // climbing down to / up from the cellar
+    else if (s.cellar) s.vel.set(0, 0, 0);
+    else if (s.inBuilding) {
       // panel destroyed under him -> he falls back inside but keeps fighting; if the floor is gone he drops
       if (s.inside.panel.state === 3 && s.inside.panel.floor > 0 && Math.random() < dt * 0.3) { g.hitSoldier(s, { dmg: [40, 90], type: 'blast' }, s.pos, true); }
       s.vel.set(0, 0, 0);

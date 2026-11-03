@@ -4,6 +4,7 @@ import { trenchBlast } from './trench.js';
 import { WEAPONS, TUNING } from '../config.js';
 import { angDiff } from './squad.js';
 import { initArmor, resolveHit } from './armor.js';
+import { trunkHit } from '../world/vegetation.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), C2 = new THREE.Vector3();
 const LA = new THREE.Vector3(), LB = new THREE.Vector3(), WC = new THREE.Vector3();
@@ -86,6 +87,7 @@ export class Combat {
   // ---------------------------------------------------------------- infantry
   soldierCombat(s, dt) {
     const sq = s.squad;
+    if (s.cellar || s.cellarMove || s.cqb) { s.target = null; return; }   // down in the cellar / on the stairs / clearing rooms (cqb.js shoots)
     s.scanT -= dt;
     if (s.reloadT > 0) { s.reloadT -= dt; if (s.reloadT <= 0) this.finishReload(s); return; }
     if (s.scanT <= 0) { s.scanT = 0.7 + Math.random() * 0.5; this.acquire(s); }
@@ -130,7 +132,7 @@ export class Combat {
     s.fireCd = s.burstLeft > 0 ? 60 / W.rof : rf(W.burstGap[0], W.burstGap[1]) * (1 + s.suppression / 60);
     this.fireSmallArms(s, t, W);
   }
-  shotClear(s, t) { return this.canSee(s, t) || (s.tgtFoliage && this.canSee(s, t, true)); }   // (a few segment tests per round: cheap)
+  shotClear(s, t) { return this.canSee(s, t) || (s.tgtFoliage && (this.canSee(s, t, 'veg') || (this.roughFix(t) && this.canSee(s, t, true)))); }   // (a few segment tests per round: cheap)
   // ---- fire at ground (suppressive / recon-by-fire on a point the player clicked, without a spotted target)
   groundPoint(u, s) {
     const fa = u.fireAt; if (!fa) return null;
@@ -187,7 +189,7 @@ export class Combat {
       if (u.type === 'vehicle') { if (!u.destroyed) consider(u, s.weaponKey === 'rpg7' ? 120 : (s.rpg22 > 0 && Math.hypot(u.pos.x - s.pos.x, u.pos.z - s.pos.z) < 160) ? 90 : -40); continue; }
       const focus = sq.focus === u ? 30 : 0;
       // priority: machine gunners and anti-tank gunners first, then leaders; men in the open over men behind cover
-      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr') consider(e, focus + (e.inBuilding ? -10 : 0) + (e.weaponKey === 'pkm' ? 25 : 0) + (e.weaponKey === 'rpg7' || e.rpg22 > 0 ? 18 : 0) + (e.role?.leader ? 10 : 0) + (e.vel.lengthSq() > 1 ? 12 : 0) - (this.g.nav.coverFrom(e.pos.x, e.pos.z, s.pos.x, s.pos.z) * 15));
+      for (const e of u.soldiers) if (e.effective && e.inside !== 'btr' && !e.cellar) consider(e, focus + (e.inBuilding ? -10 : 0) + (e.weaponKey === 'pkm' ? 25 : 0) + (e.weaponKey === 'rpg7' || e.rpg22 > 0 ? 18 : 0) + (e.role?.leader ? 10 : 0) + (e.vel.lengthSq() > 1 ? 12 : 0) - (this.g.nav.coverFrom(e.pos.x, e.pos.z, s.pos.x, s.pos.z) * 15));
     }
     if (s.weaponKey === 'rpg7') { // RPG gunner: only vehicles or garrisoned clusters
       for (let i = cands.length - 1; i >= 0; i--) { const t = cands[i][0]; if (t.type !== 'vehicle' && !(t.inBuilding && cands[i][1] < 120 && Math.random() < 0.25)) cands.splice(i, 1); }
@@ -199,6 +201,7 @@ export class Combat {
     if (s.target && cands.some(c => c[0] === s.target)) {
       if (this.canSee(s, s.target)) { s.tgtFoliage = false; return; }
       if (this.roughFix(s.target) && this.canSee(s, s.target, true)) { s.tgtFoliage = true; return; }
+      if (s.target.type !== 'vehicle' && this.canSee(s, s.target, 'veg')) { s.tgtFoliage = true; return; }   // still known to be in that bush: keep firing into it
     }
     s.target = null; s.tgtFoliage = false;
     const peeked = s.peek; s.peek = 0;
@@ -211,6 +214,11 @@ export class Combat {
     if (!s.target) for (let i = 0; i < Math.min(5, cands.length); i++) {
       const t = cands[i][0]; if (t.type === 'vehicle' || !this.roughFix(t)) continue;
       if (this.canSee(s, t, true)) { s.target = t; s.tgtFoliage = true; break; }
+    }
+    // a spotted man behind a bush / under a crown: the leaves hide him but don't stop rounds - fire into the foliage
+    if (!s.target) for (let i = 0; i < Math.min(5, cands.length); i++) {
+      const t = cands[i][0]; if (t.type === 'vehicle' || (s.inBuilding && !this.facesWindow(s, t.pos.x, t.pos.z))) continue;
+      if (this.canSee(s, t, 'veg')) { s.target = t; s.tgtFoliage = true; break; }
     }
     if (!s.target && this.tryPeek(s, cands, ignA)) { if (!peeked) s.peekT = 0; }
     else if (s.target && s.target.type !== 'vehicle') this.wallLean(s);
@@ -248,7 +256,7 @@ export class Combat {
     // inside a building the walls stop small-arms fire: only a man showing himself at the window (shooting in the last ~1.5 s)
     // is really hittable; otherwise only the odd round through the opening finds him
     if (t.inBuilding) p *= this.windowExposed(t) ? 0.3 : 0.02;
-    else if (t.inside === 'ride') p *= 0.75;
+    else if (t.inside === 'ride') p *= 0.9;   // sat up on the deck: no cover to speak of (the price of riding on top)
     else {
       // two men in the same trench (a clearing fight) see each other along the straight stretches: the walls are no
       // cover then (the bends already block line of sight through the terrain test)
@@ -271,15 +279,19 @@ export class Combat {
     const near = g.camDist(s.pos) < 220;
     if (near) g.fx.muzzle(from, tp.clone().sub(from).normalize(), W.type === 'mg' ? 1.1 : 0.8);
     g.sfx(W.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos);
-    const hit = Math.random() < this.hitChance(s, t, W, d);
+    let hit = Math.random() < this.hitChance(s, t, W, d);
     let end = tp.clone();
     if (!hit) { const miss = 0.6 + d * 0.022; end.x += (Math.random() - .5) * miss * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * miss); end.z += (Math.random() - .5) * miss * 2; end.addScaledVector(end.clone().sub(from).normalize(), Math.random() * 6); }
+    // a tree trunk on the round's path stops it (leaves / bushes / crops don't: they only hide men)
+    const th = trunkHit(from.x, from.y, from.z, end.x, end.y, end.z); let trunk = false;
+    if (th) { trunk = true; this.trunkStops = (this.trunkStops || 0) + 1; if (hit) this.trunkSaves = (this.trunkSaves || 0) + 1; hit = false; end.set(th.x, th.y, th.z); }
     s.shots = (s.shots || 0) + 1;
     // tracers: Russian green, Ukrainian red, about every 3rd–4th round
     s.nextTracer ??= 3 + Math.floor(Math.random() * 2);
     if (--s.nextTracer <= 0) { s.nextTracer = 3 + Math.floor(Math.random() * 2); if (g.camDist(s.pos) < 450) g.fx.tracer(from, end, 800, TRACER[s.faction.id]); }
     if (t.type === 'vehicle') {
       if (hit) { if (near) g.fx.impact(end, 'metal'); this.hitVehicle(t, W, s.pos, 'ke', s); if (Math.random() < 0.2) g.sfx('ricochet', end); }
+      else if (trunk && near) g.fx.impact(end, 'dirt', 0.5);
       return;
     }
     // suppression on the target and his neighbours
@@ -288,8 +300,8 @@ export class Combat {
     t.squad.underFireT = 0; t.squad.flankDirs.push(Math.atan2(s.pos.x - t.pos.x, s.pos.z - t.pos.z));
     if (hit) this.hitSoldier(t, W, s.pos, false, s);
     else {
-      const inB = t.inBuilding ? t.bld : null;
-      if (near) g.fx.impact(end, inB ? 'concrete' : 'dirt', 0.6);
+      const inB = t.inBuilding && !trunk ? t.bld : null;
+      if (near) g.fx.impact(end, inB ? 'concrete' : 'dirt', trunk ? 0.45 : 0.6);
       if (g.camDist(end) < 30 && Math.random() < 0.25) g.sfx(Math.random() < 0.5 ? 'bullet_whizz' : (inB ? 'impact_concrete' : 'impact_dirt'), end, { gain: 0.6 });
     }
   }
@@ -307,34 +319,8 @@ export class Combat {
     o.smokeUntil = this.g.time + 30;
   }
   // ---------------------------------------------------------------- close quarters (building storming)
-  stormTick(sq, dt) {
-    const o = sq.order, b = o.building, g = this.g;
-    const defenders = b.slots.map(sl => sl.occupant).filter(d => d && d.effective && d.squad.side !== sq.side);
-    if (!defenders.length) { sq.order = null; sq.orderGarrison(b); if (sq.side === 'player') g.hud?.alert(`${sq.name}: building cleared`, 'good'); return; }
-    const att = sq.effective.filter(s => !s.path || s.pathI >= s.path.length).filter(s => s.pos.distanceTo(o.entrance) < 9);
-    if (att.length < Math.min(2, sq.effective.length)) return; // still stacking up
-    o.t += dt;
-    for (const s of att) s.stackT = 1;
-    if (o.t < 2) return;
-    // grenades through the door / windows, then entry; each tick resolves a short exchange
-    const skill = sq.assault ? 1.6 : 1;
-    for (const s of att) {
-      if (s.grenades > 0 && Math.random() < 0.45) {
-        s.grenades--; s.throwT = 1.2; s.throwWindow = Math.random() < 0.5;
-        const d = defenders[Math.floor(Math.random() * defenders.length)];
-        const at = b.panelCenter(d.inside.panel, new THREE.Vector3()).addScaledVector(b.outward(d.inside.panel), -1.2); at.y = d.pos.y + 0.4;
-        setTimeout(() => this.explode(at, 0.45, s, [60, 150], 5), 1300 / Math.max(1, g.timeScale));
-      } else if (Math.random() < 0.22 * skill) {
-        const d = defenders[Math.floor(Math.random() * defenders.length)];
-        this.hitSoldier(d, s.weapon, s.pos, false, s); g.sfx('rifle_near', s.pos, { gain: 0.8 });
-      }
-    }
-    for (const d of defenders) if (Math.random() < 0.09 * (d.squad.assault ? 1.6 : 1) * (1 - d.suppression / 150)) {
-      const t = att[Math.floor(Math.random() * att.length)]; this.hitSoldier(t, d.weapon, d.pos, false, d); g.sfx('rifle_near', d.pos, { gain: 0.7 });
-    }
-    for (const d of defenders) { d.suppression = Math.min(100, d.suppression + 12); d.squad.underFireT = 0; d.squad.addMorale(-1.2); }
-    sq.underFireT = 0;
-  }
+  // storming an occupied building: stack, breach, then room-by-room clearing inside (game/cqb.js)
+  stormTick(sq, dt) { return this.g.cqb.think(sq, dt); }
   // ---------------------------------------------------------------- casualties
   hitSoldier(t, W, fromPos, blast = false, shooter = null) {
     if (!t.alive || t.state === 'dead') return;
@@ -453,8 +439,10 @@ export class Combat {
     let p = (W.type === 'autocannon' ? 0.3 : W.type === 'hmg' ? 0.2 : 0.14) * Math.exp(-Math.pow(d / 260, 1.35)) * (Math.abs(v.speed) > 1 ? 0.5 : 1) * (v.crew < 3 ? 0.7 : 1) * (v.opticsDamaged ? 0.55 : 1);
     if (t.type !== 'vehicle') { if (t.inBuilding) p *= W.type === 'hmg' || W.type === 'autocannon' ? 0.45 : this.windowExposed(t) ? 0.4 : 0.03; else if (t.inside === 'ride') p *= 0.8; else { p *= 1 - g.nav.coverFrom(t.pos.x, t.pos.z, v.pos.x, v.pos.z) * 0.7; if (t.stance === 'prone') p *= 0.45; else if (t.stance === 'crouch') p *= 0.75; } }
     else p = Math.min(0.9, p * 3);
-    const hit = Math.random() < p;
+    let hit = Math.random() < p;
     const end = tp.clone(); if (!hit) { const m = 0.8 + d * 0.02; end.x += (Math.random() - .5) * m * 2; end.z += (Math.random() - .5) * m * 2; end.y = Math.max(0.05, end.y + (Math.random() - .6) * m); }
+    // MG rounds stop in a trunk; HMG / 30 mm go through a tree (and the 30 mm bursts on it below)
+    if (W.type !== 'autocannon' && W.type !== 'hmg') { const th = trunkHit(from.x, from.y, from.z, end.x, end.y, end.z, 1.5); if (th) { hit = false; end.set(th.x, th.y, th.z); this.trunkStops = (this.trunkStops || 0) + 1; } }
     w.shots = (w.shots || 0) + 1;
     // BTR weapons trace every round; tank coax every 3rd
     if (g.camDist(v.pos) < 500 && (v.kind === 'btr' || v.kind === 'ifv' || w.shots % 3 === 0)) g.fx.tracer(from, end, 900, TRACER[v.faction.id]);
@@ -491,7 +479,7 @@ export class Combat {
       if (p.kind === 'grenade') {
         p.fuse += dt; const tot = p.from.distanceTo(p.target) / p.speed; const f = Math.min(1, p.fuse / tot);
         p.pos.lerpVectors(p.from, p.target, f); p.pos.y = p.from.y + (p.target.y - p.from.y) * f + Math.sin(f * Math.PI) * 4;
-        if (p.fuse >= Math.max(tot, 3.2)) { this.projectiles.splice(i, 1); this.explode(p.target.clone().setY(Math.max(0.2, p.target.y)), 0.45, p.owner, [50, 140], 6); }
+        if (p.fuse >= Math.max(tot, 3.2)) { this.projectiles.splice(i, 1); this.explode(p.target.clone().setY(Math.max(0.2, p.target.y)), 0.45, p.owner, [50, 140], 6); if (p.cellar) g.cqb?.cellarBlast(p.cellar, p.owner); }
         continue;
       }
       // rockets & HE fly through the world: walls, terrain (trench lips, rubble, rises) and tree crowns / bushes stop
@@ -502,6 +490,11 @@ export class Combat {
         p.flown = (p.flown || 0) + Math.min(step, dist);
         const own = p.flown < 5 ? (p.owner?.squad?.building || p.owner?.bld || null) : null;
         const occ = g.nav.occluded(p.pos.x, p.pos.y, p.pos.z, nx.x, nx.y, nx.z, own, null);
+        const th = (p.kind === 'rpg' || p.kind === 'he') && p.flown > 1.5 ? trunkHit(p.pos.x, p.pos.y, p.pos.z, nx.x, nx.y, nx.z, 0) : null;   // a rocket / shell bursts on a tree trunk
+        if (th && !(occ && g.nav.occluded(p.pos.x, p.pos.y, p.pos.z, th.x, th.y, th.z, own, null))) {
+          this.projectiles.splice(i, 1); if (p.mesh) { g.scene.remove(p.mesh); p.mesh = null; }
+          p.occ = null; p.hit = false; this.trunkBursts = (this.trunkBursts || 0) + 1; this.impact(p, new THREE.Vector3(th.x, th.y, th.z)); continue;
+        }
         if (occ) {
           this.projectiles.splice(i, 1); if (p.mesh) { g.scene.remove(p.mesh); p.mesh = null; }
           const at = occ.ref?.panels ? this.facadePoint(occ, p.pos, nx) : p.pos.clone().lerp(nx, 0.5);
@@ -549,7 +542,9 @@ export class Combat {
     const g = this.g;
     at.y = Math.max(0.1, at.y);
     const b = g.city.buildingAt(at.x, at.z, 1.2);
-    const onGround = at.y < 0.6 && !b;
+    const hs = !b && g.houses ? g.houses.at(at.x, at.z, 0.4) : null;   // a burst in / on a private house
+    if (g.houses && power >= 1) for (const h of g.houses.near(at.x, at.z, 40)) h.shelledT = g.time;   // (the garrison's cellar AI)
+    const onGround = at.y < 0.6 && !b && !hs;
     g.fx.explosion(at, power, { dust: b ? [0.66, 0.63, 0.58] : [0.55, 0.49, 0.41] });
     g.sfx(power >= 2 ? 'explosion_medium' : power >= 0.7 ? 'explosion_small' : 'explosion_small', at, { gain: power >= 0.5 ? 1 : 0.6 });
     const cd = g.camDist(at); g.cam.addShake(Math.max(0, power * 0.5 - cd / 200)); if (cd < 120) g.renderer.flash(0.04 * power);
@@ -560,11 +555,17 @@ export class Combat {
       for (const s of sq.soldiers) {
         if (!s.alive || s.inside === 'btr') continue;
         const d = s.pos.distanceTo(at); if (d > radius * 3) continue;
+        if (s.cellar) {   // down in a cellar: only a heavy shell right on the house reaches it (a grenade down the hatch: cqb.cellarBlast)
+          if (hs === s.cellar && power >= 2 && Math.random() < 0.12 * power) this.hitSoldier(s, { dmg: [40, 120], type: 'blast' }, at, true, owner);
+          continue;
+        }
         s.suppression = Math.min(100, s.suppression + 60 * (1 - d / (radius * 3)) * power);
         sq.underFireT = 0;
         if (d > radius) continue;
         let k = Math.pow(1 - d / radius, 1.4);
-        if (s.inBuilding) {
+        if (s.inBuilding && s.bld.house) {   // brick / timber cottage: walls stop less than a concrete panel
+          if (hs === s.bld) k = Math.pow(Math.max(0, 1 - d / Math.max(5, radius)), 1.1) * 0.95; else k *= 0.6;
+        } else if (s.inBuilding) {
           const pc = s.bld.panelCenter(s.inside.panel, C);
           if (s.bld === b) { const dd = pc.distanceTo(at); if (dd > 4.5) continue; k = Math.pow(1 - dd / 4.5, 1.2) * 0.9; }
           else k *= 0.35; // outside blast vs. a man behind a concrete panel
@@ -620,6 +621,7 @@ export class Combat {
     const from = top ? new THREE.Vector3(v.pos.x + (Math.random() - .5) * 2, 30, v.pos.z + (Math.random() - .5) * 2) : fromPos;
     const r = resolveHit(v, W, from, k, at, from.distanceTo ? from.distanceTo(v.pos) : 0);
     if (r.miss) return;
+    if ((k === 'ce' || k === 'he') && v.passengers) for (const s of v.passengers.soldiers) if (s.inside === 'ride' && s.effective && Math.random() < 0.3) this.hitSoldier(s, { dmg: [30, 120], type: 'blast' }, at || v.pos, true, owner);   // riders: fragments of the burst on the hull
     const note = (msg, bad = true) => { if (v.side === 'player') g.hud?.alert(`${v.name}: ${msg}`, bad ? 'bad' : ''); };
     const where = `${r.zone.replace('_', ' ')}${r.face && r.face !== 'side' && !/tracks|wheels/.test(r.zone) ? ' ' + r.face : r.face === 'side' ? ' side' : ''}`;
     if (r.ricochet) { if ((W.pen || 0) > 100) { v.hp -= 4; if (Math.random() < 0.5) note(`round glanced off the ${where}`, false); } return; }

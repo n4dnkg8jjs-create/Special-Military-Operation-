@@ -96,8 +96,8 @@ export class HUD {
     this.cards.innerHTML = ''; this.cards.className = 'roster' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
     const units = this.g.playerUnits.filter(u => !(u.type === 'squad' && u.crew && u.destroyed));
-    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
-    const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'CREWS'];
+    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'medevac' ? 'MEDICAL' : u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
+    const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'MEDICAL', 'CREWS'];
     const head = document.createElement('div'); head.className = 'rhead';
     head.innerHTML = `<span class="label">Order of battle<span class="rcount"></span></span><span class="rbtn" title="Fold the roster (Tab)"></span>`;
     head.querySelector('.rbtn').addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
@@ -143,7 +143,7 @@ export class HUD {
       if (u.type === 'squad') {
         const eff = u.effective.length, wnd = u.soldiers.filter(s => s.state === 'critical' || s.state === 'stable').length;
         men = `${eff}${wnd ? '+' + wnd : ''}`; hp = eff / u.soldiers.length; am = u.ammoFrac(); mo = u.morale / 100;
-        st = dead ? 'LOST' : u.routing ? 'ROUTING' : u.pinned ? 'PINNED' : u.mounted ? 'MOUNTED' : u.building ? 'GARRISONED' : u.status?.() || u.moraleState();
+        st = dead ? 'LOST' : u.routing ? 'ROUTING' : u.pinned ? 'PINNED' : u.mounted ? 'MOUNTED' : u.building ? (u.inCellar ? 'IN CELLAR' : 'GARRISONED') : u.status?.() || u.moraleState();
         cls = u.routing ? 'rout' : /PINNED|SHAKEN|WAVERING/.test(st) ? 'warn' : /GARRISON|MOVING|CLEAR/.test(st) ? 'act' : '';
       } else {
         men = u.destroyed ? '×' : `${u.crew}`; hp = Math.max(0, u.hp / u.def.hp); am = u.ammoFrac(); mo = u.destroyed ? 0 : 1;
@@ -162,7 +162,7 @@ export class HUD {
   }
   select(units, add = false) {
     if (!add) this.selected.clear();
-    for (const u of units) if (u && (u.type === 'squad' ? !u.destroyed : !u.destroyed) && u.side === 'player') this.selected.add(u);
+    for (let u of units) { if (u?.medevac) u = u.medevac; if (u && (u.type === 'squad' ? !u.destroyed : !u.destroyed) && u.side === 'player') this.selected.add(u); }   // a medevac crew selects its pickup
     this.updateInfo(true); if (this.cardEls) this.updateCards();
   }
   // ------------------------------------------------------------ order bar + unit panel
@@ -209,7 +209,7 @@ export class HUD {
         + meter('Ammo', am, `${Math.round(am * 100)}%`, am < 0.25 ? 'bad' : am < 0.5 ? 'warn' : '');
       rows += row('Fit / wounded / KIA', `${eff} / ${s.filter(x => x.state === 'critical' || x.state === 'stable' || x.state === 'light').length} / ${s.filter(x => x.state === 'dead').length}`);
       if (u.side === 'player') rows += row('Mags per man', s.filter(x => x.effective).map(x => x.weaponKey === 'rpg7' ? `${x.inMag + x.mags}r` : `${x.mags}`).join(' '));
-      rows += row('Status', u.mounted ? `Mounted in ${esc(u.carrier?.name)}` : u.building ? 'Garrisoned' : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
+      rows += row('Status', u.mounted ? `Mounted in ${esc(u.carrier?.name)}` : u.building ? (u.inCellar ? 'In the cellar (G: back up)' : u.building.house ? 'Garrisoned (G: cellar)' : 'Garrisoned') : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
       if (u.holdFire) rows += row('Fire', 'Holding fire');
       const sp = u.support;
       if (sp && sp.drones != null) { rows += row('System', 'FPV strike drones (PG-7VL)'); rows += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / 3`); rows += row('Team', sp.status()); }
@@ -222,7 +222,8 @@ export class HUD {
         + meter('Crew', Math.max(0, u.crew) / crewMax, `${Math.max(0, u.crew)}/${crewMax}`, u.crew < crewMax ? 'warn' : 'ok')
         + meter('Main gun', am, `${u.weapons[0].ammo}`, am < 0.2 ? 'bad' : am < 0.45 ? 'warn' : '');
       const w = u.weapons[0];
-      if (u.kind === 'spg') {
+      if (u.hudPanel) ({ meters, rows } = u.hudPanel(meter, row));   // e.g. the medevac pickup (game/medevac.js)
+      else if (u.kind === 'spg') {
         rows += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
         rows += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C)`);
         rows += row('Range', `indirect ≥ ${u.def.minRange >= 1000 ? (u.def.minRange / 1000).toFixed(1) + ' km' : u.def.minRange + ' m'} · direct ≤ ${(u.def.directRange / 1000).toFixed(1)} km`);
@@ -246,7 +247,7 @@ export class HUD {
     const all = [...this.g.squads, ...this.g.vehicles];
     for (const u of all) {
       let b = this.banners.get(u);
-      const show = !u.destroyed && (u.side === 'player' || u.spotted) && !(u.type === 'squad' && u.mounted);
+      const show = !u.destroyed && (u.side === 'player' || u.spotted) && !(u.type === 'squad' && u.mounted) && !(u.type === 'squad' && u.medevac);
       if (!show) { if (b) setS(b.el, 'display', 'none'); continue; }
       if (!b) {
         const el = document.createElement('div'), friend = u.side === 'player'; el.className = 'banner ' + (friend ? 'f' : 'h');
@@ -403,6 +404,7 @@ export class HUD {
       if (this.selected.has(v)) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.strokeRect(-3.5, -4.5, 7, 9); }
       x.restore();
     }
+    this.g.medevac?.drawMinimap(x, P);   // EVAC road exit (game/medevac.js)
     // camera footprint: the four screen corners projected onto the ground
     const q = []; this.groundCorner(-1, -1, q); this.groundCorner(1, -1, q); this.groundCorner(1, 1, q); this.groundCorner(-1, 1, q);
     x.beginPath(); q.forEach(([a, b], i) => i ? x.lineTo(P(a), P(b)) : x.moveTo(P(a), P(b))); x.closePath();
@@ -410,6 +412,7 @@ export class HUD {
   }
   minimapClick(e, right = false) {
     const r = this.mm.getBoundingClientRect(); const wx = (e.clientX - r.left) / r.width * MAP_SIZE - MAP_SIZE / 2, wz = (e.clientY - r.top) / r.height * MAP_SIZE - MAP_SIZE / 2;
+    if (!right && e.button !== 2 && e.type === 'mousedown' && this.g.medevac?.minimapClick(wx, wz)) return;
     if (right || e.button === 2) this.g.input?.moveSelected(wx, wz, null);
     else this.g.cam.lookAt(Math.max(-MAP_SIZE / 2, Math.min(MAP_SIZE / 2, wx)), Math.max(-MAP_SIZE / 2, Math.min(MAP_SIZE / 2, wz)));
   }
@@ -454,7 +457,7 @@ export class HUD {
   update(dt) {
     this.frames++; this.fpsT += dt; if (this.fpsT > 1) { this.fpsEl.textContent = `${Math.round(this.frames / this.fpsT)} fps`; this.frames = 0; this.fpsT = 0; }
     for (const u of this.selected) if (u.destroyed) this.selected.delete(u);
-    this.updateRings(); this.updateBanners(); this.updateTop();
+    this.updateRings(); this.updateBanners(); this.updateTop(); this.g.medevac?.hudUpdate();
     this.slowT = (this.slowT || 0) - dt; const slow = this.slowT <= 0;
     this.updateTickets(dt, slow);
     if (slow) { this.slowT = 0.25; this.updateCards(); this.updateInfo(); this.drawMinimap(); }

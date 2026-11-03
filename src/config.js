@@ -124,6 +124,13 @@ export const VEHICLES = {
     passengers: 0, seats: 0, crew: 5, turretSpeed: 5 * Math.PI / 180, elevSpeed: 4 * Math.PI / 180, wheeled: true,
     gun: 'b155', mg: null, ammo: 20, caliber: '155 mm', salvo: 3, interval: 12, cool: 30, deployT: 90, packT: 90, travelPitch: 0, arc: 30 * Math.PI / 180, spades: true, cep: 10, power: 2.8, minRange: 780, directRange: 2000,
   },
+  // casualty-evacuation pickup (assets/vehicles/pickup.glb, src/game/medevac.js): civilian double cab, unarmoured (sheet steel:
+  // rifle fire penetrates, ~4 hits stop it, any AT round destroys it), fast and nimble. manifest pickup.game_suggested
+  medevac: {
+    kind: 'medevac', asset: 'pickup', hp: 160, speed: 16.5, accel: 5.0, turnRate: 1.35, radius: 1.6, length: 5.4, width: 1.9, height: 1.9,
+    armor: { front: { ke: 2, ce: 2 }, side: { ke: 1, ce: 1 }, rear: { ke: 1, ce: 1 }, top: { ke: 1, ce: 1 } },
+    passengers: 0, seats: 3, crew: 3, turretSpeed: 0, wheeled: true,
+  },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,
     armor: { front: { ke: 520, ce: 650 }, side: { ke: 90, ce: 260 }, rear: { ke: 50, ce: 60 }, top: { ke: 40, ce: 40 } },
@@ -139,7 +146,10 @@ export const TUNING = {
   bleedOut: [110, 220],      // seconds a critically wounded soldier survives if not evacuated
   dragSpeed: 1.1,
   moraleRegen: 1.8,          // per second when not under fire
-  routThreshold: 15,
+  routThreshold: 12,         // (was 15) morale below this: rout check (routHold) every 3 s
+  routHold: { base: 0.25, leader: 0.25, cover: 0.15 },   // chance a check holds (squad stays, morale back to threshold + 5)
+  moraleSuppDrain: 0.029,    // (was 0.035) morale lost per second per point of average suppression
+  riderKillSurvival: { normal: 0.85, catastrophic: 0.65 },   // riders on the deck unhurt when the vehicle is knocked out (inside: the crew's odds)
   shakenThreshold: 45,
   suppressionDecay: 14,
   captureRadius: 26,

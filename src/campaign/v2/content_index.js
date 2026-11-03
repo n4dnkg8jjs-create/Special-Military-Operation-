@@ -94,7 +94,17 @@ export function validate2(def) {
   };
   for (const u of S.units || []) { if (uids.has(u.uid)) err(`duplicate uid ${u.uid}`); uids.add(u.uid); checkUnit(u, 'start'); }
   const inTf = new Set();
-  if (!(S.forces || []).length || S.forces.length < 2 || S.forces.length > 3) err('start.forces: 2–3 task forces expected');
+  if (!(S.forces || []).length || S.forces.length < 4 || S.forces.length > 8) err('start.forces: 4–8 battalion task forces expected (the brigade starts dispersed)');
+  // v4: fires, hubs, goal, enemy task forces
+  const BK = ['mortar120', 'how122', 'd30', 'how152', 'msta', 'm777', 'grad'];
+  const own = id => (def.aor?.cells || []).find(c => c.id === id)?.owner;
+  for (const b of S.batteries || []) { if (!BK.includes(b.kind)) err(`battery kind ${b.kind}`); if (own(b.cell) !== 'player') err(`battery ${b.id} not on an own cell`); }
+  for (const b of def.enemy?.batteries || []) { if (!BK.includes(b.kind)) err(`enemy battery kind ${b.kind}`); if (own(b.cell) !== 'enemy') err(`enemy battery ${b.name} not on an enemy cell`); }
+  for (const f of def.enemy?.forces || []) if (own(f.cell) !== 'enemy') err(`enemy force ${f.name} not on an enemy cell`);
+  for (const h of def.aor?.hubs || []) { if (!['railhead', 'base', 'ammo'].includes(h.kind)) err(`hub kind ${h.kind}`); if (own(h.cell) !== (h.side || 'player') && own(h.cell) !== 'contested') err(`hub ${h.name} not held by its side at start`); }
+  for (const id of def.aor?.enemySources || []) if (own(id) !== 'enemy') err(`enemy source ${id} not enemy`);
+  if (def.goal) { if (!def.goal.title || !(def.goal.cells || []).length) err('goal title / cells'); for (const g of def.goal.cells || []) if (!own(g.cell) || !(g.pts > 0)) err(`goal cell ${g.cell}`); }
+  for (const t of [...(S.ammo || []), ...(def.enemy?.ammo || [])]) if (!isDate(t.date) || !(t.a >= 0)) err('ammo table');
   for (const f of S.forces || []) {
     if (!cell(f.cell)) err(`force ${f.id} cell ${f.cell} missing`); else if (cell(f.cell).owner !== 'player') err(`force ${f.id} not on an own cell`);
     for (const u of f.units || []) { if (!uids.has(u)) err(`force ${f.id} unit ${u} unknown`); if (inTf.has(u)) err(`unit ${u} in two forces`); inTf.add(u); }

@@ -24,6 +24,7 @@ const GLYPH = {
   tank: (x, y, w, h) => ELL(x, y, w, h, 1.15),                                                               // armour
   atgm: (x, y, w, h) => `<path d="M${x + w * 0.22} ${y + h * 0.88}L${x + w / 2} ${y + h * 0.12}L${x + w * 0.78} ${y + h * 0.88}"/>`,   // anti-armour
   spg: (x, y, w, h) => `<circle class="fill" cx="${x + w / 2}" cy="${y + h * 0.36}" r="${Math.min(w, h) * 0.11}"/>` + `<rect x="${x + w * 0.24}" y="${y + h * 0.62}" width="${w * 0.52}" height="${h * 0.2}" rx="${h * 0.1}"/>`,   // SP artillery
+  medevac: (x, y, w, h) => `<path d="M${x + w / 2} ${y + h * 0.16}v${h * 0.68}M${x + w * 0.3} ${y + h / 2}h${w * 0.4}" stroke-width="3.2"/>`,   // medical (casualty evacuation)
   fpv: (x, y, w, h) => `<path d="M${x + w * 0.16} ${y + h * 0.38}Q${x + w * 0.33} ${y + h * 0.78} ${x + w / 2} ${y + h * 0.5}Q${x + w * 0.67} ${y + h * 0.78} ${x + w * 0.84} ${y + h * 0.38}"/>`,   // UAS
 };
 
@@ -39,7 +40,7 @@ export function unitKindOf(u) {
   if (u.kind === 'atgm' || u.kind === 'fpv') return u.kind;
   return u.assault ? 'assault' : 'squad';
 }
-export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', crew: 'Dismounted crew', btr: 'Wheeled APC', ifv: 'Infantry fighting vehicle', tank: 'Main battle tank', atgm: 'ATGM team', spg: 'Self-propelled howitzer', fpv: 'FPV drone team' };
+export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', crew: 'Dismounted crew', btr: 'Wheeled APC', ifv: 'Infantry fighting vehicle', tank: 'Main battle tank', atgm: 'ATGM team', spg: 'Self-propelled howitzer', fpv: 'FPV drone team', medevac: 'Casualty evacuation · pickup' };
 
 // 24×24 stroke icons for the order bar
 const I = d => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;

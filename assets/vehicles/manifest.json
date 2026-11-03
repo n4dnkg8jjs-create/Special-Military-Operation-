@@ -9362,6 +9362,627 @@
      }
     ]
    }
+  },
+  "pickup": {
+   "faction": "any",
+   "name": "Pickup (casualty evacuation)",
+   "kind": "medevac",
+   "wheeled": true,
+   "crew": 1,
+   "passengers": 2,
+   "casualty_slots": {
+    "nodes": [
+     "stretcher_1",
+     "stretcher_2",
+     "stretcher_3"
+    ],
+    "note": "origin on the bed floor; local +Z points to the tailgate, so a casualty lying on his back with the head along -Z lies head towards the cab",
+    "load_point": "ground behind the open tailgate, +Z faces the truck (medic loading position)"
+   },
+   "real_dimensions_m": {
+    "length": 5.33,
+    "width": 1.855,
+    "height": 1.815,
+    "height_over_rack": 1.98,
+    "wheelbase": 3.085,
+    "wheel_track": 1.54,
+    "ground_clearance": 0.29,
+    "tyre": "265/65 R17 (dia 0.776 m)",
+    "bed_inner": [
+     1.52,
+     1.51
+    ],
+    "bed_floor_height": 0.88
+   },
+   "markings": "red crosses on the front doors, bed sides, bonnet and tailgate; dirty white civilian paint, no badges",
+   "sources": [
+    "https://www.toyota.com.au/hilux/specs (Hilux double cab: 5325 x 1855 x 1815 mm, wheelbase 3085 mm, track 1540 mm, 265/65R17)",
+    "https://www.mitsubishi-motors.com/en/products/l200 (L200 double cab: 5305 x 1815 x 1780 mm, wheelbase 3000 mm, bed 1520 x 1470 mm)"
+   ],
+   "game": {
+    "hp_suggestion": 160,
+    "speed_kmh": {
+     "road": 110,
+     "off_road": 45
+    },
+    "game_speed": 16.5,
+    "accel": 5.0,
+    "turn_rate": 1.35,
+    "note": "unarmoured: rifle fire disables it, any AT round destroys it"
+   },
+   "file": "assets/vehicles/pickup.glb",
+   "file_mb": 4.96,
+   "tris": {
+    "lod0": 47448,
+    "lod1": 14222,
+    "hull_wreck": 7594
+   },
+   "model_bbox_m": {
+    "min": [
+     -1.191,
+     -0.011,
+     -2.93
+    ],
+    "max": [
+     1.191,
+     2.251,
+     2.78
+    ],
+    "size": [
+     2.382,
+     2.262,
+     5.71
+    ]
+   },
+   "materials": [
+    "glass",
+    "light_lens",
+    "pickup_paint",
+    "pickup_wreck"
+   ],
+   "armor_file": "assets/vehicles/pickup_armor.json",
+   "doors": {
+    "door_FL": {
+     "axis": "y",
+     "open": -1.187,
+     "parent": "hull",
+     "side": "left",
+     "note": "hinge on the front edge"
+    },
+    "door_RL": {
+     "axis": "y",
+     "open": -1.257,
+     "parent": "hull",
+     "side": "left",
+     "note": "hinge on the front edge"
+    },
+    "door_FR": {
+     "axis": "y",
+     "open": 1.187,
+     "parent": "hull",
+     "side": "right",
+     "note": "hinge on the front edge"
+    },
+    "door_RR": {
+     "axis": "y",
+     "open": 1.257,
+     "parent": "hull",
+     "side": "right",
+     "note": "hinge on the front edge"
+    },
+    "tailgate": {
+     "axis": "x",
+     "open": -1.571,
+     "parent": "hull",
+     "note": "hinge on the bottom edge, opens down to a flat loading shelf at bed-floor height"
+    }
+   },
+   "door_animation": "door_* / tailgate are hinge empties under hull (closed = rotation 0); set node.rotation[axis] = open (radians) to open, interpolate from 0. Front doors open 68 deg, rear 72 deg, tailgate 90 deg down (flat, at bed-floor height).",
+   "wheel_radius_m": 0.388,
+   "steering": {
+    "nodes": [
+     "steer_L1",
+     "steer_R1"
+    ],
+    "axis": "y",
+    "max_rad": 0.6,
+    "note": "positive = steer to the vehicle left"
+   },
+   "ride_seats": {
+    "count": 3,
+    "seat_type": "cab",
+    "note": "ride_seat_1 driver (front left, LHD), 2 front passenger, 3 rear right; origin = H-point on the cushion, +Z forward"
+   },
+   "hierarchy": {
+    "name": "root",
+    "type": "empty",
+    "pos": [
+     0.0,
+     0.0,
+     -0.0
+    ],
+    "children": [
+     {
+      "name": "hull",
+      "type": "empty",
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ],
+      "children": [
+       {
+        "name": "cab_door_FL",
+        "type": "empty",
+        "pos": [
+         1.045,
+         0.0,
+         0.58
+        ]
+       },
+       {
+        "name": "cab_door_FR",
+        "type": "empty",
+        "pos": [
+         -1.045,
+         0.0,
+         0.58
+        ]
+       },
+       {
+        "name": "cab_door_RL",
+        "type": "empty",
+        "pos": [
+         1.045,
+         0.0,
+         -0.455
+        ]
+       },
+       {
+        "name": "cab_door_RR",
+        "type": "empty",
+        "pos": [
+         -1.045,
+         0.0,
+         -0.455
+        ]
+       },
+       {
+        "name": "dismount_L",
+        "type": "empty",
+        "pos": [
+         1.645,
+         0.0,
+         0.55
+        ]
+       },
+       {
+        "name": "dismount_R",
+        "type": "empty",
+        "pos": [
+         -1.645,
+         0.0,
+         0.55
+        ]
+       },
+       {
+        "name": "door_FL",
+        "type": "empty",
+        "pos": [
+         0.915,
+         0.8,
+         1.11
+        ],
+        "children": [
+         {
+          "name": "door_FL_geo",
+          "type": "mesh",
+          "tris": 356,
+          "pos": [
+           0.915,
+           0.8,
+           1.11
+          ]
+         },
+         {
+          "name": "door_FL_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 106,
+          "pos": [
+           0.915,
+           0.8,
+           1.11
+          ]
+         }
+        ]
+       },
+       {
+        "name": "door_FR",
+        "type": "empty",
+        "pos": [
+         -0.915,
+         0.8,
+         1.11
+        ],
+        "children": [
+         {
+          "name": "door_FR_geo",
+          "type": "mesh",
+          "tris": 356,
+          "pos": [
+           -0.915,
+           0.8,
+           1.11
+          ]
+         },
+         {
+          "name": "door_FR_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 106,
+          "pos": [
+           -0.915,
+           0.8,
+           1.11
+          ]
+         }
+        ]
+       },
+       {
+        "name": "door_RL",
+        "type": "empty",
+        "pos": [
+         0.915,
+         0.8,
+         -0.01
+        ],
+        "children": [
+         {
+          "name": "door_RL_geo",
+          "type": "mesh",
+          "tris": 216,
+          "pos": [
+           0.915,
+           0.8,
+           -0.01
+          ]
+         },
+         {
+          "name": "door_RL_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 64,
+          "pos": [
+           0.915,
+           0.8,
+           -0.01
+          ]
+         }
+        ]
+       },
+       {
+        "name": "door_RR",
+        "type": "empty",
+        "pos": [
+         -0.915,
+         0.8,
+         -0.01
+        ],
+        "children": [
+         {
+          "name": "door_RR_geo",
+          "type": "mesh",
+          "tris": 216,
+          "pos": [
+           -0.915,
+           0.8,
+           -0.01
+          ]
+         },
+         {
+          "name": "door_RR_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 64,
+          "pos": [
+           -0.915,
+           0.8,
+           -0.01
+          ]
+         }
+        ]
+       },
+       {
+        "name": "exhaust",
+        "type": "empty",
+        "pos": [
+         -0.66,
+         0.4,
+         -2.08
+        ]
+       },
+       {
+        "name": "hull_geo",
+        "type": "mesh",
+        "tris": 16536,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "hull_geo_LOD1",
+        "type": "mesh",
+        "hidden": true,
+        "tris": 4956,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "load_point",
+        "type": "empty",
+        "pos": [
+         0.0,
+         0.0,
+         -3.45
+        ]
+       },
+       {
+        "name": "ride_seat_1",
+        "type": "empty",
+        "pos": [
+         0.4,
+         0.84,
+         0.38
+        ]
+       },
+       {
+        "name": "ride_seat_2",
+        "type": "empty",
+        "pos": [
+         -0.4,
+         0.84,
+         0.38
+        ]
+       },
+       {
+        "name": "ride_seat_3",
+        "type": "empty",
+        "pos": [
+         -0.4,
+         0.86,
+         -0.52
+        ]
+       },
+       {
+        "name": "steer_L1",
+        "type": "empty",
+        "pos": [
+         0.77,
+         0.388,
+         1.64
+        ],
+        "children": [
+         {
+          "name": "wheel_L1",
+          "type": "empty",
+          "pos": [
+           0.77,
+           0.388,
+           1.64
+          ],
+          "children": [
+           {
+            "name": "wheel_L1_geo",
+            "type": "mesh",
+            "tris": 7384,
+            "pos": [
+             0.77,
+             0.388,
+             1.64
+            ]
+           },
+           {
+            "name": "wheel_L1_geo_LOD1",
+            "type": "mesh",
+            "hidden": true,
+            "tris": 2214,
+            "pos": [
+             0.77,
+             0.388,
+             1.64
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "name": "steer_R1",
+        "type": "empty",
+        "pos": [
+         -0.77,
+         0.388,
+         1.64
+        ],
+        "children": [
+         {
+          "name": "wheel_R1",
+          "type": "empty",
+          "pos": [
+           -0.77,
+           0.388,
+           1.64
+          ],
+          "children": [
+           {
+            "name": "wheel_R1_geo",
+            "type": "mesh",
+            "tris": 7384,
+            "pos": [
+             -0.77,
+             0.388,
+             1.64
+            ]
+           },
+           {
+            "name": "wheel_R1_geo_LOD1",
+            "type": "mesh",
+            "hidden": true,
+            "tris": 2215,
+            "pos": [
+             -0.77,
+             0.388,
+             1.64
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "name": "stretcher_1",
+        "type": "empty",
+        "pos": [
+         0.47,
+         0.885,
+         -1.8
+        ]
+       },
+       {
+        "name": "stretcher_2",
+        "type": "empty",
+        "pos": [
+         0.0,
+         0.885,
+         -1.8
+        ]
+       },
+       {
+        "name": "stretcher_3",
+        "type": "empty",
+        "pos": [
+         -0.47,
+         0.885,
+         -1.8
+        ]
+       },
+       {
+        "name": "tailgate",
+        "type": "empty",
+        "pos": [
+         0.0,
+         0.9,
+         -2.625
+        ],
+        "children": [
+         {
+          "name": "tailgate_geo",
+          "type": "mesh",
+          "tris": 232,
+          "pos": [
+           0.0,
+           0.9,
+           -2.625
+          ]
+         },
+         {
+          "name": "tailgate_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 68,
+          "pos": [
+           0.0,
+           0.9,
+           -2.625
+          ]
+         }
+        ]
+       },
+       {
+        "name": "wheel_L2",
+        "type": "empty",
+        "pos": [
+         0.77,
+         0.388,
+         -1.44
+        ],
+        "children": [
+         {
+          "name": "wheel_L2_geo",
+          "type": "mesh",
+          "tris": 7384,
+          "pos": [
+           0.77,
+           0.388,
+           -1.44
+          ]
+         },
+         {
+          "name": "wheel_L2_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 2214,
+          "pos": [
+           0.77,
+           0.388,
+           -1.44
+          ]
+         }
+        ]
+       },
+       {
+        "name": "wheel_R2",
+        "type": "empty",
+        "pos": [
+         -0.77,
+         0.388,
+         -1.44
+        ],
+        "children": [
+         {
+          "name": "wheel_R2_geo",
+          "type": "mesh",
+          "tris": 7384,
+          "pos": [
+           -0.77,
+           0.388,
+           -1.44
+          ]
+         },
+         {
+          "name": "wheel_R2_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 2215,
+          "pos": [
+           -0.77,
+           0.388,
+           -1.44
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "name": "hull_wreck",
+      "type": "mesh",
+      "hidden": true,
+      "tris": 7594,
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ]
+     }
+    ]
+   }
   }
  }
 }

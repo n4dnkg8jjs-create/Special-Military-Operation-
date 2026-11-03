@@ -6,6 +6,10 @@ import { loadCampaigns } from './index.js';
 import { StrategicMap, natoSvg, echelon, COL } from './map3d.js';
 import { playIntroMusic, primeAudio, blip } from './audio.js';
 import { Tour, tutorialState } from './tutorial.js';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KITS, TIERS, tierOf, linesOf, branchesOf, techState, lineState, kitsOwned, layoutRow, effectLines } from './tech.js';
+import { attachKits } from '../../game/vehicleKit.js';
 
 const Q = new URLSearchParams(location.search);
 const h = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? '' : v); } if (html) e.innerHTML = html; return e; };
@@ -70,7 +74,8 @@ export class CampaignScreen {
     this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id) };
     this.top = h('div', { class: 'c2-top' }); this.left = h('div', { class: 'c2-left' }); this.right = h('div', { class: 'c2-right hidden' });
     this.bottom = h('div', { class: 'c2-bottom' }); this.toastEl = h('div', { class: 'c2-toast' });
-    root.append(this.top, this.left, this.right, this.bottom, this.toastEl);
+    this.goalEl = h('div', { class: 'c2-goal' });
+    root.append(this.top, this.left, this.right, this.bottom, this.toastEl, this.goalEl);
     this.onKey = e => this.key(e); window.addEventListener('keydown', this.onKey);
     this.lastLog = C.log.length;
     this.render();
@@ -103,7 +108,7 @@ export class CampaignScreen {
     this.map.refresh(); this.render(); this.select(sel && C.tf(sel) ? sel : null);
   }
   // ------------------------------------------------------------------ top / bottom bars
-  render() { this.renderTop(); this.renderLeft(); this.renderRight(); this.renderBottom(); }
+  render() { this.renderTop(); this.renderLeft(); this.renderRight(); this.renderBottom(); this.renderGoal(); }
   renderTop() {
     const C = this.C, D = C.def, wk = Math.min(C.turn, C.maxTurn);
     this.top.innerHTML = `<div class="c2-id"><div class="c2-k">${esc([D.brigade?.short || D.brigade?.name, D.region].filter(Boolean).join(' · '))}</div><div class="c2-t">${esc(D.intro?.place || D.aor.name)}</div></div>
@@ -134,11 +139,11 @@ export class CampaignScreen {
     this.leftTab = `${this.tab}/${this.hcTab}`; this.left.innerHTML = '';
     const tabs = h('div', { class: 'c2-tabs' });
     const nAtt = C.pendingAttacks.length;
-    for (const [k, l] of [['dir', `Directives${C.directives.length ? ` <i>${C.directives.length}</i>` : ''}`], ['tf', `Forces <i>${C.forces.length}</i>`], ['hc', 'High command'], ['log', 'Log']]) tabs.appendChild(h('button', { class: this.tab === k ? 'on' : '', onclick: () => { this.tab = k; this.renderLeft(); } }, l));
+    for (const [k, l] of [['dir', `Directives${C.directives.length ? ` <i>${C.directives.length}</i>` : ''}`], ['tf', `Forces <i>${C.forces.length}</i>`], ['ops', 'Fires · UAV'], ['hc', 'High command'], ['log', 'Log']]) tabs.appendChild(h('button', { class: this.tab === k ? 'on' : '', onclick: () => { this.tab = k; this.renderLeft(); } }, l));
     this.left.appendChild(tabs);
     const pane = h('div', { class: 'c2-pane' });
     if (nAtt) pane.appendChild(this.attacksCard());
-    pane.appendChild(({ dir: () => this.directivesPane(), tf: () => this.forcesPane(), hc: () => this.hcPane(), log: () => this.logPane() })[this.tab]());
+    pane.appendChild(({ dir: () => this.directivesPane(), tf: () => this.forcesPane(), ops: () => this.opsPane(), hc: () => this.hcPane(), log: () => this.logPane() })[this.tab]());
     this.left.appendChild(pane); if (scroll) pane.scrollTop = scroll;
   }
   attacksCard() {
@@ -200,18 +205,12 @@ export class CampaignScreen {
         row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || (tf && (tf.supply ?? 1) < 0.5), onclick: () => { const e = this.act('replenish', u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, (tf && (tf.supply ?? 1) < 0.5) ? 'Out of supply' : `Replenish (${cost} LP)`)); p.appendChild(row); }
     }
     if (this.hcTab === 'tech') {
-      const wrap = h('div', { class: 'c2-tech' }), branches = [...new Set(C.def.tech.map(t => t.branch || 'General'))];
-      for (const b of branches) {
-        const col = h('div', { class: 'c2-branch' }, `<div class="c2-sub">${esc(b)}</div>`);
-        for (const t of C.def.tech.filter(x => (x.branch || 'General') === b)) {
-          const st = C.unlocked.includes(t.id) ? 'have' : C.orders.some(o => o.key === t.id) ? 'ordered' : !C.dateOk(t) && (t.req || []).every(r => C.unlocked.includes(r)) ? 'date' : C.techAvailable(t.id) ? 'avail' : 'locked';
-          const n = h('div', { class: `c2-tn ${st}` }, `<div class="c2-tnh">${esc(t.name)} <small>${st === 'have' ? '✓ in service' : st === 'ordered' ? 'on the way' : st === 'date' ? `from ${esc(dateLabel(t.date))}` : `${t.lp} LP`}</small></div><div class="c2-desc">${esc(t.desc || '')}</div>${(t.req || []).length && st === 'locked' ? `<div class="c2-req">needs ${(t.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ')}</div>` : ''}`);
-          if (st === 'avail') n.appendChild(h('button', { class: 'c2-btn', disabled: C.lp < t.lp, onclick: () => { const e = this.act('orderTech', t.id); this.toast(e || `${t.name} requested`, !e); this.render(); } }, `Request (${t.lp} LP, ${t.eta ?? 1} wk)`));
-          col.appendChild(n);
-        }
-        wrap.appendChild(col);
-      }
-      p.appendChild(wrap);
+      const owned = kitsOwned(C), lines = linesOf(C);
+      const card = h('div', { class: 'c2-card c2-ttsum' }, `<div class="c2-ch">Equipment and doctrine</div><div class="c2-note">Vehicle lines with their field upgrades (cope cages, ERA, sandbags, sights, jammers, smoke) and the support branches. Upgrades change how the vehicles fight and look on the battle map.</div>
+        ${lines.map(L => { const st = lineState(C, L); const ks = owned[L.vk] || []; return `<div class="c2-kv"><span>${esc(L.name)}</span><b class="${st === 'have' ? '' : 'warn'}">${st === 'have' ? (ks.length ? ks.map(k => esc(KITS[k].short)).join(' · ') : 'no upgrades') : st === 'date' ? `from ${esc(dateLabel(L.date || C.techItem(L.tech)?.date))}` : st === 'ordered' ? 'on the way' : 'not in service'}</b></div>`; }).join('')}
+        <div class="c2-kv"><span>Available to request now</span><b class="lp">${C.def.tech.filter(t => techState(C, t) === 'avail').length}</b></div>`);
+      card.appendChild(h('button', { class: 'c2-btn pri c2-ttopen', title: 'Open the tech tree (T)', onclick: () => this.techTree() }, 'OPEN TECH TREE ▸'));
+      p.appendChild(card);
     }
     return p;
   }
@@ -291,6 +290,7 @@ export class CampaignScreen {
     return out;
   }
   clickCell(id) {
+    if (this.targeting) { if (id && this.map.targeting?.valid?.get(id) === 'ok') this.targetClick(id); else if (id) { const v = this.map.targeting?.valid?.get(id); this.toast(v === 'bad' ? this.targetWhy(id) : 'Out of range', false); } return; }
     const C = this.C; if (!id) { this.select(null); this.selCell = null; this.map.setSelectedCell(null); this.renderRight(); return; }
     const fs = C.forcesAt(id);
     if (fs.length) { const i = fs.findIndex(f => f.id === this.sel); this.select(fs[(i + 1) % fs.length].id); return; }
@@ -302,6 +302,7 @@ export class CampaignScreen {
     this.map.showPath(this.C.plan(this.sel, id));
   }
   order(id, tfId = null) {
+    if (this.targeting) { this.cancelTarget(); return; }
     const C = this.C; if (tfId && tfId !== this.sel && !this.sel) return this.select(tfId);
     if (!this.sel) { this.clickCell(id); return; }
     const tf = C.tf(this.sel); if (!tf || id === tf.cell) return;
@@ -378,7 +379,7 @@ export class CampaignScreen {
     const unanswered = C.pendingAttacks.filter(a => !C.forcesAt(a.to).length).length;
     const go = () => {
       const n0 = C.log.length, d0 = C.date, nDir = C.directives.map(a => a.id);
-      blip('end'); C.endTurn();
+      blip('end'); this.cancelTarget(); this.map.uavDepart?.(); C.endTurn();
       const entries = C.log.slice(n0);
       this.map.setDate(C.date, true); this.select(this.sel && C.tf(this.sel) ? this.sel : null); this.map.refresh(); this.render();
       for (const e of C.lastNews || []) if (e.latlon) this.map.flashEvent(e.latlon, `${dateLabel(e.date.length > 7 ? e.date : e.date + '-01')}: ${e.text}`);
@@ -451,6 +452,7 @@ export class CampaignScreen {
   tutorial(from = 0) {
     if (this.tut?.open || this.inIntro) return;
     if (document.querySelector('.c2-modal')) return this.toast('Close the open dialog first', false);
+    if (this.ttEl) this.closeTechTree(); this.cancelTarget();
     this.tut = new Tour(this, { onClose: how => { if (how === 'skipped' && from === 0) this.toast('Tour skipped — the ? button brings it back'); } }); this.tut.start(from);
   }
   // offered once, as soon as the screen is free (no dialog, intro over)
@@ -459,9 +461,210 @@ export class CampaignScreen {
     let n = 0; const t = () => { if (this.tut?.open || tutorialState()) return; if (document.querySelector('.c2-modal') || this.inIntro) { if (n++ < 60) setTimeout(t, 400); return; } this.tutorial(); };
     setTimeout(t, 350);
   }
+  // ------------------------------------------------------------------ v4: operation goal banner
+  renderGoal() {
+    const C = this.C, G = C.goalProgress?.(); this.goalEl.innerHTML = ''; this.goalEl.classList.toggle('hidden', !G);
+    if (!G) return;
+    const pct = Math.round(G.pct * 100), part = Math.round((G.partial ?? 0.5) * 100);
+    const head = h('button', { class: 'c2-goal-h', title: 'The operation goal: what wins the campaign (click for details)', 'aria-expanded': this.goalOpen ? 'true' : 'false', onclick: () => { this.goalOpen = !this.goalOpen; this.renderGoal(); } },
+      `<span class="c2-goal-k">OPERATION GOAL</span><span class="c2-goal-t">${esc(G.title)}</span><span class="c2-goal-p"><i style="width:${pct}%"></i><em style="left:${part}%"></em></span><b>${pct}%</b><small>${G.achieved ? 'ACHIEVED' : `${G.weeksLeft} wk left`}</small>`);
+    this.goalEl.appendChild(head);
+    if (this.goalOpen) {
+      const d = h('div', { class: 'c2-goal-d' }, `<div class="c2-desc">${esc(G.text || '')}</div>
+        <div class="c2-goal-win"><b>Victory:</b> hold every objective square at the end of a week. <b>By ${esc(dateLabel(G.by))}:</b> ${part}%+ of the points = limited success, less = the operation failed.</div>`);
+      const row = h('div', { class: 'c2-row' });
+      for (const g of G.cells) row.appendChild(h('button', { class: 'c2-chip' + (g.held ? ' ok' : ''), title: `${g.pts} points${g.held ? ' — held' : ''}`, onclick: () => { this.map.flyTo({ ...this.map.cellCenter(g.cell), dist: 9 }, 1); this.clickCell(g.cell); } }, `${g.held ? '✓' : '★'} ${esc(g.name)} · ${g.pts}`));
+      d.appendChild(row); this.goalEl.appendChild(d);
+    }
+  }
+  // ------------------------------------------------------------------ v4: fires and UAV reconnaissance (left tab)
+  opsPane() {
+    const C = this.C, p = h('div');
+    if (!C.batteries || !C.uavStatus) { p.appendChild(h('div', { class: 'c2-note' }, 'Fires and drone reconnaissance are not available in this campaign.')); return p; }
+    const T = this.targeting;
+    if (T) p.appendChild(h('div', { class: 'c2-card c2-tgt' }, `<div class="c2-ch">${T.kind === 'uav' ? 'UAV sortie: pick a square' : T.kind === 'move' ? 'Displace: pick a square' : 'Fire mission: pick a target'}</div><div class="c2-note">Left-click a highlighted square on the map. Right-click or Esc cancels.</div>`));
+    // ---- artillery
+    const ammo = C.ammo?.player ?? 0, amax = C.ammoMax?.() ?? 12, inc = C.ammoIncome?.() ?? 0;
+    p.appendChild(h('div', { class: 'c2-sub' }, 'Artillery group'));
+    p.appendChild(h('div', { class: 'c2-card' }, `<div class="c2-kv"><span>Ammunition</span><b class="${ammo >= 2 ? '' : 'warn'}">${fmt(ammo)} / ${amax} missions</b></div><div class="c2-ammo">${Array.from({ length: Math.ceil(amax) }, (_, i) => `<i class="${i < ammo ? 'on' : ''}"></i>`).join('')}</div><div class="c2-kv"><span>Allocation</span><b>+${fmt(inc)} a week</b></div><div class="c2-note">One mission per battery a week: <b>suppress</b> defenders, <b>interdict</b> a road or hub, or <b>counter-battery</b> fire at a found enemy battery. Guns that fire are found: displace them.</div>`));
+    for (const b of C.batteries('player')) {
+      const R = C.batteryRange(b.id), st = b.down ? `rebuilding (${b.down} wk)` : b.acted === C.turn ? (b.moved === C.turn ? 'displaced this week' : 'fired this week') : (C.supplied?.[b.cell] ?? 1) < 0.5 ? 'out of supply' : 'ready';
+      const card = h('div', { class: 'c2-card c2-batc' + (T?.bat === b.id ? ' sel' : '') }, `<div class="c2-ch">${esc(b.name)} <small>${R ? `${R.km} km · ${R.cells} sq.` : ''}</small></div><div class="c2-ck">${esc(cellRef(C, b.cell))} · <span class="${st === 'ready' ? 'good' : 'warn'}">${st}</span>${b.hp < 1 && !b.down ? ' · damaged' : ''}${b.revealed != null && b.revealed >= C.turn - 1 ? ' · <span class="bad">located by the enemy</span>' : ''}</div>`);
+      const row = h('div', { class: 'c2-row' });
+      row.appendChild(h('button', { class: 'c2-btn pri', disabled: st !== 'ready' || ammo < 1, title: 'Pick a target square in range', onclick: () => this.startTarget({ kind: 'fire', bat: b.id, mission: 'suppress' }) }, 'Fire mission'));
+      row.appendChild(h('button', { class: 'c2-btn', disabled: st !== 'ready', title: 'Move the battery up to 3 squares inside own, supplied ground (hides it again)', onclick: () => this.startTarget({ kind: 'move', bat: b.id }) }, 'Displace'));
+      row.appendChild(h('button', { class: 'c2-btn', title: 'Show on the map', onclick: () => { this.map.flyTo({ ...this.map.cellCenter(b.cell), dist: 14 }, 0.8); } }, 'Show'));
+      card.appendChild(row); p.appendChild(card);
+    }
+    const found = C.foundBatteries?.() || [];
+    if (found.length) p.appendChild(h('div', { class: 'c2-card' }, `<div class="c2-ch">Enemy batteries found</div>${found.map(b => `<div class="c2-kv"><span>${esc(b.name || b.kind)}</span><b>${esc(cellRef(C, b.cell))}</b></div>`).join('')}`));
+    // ---- UAVs
+    const U = C.uavStatus(), left = Math.max(0, U.sorties - U.used);
+    p.appendChild(h('div', { class: 'c2-sub' }, 'UAV reconnaissance'));
+    const uc = h('div', { class: 'c2-card' }, `<div class="c2-kv"><span>Sorties this week</span><b class="${left ? 'good' : 'warn'}">${left} of ${U.sorties}</b></div><div class="c2-kv"><span>Airframes</span><b>${U.stock} / ${U.max}${U.lost ? ` · ${U.lost} lost` : ''}</b></div><div class="c2-note">A sortie reveals the enemy in the squares around the target for this week and the next: garrisons, fortifications, task forces, batteries. Enemy EW and air defence shoot drones down.</div>`);
+    const row = h('div', { class: 'c2-row' });
+    for (const [k, D] of Object.entries(U.types || {})) row.appendChild(h('button', { class: 'c2-btn' + (T?.kind === 'uav' && T.type === k ? ' on' : ''), disabled: !left || U.stock <= 0, title: `${C.side === 'RU' ? D.ru : D.label}: reach ${D.reach * (C.def.aor.cellKm || 2)} km past the line, sees ${C.uavRadius(k)} square(s) around the target, ${Math.round(D.loss * 100)}% base loss`, onclick: () => this.startTarget({ kind: 'uav', type: k }) }, `${k === 'quad' ? 'Quadcopter' : 'Fixed-wing'} sortie`));
+    uc.appendChild(row); p.appendChild(uc);
+    const wk = (C.uavLog || []).filter(l => l.turn === C.turn);
+    if (wk.length) p.appendChild(h('div', { class: 'c2-card' }, `<div class="c2-ch">Flown this week</div>${wk.map(l => `<div class="c2-kv"><span>${l.type === 'quad' ? 'Quadcopter' : 'Fixed-wing'} → ${esc(cellRef(C, l.cell))}</span><b class="${l.lost ? 'bad' : 'good'}">${l.lost ? 'lost' : `${l.cells.length} sq. seen`}</b></div>`).join('')}`));
+    return p;
+  }
+  // targeting mode on the map: { kind: 'fire', bat, mission } | { kind: 'move', bat } | { kind: 'uav', type }
+  startTarget(T) {
+    const C = this.C; this.select(null); this.targeting = T; this.tab = 'ops';
+    let valid = new Map(), from = null, rangeKm = 0, radius = 0, color = '#ffd27a';
+    if (T.kind === 'fire') {
+      const b = C.battery(T.bat), R = C.batteryRange(T.bat), tg = C.fireTargets(T.bat); from = b.cell; rangeKm = R.km; color = '#ffb35a';
+      for (const id of R.coverage) valid.set(id, (tg[id] || []).includes(T.mission) ? 'ok' : 'bad');
+    } else if (T.kind === 'move') {
+      const b = C.battery(T.bat); from = b.cell; color = '#8fbaf0';
+      for (const c of C.def.aor.cells) if (C.owner[c.id] === 'player' && c.id !== b.cell && Math.max(Math.abs(c.col - C.cell(b.cell).col), Math.abs(c.row - C.cell(b.cell).row)) <= 3) valid.set(c.id, (C.supplied?.[c.id] ?? 0) >= 0.5 ? 'ok' : 'bad');
+    } else {
+      color = '#7fd6ff'; radius = C.uavRadius(T.type);
+      for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player' && (!C.isOpen || C.isOpen(c.id))) valid.set(c.id, C.uavCheck(T.type, c.id) ? 'bad' : 'ok');
+    }
+    this.map.setTargeting({ valid, from, rangeKm, radius, color, bat: T.bat });
+    this.renderTargetBar(); this.renderLeft(); this.map.refresh(); this.tut?.poke?.();
+  }
+  targetWhy(id) { const C = this.C, T = this.targeting; if (!T) return ''; if (T.kind === 'fire') return C.fireCheck(T.bat, T.mission, id) || 'Not possible'; if (T.kind === 'uav') return C.uavCheck(T.type, id) || 'Not possible'; return (C.supplied?.[id] ?? 0) < 0.5 ? 'That square is out of supply' : 'Not possible'; }
+  cancelTarget() { if (!this.targeting) return; this.targeting = null; this.map.setTargeting(null); this.targetBar?.remove(); this.targetBar = null; this.renderLeft(); this.map.refresh(); }
+  renderTargetBar() {
+    const C = this.C, T = this.targeting; this.targetBar?.remove(); if (!T) return;
+    const bar = this.targetBar = h('div', { class: 'c2-tbar' });
+    if (T.kind === 'fire') {
+      const b = C.battery(T.bat), R = C.batteryRange(T.bat);
+      bar.appendChild(h('div', { class: 'c2-tbar-t' }, `<b>${esc(b.name)}</b> · range ${R.km} km — pick the target square`));
+      const seg = h('div', { class: 'c2-seg' });
+      for (const [k, M] of Object.entries({ suppress: 'Suppress', interdict: 'Interdict', counterbattery: 'Counter-battery' })) seg.appendChild(h('button', { class: T.mission === k ? 'on' : '', title: { suppress: 'Defenders of the square fight weaker until the enemy has moved and lose men (1 ammo)', interdict: 'Enemy supply through a road / hub square is cut back for his next week (1 ammo)', counterbattery: 'Fire at a found enemy battery: 45% to hit, 65% with fresh drone pictures (2 ammo)' }[k], onclick: () => this.startTarget({ ...T, mission: k }) }, M));
+      bar.appendChild(seg);
+    } else if (T.kind === 'move') bar.appendChild(h('div', { class: 'c2-tbar-t' }, `<b>${esc(C.battery(T.bat).name)}</b> — pick a new position (up to 3 squares, own supplied ground)`));
+    else { const D = C.uavStatus().types[T.type]; bar.appendChild(h('div', { class: 'c2-tbar-t' }, `<b>${esc(C.side === 'RU' ? D.ru : D.label)}</b> · reach ${D.reach * (C.def.aor.cellKm || 2)} km past the line · sees ${C.uavRadius(T.type)} square(s) around the target — pick the square`)); }
+    bar.appendChild(h('button', { class: 'c2-btn', onclick: () => this.cancelTarget() }, 'Cancel (Esc)'));
+    this.root.appendChild(bar);
+  }
+  targetClick(id) {
+    const C = this.C, T = this.targeting; if (!T || !id) return;
+    if (T.kind === 'fire') {
+      const r = this.act('fire', T.bat, T.mission, id); if (typeof r === 'string') { blip('error'); return this.toast(r, false); }
+      blip('attack'); this.map.strike?.(id, T.mission === 'interdict' ? '#ffb35a' : '#ff7a5a');
+      this.toast(`${C.battery(T.bat)?.name}: ${({ suppress: 'suppression', interdict: 'interdiction', counterbattery: 'counter-battery' })[T.mission]} mission on ${C.cellName(id)}`);
+    } else if (T.kind === 'move') {
+      const e = this.act('moveBattery', T.bat, id); if (e) { blip('error'); return this.toast(e, false); } blip('move'); this.toast(`${C.battery(T.bat)?.name} displaces to ${C.cellName(id)}`);
+    } else {
+      const r = this.act('flyUav', T.type, id); if (typeof r === 'string') { blip('error'); return this.toast(r, false); }
+      blip('move'); this.toast(r.lost ? `The drone over ${C.cellName(id)} was lost${r.cells?.length ? ' after sending its first pictures' : ''}` : `UAV over ${C.cellName(id)}: ${r.cells.length} square(s) observed`, !r.lost);
+    }
+    this.targeting = null; this.map.setTargeting(null); this.targetBar?.remove(); this.targetBar = null;
+    this.map.refresh(); this.render(); this.tut?.poke?.();
+  }
+  // ------------------------------------------------------------------ tech tree (full-screen node graph + 3D preview)
+  // Columns = date tiers (tech.js TIERS); vehicle lines first (vehicle node, its unit unlocks, and a drop-down with the
+  // vehicle's upgrades), then the support branches. Wires connect prerequisites. The side panel shows the selected
+  // node and a rotating 3D model of the vehicle with its delivered kits (+ the selected upgrade, as a preview).
+  techTree(selId = null) {
+    const C = this.C; if (this.inIntro) return;
+    this.ttEl?.remove(); this.ttOpen ||= new Set([linesOf(C)[0]?.id]);
+    const el = this.ttEl = h('div', { class: 'c2-tt', role: 'dialog', 'aria-label': 'Tech tree' });
+    const head = h('div', { class: 'c2-tt-head' }, `<div><div class="c2-k">HIGH COMMAND · ${esc(dateLabel(C.date))}</div><div class="c2-t">Tech tree</div></div>
+      <div class="c2-tt-legend"><span class="have">in service</span><span class="ordered">on the way</span><span class="avail">can request</span><span class="date">date-gated</span><span class="locked">needs prerequisite</span></div><div class="c2-tt-lp">LP <b>${C.lp}</b></div>`);
+    head.appendChild(h('button', { class: 'c2-x', title: 'Close (Esc)', onclick: () => this.closeTechTree() }, '×'));
+    const body = h('div', { class: 'c2-tt-body' }), treeWrap = h('div', { class: 'c2-tt-tree' }), tree = h('div', { class: 'c2-tt-in' });
+    const cols = TIERS.length, colsCss = `repeat(${cols}, var(--cw))`;
+    tree.appendChild(h('div', { class: 'c2-tt-grid c2-tt-tiers', style: `grid-template-columns:${colsCss}` }, TIERS.map((t, i) => `<div style="grid-column:${i + 1}" class="${tierOf(C.date) >= i ? 'now' : ''}">${esc(t.label)}${tierOf(C.date) === i ? ' <i>◂ now</i>' : ''}</div>`).join('')));
+    const node = (t, extra = '') => {
+      const st = techState(C, t), o = C.orders.find(x => x.what === 'tech' && x.key === t.id);
+      const meta = st === 'have' ? '✓ in service' : st === 'ordered' ? `arrives in ${o?.eta ?? t.eta ?? 1} wk` : st === 'date' ? `from ${dateLabel(t.date)}` : `${t.lp} LP · ${t.eta ?? 1} wk`;
+      return h('button', { class: `c2-tn2 ${st} ${extra}${this.ttSel === t.id ? ' sel' : ''}`, 'data-id': t.id, title: t.name, onclick: () => this.ttSelect(t.id) },
+        `<div class="nm">${t.kit ? `<span class="kt">${esc(KITS[t.kit].short)}</span>` : t.kind === 'unlock' ? '<span class="kt u">UNIT</span>' : ''}${esc(t.name)}</div><div class="mt">${st === 'locked' ? '🔒 ' : ''}${esc(meta)}</div>`);
+    };
+    // ---- vehicle lines
+    tree.appendChild(h('div', { class: 'c2-sub' }, 'Vehicles'));
+    for (const L of linesOf(C)) {
+      const vt = L.tech ? C.techItem(L.tech) : null, lst = lineState(C, L), vcol = tierOf(vt?.date || L.date);
+      const rowNodes = C.def.tech.filter(t => t.line === L.id && !t.kit && t.id !== L.tech), ups = C.def.tech.filter(t => t.line === L.id && t.kit);
+      const line = h('div', { class: 'c2-tt-line' }), g = h('div', { class: 'c2-tt-grid', style: `grid-template-columns:${colsCss}` });
+      const owned = ups.filter(t => C.unlocked.includes(t.id)).length, open = this.ttOpen.has(L.id);
+      const vn = h('button', { class: `c2-tv ${lst}${this.ttLine === L.id && (!this.ttSel || this.ttSel === L.tech) ? ' sel' : ''}`, 'data-id': L.tech || `line:${L.id}`, style: `grid-column:${vcol + 1}`, onclick: () => { this.ttLine = L.id; this.ttSelect(L.tech || null, L.id); } },
+        `<div class="ro">${esc(L.role)}</div><div class="nm">${esc(L.name)}</div><div class="mt">${lst === 'have' ? '✓ in service' : lst === 'date' ? `from ${esc(dateLabel(vt?.date || L.date))}` : lst === 'ordered' ? 'on the way' : vt ? `${vt.lp} LP · ${vt.eta ?? 1} wk` : ''}</div>`);
+      g.appendChild(vn);
+      const lay = layoutRow(C, rowNodes, vcol + 1);
+      for (const t of rowNodes) { const p = lay.pos.get(t.id), n = node(t, 'unit'); n.style.gridColumn = String(Math.min(cols, p.col + 1)); n.style.gridRow = String(p.row + 1); g.appendChild(n); }
+      line.appendChild(g);
+      const dd = h('button', { class: 'c2-tt-dd' + (open ? ' open' : ''), 'aria-expanded': open ? 'true' : 'false', style: `margin-left:calc(${vcol} * (var(--cw) + var(--cg)))`, onclick: () => { if (this.ttOpen.has(L.id)) this.ttOpen.delete(L.id); else this.ttOpen.add(L.id); this.ttLine = L.id; this.techTree(this.ttSel); } },
+        `${open ? '▾' : '▸'} Upgrades <b>${owned}/${ups.length}</b>${ups.some(t => techState(C, t) === 'avail') ? ' <i>new</i>' : ''}`);
+      line.appendChild(dd);
+      if (open && ups.length) {
+        const sg = h('div', { class: 'c2-tt-grid sub', style: `grid-template-columns:${colsCss}` }), ly = layoutRow(C, ups, vcol);
+        for (const t of ups) { const p = ly.pos.get(t.id), n = node(t, 'kit'); n.style.gridColumn = String(Math.min(cols, p.col + 1)); n.style.gridRow = String(p.row + 1); n.dataset.parent = L.tech || `line:${L.id}`; sg.appendChild(n); }
+        line.appendChild(sg);
+      }
+      tree.appendChild(line);
+    }
+    // ---- support branches
+    for (const b of branchesOf(C)) {
+      const ts = C.def.tech.filter(t => !t.line && (t.branch || 'General') === b); if (!ts.length) continue;
+      tree.appendChild(h('div', { class: 'c2-sub' }, esc(b)));
+      const g = h('div', { class: 'c2-tt-grid', style: `grid-template-columns:${colsCss}` }), ly = layoutRow(C, ts, 0);
+      for (const t of ts) { const p = ly.pos.get(t.id), n = node(t); n.style.gridColumn = String(Math.min(cols, p.col + 1)); n.style.gridRow = String(p.row + 1); g.appendChild(n); }
+      tree.appendChild(g);
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.classList.add('c2-tt-wires'); tree.prepend(svg);
+    treeWrap.appendChild(tree);
+    const side = h('div', { class: 'c2-tt-side' }), view = h('div', { class: 'c2-tt-view' }), info = h('div', { class: 'c2-tt-info' });
+    side.append(view, info); body.append(treeWrap, side); el.append(head, body); this.root.appendChild(el);
+    if (this.ttScroll) treeWrap.scrollTop = this.ttScroll; treeWrap.onscroll = () => { this.ttScroll = treeWrap.scrollTop; };
+    this.ttPreview ||= new TechPreview(); this.ttPreview.mount(view);
+    this.ttWires(tree, svg); requestAnimationFrame(() => { if (tree.isConnected) this.ttWires(tree, svg); });
+    if (!this.ttRo) { this.ttRo = () => { const t = this.ttEl?.querySelector('.c2-tt-in'), w = t?.querySelector('.c2-tt-wires'); if (t && w) this.ttWires(t, w); }; window.addEventListener('resize', this.ttRo); }
+    this.ttSelect(selId ?? this.ttSel ?? null, this.ttLine, true);
+    this.tut?.poke?.();
+  }
+  ttWires(tree, svg) {
+    const C = this.C, base = tree.getBoundingClientRect(), R = el => { const r = el.getBoundingClientRect(); return { l: r.left - base.left, r: r.right - base.left, t: r.top - base.top, b: r.bottom - base.top, m: (r.top + r.bottom) / 2 - base.top, c: (r.left + r.right) / 2 - base.left }; };
+    svg.setAttribute('width', tree.scrollWidth); svg.setAttribute('height', tree.scrollHeight);
+    const byId = id => tree.querySelector(`[data-id="${CSS.escape(id)}"]`), out = [];
+    const wire = (a, b, cls, elbow = false) => { const A = R(a), B = R(b); if (elbow) { const x = A.l + 18; out.push(`<path class="${cls}" d="M${x},${A.b} V${B.m} H${B.l}"/>`); return; } const x0 = A.r, y0 = A.m, x1 = B.l, y1 = B.m, dx = Math.max(14, (x1 - x0) / 2); out.push(`<path class="${cls}" d="M${x0},${y0} C${x0 + dx},${y0} ${x1 - dx},${y1} ${x1},${y1}"/>`); };
+    for (const n of tree.querySelectorAll('[data-id]')) {
+      const t = C.techItem(n.dataset.id), st = t ? techState(C, t) : 'have', cls = st === 'have' ? 'have' : st === 'avail' || st === 'ordered' ? 'avail' : 'locked';
+      const reqs = (t?.req || []).map(byId).filter(Boolean);
+      for (const r of reqs) wire(r, n, cls);
+      if (!reqs.length && n.dataset.parent) { const p = byId(n.dataset.parent); if (p) wire(p, n, cls, true); }
+      else if (!reqs.length && n.classList.contains('unit')) { const v = n.closest('.c2-tt-line')?.querySelector('.c2-tv'); if (v) wire(v, n, cls); }
+    }
+    svg.innerHTML = out.join('');
+  }
+  ttSelect(id, lineId = null, keepScroll = false) {
+    const C = this.C, el = this.ttEl; if (!el) return;
+    const t = id ? C.techItem(id) : null; this.ttSel = id;
+    const L = linesOf(C).find(x => x.id === (t?.line || lineId || this.ttLine)) || linesOf(C)[0]; this.ttLine = L?.id;
+    for (const n of el.querySelectorAll('.c2-tn2, .c2-tv')) n.classList.toggle('sel', id ? n.dataset.id === id : n.dataset.id === (L?.tech || `line:${L?.id}`));
+    // 3D preview: the line's vehicle with its delivered kits, plus the selected kit (shown as a preview)
+    const have = L ? kitsOwned(C, L.vk) : [], extra = t?.kit && !have.includes(t.kit) ? t.kit : null;
+    if (L) this.ttPreview?.show(L.asset, extra ? [...have, extra] : have, { wheeled: L.vk === 'btr' || L.asset === 'bohdana', label: `${L.name}${have.length ? ' · ' + have.map(k => KITS[k].short).join(', ') : ''}${extra ? ` · preview: + ${KITS[extra].short}` : ''}`, focus: extra });
+    const info = el.querySelector('.c2-tt-info'); info.innerHTML = '';
+    if (!t) {
+      const ups = C.def.tech.filter(x => x.line === L?.id && x.kit);
+      info.innerHTML = `<div class="c2-ck">${esc(L?.role || '')}</div><div class="c2-ch lg">${esc(L?.name || '')}</div><div class="c2-desc">Fielded by: ${(L?.catalog || []).map(k => C.catalogItem(k)?.label).filter(Boolean).map(esc).join(', ') || '—'}</div>
+        <div class="c2-sub">Upgrades</div>${ups.map(u => `<div class="c2-kv"><span>${esc(u.name)}</span><b class="${techState(C, u) === 'have' ? 'good' : ''}">${({ have: '✓', ordered: 'on the way', avail: `${u.lp} LP`, date: `from ${dateLabel(u.date)}`, locked: 'locked' })[techState(C, u)]}</b></div>`).join('')}
+        <div class="c2-note">Open the drop-down under the vehicle and pick an upgrade to see it on the model.</div>`;
+      return;
+    }
+    const st = techState(C, t), fx = effectLines(t);
+    const unl = (t.unlock || []).map(k => C.catalogItem(k)?.label).filter(Boolean);
+    info.innerHTML = `<div class="c2-ck">${t.kit ? `Vehicle upgrade · ${esc(L?.name || '')}` : t.vehicle ? 'New vehicle' : t.kind === 'unlock' ? 'Unit authorisation' : esc(t.branch || '')}</div><div class="c2-ch lg">${esc(t.name)}</div><div class="c2-desc">${esc(t.desc || '')}</div>
+      ${fx.length ? `<div class="c2-sub">Effect</div>${fx.map(f => `<div class="c2-fx ${f.good ? 'g' : 'b'}">${f.good ? '+' : '−'} ${esc(f.text)}</div>`).join('')}` : ''}${unl.length ? `<div class="c2-sub">Unlocks</div>${unl.map(u => `<div class="c2-fx g">+ ${esc(u)}</div>`).join('')}` : ''}
+      <div class="c2-sub">Request</div><div class="c2-kv"><span>Cost</span><b class="lp">${t.lp} LP</b></div><div class="c2-kv"><span>Delivery</span><b>${t.eta ?? 1} wk</b></div>${t.date ? `<div class="c2-kv"><span>Available from</span><b class="${C.dateOk(t) ? '' : 'warn'}">${esc(dateLabel(t.date))}</b></div>` : ''}
+      ${(t.req || []).length ? `<div class="c2-kv"><span>Needs</span><b>${t.req.map(r => `<span class="${C.unlocked.includes(r) ? 'good' : 'warn'}">${esc(C.techItem(r)?.name || r)}</span>`).join(', ')}</b></div>` : ''}`;
+    const btn = h('button', { class: 'c2-btn pri c2-tt-req', disabled: st !== 'avail' || C.lp < t.lp, onclick: () => { const e = this.act('orderTech', t.id); this.toast(e || `${t.name} requested`, !e); blip(e ? 'error' : 'move'); this.techTree(t.id); } },
+      st === 'have' ? '✓ In service' : st === 'ordered' ? 'On the way' : st === 'date' ? `Not before ${dateLabel(t.date)}` : st === 'locked' ? 'Prerequisites missing' : C.lp < t.lp ? `Not enough LP (${t.lp})` : `REQUEST (${t.lp} LP)`);
+    info.appendChild(btn);
+  }
+  closeTechTree() { this.ttEl?.remove(); this.ttEl = null; this.ttPreview?.stop(); this.renderLeft(); this.tut?.poke?.(); }
   // ------------------------------------------------------------------ misc
   key(e) {
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || document.querySelector('.c2-intro') || this.tut?.open) return;
+    if (this.ttEl && !document.querySelector('.c2-modal')) { if (e.key === 'Escape' || e.key.toLowerCase() === 't') { e.preventDefault(); this.closeTechTree(); } return; }
+    if (e.key.toLowerCase() === 't' && !document.querySelector('.c2-modal') && !e.ctrlKey) { e.preventDefault(); this.techTree(); return; }
     if (e.key === 'F1' || (e.key === '?' && !e.ctrlKey)) { e.preventDefault(); if (!document.querySelector('.c2-modal')) this.tutorial(); return; }
     // modals: Enter = the primary button, Escape = cancel (or the only button); the topmost modal only
     const ms = document.querySelectorAll('.c2-modal'), m = ms[ms.length - 1];
@@ -471,6 +674,7 @@ export class CampaignScreen {
       return;
     }
     const inUi = e.target !== document.body && e.target.closest?.('.c2-top, .c2-left, .c2-right, .c2-bottom');   // keyboard focus on a panel control: let it act
+    if (e.key === 'Escape' && this.targeting) { this.cancelTarget(); return; }
     if (e.key === 'Escape') { this.select(null); this.selCell = null; this.map.setSelectedCell(null); this.renderRight(); }
     else if (e.key === 'Tab') { if (inUi) return; e.preventDefault(); const fs = this.C.forces; if (!fs.length) return; const i = fs.findIndex(f => f.id === this.sel); const f = fs[(i + (e.shiftKey ? fs.length - 1 : 1)) % fs.length]; this.select(f.id); this.map.flyTo({ ...this.map.cellCenter(f.cell), dist: Math.min(this.map.cam.dist, 14) }, 0.7); }
     else if (e.key === 'Enter') { if (inUi && e.target.matches('button, a, [tabindex]')) return; e.preventDefault(); this.endTurn(); }
@@ -489,6 +693,61 @@ export class CampaignScreen {
 const cellRef = (C, id) => { const n = C.cellName(id), r = C.gridRef(id); return n.endsWith(r) ? n : `${n} ${r}`; };
 const kindLabel = k => ({ capture: 'Capture', hold: 'Hold', survive: 'Hold the line', destroy: 'Destroy enemy vehicles', recon: 'Reconnaissance', raid: 'Raid' })[k] || k;
 const seasonName = d => { const m = +String(d).slice(5, 7); return m === 12 || m <= 2 ? 'WINTER' : m <= 5 ? 'SPRING' : m <= 8 ? 'SUMMER' : 'AUTUMN'; };
+
+// 3D vehicle preview for the tech tree: one renderer, reused every time the tree opens; the GLB (cached) rotates
+// on a turntable with the delivered kits attached (vehicleKit.js) and the selected upgrade highlighted.
+const GLB = {};
+const glbLoader = new GLTFLoader();
+class TechPreview {
+  constructor() {
+    this.r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); this.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); this.r.outputColorSpace = THREE.SRGBColorSpace;
+    this.canvas = this.r.domElement; this.canvas.className = 'c2-tt-canvas';
+    this.scene = new THREE.Scene(); this.cam = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+    this.scene.add(new THREE.HemisphereLight('#e6ecf2', '#3b382c', 1.5)); const sun = new THREE.DirectionalLight('#fff3dc', 2.3); sun.position.set(-6, 10, 7); this.scene.add(sun);
+    const rim = new THREE.DirectionalLight('#9fb6d8', 0.9); rim.position.set(6, 4, -8); this.scene.add(rim);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(6.5, 48), new THREE.MeshStandardMaterial({ color: 0x24261f, roughness: 1 })); disc.rotation.x = -Math.PI / 2; this.scene.add(disc);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(6.3, 6.5, 64), new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.5 })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.005; this.scene.add(ring);
+    this.pivot = new THREE.Group(); this.scene.add(this.pivot); this.yaw = 0.6; this.key = null;
+  }
+  mount(el) {
+    this.el = el; el.appendChild(this.canvas); this.label = h('div', { class: 'c2-tt-vl' }); el.appendChild(this.label);
+    let drag = null; this.canvas.onpointerdown = e => { drag = e.clientX; this.canvas.setPointerCapture(e.pointerId); }; this.canvas.onpointermove = e => { if (drag != null) { this.yaw += (e.clientX - drag) * 0.01; drag = e.clientX; this.hold = 2; } }; this.canvas.onpointerup = () => { drag = null; };
+    this.run();
+  }
+  async show(asset, kits, opts = {}) {
+    const key = `${asset}|${kits.join(',')}|${opts.focus || ''}`; if (this.label) this.label.textContent = opts.label || '';
+    if (key === this.key) return; this.key = key; window.__ttReady = null;
+    let g = GLB[asset]; if (!g) { try { g = GLB[asset] = await glbLoader.loadAsync(`assets/vehicles/${asset}.glb`); } catch (e) { console.warn('tech preview', asset, e); return; } }
+    if (this.key !== key) return;
+    for (const c of [...this.pivot.children]) this.pivot.remove(c);
+    const m = g.scene.clone(true);
+    m.traverse(o => { if (o.userData?.hidden || /_LOD1$|_wreck$/i.test(o.name)) o.visible = false; });
+    this.pivot.add(m); m.updateMatrixWorld(true);
+    attachKits(m, kits, { wheeled: !!opts.wheeled });
+    if (opts.focus) m.traverse(o => { if (o.userData?.kitId === opts.focus && o.material) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0xb88a2a); o.material.emissiveIntensity = 0.55; this.glow = o.material; } });
+    else this.glow = null;
+    const box = new THREE.Box3(); m.traverse(o => { if (o.isMesh && o.visible) { let p = o, vis = true; while (p) { if (!p.visible) vis = false; p = p.parent; } if (vis) box.expandByObject(o); } });
+    const sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3()); m.position.x -= c.x; m.position.z -= c.z;
+    this.fit = { r: Math.max(sz.x, sz.z) * 0.62 + sz.y * 0.3, y: sz.y * 0.45 };
+    window.__ttReady = key;
+  }
+  run() {
+    cancelAnimationFrame(this.raf); let last = performance.now();
+    const loop = now => {
+      if (!this.canvas.isConnected) return; this.raf = requestAnimationFrame(loop);
+      const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      const w = this.el.clientWidth, hh = this.el.clientHeight; if (w && hh && (w !== this.w || hh !== this.h)) { this.w = w; this.h = hh; this.r.setSize(w, hh, false); this.cam.aspect = w / hh; this.cam.updateProjectionMatrix(); }
+      if (this.hold > 0) this.hold -= dt; else if (!window.__ttStill) this.yaw += dt * 0.35;
+      this.pivot.rotation.y = this.yaw;
+      if (this.glow) this.glow.emissiveIntensity = 0.35 + 0.3 * Math.sin(now / 260);
+      const f = this.fit || { r: 5, y: 1 }, d = f.r / Math.tan(16 * Math.PI / 180) * 0.62;
+      this.cam.position.set(0, f.y + d * 0.42, d); this.cam.lookAt(0, f.y * 0.8, 0);
+      this.r.render(this.scene, this.cam);
+    };
+    this.raf = requestAnimationFrame(loop);
+  }
+  stop() { cancelAnimationFrame(this.raf); }
+}
 
 export function injectCss() {
   if (document.getElementById('c2-css')) return;
@@ -571,7 +830,7 @@ export function injectCss() {
 .c2-bottom{position:absolute;left:394px;right:12px;bottom:10px;display:flex;align-items:center;gap:14px;z-index:2;pointer-events:none}.c2-bottom>*{pointer-events:auto}
 .c2-views{display:flex;gap:4px}.c2-views .c2-btn{background:var(--p);font-size:13px;white-space:nowrap}
 .c2-help{font-size:12.5px;color:rgba(232,228,216,.55);text-shadow:0 1px 2px #000}.c2-help b{color:rgba(232,228,216,.85);font-weight:600}
-.c2-toast{position:absolute;left:50%;top:78px;transform:translateX(-50%);background:rgba(10,11,9,.92);border-left:3px solid #8fb069;padding:7px 16px;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:6}.c2-toast.show{opacity:1}.c2-toast.bad{border-left-color:var(--en)}
+.c2-toast{position:absolute;left:50%;top:118px;transform:translateX(-50%);background:rgba(10,11,9,.92);border-left:3px solid #8fb069;padding:7px 16px;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:6}.c2-toast.show{opacity:1}.c2-toast.bad{border-left-color:var(--en)}
 .c2-modal{position:absolute;inset:0;background:rgba(4,4,3,.55);display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(2px)}
 .c2-modal-in{width:min(680px,92vw);max-height:86vh;overflow:auto;background:rgba(16,17,15,.97);border:1px solid var(--l);border-top:3px solid var(--acc);padding:20px 24px}
 .c2-modal-in h1{font-size:44px;margin:6px 0 10px;letter-spacing:.05em}.c2-modal-in h2{font-size:28px;margin:6px 0 10px;font-weight:700}.c2-modal-in p{color:#cfcab9;font-size:16px}
@@ -590,6 +849,42 @@ export function injectCss() {
 .c2-ik{font-size:15px;letter-spacing:.42em;color:var(--acc);text-transform:uppercase}.c2-ip{font-size:min(9vw,104px);font-weight:800;letter-spacing:.06em;line-height:1;margin:8px 0;color:#f4f0e4}.c2-idate{font-size:min(4vw,40px);letter-spacing:.32em;color:#e0dccd;font-weight:300}
 .c2-lines{position:absolute;left:8vw;right:8vw;bottom:13vh;z-index:2}.c2-lines p{font-size:19px;color:#e6e2d4;margin:6px 0;opacity:0;text-shadow:0 1px 6px #000;max-width:900px;font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;font-size:15.5px}
 .c2-skip{position:absolute;right:20px;bottom:3vh;font-size:12px;letter-spacing:.24em;color:rgba(255,255,255,.4);z-index:2;text-transform:uppercase}
+.c2-tt{position:absolute;left:0;right:0;top:64px;bottom:0;z-index:9;background:#0b0c0a;display:flex;flex-direction:column;--cw:168px;--cg:26px}
+.c2-tt-head{display:flex;align-items:center;gap:24px;padding:10px 18px;border-bottom:1px solid var(--l)}.c2-tt-head .c2-x{margin-left:0}
+.c2-tt-legend{display:flex;gap:12px;margin-left:auto;font-size:12.5px;color:var(--dim,#9c978a)}.c2-tt-legend span::before{content:"";display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;border:1px solid #777;border-left-width:3px}
+.c2-tt-legend .have::before{border-color:#8fb069;background:rgba(143,176,105,.25)}.c2-tt-legend .ordered::before{border-color:var(--acc)}.c2-tt-legend .avail::before{border-color:#e8e4d8}.c2-tt-legend .date::before{border-style:dashed}.c2-tt-legend .locked::before{opacity:.4}
+.c2-tt-lp{font-size:13px;letter-spacing:.16em;color:var(--dim,#9c978a)}.c2-tt-lp b{font-size:24px;color:var(--acc);letter-spacing:0;margin-left:6px}
+.c2-tt-body{flex:1;display:flex;min-height:0}.c2-tt-tree{flex:1;overflow:auto;padding:6px 18px 30px}.c2-tt-in{position:relative;width:max-content;min-width:100%}
+.c2-tt-wires{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}.c2-tt-wires path{fill:none;stroke:rgba(232,228,216,.22);stroke-width:2}.c2-tt-wires path.have{stroke:rgba(143,176,105,.75)}.c2-tt-wires path.avail{stroke:rgba(232,228,216,.6)}.c2-tt-wires path.locked{stroke-dasharray:4 4}
+.c2-tt-grid{display:grid;column-gap:var(--cg);row-gap:8px;position:relative}.c2-tt-grid.sub{margin:6px 0 4px;padding:8px 0 6px;border-top:1px dashed rgba(232,228,216,.1)}
+.c2-tt-tiers{position:sticky;top:-6px;z-index:2;background:rgba(11,12,10,.97);padding:6px 0;border-bottom:1px solid var(--l)}.c2-tt-tiers div{font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(232,228,216,.35)}.c2-tt-tiers div.now{color:var(--dim,#9c978a)}.c2-tt-tiers i{color:var(--acc);font-style:normal;letter-spacing:.05em}
+.c2-tt-line{margin-bottom:14px;padding-bottom:6px;border-bottom:1px solid rgba(232,228,216,.06)}
+.c2-tn2,.c2-tv{position:relative;z-index:1;text-align:left;font:inherit;color:var(--ink,#e8e4d8);background:rgba(28,30,25,.96);border:1px solid var(--l);border-left-width:3px;padding:6px 9px;cursor:pointer;min-height:46px}
+.c2-tn2:hover,.c2-tv:hover{border-color:rgba(232,228,216,.5)}.c2-tn2.sel,.c2-tv.sel{outline:2px solid var(--acc);outline-offset:1px}
+.c2-tn2 .nm{font-size:13.5px;font-weight:700;line-height:1.15}.c2-tn2 .mt,.c2-tv .mt{font-size:11.5px;color:var(--dim,#9c978a);margin-top:3px}
+.c2-tn2 .kt{font-size:9.5px;letter-spacing:.08em;background:rgba(216,178,90,.18);color:#ecd9a8;padding:0 4px;margin-right:5px;vertical-align:1px;text-transform:uppercase}.c2-tn2 .kt.u{background:rgba(79,143,224,.2);color:#bcd5f5}
+.c2-tn2.have,.c2-tv.have{border-left-color:#8fb069;background:rgba(40,52,32,.96)}.c2-tn2.have .mt,.c2-tv.have .mt{color:#b5d69a}.c2-tn2.ordered,.c2-tv.ordered{border-left-color:var(--acc)}.c2-tn2.ordered .mt{color:var(--acc)}
+.c2-tn2.avail,.c2-tv.avail{border-left-color:#e8e4d8;box-shadow:0 0 0 1px rgba(232,228,216,.15)}.c2-tn2.date,.c2-tv.date{border-style:dashed;opacity:.75}.c2-tn2.locked,.c2-tv.locked{opacity:.45}
+.c2-tv{border-left-width:4px;min-height:62px}.c2-tv .nm{font-size:17px;font-weight:800;letter-spacing:.02em}.c2-tv .ro{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc)}
+.c2-tt-dd{display:inline-block;margin-top:6px;background:rgba(255,255,255,.04);border:1px solid var(--l);color:var(--ink,#e8e4d8);font:inherit;font-size:13px;padding:3px 10px;cursor:pointer;letter-spacing:.04em}.c2-tt-dd.open{border-color:rgba(216,178,90,.6);color:#ecd9a8}.c2-tt-dd b{color:#b5d69a}.c2-tt-dd i{font-style:normal;font-size:11px;background:var(--acc);color:#14130f;padding:0 4px;margin-left:4px}
+.c2-tt-side{width:380px;flex:none;border-left:1px solid var(--l);display:flex;flex-direction:column;min-height:0}.c2-tt-view{position:relative;height:300px;flex:none;background:radial-gradient(ellipse at 50% 40%,#2a2d25,#121310)}.c2-tt-canvas{width:100%;height:100%;display:block;cursor:grab}
+.c2-tt-vl{position:absolute;left:10px;bottom:8px;font-size:12px;letter-spacing:.06em;color:#d8d3c2;text-shadow:0 1px 2px #000;pointer-events:none}
+.c2-tt-info{flex:1;overflow:auto;padding:12px 16px}.c2-fx{font-size:13.5px;line-height:1.35;padding:2px 0}.c2-fx.g{color:#b5d69a}.c2-fx.b{color:#e8a598}.c2-tt-req{width:100%;margin-top:12px;padding:8px}
+.c2-ttsum .c2-ttopen{width:100%;margin-top:10px;padding:8px}
+.c2-goal{position:absolute;top:70px;left:394px;max-width:calc(100% - 394px - 374px);min-width:320px;z-index:3;background:rgba(12,13,11,.92);border:1px solid var(--l);border-left:3px solid var(--acc);backdrop-filter:blur(4px)}.c2-goal.hidden{display:none}
+.c2-goal-h{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;color:var(--ink,#e8e4d8);font:inherit;padding:6px 10px;cursor:pointer;text-align:left}
+.c2-goal-k{font-size:10.5px;letter-spacing:.2em;color:var(--acc);flex:none}.c2-goal-t{font-size:14.5px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c2-goal-p{position:relative;flex:none;width:110px;height:7px;background:rgba(255,255,255,.12)}.c2-goal-p i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#8fb069,#b5d69a)}.c2-goal-p em{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--acc)}
+.c2-goal-h b{font-size:16px;color:#b5d69a;flex:none}.c2-goal-h small{font-size:11.5px;color:var(--dim,#9c978a);letter-spacing:.06em;flex:none}
+.c2-goal-d{padding:0 12px 10px;border-top:1px dashed var(--l)}.c2-goal-win{font-size:13px;margin-top:6px;color:#d8d3c2;line-height:1.4}.c2-goal-win b{color:var(--acc);font-weight:600}
+.c2-tbar{position:absolute;left:calc(394px + (100% - 394px) / 2);bottom:52px;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:12px;background:rgba(12,13,11,.95);border:1px solid var(--l);border-top:2px solid #ffb35a;padding:8px 12px;font-size:14px;max-width:min(860px,94vw)}.c2-tbar .c2-seg{margin:0}.c2-tbar .c2-seg button{padding:4px 10px}
+.c2-tbar-t b{color:#ffd9a8}.c2-tgt{border-color:rgba(255,179,90,.6)}.c2-batc.sel{border-color:#ffb35a}
+.c2-ammo{display:flex;gap:3px;margin:4px 0}.c2-ammo i{flex:1;height:6px;background:rgba(255,255,255,.1)}.c2-ammo i.on{background:#e8b85a}
+.c2-goalm{translate:-50% -50%;display:flex;align-items:center;gap:2px;background:rgba(20,18,10,.85);border:1px solid var(--acc);padding:0 5px;font-size:12px;font-weight:800;color:var(--acc)}.c2-goalm.held{border-color:#8fb069;color:#b5d69a}.c2-goalm i{font-style:normal}
+.c2-bat{translate:-50% -50%;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}.c2-bat.used{opacity:.55}.c2-bat.down{opacity:.3}.c2-bat.sel{filter:drop-shadow(0 0 5px #ffb35a)}
+.c2-hub{translate:-50% -50%;display:flex;align-items:center;gap:4px;font-size:11.5px;white-space:nowrap;background:rgba(14,22,12,.85);border:1px solid #8fb069;color:#d6ecc4;padding:0 6px 0 3px}.c2-hub i{font-style:normal;color:#a9d48a}.c2-hub.half{border-color:#e8b85a;color:#f2dcae}.c2-hub.cut{border-color:var(--en);color:#ffc4b8}
+.c2-intd{translate:-50% 60%;font-size:11px;font-weight:700;color:#ffb8ab;background:rgba(60,12,8,.8);padding:0 5px;white-space:nowrap}
+.c2-left .c2-tabs button{font-size:13px;letter-spacing:.05em;padding:9px 2px;line-height:1.15}
 `;
   document.head.appendChild(Object.assign(document.createElement('style'), { id: 'c2-css', textContent: css }));
 }

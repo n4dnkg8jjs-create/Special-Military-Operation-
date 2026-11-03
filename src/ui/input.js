@@ -26,8 +26,8 @@ export class Input {
   buildingAt(x, y) {
     const v = new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); this.ray.setFromCamera(v, this.g.renderer.camera);
     let best = null, bd = 1e9; const r = this.ray.ray, inv = new THREE.Matrix4(), lr = new THREE.Ray(), hit = new THREE.Vector3();
-    for (const b of this.g.city.buildings) {
-      inv.makeRotationY(b.rot).setPosition(b.x, 0, b.z).invert(); lr.copy(r).applyMatrix4(inv);
+    for (const b of this.g.allBuildings()) {   // panel blocks + private houses
+      inv.makeRotationY(b.rot).setPosition(b.x, b.y0 || 0, b.z).invert(); lr.copy(r).applyMatrix4(inv);
       const box = new THREE.Box3(new THREE.Vector3(-b.L / 2, 0, -b.D / 2), new THREE.Vector3(b.L / 2, b.height, b.D / 2));
       if (lr.intersectBox(box, hit)) { const d = hit.distanceTo(lr.origin); if (d < bd) { bd = d; best = b; } }
     }
@@ -96,7 +96,7 @@ export class Input {
       }
       const b = this.buildingAt(e.clientX, e.clientY);
       const sqs = sel.filter(u => u.type === 'squad');
-      if (b && sqs.length && g1 && b === this.g.city.buildingAt(g1.x, g1.z, 6)) { for (const s of sqs) s.orderGarrison(b); this.g.sfx('ui_order'); return; }
+      if (b && sqs.length && g1 && (b === this.g.city.buildingAt(g1.x, g1.z, 6) || (b.house && b.contains(g1.x, g1.z, 6)))) { for (const s of sqs) s.orderGarrison(b); this.g.sfx('ui_order'); return; }
       // click into a trench: occupy it (or clear it if the enemy holds it)
       if (!b && sqs.length && g1 && this.g.city.trenchInfo?.(g1.x, g1.z)) { const T = trenchNear(this.g, g1.x, g1.z, 5); if (T) { for (const s of sqs) s.orderTrench(T); this.g.sfx('ui_order'); return; } }
       if (g1) this.moveSelected(g1.x, g1.z, null);
@@ -145,7 +145,8 @@ export class Input {
     if (o === 'holdfire') { const v = !sel.every(u => u.holdFire); for (const u of sel) u.holdFire = v; }
     if (o === 'halt') for (const u of sel) u.halt();
     if (o === 'garrison') { const p = this.lastMouse; const b = p && this.buildingAt(p[0], p[1]); const gp = p && this.groundAt(p[0], p[1]); const Tm = !b && gp ? trenchNear(g, gp.x, gp.z, 8) : null;
-      for (const u of sel) if (u.type === 'squad') { const c = u.center(), Tn = Tm || (!b ? trenchNear(g, c.x, c.z, 30) : null), nb = !b && nearestBuilding(g, c); if (Tn && (Tm || !nb || nb.toLocal && Math.hypot(nb.x - c.x, nb.z - c.z) > 30)) { u.orderTrench(Tn); continue; } const bb = b || nearestBuilding(g, u.center()); if (bb) u.orderGarrison(bb); } }
+      for (const u of sel) if (u.type === 'squad') { if (u.building?.house && (!b || b === u.building)) { u.toggleCellar(); continue; }   // in a house: G = down into the cellar / back up
+        const c = u.center(), Tn = Tm || (!b ? trenchNear(g, c.x, c.z, 30) : null), nb = !b && nearestBuilding(g, c); if (Tn && (Tm || !nb || nb.toLocal && Math.hypot(nb.x - c.x, nb.z - c.z) > 30)) { u.orderTrench(Tn); continue; } const bb = b || nearestBuilding(g, u.center()); if (bb) u.orderGarrison(bb); } }
     if (o === 'mount' && g.phase === 'deploy') {
       for (const u of sel) { const sq = u.type === 'squad' ? u : u.passengers; const v = u.type === 'vehicle' ? u : u.carrier;
         if (!sq || !v) continue;
@@ -181,4 +182,4 @@ export class Input {
     if (e.code === 'Backspace' && this.hud.selected.size) { const c = [...this.hud.selected][0].center(); g.cam.lookAt(c.x, c.z); }
   }
 }
-function nearestBuilding(g, c) { let best = null, bd = 60; for (const b of g.city.buildings) { const d = Math.hypot(b.x - c.x, b.z - c.z) - b.L / 2; if (d < bd && b.slots.some(s => !s.occupant)) { bd = d; best = b; } } return best; }
+function nearestBuilding(g, c) { let best = null, bd = 60; for (const b of g.allBuildings()) { const d = Math.hypot(b.x - c.x, b.z - c.z) - b.L / 2; if (d < bd && b.slots.some(s => !s.occupant)) { bd = d; best = b; } } return best; }

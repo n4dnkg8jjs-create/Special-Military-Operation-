@@ -366,6 +366,10 @@ def build_all(rig, R, only=None):
     import clips_death as CD
     if any(want(n) for n in CD.CLIPS):
         out.update(CD.death_clips(rig, want, built=out))
+    # ---------------- casualty evacuation with the pickup (clips_medevac.py): cab exit / enter, fireman's carry, loading the bed
+    import clips_medevac as CMV
+    if any(want(n) for n in CMV.CLIPS):
+        out.update(CMV.medevac_clips(rig, lm, want, built=out))
     return out
 
 

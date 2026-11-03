@@ -170,7 +170,7 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive|medevac_cab|medevac_lift|medevac_load|wounded_lifted|wounded_load)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
@@ -195,7 +195,7 @@ export class Soldier {
       else if (name === 'fpv_pilot' && SHARED_EVENTS.fpv_pilot?.rifle_ground?.t && this.weaponObj) {
         const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground'; this.showSling(false);
       }
-      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
+      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
     }
   }
   // RPG-22: shoulder a disposable launcher, fire, throw the empty tube away
@@ -311,7 +311,7 @@ export class Soldier {
     this.root.position.copy(this.pos);
     if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.45; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.45; }
     this.root.rotation.y = this.heading;
-    this.root.visible = this.visible && this.inside !== 'btr' && this.state !== 'evac' && this.inView !== false;
+    this.root.visible = this.visible && this.inside !== 'btr' && (this.state !== 'evac' || !!this.onBed) && this.inView !== false;   // onBed: on the medevac pickup
   }
   muzzleWorld(out = new THREE.Vector3()) {
     if (this.muzzleObj) return this.muzzleObj.getWorldPosition(out);
@@ -396,7 +396,7 @@ export class Soldier {
       // the clip assumes flat ground at the root's height: once the body leans out over a trench edge, a slope or a heap (> 0.25 m
       // above / below the root) the ragdoll takes over at once and lets it fall onto the real surface
       let uneven = false;
-      if (!go && this.deathT > 0.3 && gh && !this.inBuilding) {
+      if (!go && this.deathT > 0.3 && gh && !this.inBuilding && !this.cqb && !this.cellar) {   // (inside, clearing an upper floor / in a cellar: stays on that floor)
         const hips = this.hipsBone ||= this.model.getObjectByName('Hips');
         if (hips) { const hp = hips.getWorldPosition(_dv); if (Math.abs(gh(hp.x, hp.z) - this.pos.y) > 0.25) go = uneven = true; }
       }
@@ -416,7 +416,7 @@ export class Soldier {
     const end = samplePose(this.model); a.time = t0; this.mixer.update(0);
     return ok(end);
   }
-  canRagdoll(camDist) { return camDist < 90 && !this.inBuilding && !this.aboard && !!this.squad?.game?.city?.groundHeight; }
+  canRagdoll(camDist) { return camDist < 90 && !this.inBuilding && !this.aboard && !this.cqb && !this.cellar && !!this.squad?.game?.city?.groundHeight; }
   // pose after each clip update while a ragdoll hand-off is pending (two frames: velocity at the hand-off)
   deathSample(dt) {
     if (this.ragdollAt == null || this.corpseDone || this.ragdoll || this.deathT < Math.min(0.22, this.ragdollAt - 0.2)) return;   // from 0.22 s: early hand-off over uneven ground

@@ -5262,7 +5262,7 @@
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 4655152,
+  "size_bytes": 5074136,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and the vehicle exits (hatch_exit*, dismount_*) keep root motion and end on the root",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
@@ -11582,6 +11582,130 @@
       -1.0
      ]
     }
+   },
+   "medevac_cab_exit": {
+    "duration_s": 1.8,
+    "frames": 55,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "from the pickup's cab seat (hips over the H-point [-0.1, 0.84, -0.62] in the END-root frame, facing +X = the truck's front for a right-hand door): swivels to the door, right foot down, ducks under the roof, steps out and stands facing away from the truck",
+    "events": {
+     "seat_root_frame": [
+      -0.1,
+      0.84,
+      -0.62
+     ],
+     "door_open": 0.0,
+     "door_close": 1.8
+    }
+   },
+   "medevac_cab_enter": {
+    "duration_s": 1.8,
+    "frames": 55,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "medevac_cab_exit reversed: from standing at the door (facing away from the truck) back onto the seat facing forward",
+    "events": {
+     "seat_root_frame": [
+      -0.1,
+      0.84,
+      -0.62
+     ],
+     "door_open": 0.0,
+     "door_close": 1.8
+    }
+   },
+   "medevac_lift": {
+    "duration_s": 2.6,
+    "frames": 79,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "squats beside a casualty lying 0.62 m in front (head to the left), takes him by the vest and arm, rolls him up onto the right shoulder, stands up; last frame = medevac_carry_walk frame 0",
+    "events": {
+     "casualty_root_frame": [
+      0,
+      0,
+      0.62
+     ],
+     "lifted": 1.6
+    }
+   },
+   "medevac_carry_walk": {
+    "duration_s": 1.1,
+    "frames": 34,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 1.144,
+    "direction": "forward",
+    "root_motion": false,
+    "notes": "fireman's carry: casualty (wounded_carry_walk, same root and heading) over the right shoulder; legs = walk_rifle (CMU), pelvis lowered 3.5 cm, leaning into the load; right arm round his thighs, left hand on his wrist; 1.14 m/s at time scale 1"
+   },
+   "medevac_load_bed": {
+    "duration_s": 2.8,
+    "frames": 85,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "at the load point behind the open tailgate facing the truck (tailgate tip 0.44 m ahead at 0.88 m, bed edge 0.85 m): swings the casualty off the shoulder onto the tailgate and pushes him along the bed to the slot [0.0, 0.885, 1.65], straightens up",
+    "events": {
+     "released": 2.0,
+     "slot_root_frame": [
+      0.0,
+      0.885,
+      1.65
+     ]
+    }
+   },
+   "wounded_lifted": {
+    "duration_s": 2.6,
+    "frames": 79,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "pairs with medevac_lift (same root / heading): lying on his back 0.62 m in front of the medic, head to the medic's left, drawn up and over his right shoulder; last frame = wounded_carry_walk frame 0"
+   },
+   "wounded_carry_walk": {
+    "duration_s": 1.1,
+    "frames": 34,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "casualty over the medic's right shoulder (pairs with medevac_carry_walk: same root, same heading, same phase); belly on the shoulder, torso and arms hanging down the medic's back, legs down his front"
+   },
+   "wounded_load_bed": {
+    "duration_s": 2.8,
+    "frames": 85,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": true,
+    "notes": "pairs with medevac_load_bed (same root / heading): from the shoulder onto the tailgate, slid head-first along the bed; last frame = wounded_on_bed frame 0 at [0.0, 0.885, 1.65] turned 180 deg (head towards the cab)"
+   },
+   "wounded_on_bed": {
+    "duration_s": 6.0,
+    "frames": 181,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "casualty lying on his back on the pickup bed (floor y = 0 in the root frame, head towards -Z), knees slightly up, right hand on the belly dressing, left on the chest, breathing, slow head turns; the game places the root on a stretcher_N empty of pickup.glb (its +Z faces the tailgate)"
    }
   },
   "atgm_fpv": {
@@ -11624,6 +11748,14 @@
    "feet": "feet are pinned to their ground spots while they carry weight (leg IK, IK swing between steps); no foot sliding",
    "window": "building clips: kneeling at the window slot (buildings.js slotPos): inner wall face 0.60 m ahead of the root (+Z), sill 0.86 m",
    "ragdoll": "game side (src/game/ragdoll.js): position-based dynamics on 19 joint particles, ground = city.groundHeight, max 8 active, only within ~90 m camera distance and never inside buildings / aboard; on level ground (< 8 cm under every joint now and in the clip's last frame) the authored clip ends the death and no ragdoll runs; otherwise it takes over at events.ragdoll, or earlier (after 0.3 s) as soon as the ground under the Hips is > 0.25 m above / below the root (trench edge, slope, rubble: the clip assumes flat ground); a new ragdoll only starts when a slot is free or the oldest body has settled > 1.4 s (never frozen mid-air: otherwise the clip finishes); blasts always ragdoll from 0.12 s with an impulse away from the explosion; asleep once the trunk moves < 1.5 cm in 0.35 s (typically 0.7-1.8 s, at most 3 s), then frozen (no per-frame cost); the soldier's pos moves to where the pelvis rests. Without a ragdoll the clip plays to its end, then the corpse is frozen and pos moves to the end Hips position (root motion)."
+  },
+  "medevac": {
+   "summary": "Casualty evacuation with the pickup (assets/vehicles/pickup.glb, src/game/medevac.js, clips_medevac.py). Medic and casualty clips come in pairs that share the root: the game puts the casualty's root on the medic's root with the same heading and keeps the casualty clip time equal to the medic's (medevac_lift + wounded_lifted, medevac_carry_walk + wounded_carry_walk, medevac_load_bed + wounded_load_bed).",
+   "cab": "medevac_cab_exit / medevac_cab_enter: clip frame = the end root on the ground beside the door facing away from the truck; the cab seat H-point (ride_seat_2 / ride_seat_3 of pickup.glb) is events.seat_root_frame in that frame (+X = the truck's front for right-hand doors): root = seat + 0.62 m outward + 0.10 m forward. The door (door_FR / door_RR hinge, manifest vehicles.pickup.doors) opens at the start.",
+   "lift": "medevac_lift: the casualty lies events.casualty_root_frame ahead of the medic (on his back, head to the medic's left); ends in medevac_carry_walk frame 0 (the casualty over the right shoulder).",
+   "load": "medevac_load_bed: the medic stands at load_point (behind the open tailgate, facing the truck) shifted sideways by the stretcher slot's x; wounded_load_bed ends exactly in wounded_on_bed frame 0 at that stretcher_N empty (turned 180 deg: the empty's +Z faces the tailgate).",
+   "bed": "wounded_on_bed: lying on the back, floor at y = 0 of the root frame, head towards -Z; root = stretcher_N empty.",
+   "weapon": "medevac_* clips: rifle slung on the back (weapon_socket_back); wounded_*: slung / dropped as for the other wounded clips."
   }
  },
  "ak74m": {

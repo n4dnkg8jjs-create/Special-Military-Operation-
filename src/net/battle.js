@@ -75,7 +75,7 @@ function snapshot(g) {
 function applyCommand(game, byId, c) {
   const u = byId(c.id); if (!u || u.side !== 'enemy') return;
   const a = dec(c.a || []);
-  const ref = x => (x && x.unit != null ? byId(x.unit) : x && x.bld != null ? game.city.buildings[x.bld] : x && x.trench != null ? game.city.trenchSystems?.[x.trench] : x);
+  const ref = x => (x && x.unit != null ? byId(x.unit) : x && x.hse != null ? game.houses?.list[x.hse] : x && x.bld != null ? game.city.buildings[x.bld] : x && x.trench != null ? game.city.trenchSystems?.[x.trench] : x);
   switch (c.m) {
     case 'set': if (['holdFire', 'run'].includes(c.k)) u[c.k] = c.v; else if (c.k === 'fireAt') u.fireAt = c.v ? { p: new THREE.Vector3(...c.v.p), until: game.time + 30 } : null; break;
     case 'place': game.deployPlace(u, a[0], a[1], a[2], 'enemy'); break;
@@ -97,7 +97,7 @@ export function clientBattle(game, peer) {
   }
   game.playerUnits = [...game.squads, ...game.vehicles].filter(u => u.side === 'player' && !(u.type === 'squad' && u.crew));
   // outgoing orders: unit methods / property sets turn into commands to the host
-  const encArg = x => (x && (x.type === 'squad' || x.type === 'vehicle') ? { unit: x.netId } : x && x.panels ? { bld: game.city.buildings.indexOf(x) } : x && x.slots && x.lines ? { trench: game.city.trenchSystems.indexOf(x) } : enc(x));
+  const encArg = x => (x && (x.type === 'squad' || x.type === 'vehicle') ? { unit: x.netId } : x && x.house === true ? { hse: game.houses.list.indexOf(x) } : x && x.panels ? { bld: game.city.buildings.indexOf(x) } : x && x.slots && x.lines ? { trench: game.city.trenchSystems.indexOf(x) } : enc(x));
   for (const u of [...game.squads, ...game.vehicles]) {
     if (u.side !== 'player') continue;
     for (const m of CMDS) if (typeof u[m] === 'function') u[m] = (...a) => peer.send('cmd', { id: u.netId, m, a: a.map(encArg) });

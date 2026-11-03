@@ -12,6 +12,7 @@
 // not quotations; no real person is named. Higher-command names are real formations/organisations (OSUV "Tavria").
 import { GRID_UA as G } from './content_grid_ua.js';
 import { THEATRE2 } from './content_theatre.js';
+import { TECH_UA } from './tech.js';
 
 const N = name => { const c = G.cells.find(x => x.name === name); if (!c) throw new Error(`UA grid: no cell named ${name}`); return c.id; };
 const unit = (uid, key, name, kind, men, veh, xp = 0) => ({ uid, key, name, kind, men, menMax: men, wounded: 0, ...(veh ? { veh: { kind: veh, hp: 1, lost: false } } : {}), xp, battles: 0, kills: 0, status: 'ready' });
@@ -29,16 +30,22 @@ const SRC = {
   isw0217: { title: 'ISW / CTP: Russian Offensive Campaign Assessment, 17 Feb 2024', url: 'https://www.criticalthreats.org/analysis/russian-offensive-campaign-assessment-february-17-2024' },
 };
 
+// Brigade scale: every unit record is a COMPANY (fought on the RTS battle map by a representative squad / vehicle), every
+// task force a BATTALION group. In February 2023 the brigade holds the sector dispersed — a battalion per stretch of
+// front, the tanks back in Orikhiv — so a strike force has to be assembled deliberately.
 const START_UNITS = [
-  unit('ua_u1', 'mech_bmp', '1st Mech. Squad (BMP-2)', 'imech', 7, 'ifv', 1),
-  unit('ua_u2', 'mech_bmp', '2nd Mech. Squad (BMP-2)', 'imech', 7, 'ifv', 0),
-  unit('ua_u3', 'mech_btr', '3rd Mech. Squad (BTR-80)', 'mech', 8, 'btr', 1),
-  unit('ua_u4', 'mech_btr', '4th Mech. Squad (BTR-80)', 'mech', 8, 'btr', 0),
-  unit('ua_u5', 'assault', 'Assault Squad', 'assault', 6, null, 1),
-  unit('ua_u6', 'tank', 'Tank 1-1 (T-64BV)', 'tank', 3, 'tank', 1),
-  unit('ua_u7', 'tank', 'Tank 1-2 (T-64BV)', 'tank', 3, 'tank', 0),
-  unit('ua_u8', 'atgm', 'Stugna-P team', 'atgm', 3, null, 1),
-  unit('ua_u9', 'fpv', 'Drone team', 'fpv', 2, null, 0),
+  unit('ua_u1', 'mech_bmp', '1st Mech. Coy (BMP-2)', 'imech', 7, 'ifv', 1),
+  unit('ua_u2', 'mech_bmp', '4th Mech. Coy (BMP-2)', 'imech', 7, 'ifv', 0),
+  unit('ua_u3', 'mech_btr', '7th Mech. Coy (BTR-80)', 'mech', 8, 'btr', 1),
+  unit('ua_u4', 'mech_btr', '10th Rifle Coy (BTR-80)', 'mech', 8, 'btr', 0),
+  unit('ua_u5', 'assault', '2nd Coy assault platoon', 'assault', 6, null, 1),
+  unit('ua_u6', 'tank', '1st Tank Coy (T-64BV)', 'tank', 3, 'tank', 1),
+  unit('ua_u7', 'tank', '2nd Tank Coy (T-64BV)', 'tank', 3, 'tank', 0),
+  unit('ua_u8', 'atgm', 'AT platoon (Stugna-P)', 'atgm', 3, null, 1),
+  unit('ua_u9', 'fpv', 'UAV strike platoon', 'fpv', 2, null, 0),
+  unit('ua_u10', 'mech_btr', '8th Mech. Coy (BTR-80)', 'mech', 8, 'btr', 0),
+  unit('ua_u11', 'assault', '11th Rifle Coy assault group', 'assault', 6, null, 0),
+  unit('ua_u12', 'atgm', 'AT platoon (Stugna-P) #2', 'atgm', 3, null, 0),
 ];
 
 export const CAMPAIGN2_UA = {
@@ -59,10 +66,24 @@ export const CAMPAIGN2_UA = {
   start: {
     date: '2023-02-06', turnDays: 7, end: '2024-03-04', lp: 60, hq: N('Orikhiv'),
     forces: [
-      { id: 'tf_nd', name: 'TF Novodanylivka', cell: N('Novodanylivka'), units: ['ua_u1', 'ua_u3', 'ua_u5', 'ua_u8'], stance: 'hold' },
-      { id: 'tf_mt', name: 'TF Mala Tokmachka', cell: N('Mala Tokmachka'), units: ['ua_u2', 'ua_u4', 'ua_u9'], stance: 'hold' },
-      { id: 'tf_arm', name: 'Armour reserve', cell: N('Orikhiv'), units: ['ua_u6', 'ua_u7'], stance: 'rest' },
+      { id: 'tf_b1', name: '1st Mech. Bn (Nesterianka)', cell: N('Nesterianka'), units: ['ua_u3', 'ua_u12'], stance: 'hold' },
+      { id: 'tf_b2', name: '2nd Mech. Bn (Novodanylivka)', cell: N('Novodanylivka'), units: ['ua_u1', 'ua_u5'], stance: 'hold' },
+      { id: 'tf_b3', name: '3rd Mech. Bn (Mala Tokmachka)', cell: N('Mala Tokmachka'), units: ['ua_u2', 'ua_u8'], stance: 'hold' },
+      { id: 'tf_b4', name: 'Rifle Bn (Novopokrovka)', cell: N('Novopokrovka'), units: ['ua_u4', 'ua_u11'], stance: 'hold' },
+      { id: 'tf_res', name: 'Brigade reserve', cell: 'c6_3', units: ['ua_u10', 'ua_u9'], stance: 'rest' },
+      { id: 'tf_tank', name: 'Tank Bn', cell: N('Orikhiv'), units: ['ua_u6', 'ua_u7'], stance: 'rest' },
     ],
+    // the brigade artillery group (fires.js): a 120 mm mortar battery up front, the 2S1 battalion and the Grad
+    // battalion further back; a 155 mm M777 battery joins with the Western deliveries (directive ua_shaping)
+    batteries: [
+      { id: 'b_mor', kind: 'mortar120', name: '120 mm mortar battery', cell: 'c7_4' },
+      { id: 'b_2s1', kind: 'how122', name: 'Self-propelled artillery bn (2S1)', cell: 'c4_2' },
+      { id: 'b_grad', kind: 'grad', name: 'Rocket artillery bn (BM-21)', cell: 'c8_2' },
+    ],
+    // weekly shell allocation in fire missions: tight in spring, priority for the offensive (cluster rounds from July),
+    // then "shell hunger" from November 2023 (~3,600 rounds/day in 2023 -> ~2,000/day in early 2024)
+    ammo: [{ date: '2023-02-06', a: 3 }, { date: '2023-06-01', a: 5 }, { date: '2023-07-15', a: 5.5 }, { date: '2023-11-01', a: 2.5 }, { date: '2024-01-01', a: 2 }],
+    ammoStart: 6, ammoMax: 12, uavStock: 6,
     units: START_UNITS,
     unlocked: ['ua_log_ifak', 'ua_dr_mavic'],
     available: ['repl', 'mech_btr', 'mech_bmp', 'mech_ifv', 'tank', 'assault', 'atgm', 'fpv'],
@@ -70,7 +91,19 @@ export const CAMPAIGN2_UA = {
   theatre: { ...THEATRE2 },
   aor: {
     name: 'Orikhiv – Robotyne – Verbove', bbox: G.bbox, cellKm: G.cellKm, cols: G.cols, rows: G.rows,
-    enemyEdge: G.enemyEdge, supplySources: G.supplySources, cells: G.cells,
+    enemyEdge: G.enemyEdge, supplySources: [...G.supplySources, 'c13_3'], cells: G.cells,
+    // supply.js: the Russian rear is the T-04-08 / rail corridor to Tokmak off the southern edge
+    enemySources: ['c4_13', 'c0_13', 'c13_13'],
+    hubs: [
+      { cell: N('Orikhiv'), name: 'Orikhiv logistics base (rail station)', kind: 'base', side: 'player' },
+      { cell: 'c6_3', name: 'Brigade ammunition point (N-08 / T-04-08)', kind: 'ammo', side: 'player' },
+      { cell: N('Novoandriivka'), name: 'Novoandriivka supply point', kind: 'ammo', side: 'player' },
+      { cell: N('Robotyne'), name: 'Robotyne forward ammunition point', kind: 'ammo', side: 'enemy' },
+      { cell: N('Kopani'), name: 'Kopani supply point', kind: 'ammo', side: 'enemy' },
+      { cell: N('Verbove'), name: 'Verbove supply point', kind: 'ammo', side: 'enemy' },
+      { cell: N('Solodka Balka'), name: 'Solodka Balka logistics node (T-04-08 to Tokmak)', kind: 'base', side: 'enemy' },
+    ],
+    reveal: 3,
     osm: 'assets/campaign/osm/UA/', geo: 'assets/campaign/osm/UA/aor_v2.json',
     notes: 'Starting line of 6 Feb 2023 ~2–3 km south of Novodanylivka and Mala Tokmachka. Russian first positions behind minefields in the fields and tree belts north of Robotyne; the main belt (anti-tank ditches, dragon\'s teeth, trenches, bunkers — the "Surovikin line") from south of Robotyne past Novoprokopivka to the heights west of Verbove; a second belt around Solodka Balka. Supply from the north edge (N-08 to Zaporizhzhia, T-04-08, T-08-12).',
   },
@@ -95,8 +128,8 @@ export const CAMPAIGN2_UA = {
       history: 'By spring 2023 satellite imagery showed several Russian belts south of Orikhiv: forward positions behind minefields, a main belt of anti-tank ditches, dragon\'s teeth and trenches from south of Robotyne to Verbove, and further lines around Tokmak.',
       sources: [SRC.surovikin] },
     { id: 'ua_shaping', issue: { date: '2023-04-10' }, from: 'OSUV "Tavria"', title: 'Shaping: attrit the enemy\'s armour and guns', kind: 'destroy', targets: [], count: 3, deadlineDate: '2023-06-05',
-      text: 'Before the offensive, wear down the enemy\'s vehicles and guns in the sector with drones, ATGMs and counter-battery fire. On completion the brigade receives a company of Western infantry fighting vehicles.',
-      reward: { lp: 40, units: [unit('ua_rw_b1', 'mech_ifv', '5th Mech. Squad (Bradley)', 'imech', 6, 'ifv', 0), unit('ua_rw_b2', 'mech_ifv', '6th Mech. Squad (Bradley)', 'imech', 6, 'ifv', 0)] }, penalty: { lp: 5 },
+      text: 'Before the offensive, wear down the enemy\'s vehicles and guns in the sector with drones, ATGMs and counter-battery fire. On completion the brigade receives two companies of Western infantry fighting vehicles and an M777 battery.',
+      reward: { lp: 40, battery: 'm777', units: [unit('ua_rw_b1', 'mech_ifv', '5th Mech. Coy (Bradley)', 'imech', 6, 'ifv', 0), unit('ua_rw_b2', 'mech_ifv', '6th Mech. Coy (Bradley)', 'imech', 6, 'ifv', 0)] }, penalty: { lp: 5 },
       history: 'In April–May 2023 Ukraine received Western tanks and infantry fighting vehicles for new and reconstituted brigades, and struck Russian depots and command posts behind the line ahead of the counteroffensive.',
       sources: [SRC.counter] },
     // ---------------------------------------------------------------- June 2023: the armoured attack
@@ -122,11 +155,11 @@ export const CAMPAIGN2_UA = {
     { id: 'ua_robotyne', issue: { date: '2023-08-07' }, from: 'OSUV "Tavria"', title: 'Combat order: Robotyne', kind: 'capture',
       targets: [N('Robotyne')], deadlineDate: '2023-09-04',
       text: 'Seize Robotyne and clear it to its southern edge. The village is the hinge of the enemy\'s forward line on this axis. Assault groups into the houses and gardens, infantry fighting vehicles in support from the tree belts, fires on call. On completion an additional Bradley squad is released to the brigade.',
-      reward: { lp: 90, units: [unit('ua_rw_b3', 'mech_ifv', '7th Mech. Squad (Bradley)', 'imech', 6, 'ifv', 0)] }, penalty: { lp: 20 }, next: { success: 'ua_verbove_belt', failure: 'ua_robotyne2' },
+      reward: { lp: 90, units: [unit('ua_rw_b3', 'mech_ifv', '9th Mech. Coy (Bradley)', 'imech', 6, 'ifv', 0)] }, penalty: { lp: 20 }, next: { success: 'ua_verbove_belt', failure: 'ua_robotyne2' },
       history: 'Ukrainian troops raised the flag over Robotyne on 23 August 2023 after weeks of small-group assaults; the liberation was announced on 28 August. The southern outskirts stayed contested for some days more.',
       sources: [SRC.robotyne, SRC.nbc0828, SRC.isw0826] },
     { id: 'ua_robotyne2', issue: {}, from: 'OSUV "Tavria"', title: 'Renewed assault on Robotyne', kind: 'capture',
-      targets: [N('Robotyne')], deadline: 4,
+      targets: [N('Robotyne')], deadline: 6,
       text: 'The first assault on Robotyne has stalled. Fresh engineers and shells are allocated: take the village before the enemy\'s reserves dig in.',
       reward: { lp: 50 }, penalty: { lp: 15 }, next: { success: 'ua_verbove_belt', failure: 'ua_culminate' } },
     { id: 'ua_hold_robotyne', issue: { when: `captured:${N('Robotyne')}` }, from: 'Corps HQ', title: 'Hold Robotyne', kind: 'hold',
@@ -148,8 +181,8 @@ export const CAMPAIGN2_UA = {
       sources: [SRC.isw0826, SRC.robotyne] },
     // ---------------------------------------------------------------- September 2023: the main belt
     { id: 'ua_verbove_belt', issue: { date: '2023-09-04' }, from: 'OSUV "Tavria"', title: 'Combat order: breach the main belt west of Verbove', kind: 'capture',
-      targets: [N('Verbove heights')], deadlineDate: '2023-10-23',
-      text: 'The main effort shifts south-east. Breach the main defence belt on the heights west of Verbove: anti-tank ditch, dragon\'s teeth and the trench line behind them. Artillery preparation, smoke, engineers to the ditch, assault groups into the trenches; the armour crosses only on a proven lane.',
+      targets: [N('Heights NW of Verbove')], deadlineDate: '2023-11-27',
+      text: 'The main effort shifts south-east. Break into the main defence belt on the heights north-west of Verbove, then roll it up towards the village: anti-tank ditch, dragon\'s teeth and the trench line behind them. Artillery preparation, smoke, engineers to the ditch, assault groups into the trenches; the armour crosses only on a proven lane.',
       reward: { lp: 80 }, penalty: { lp: 20 }, next: { success: 'ua_verbove', failure: 'ua_culminate' },
       history: 'On 21–23 September 2023 Ukrainian forces broke through the best-prepared belt 1.7–3.5 km west of Verbove and armour crossed the anti-tank ditch, but the breach stayed narrow and under fire from three sides.',
       sources: [SRC.isw0923, SRC.robotyne] },
@@ -204,9 +237,43 @@ export const CAMPAIGN2_UA = {
       text: 'The enemy has broken into Mala Tokmachka on the Kinska. Counterattack before he brings up reserves.',
       reward: { lp: 25 }, penalty: { lp: 20 } },
   ],
+  // THE OPERATION GOAL (state.js goalProgress / outcome): 7 of the 10 points held at the end of a week = victory (e.g.
+  // Robotyne, Novoprokopivka and Verbove: the line broken on two axes); at the end of the campaign 30%+ of the points
+  // (Robotyne alone, as in 2023) = limited success.
+  goal: {
+    title: 'Break the Robotyne – Verbove line and open the road to Tokmak',
+    text: 'Break the line on two axes — Robotyne and Novoprokopivka on the T-04-08, Verbove in the east — or seize the Solodka Balka logistics node behind it (7 of 10 objective points): the enemy\'s second belt and the road and rail corridor to Tokmak, the hub of his whole southern grouping, then lie open.',
+    by: '2024-03-04', partial: 0.3, win: 0.7,
+    cells: [{ cell: N('Robotyne'), pts: 3 }, { cell: N('Novoprokopivka'), pts: 2 }, { cell: N('Verbove'), pts: 2 }, { cell: N('Solodka Balka'), pts: 3 }],
+    history: 'The 2023 counteroffensive aimed at Tokmak and Melitopol to cut the land bridge to Crimea. On this axis it took Robotyne (August) and breached the main belt west of Verbove (September), but culminated short of Novoprokopivka, Verbove and Tokmak.',
+  },
   enemy: {
     // Russian behaviour on the grid: localised attacks in winter, counterattacks with airborne reserves from August,
-    // winter assaults on the salient from December.
+    // winter assaults on the salient from December. The enemy commander (ai.js) moves these battalion groups.
+    forces: [
+      { name: 'Motor-rifle bn (Robotyne)', kind: 'mech', cell: N('Robotyne'), str: 1.2 },
+      { name: 'Motor-rifle bn (Kopani)', kind: 'mech', cell: N('Kopani'), str: 1.0 },
+      { name: 'Motor-rifle bn (Verbove heights)', kind: 'mech', cell: N('Verbove heights'), str: 1.0 },
+      { name: 'Tank coy (Novoprokopivka)', kind: 'tank', cell: N('Novoprokopivka'), str: 0.9 },
+      { name: 'Storm detachment', kind: 'assault', cell: N('Tree belts SE of Mala Tokmachka'), str: 0.8 },
+      { name: 'Regimental reserve', kind: 'mech', cell: N('Solodka Balka'), str: 1.2 },
+    ],
+    reinforcements: [
+      { date: '2023-06-12', name: 'Tank bn (army reserve)', kind: 'tank', str: 1.2 },
+      { date: '2023-08-14', name: 'Airborne bn (VDV)', kind: 'vdv', str: 1.5 },
+      { date: '2023-08-28', name: 'Airborne bn (VDV) #2', kind: 'vdv', str: 1.4 },
+      { date: '2023-12-04', name: 'Storm-V detachment', kind: 'assault', str: 1.0 },
+      { date: '2024-01-15', name: 'Motor-rifle bn (rotation)', kind: 'mech', str: 1.1 },
+    ],
+    batteries: [
+      { kind: 'mortar120', name: '120 mm mortar battery', cell: N('Balka N of Robotyne') },
+      { kind: 'd30', name: 'Howitzer bn (D-30)', cell: N('Ilchenkove') },
+      { kind: 'msta', name: 'SP howitzer bn (2S19 Msta-S)', cell: N('Pshenychne') },
+      { kind: 'grad', name: 'Rocket bn (BM-21 Grad)', cell: 'c9_11' },
+    ],
+    // ~10,000 rounds a day against Ukraine's ~3,600 (spring 2023); dense EW along the belt
+    ammo: [{ date: '2023-02-06', a: 4.5 }, { date: '2023-10-01', a: 5.5 }, { date: '2024-01-01', a: 6 }], ammoStart: 8, ammoMax: 14, ew: 0.1, minStrength: 4, crisisWeeks: 6, crisisName: 'Motor-rifle bn (rushed in)',
+    line: [{ date: '2023-02-06', l: 1.4 }, { date: '2023-06-05', l: 1.7 }, { date: '2023-10-16', l: 1.6 }],
     pressure: [{ date: '2023-02-06', p: 0.10 }, { date: '2023-06-05', p: 0.14 }, { date: '2023-08-14', p: 0.22 }, { date: '2023-10-16', p: 0.18 }, { date: '2023-12-04', p: 0.24 }, { date: '2024-02-05', p: 0.20 }],
     reinforce: [{ date: '2023-02-06', r: 0.10 }, { date: '2023-06-05', r: 0.06 }, { date: '2023-08-14', r: 0.10 }, { date: '2023-10-16', r: 0.06 }, { date: '2023-12-04', r: 0.08 }],
     forceTemplates: {
@@ -219,59 +286,20 @@ export const CAMPAIGN2_UA = {
   catalog: [
     { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised soldiers from the brigade\'s reserve battalion to fill gaps in depleted squads.', kind: 'replacements', men: 8, lp: 12, eta: 1 },
     { key: 'repl_draft', label: 'Trained draft (16 men)', desc: 'A full draft through the brigade training centre: better prepared, arrives together.', kind: 'replacements', men: 16, lp: 20, eta: 2, req: ['ua_log_tc'] },
-    { key: 'mech_btr', label: 'Mech. Inf. Squad + BTR-80', desc: 'Eight-man squad with its wheeled carrier: KPVT and PKT, light armour.', kind: 'mech', vehicle: 'btr', men: 8, lp: 45, eta: 2, limit: 3 },
-    { key: 'mech_bmp', label: 'Mech. Inf. Squad + BMP-2', desc: 'Seven dismounts in a BMP-2: 30 mm cannon and Konkurs ATGM, thin armour.', kind: 'imech', vehicle: 'ifv', men: 7, lp: 55, eta: 2, limit: 3 },
-    { key: 'mech_ifv', label: 'Mech. Inf. Squad + M2A2 Bradley', desc: 'Six dismounts in an M2A2 ODS-SA: 25 mm Bushmaster, TOW-2, armour that brings crews home. Deliveries from spring 2023.', kind: 'imech', vehicle: 'ifv', men: 6, lp: 70, eta: 3, limit: 3, date: '2023-04-01' },
-    { key: 'mech_ifv_plus', label: 'Bradley squad (second company)', desc: 'Further Bradleys from partner deliveries for a second mechanised company.', kind: 'imech', vehicle: 'ifv', men: 6, lp: 75, eta: 3, req: ['ua_arm_bradley2'], limit: 2 },
+    { key: 'mech_btr', label: 'Mech. Coy (BTR-80)', desc: 'Eight-man squad with its wheeled carrier: KPVT and PKT, light armour.', kind: 'mech', vehicle: 'btr', men: 8, lp: 45, eta: 2, limit: 4 },
+    { key: 'mech_bmp', label: 'Mech. Coy (BMP-2)', desc: 'Seven dismounts in a BMP-2: 30 mm cannon and Konkurs ATGM, thin armour.', kind: 'imech', vehicle: 'ifv', men: 7, lp: 55, eta: 2, limit: 3 },
+    { key: 'mech_ifv', label: 'Mech. Coy (M2A2 Bradley)', desc: 'Six dismounts in an M2A2 ODS-SA: 25 mm Bushmaster, TOW-2, armour that brings crews home. Deliveries from spring 2023.', kind: 'imech', vehicle: 'ifv', men: 6, lp: 70, eta: 3, limit: 3, date: '2023-04-01' },
+    { key: 'mech_ifv_plus', label: 'Mech. Coy (Bradley, 2nd)', desc: 'Further Bradleys from partner deliveries for a second mechanised company.', kind: 'imech', vehicle: 'ifv', men: 6, lp: 75, eta: 3, req: ['ua_arm_bradley2'], limit: 2 },
     { key: 'tank', label: 'T-64BV tank', desc: 'Brigade tank with a three-man crew: 125 mm gun, Kontakt-1 ERA.', kind: 'tank', vehicle: 'tank', men: 3, lp: 70, eta: 3, limit: 2 },
-    { key: 'tank_leo', label: 'Leopard 2 tank', desc: 'Western main battle tank with a four-man crew in the real thing (three in game): better armour, optics and fire control.', kind: 'tank', vehicle: 'tank', men: 3, lp: 95, eta: 4, req: ['ua_arm_leopard'], limit: 2 },
     { key: 'tank_plus', label: 'Tank (second platoon)', desc: 'Additional depot-repaired tank for a second tank platoon.', kind: 'tank', vehicle: 'tank', men: 3, lp: 85, eta: 4, req: ['ua_arm_tankpl'], limit: 2 },
-    { key: 'assault', label: 'Assault Squad', desc: 'Six assaulters in heavy armour with optics and grenades for trench and house clearing.', kind: 'assault', men: 6, lp: 35, eta: 2, limit: 2 },
-    { key: 'assault_plus', label: 'Assault Squad (assault company)', desc: 'Additional assault squads from the brigade\'s assault company.', kind: 'assault', men: 6, lp: 40, eta: 2, req: ['ua_inf_assault'], limit: 2 },
-    { key: 'atgm', label: 'Stugna-P ATGM team', desc: 'Three-man team with a Stugna-P launcher and missiles in transport tubes.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 2 },
+    { key: 'assault', label: 'Assault Coy', desc: 'Six assaulters in heavy armour with optics and grenades for trench and house clearing.', kind: 'assault', men: 6, lp: 35, eta: 2, limit: 3 },
+    { key: 'assault_plus', label: 'Assault Coy (assault bn)', desc: 'Additional assault squads from the brigade\'s assault company.', kind: 'assault', men: 6, lp: 40, eta: 2, req: ['ua_inf_assault'], limit: 2 },
+    { key: 'atgm', label: 'Stugna-P ATGM team', desc: 'Three-man team with a Stugna-P launcher and missiles in transport tubes.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 3 },
     { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with strike quadcopters and drop munitions.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
     { key: 'fpv_plus', label: 'FPV team (unmanned systems company)', desc: 'Additional strike-drone crews from the brigade\'s unmanned systems company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ua_dr_uas'], limit: 3 },
     { key: 'spg', label: '155 mm self-propelled howitzer', desc: 'A 155 mm SP howitzer with its crew (M109 / 2S22 Bohdana class).', kind: 'spg', vehicle: 'spg', men: 5, lp: 100, eta: 4, req: ['ua_fire_spg'], limit: 1 },
   ],
-  tech: [
-    // ---- Infantry
-    { id: 'ua_inf_plates', name: 'Helmets and Level IV plates', branch: 'Infantry', desc: 'Partner-supplied ballistic helmets, rifle plates and better carriers for every squad.', lp: 30, eta: 2, req: [], kind: 'upgrade', mods: { helmet: 0.1, armorPlate: 0.06 } },
-    { id: 'ua_inf_optics', name: 'Optics on every rifle', branch: 'Infantry', desc: 'Red-dots and low-power scopes, many volunteer-funded.', lp: 25, eta: 1, req: [], kind: 'upgrade', mods: { accuracy: 0.08 } },
-    { id: 'ua_inf_thermal', name: 'Thermal sights and NVGs', branch: 'Infantry', desc: 'Night-fighting kit down to squad level: tree-belt fighting goes on after dark.', lp: 45, eta: 2, req: ['ua_inf_optics'], kind: 'upgrade', mods: { thermals: 0.35 } },
-    { id: 'ua_inf_training', name: 'Partner combined-arms training', branch: 'Infantry', desc: 'Companies rotate through a combined-arms course abroad: fire and manoeuvre, trench clearing, breaching drills.', lp: 40, eta: 3, req: ['ua_inf_plates', 'ua_inf_optics'], kind: 'upgrade', mods: { accuracy: 0.05, morale: 0.2 }, date: '2023-03-01' },
-    { id: 'ua_inf_assault', name: 'Brigade assault company', branch: 'Infantry', desc: 'Form an assault company from experienced volunteers: more assault squads can be ordered.', lp: 45, eta: 3, req: ['ua_inf_training'], kind: 'unlock', unlock: ['assault_plus'] },
-    { id: 'ua_inf_missiles', name: 'Missile reserve', branch: 'Infantry', desc: 'Extra Stugna-P and Javelin rounds carried forward for every ATGM team.', lp: 25, eta: 1, req: [], kind: 'upgrade', mods: { atgmAmmo: 2 } },
-    // ---- Armour
-    { id: 'ua_arm_leopard', name: 'Leopard 2 company', branch: 'Armour', desc: 'Western main battle tanks delivered from spring 2023 are assigned to the brigade.', lp: 60, eta: 3, req: [], kind: 'unlock', unlock: ['tank_leo'], date: '2023-04-15' },
-    { id: 'ua_arm_bradley2', name: 'Second Bradley company', branch: 'Armour', desc: 'More M2A2 ODS-SA Bradleys from partner deliveries are assigned to the brigade.', lp: 55, eta: 3, req: [], kind: 'unlock', unlock: ['mech_ifv_plus'], date: '2023-06-15' },
-    { id: 'ua_arm_era', name: 'ERA refit', branch: 'Armour', desc: 'Replace missing Kontakt-1 blocks and add domestic ERA to the tank hulls.', lp: 30, eta: 2, req: [], kind: 'upgrade', mods: { era: 0.15 } },
-    { id: 'ua_arm_cages', name: 'Anti-drone screens', branch: 'Armour', desc: 'Field-built mesh screens over turrets and engine decks as enemy FPVs and Lancets multiply.', lp: 20, eta: 1, req: [], kind: 'upgrade', mods: { copeCage: 0.2 }, date: '2023-07-01' },
-    { id: 'ua_arm_tankpl', name: 'Second tank platoon', branch: 'Armour', desc: 'Depot-repaired tanks for a second platoon: more tanks can be ordered.', lp: 50, eta: 3, req: ['ua_arm_era'], kind: 'unlock', unlock: ['tank_plus'] },
-    // ---- Engineers & Logistics
-    { id: 'ua_log_ifak', name: 'Tourniquets and IFAKs', branch: 'Engineers & Logistics', desc: 'Every soldier carries a tourniquet and first-aid kit and is trained to use them.', lp: 15, eta: 1, req: [], kind: 'upgrade', mods: { medevac: 0.25 } },
-    { id: 'ua_log_evac', name: 'Armoured ambulances', branch: 'Engineers & Logistics', desc: 'M113 tracked ambulances evacuate wounded under fire across the open fields.', lp: 40, eta: 2, req: ['ua_log_ifak'], kind: 'upgrade', mods: { medevac: 0.4 }, date: '2023-05-01' },
-    { id: 'ua_eng_recovery', name: 'Recovery and repair company', branch: 'Engineers & Logistics', desc: 'Recovery vehicles and a field workshop pull mine-damaged vehicles back after the fight.', lp: 35, eta: 2, req: [], kind: 'upgrade', mods: { repair: 0.25 } },
-    { id: 'ua_eng_breach', name: 'Breaching engineers', branch: 'Engineers & Logistics', desc: 'Mine rollers, line charges and sapper teams with every assault group: fewer vehicles crippled, steadier assaults.', lp: 45, eta: 2, req: ['ua_eng_recovery'], kind: 'upgrade', mods: { repair: 0.15, morale: 0.1 }, date: '2023-05-01' },
-    { id: 'ua_log_tc', name: 'Brigade training centre', branch: 'Engineers & Logistics', desc: 'Own training ground for incoming drafts: larger, better-trained drafts can be ordered.', lp: 30, eta: 2, req: [], kind: 'unlock', unlock: ['repl_draft'] },
-    { id: 'ua_log_pipeline', name: 'Replacement pipeline', branch: 'Engineers & Logistics', desc: 'Direct links with the recruiting centres cut the cost of replacements.', lp: 35, eta: 2, req: ['ua_log_tc'], kind: 'upgrade', mods: { replacementsCost: -0.2 } },
-    { id: 'ua_log_staff', name: 'Logistics staff', branch: 'Engineers & Logistics', desc: 'Better reporting and requests: more support from higher command for every success.', lp: 45, eta: 2, req: [], kind: 'upgrade', mods: { lpGain: 0.15 } },
-    // ---- Drones & EW
-    { id: 'ua_dr_mavic', name: 'Mavic recon', branch: 'Drones & EW', desc: 'Commercial quadcopters scout enemy positions before every attack.', lp: 20, eta: 1, req: [], kind: 'upgrade', mods: { reconDrone: true } },
-    { id: 'ua_dr_sa', name: 'Digital situational awareness', branch: 'Drones & EW', desc: 'Satellite terminals at company level and a shared digital map: drone feeds reach every commander.', lp: 35, eta: 2, req: ['ua_dr_mavic'], kind: 'upgrade', mods: { spotRange: 0.15 } },
-    { id: 'ua_dr_fpv', name: 'Volunteer FPV batch', branch: 'Drones & EW', desc: 'A crowdfunded consignment of FPV strike drones.', lp: 20, eta: 1, req: [], kind: 'upgrade', mods: { fpvDrones: 2 }, date: '2023-05-01' },
-    { id: 'ua_dr_school', name: 'FPV pilot school', branch: 'Drones & EW', desc: 'Simulator hours and live training for the pilots.', lp: 35, eta: 2, req: ['ua_dr_fpv'], kind: 'upgrade', mods: { fpvHit: 0.25 } },
-    { id: 'ua_dr_uas', name: 'Unmanned systems company', branch: 'Drones & EW', desc: 'A dedicated drone company: more FPV teams can be ordered.', lp: 55, eta: 3, req: ['ua_dr_school', 'ua_dr_sa'], kind: 'unlock', unlock: ['fpv_plus'], date: '2023-11-01' },
-    { id: 'ua_dr_bomber', name: 'Night bomber drones', branch: 'Drones & EW', desc: 'Heavy hexacopters drop mortar bombs on trench lines at night: one more fire mission per battle.', lp: 45, eta: 2, req: ['ua_dr_school'], kind: 'upgrade', mods: { mortar: 1 }, date: '2023-08-01' },
-    { id: 'ua_dr_ew', name: 'Trench and vehicle EW', branch: 'Drones & EW', desc: 'Portable and vehicle-mounted jammers against enemy FPVs.', lp: 30, eta: 1, req: [], kind: 'upgrade', mods: { ewJam: 0.15 }, date: '2023-06-01' },
-    { id: 'ua_dr_ewpl', name: 'Brigade EW platoon', branch: 'Drones & EW', desc: 'Detection and jamming of drone control links across the sector.', lp: 50, eta: 3, req: ['ua_dr_ew', 'ua_dr_sa'], kind: 'upgrade', mods: { ewJam: 0.15 }, date: '2023-10-01' },
-    // ---- Fires
-    { id: 'ua_fire_dfc', name: 'Digital fire control', branch: 'Fires', desc: 'Tablet-based target exchange between drone teams and mortars: faster calls for fire.', lp: 25, eta: 1, req: [], kind: 'upgrade', mods: { mortar: 1 } },
-    { id: 'ua_fire_mortar', name: '120 mm mortar battery', branch: 'Fires', desc: 'A heavy mortar battery is attached to the brigade.', lp: 40, eta: 2, req: ['ua_fire_dfc'], kind: 'upgrade', mods: { mortar: 1 } },
-    { id: 'ua_fire_spg', name: '155 mm SP howitzer section', branch: 'Fires', desc: 'A 155 mm self-propelled howitzer section is placed under brigade command.', lp: 70, eta: 4, req: ['ua_fire_dfc'], kind: 'unlock', unlock: ['spg'], date: '2023-05-01' },
-    { id: 'ua_fire_alloc', name: '155 mm allocation', branch: 'Fires', desc: 'Partner 155 mm deliveries move the brigade up the shell allocation list.', lp: 40, eta: 2, req: ['ua_fire_spg'], kind: 'upgrade', mods: { artyAmmo: 0.25 } },
-    { id: 'ua_fire_dpicm', name: '155 mm cluster rounds', branch: 'Fires', desc: 'Dual-purpose cluster shells delivered from July 2023 stretch the shell supply against trench lines.', lp: 45, eta: 2, req: ['ua_fire_alloc'], kind: 'upgrade', mods: { artyAmmo: 0.3 }, date: '2023-07-15' },
-    { id: 'ua_fire_precision', name: 'Precision-guided 155 mm', branch: 'Fires', desc: 'Guided shells for high-value targets: fewer rounds per kill.', lp: 55, eta: 3, req: ['ua_fire_alloc', 'ua_dr_sa'], kind: 'upgrade', mods: { artyAmmo: 0.35 } },
-  ],
+  tech: TECH_UA,   // tech tree data: src/campaign/v2/tech.js (vehicle lines + upgrades, support branches)
   sources: [
     SRC.robotyne, SRC.counter, SRC.surovikin, SRC.isw0126, SRC.isw0608, SRC.isw0826, SRC.isw0923, SRC.nbc0828, SRC.isw1226, SRC.isw0217,
     { title: 'OpenStreetMap contributors (ODbL) — grid terrain, settlements, roads, fortifications', url: 'https://www.openstreetmap.org/copyright' },

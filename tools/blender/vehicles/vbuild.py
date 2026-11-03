@@ -44,6 +44,11 @@ def compose_paint(d, scheme, decals=None, seed=1):
     ao = np.clip(AO, 0, 1)
     edge = np.clip((1 - E) * 4.0 - 0.15, 0, 1)
     paintable = km['rolled'] | km['cast'] | km['rim'] | km['era'] | km['skirt'] | km['cage']
+    # optional per-scheme overrides (civilian vehicles, pickup.py): kind -> (sRGB, roughness, metalness) solid finishes
+    # (black plastic, bed liner, red / amber lamp lenses) that are not painted body colour
+    KC = S.get('kind_colors') or {}
+    for k_ in KC:
+        paintable = paintable & ~km[k_]
     # ---------------- base paint
     n_big = T.fbm(P, 0.45, 4, seed)
     col = T.mix(C(S['base']), C(S['base2']), T.sstep(0.3, 0.7, n_big))
@@ -59,8 +64,8 @@ def compose_paint(d, scheme, decals=None, seed=1):
     if decals is not None:
         dm = np.clip(decals(P, N), 0, 1) * paintable
         dm *= T.sstep(0.25, 0.4, T.fbm(P, 30, 2, seed + 50) + 0.25)    # hand-painted, slightly patchy
-        col = T.mix(col, C((206, 206, 198)), dm * 0.92)
-    rough = 0.6 + 0.1 * (T.fbm(P, 3.0, 3, seed + 6) - 0.5) - 0.12 * fade
+        col = T.mix(col, C(S.get('decal_rgb', (206, 206, 198))), dm * 0.92)
+    rough = S.get('rough_base', 0.6) + 0.1 * (T.fbm(P, 3.0, 3, seed + 6) - 0.5) - 0.12 * fade
     rough = rough.astype(np.float32)
     metal = np.zeros((h, w), np.float32)
     height = np.zeros((h, w), np.float32)
@@ -90,6 +95,11 @@ def compose_paint(d, scheme, decals=None, seed=1):
         col[canvas] = T.srgb2lin((92, 88, 64)) * (0.8 + 0.35 * T.fbm(P[canvas], 3, 3, seed + 12))[:, None]
         rough[canvas] = 0.95
     rough[km['skirt']] = 0.78
+    for k_, (rgb_, r_, m_) in KC.items():
+        mk = km[k_]
+        if mk.any():
+            col[mk] = T.srgb2lin(rgb_) * (0.85 + 0.3 * T.fbm(P[mk], 6, 3, seed + 80))[:, None]
+            rough[mk] = r_; metal[mk] = m_
     # ---------------- cavity grime + streaks
     cav = np.clip(1 - ao, 0, 1)
     grime = C((38, 34, 27))
@@ -132,6 +142,7 @@ def compose_paint(d, scheme, decals=None, seed=1):
     mudn = T.fbm(P, 11, 4, seed + 22)
     mud_m = T.sstep(0.95, 0.4, z) * T.sstep(0.5, 0.62, mudn + 0.3 * T.sstep(0.95, 0.3, z))
     mud_m = np.where(wheelish, T.sstep(0.52, 0.62, mudn) * 0.45, mud_m)
+    mud_m = mud_m * S.get('mud_amt', 1.0)
     col = T.mix(col, C(S['mud']), mud_m * 0.75)
     rough = rough * (1 - mud_m) + 0.8 * mud_m
     height += mud_m * 0.0008 * mudn

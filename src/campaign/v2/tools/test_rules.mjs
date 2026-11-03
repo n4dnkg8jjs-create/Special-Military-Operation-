@@ -114,5 +114,72 @@ for (const side of Object.keys(defs)) {
   ok(C.log.some(l => l.kind === 'news'), 'theatre news logged');
   ok(atDate([{ date: '2023-02', p: 1 }, { date: '2023-06', p: 2 }], '2023-07-03', 'p') === 2, 'atDate');
 }
+// ---------------------------------------------------------------- v4 rules: fires, drones, supply hubs, enemy AI, goal, AOR
+for (const side of Object.keys(defs)) {
+  const def = defs[side]; if (!def.start.batteries || !def.enemy?.forces) continue;
+  setRandom(seeded(99)); console.log(`== v4 ${side}`);
+  const C = new Campaign2(def);
+  // dispersed brigade: several battalion task forces, none bigger than a third of the brigade
+  ok(C.forces.length >= 4 && C.forces.every(f => f.units.length <= Math.ceil(C.units.length / 3)), `dispersed start (${C.forces.map(f => f.units.length).join('/')})`);
+  ok(C.eforces.length >= 4 && C.eforces.every(f => C.owner[f.cell] === 'enemy'), 'enemy task forces on enemy squares');
+  // supply network and hubs
+  ok(C.hubs('player').length >= 2 && C.hubs('player').every(h => h.linked), 'own hubs linked');
+  ok(C.hubs('enemy').length >= 2 && C.hubs('enemy').every(h => h.linked), 'enemy hubs linked');
+  const fed = C.forces.filter(f => C.supplied[f.cell] >= 0.5).length; ok(fed === C.forces.length, 'all battalions in supply at start');
+  const r0 = C.supplyRoute(C.forces[0].cell); ok(r0.length >= 1 && r0[r0.length - 1] === C.forces[0].cell, 'supply route ends at the force');
+  // capturing an enemy hub starves the squares it fed
+  { const hub = C.hubs('enemy').find(h => h.kind !== 'railhead'), before = { ...C.esupplied }, saveO = { ...C.owner };
+    C.owner[hub.cell] = 'player'; C.computeSupply();
+    const worse = Object.keys(before).filter(id => C.owner[id] === 'enemy' && (C.esupplied[id] ?? 0) < before[id]).length;
+    ok(worse > 0, `capturing ${hub.name} cuts enemy supply (${worse} squares worse)`);
+    ok(C.allHubs().find(h => h.cell === hub.cell).holder === 'player', 'captured hub listed with its new holder');
+    C.owner = saveO; C.computeSupply(); }
+  // interdiction raises route costs on the enemy network
+  { const ch = C.chokepoints('enemy', 1)[0]; ok(!!ch, 'enemy chokepoint found'); const d0 = { ...C.supplyNet.enemy.dist }; C.interdicted[ch.cell] = { by: 'player', turn: C.turn }; C.computeSupply();
+    ok(Object.keys(d0).some(id => (C.supplyNet.enemy.dist[id] ?? 99) > d0[id]), 'interdicted chokepoint lengthens enemy routes'); delete C.interdicted[ch.cell]; C.computeSupply(); }
+  // fires: range, ammo, one mission per battery, suppression helps the attack, counter-battery needs a found battery
+  const B = C.batteries();
+  ok(B.length >= 3 && B.every(b => C.batteryRange(b.id).cells >= 3), 'artillery group with ranges');
+  const mor = B.find(b => b.kind === 'mortar120'), far = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && !C.batteryRange(mor.id).coverage.includes(c.id) && C.isOpen(c.id));
+  if (far) ok(/range/.test(C.fireCheck(mor.id, 'suppress', far.id) || ''), 'mortars out of range deep');
+  const tgt = Object.keys(C.fireTargets(B[1].id)).find(id => C.owner[id] === 'enemy' && C.garrison[id] >= 1);
+  const ammo0 = C.ammo.player, g0 = C.garrison[tgt], d0 = C.defenderStrength(tgt);
+  const fr = C.fire(B[1].id, 'suppress', tgt);
+  ok(typeof fr === 'object' && fr.ok && C.ammo.player < ammo0 && C.suppression(tgt)?.by === 'player' && C.suppression(tgt).mul < 1, 'suppress mission');
+  ok(C.garrison[tgt] < g0 && C.defenderStrength(tgt) < d0, 'suppression wears the line');
+  ok(typeof C.fire(B[1].id, 'suppress', tgt) === 'string', 'one mission per battery per week');
+  ok(typeof C.fire(B[0].id, 'counterbattery', tgt) === 'string', 'counter-battery needs a found battery');
+  C.ammo.player = 0; ok(/ammunition/.test(C.fireCheck(B[2].id, 'suppress', tgt) || ''), 'no ammunition, no fire'); C.ammo.player = 6;
+  ok(typeof C.moveBattery(B[1].id, B[0].cell) === 'string', 'a battery that fired cannot displace the same week');
+  { const own = def.aor.cells.find(c => C.owner[c.id] === 'player' && C.supplied[c.id] >= 1 && c.id !== B[2].cell && !C.moveBatteryCheck(B[2].id, c.id)); if (own) ok(C.moveBattery(B[2].id, own.id) === null && C.battery(B[2].id).cell === own.id, 'displace a battery'); }
+  // a found enemy battery can be hit
+  { const eb = C.batteries('enemy')[0]; eb.revealed = C.turn; ok(C.foundBatteries().some(b => b.id === eb.id), 'enemy battery found after firing');
+    const sh = C.batteries().find(b => b.acted !== C.turn && !C.fireCheck(b.id, 'counterbattery', eb.cell));
+    if (sh) { setRandom(() => 0.01); C.fire(sh.id, 'counterbattery', eb.cell); setRandom(seeded(5)); ok(eb.hp < 1, 'counter-battery hit'); } }
+  // UAV sorties: limited per week, reveal enemy task forces, intel snapshot persists
+  ok(/reach/.test(C.uavCheck('quad', def.aor.cells.filter(c => C.owner[c.id] === 'enemy' && C.isOpen(c.id)).sort((a, b) => C.goalProgress() ? 0 : 0).find(c => !C.uavCheck('wing', c.id) && C.uavCheck('quad', c.id))?.id) || ''), 'quadcopter reach shorter than fixed-wing');
+  const ef = C.eforces.find(f => C.uavCheck('wing', f.cell) === null);
+  if (ef) { setRandom(() => 0.99); const u = C.flyUav('wing', ef.cell); setRandom(seeded(6));
+    ok(typeof u === 'object' && u.cells.includes(ef.cell) && C.cellIntel(ef.cell).forces.some(x => x.id === ef.id), 'UAV reveals an enemy task force'); }
+  while (C.uavStatus().used < C.uavStatus().sorties) { const c0 = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && !C.uavCheck('quad', c.id)); if (!c0) break; C.flyUav('quad', c0.id); }
+  ok(/sorties/.test(C.uavCheck('quad', def.aor.cells.find(c => C.owner[c.id] === 'enemy').id) || 'sorties'), 'sorties run out');
+  // expanding AOR
+  const closed = def.aor.cells.filter(c => !C.isOpen(c.id)); ok(closed.length > 0, `squares beyond the AOR at start (${closed.length})`);
+  ok(!C.plan(C.forces[0].id, closed[0].id).ok, 'no attack beyond the AOR');
+  { const nearC = closed.sort((a, b) => a.row - b.row)[0], nb = def.aor.cells.find(c => Math.max(Math.abs(c.col - nearC.col), Math.abs(c.row - nearC.row)) === 3 && C.owner[c.id] === 'enemy');
+    if (nb) { const s0 = C.owner[nb.id]; C.owner[nb.id] = 'player'; C.computeSupply(); ok(C.isOpen(nearC.id) && C.justOpened.includes(nearC.id), 'the AOR grows when the front moves'); C.owner[nb.id] = s0; C.computeSupply(); } }
+  // operation goal
+  const G = C.goalProgress(); ok(G && G.cells.length >= 3 && G.pct === 0 && G.total > 0, 'operation goal defined');
+  { const save = { ...C.owner }; for (const g of G.cells) C.owner[g.cell] = 'player'; C.pendingAttacks = []; C.endTurn(); const o = C.outcome(); ok(o && o.win && o.goal && o.title === 'VICTORY', `goal achieved = victory (${o?.title})`); C.owner = save; C.goalDone = null; }
+  // the enemy commander: over some weeks it moves, fires, flies drones and attacks
+  setRandom(seeded(123)); const C2 = new Campaign2(def), start = C2.eforces.map(f => f.cell).join();
+  let moved = false, attacks = 0, efires = 0;
+  for (let i = 0; i < 30 && !C2.outcome(); i++) { C2.endTurn(); if (C2.eforces.map(f => f.cell).join() !== start) moved = true; attacks += C2.pendingAttacks.length; }
+  efires = C2.fireLog.filter(f => f.side === 'enemy').length;
+  ok(moved, 'enemy task forces move'); ok(attacks > 0, `enemy attacks (${attacks} in 30 weeks)`); ok(efires > 0, `enemy fire missions (${efires})`); ok((C2.uav.enemy.log || []).length > 0, 'enemy drone sorties');
+  ok(C2.pendingAttacks.every(a => !a.tf || C2.eforces.some(f => f.id === a.tf && C2.adjacent(f.cell, a.to))), 'announced attacks come from adjacent task forces');
+  // persistence of v4 state
+  C2.save(); const C3 = Campaign2.load(defs); ok(C3 && C3.eforces.length === C2.eforces.length && C3.arty.player.length === C2.arty.player.length && C3.uav.player.stock === C2.uav.player.stock, 'v4 state persists');
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

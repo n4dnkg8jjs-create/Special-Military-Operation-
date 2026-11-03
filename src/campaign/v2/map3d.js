@@ -64,7 +64,7 @@ export class StrategicMap {
     this.resize(); this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(container);
     this.setDate(C.date, false);
     this.refresh();
-    this.t0 = performance.now(); this.last = this.t0; this.anims = [];
+    this.t0 = performance.now(); this.last = this.t0; this.anims ||= [];
     const loop = now => { if (this.dead) return; this.raf = requestAnimationFrame(loop); this.frame(Math.min(0.1, (now - this.last) / 1000), now); this.last = now; };
     this.raf = requestAnimationFrame(loop);
   }
@@ -291,6 +291,9 @@ export class StrategicMap {
     g.clearRect(0, 0, W, H);
     for (const c of A.cells) {
       const o = C.owner[c.id], x = c.col * cx, y = c.row * cy, known = C.known(c.id);
+      // closed squares (beyond the AOR so far): a dark veil; squares that just opened fade in (refresh -> this.fade)
+      if (C.isOpen && !C.isOpen(c.id)) { g.fillStyle = 'rgba(9,10,8,0.8)'; g.fillRect(x, y, cx, cy); hatch(g, x, y, cx, cy, 'rgba(232,228,216,0.05)', 22); continue; }
+      const fading = this.fade?.cells.has(c.id) ? 1 - this.fade.k : 0;
       if (o === 'player') { g.fillStyle = 'rgba(79,143,224,0.13)'; g.fillRect(x, y, cx, cy); if (this.showSupply || (C.supplied[c.id] ?? 1) < 1) { const s = C.supplied[c.id] ?? 0; if (this.showSupply) { g.fillStyle = s >= 1 ? 'rgba(143,176,105,0.22)' : s > 0 ? 'rgba(224,163,58,0.25)' : 'rgba(224,80,63,0.3)'; g.fillRect(x, y, cx, cy); } if (s < 1) hatch(g, x, y, cx, cy, s > 0 ? 'rgba(224,163,58,0.45)' : 'rgba(224,80,63,0.55)', 14); } }
       else if (o === 'contested') { g.fillStyle = 'rgba(224,163,58,0.16)'; g.fillRect(x, y, cx, cy); hatch(g, x, y, cx, cy, 'rgba(224,163,58,0.5)', 18); }
       else { g.fillStyle = known ? 'rgba(224,80,63,0.17)' : 'rgba(40,10,8,0.42)'; g.fillRect(x, y, cx, cy); }
@@ -305,6 +308,7 @@ export class StrategicMap {
       // grid lines + reference
       g.strokeStyle = 'rgba(240,236,220,0.16)'; g.lineWidth = 1.2; g.strokeRect(x + 0.5, y + 0.5, cx - 1, cy - 1);
       g.fillStyle = 'rgba(240,236,220,0.34)'; g.font = `600 ${Math.round(cx * 0.065)}px "Barlow Condensed", "Arial Narrow", sans-serif`; g.fillText(C.gridRef(c.id), x + 5, y + cx * 0.075);
+      if (fading > 0) { g.fillStyle = `rgba(9,10,8,${0.8 * fading})`; g.fillRect(x, y, cx, cy); g.strokeStyle = `rgba(216,178,90,${0.9 * (1 - Math.abs(0.5 - fading) * 2)})`; g.lineWidth = 3; g.strokeRect(x + 2, y + 2, cx - 4, cy - 4); }
     }
     // supply sources and forward depots
     for (const id of [...(A.supplySources || []), ...(C.depots || [])]) { const c = C.cell(id); if (!c || C.owner[id] !== 'player') continue; const x = (c.col + 0.5) * cx, y = (c.row + 0.85) * cy, dep = (C.depots || []).includes(id);
@@ -322,9 +326,120 @@ export class StrategicMap {
     this.dirty = true;
     const C = this.C, A = this.def.aor, g = this.hlCv.getContext('2d'), s = 48; g.clearRect(0, 0, this.hlCv.width, this.hlCv.height);
     if (this.reachSet) for (const [id, kind] of this.reachSet) { const c = C.cell(id); if (!c) continue; g.fillStyle = kind === 'attack' ? 'rgba(224,80,63,0.22)' : 'rgba(150,200,255,0.16)'; g.fillRect(c.col * s, c.row * s, s, s); g.strokeStyle = kind === 'attack' ? 'rgba(255,120,100,0.75)' : 'rgba(170,210,255,0.55)'; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.strokeRect(c.col * s + 2, c.row * s + 2, s - 4, s - 4); g.setLineDash([]); }
+    this.paintTargeting(g, s);
     if (this.selCell) { const c = C.cell(this.selCell); if (c) { g.strokeStyle = 'rgba(216,178,90,1)'; g.lineWidth = 3; g.strokeRect(c.col * s + 1.5, c.row * s + 1.5, s - 3, s - 3); } }
     if (this.hover) { const c = C.cell(this.hover); if (c) { g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(c.col * s, c.row * s, s, s); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 2; g.strokeRect(c.col * s + 1, c.row * s + 1, s - 2, s - 2); } }
     this.hlTex.needsUpdate = true;
+  }
+  // ------------------------------------------------------------------ v4: targeting, UAVs, supply lines, closed squares
+  // Targeting overlay (fire missions / UAV sorties): T = { valid: Map(cellId -> 'ok' | 'bad'), color, from: cellId,
+  // rangeKm, radius (cells affected around the hovered target), label } — painted on the highlight layer, plus a 3D
+  // range ring around `from`.
+  setTargeting(T) {
+    this.targeting = T || null; this.paintHighlight();
+    if (this.rangeRing) { this.scene.remove(this.rangeRing); this.rangeRing.geometry.dispose(); this.rangeRing = null; }
+    if (T?.from && T.rangeKm) {
+      const p = this.cellCenter(T.from), pts = []; for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; pts.push(p.x + Math.cos(a) * T.rangeKm, 0.03, p.z + Math.sin(a) * T.rangeKm); }
+      const g = new LineGeometry(); g.setPositions(pts); this.rangeMat ||= this.lineMat('#ffd27a', 2.6, 0.9, true); this.rangeMat.color.set(T.color || '#ffd27a');
+      const l = new Line2(g, this.rangeMat); l.computeLineDistances(); l.renderOrder = 8; this.scene.add(l); this.rangeRing = l;
+    }
+  }
+  paintTargeting(g, s) {
+    const T = this.targeting, C = this.C; if (!T) return;
+    const col = T.color || '#ffd27a', [r, gg, b] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+    for (const [id, k] of T.valid || []) { const c = C.cell(id); if (!c) continue; g.fillStyle = k === 'ok' ? `rgba(${r},${gg},${b},0.16)` : 'rgba(0,0,0,0.18)'; g.fillRect(c.col * s, c.row * s, s, s); if (k === 'ok') { g.strokeStyle = `rgba(${r},${gg},${b},0.55)`; g.lineWidth = 1; g.strokeRect(c.col * s + 1.5, c.row * s + 1.5, s - 3, s - 3); } }
+    if (T.from) { const c = C.cell(T.from); if (c) { g.fillStyle = `rgba(${r},${gg},${b},0.9)`; g.beginPath(); g.arc((c.col + 0.5) * s, (c.row + 0.5) * s, 5, 0, 7); g.fill(); } }
+    const hc = this.hover && C.cell(this.hover);
+    if (hc && T.valid?.get(this.hover) === 'ok') {
+      const R = T.radius || 0; g.strokeStyle = `rgba(${r},${gg},${b},1)`; g.lineWidth = 3; g.setLineDash([6, 4]);
+      g.strokeRect((hc.col - R) * s + 2, (hc.row - R) * s + 2, (2 * R + 1) * s - 4, (2 * R + 1) * s - 4); g.setLineDash([]);
+      g.fillStyle = `rgba(${r},${gg},${b},0.22)`; g.fillRect(hc.col * s, hc.row * s, s, s);
+      // crosshair
+      const x = (hc.col + 0.5) * s, y = (hc.row + 0.5) * s; g.lineWidth = 2; g.beginPath(); g.arc(x, y, s * 0.28, 0, 7); g.moveTo(x - s * 0.42, y); g.lineTo(x + s * 0.42, y); g.moveTo(x, y - s * 0.42); g.lineTo(x, y + s * 0.42); g.stroke();
+    }
+  }
+  // a fire mission landing: expanding rings and flashes on the target square
+  strike(cellId, color = '#ff7a5a') {
+    const p = this.cellCenter(cellId), R = Math.min(this.cw, this.ch) * 0.45, objs = [];
+    for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthTest: false })); m.rotation.x = -Math.PI / 2; const a = i * 2.4, r = R * (0.2 + 0.6 * ((i * 37) % 10) / 10); m.position.set(p.x + Math.cos(a) * r, 0.03, p.z + Math.sin(a) * r); m.renderOrder = 9; this.scene.add(m); objs.push([m, i * 0.18]); }
+    this.anims.push({ t: 0, dur: 2.2, step: k => { const t = k * 2.2; for (const [m, d] of objs) { const u = Math.max(0, Math.min(1, (t - d) / 0.9)); m.scale.setScalar(R * 0.08 + u * R * 0.35); m.material.opacity = u > 0 ? (1 - u) * 0.85 : 0; } this.dirty = true; }, done: () => { for (const [m] of objs) { this.scene.remove(m); m.geometry.dispose(); } } });
+  }
+  // ---- recon UAVs orbiting their target square (sorties flown this week: [{ cell, type, side, lost, cells }])
+  setUavs(list) {
+    this.uavGroup ||= (() => { const g = new THREE.Group(); this.scene.add(g); return g; })();
+    const key = JSON.stringify((list || []).map(u => [u.cell, u.type, u.side, !!u.lost]));
+    if (key === this.uavKey) return; this.uavKey = key;
+    for (const u of this.uavs || []) if (!u.leaving) { this.uavGroup.remove(u.obj, u.ring, u.area); u.area?.geometry.dispose(); }
+    this.uavs = (this.uavs || []).filter(u => u.leaving);
+    (list || []).forEach((u, i) => {
+      if (u.lost && !u.cells?.length) return;
+      const own = (u.side || 'player') === 'player', side = own ? this.def.id : (this.def.id === 'UA' ? 'RU' : 'UA');
+      const obj = uavModel(side, u.type, Math.min(this.cw, this.ch)); const c = this.cellCenter(u.cell);
+      const R = Math.min(this.cw, this.ch) * (u.type === 'quad' ? 0.3 : 0.48), alt = Math.min(this.cw, this.ch) * (u.type === 'quad' ? 0.22 : 0.34);
+      // observed area: a square outline over the squares the drone sees, and the sensor footprint under it
+      const cells = (u.cells || [u.cell]).map(id => this.C.cell(id)).filter(Boolean);
+      const c0 = Math.min(...cells.map(x => x.col)), c1 = Math.max(...cells.map(x => x.col)), r0 = Math.min(...cells.map(x => x.row)), r1 = Math.max(...cells.map(x => x.row));
+      const x0 = this.x0 + c0 * this.cw, x1 = this.x0 + (c1 + 1) * this.cw, z0 = this.z0 + r0 * this.ch, z1 = this.z0 + (r1 + 1) * this.ch;
+      const ag = new LineGeometry(); ag.setPositions([x0, 0.02, z0, x1, 0.02, z0, x1, 0.02, z1, x0, 0.02, z1, x0, 0.02, z0]);
+      this.uavAreaMat ||= this.lineMat('#7fd6ff', 2.4, 0.85, true); this.uavAreaFoe ||= this.lineMat('#ff9c8c', 2.4, 0.85, true);
+      const area = new Line2(ag, own ? this.uavAreaMat : this.uavAreaFoe); area.computeLineDistances(); area.renderOrder = 8;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(R * 0.96, R * 1.04, 64), new THREE.MeshBasicMaterial({ color: own ? '#7fd6ff' : '#ff9c8c', transparent: true, opacity: 0.55, depthTest: false, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(c.x, 0.018, c.z); ring.renderOrder = 8; ring.userData.uavRing = true;
+      this.uavGroup.add(obj, ring, area);
+      this.uavs.push({ obj, ring, area, c, R, alt, ph: i * 1.7 + (hash(u.cell) % 100) / 16, w: (u.type === 'quad' ? 0.9 : 0.55) * (i % 2 ? -1 : 1), t0: performance.now(), lost: u.lost, own });
+    });
+    this.dirty = true;
+  }
+  // end of the week: the drones climb away towards their own rear and are gone
+  uavDepart() {
+    for (const u of this.uavs || []) if (!u.leaving) { u.leaving = performance.now(); u.from = u.obj.position.clone(); this.uavGroup.remove(u.ring, u.area); }
+    this.uavKey = null;
+  }
+  animUavs(now) {
+    if (!this.uavs?.length) return false;
+    const rear = this.def.aor.enemyEdge === 'north' ? 1 : -1;
+    for (const u of [...this.uavs]) {
+      if (u.leaving) {
+        const k = (now - u.leaving) / 2600; if (k >= 1) { this.uavGroup.remove(u.obj); this.uavs.splice(this.uavs.indexOf(u), 1); continue; }
+        const e = k * k; u.obj.position.set(u.from.x + Math.sin(u.ph) * e * this.cw * 2, u.from.y + e * u.alt * 2.5, u.from.z + rear * -e * this.ch * 5);
+        u.obj.rotation.set(0, Math.atan2(Math.sin(u.ph) * 2, rear * -5), 0); u.obj.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = 1 - k; } });
+        continue;
+      }
+      const t = (now - u.t0) / 1000, a = u.ph + t * u.w;
+      u.obj.position.set(u.c.x + Math.cos(a) * u.R, u.alt + Math.sin(t * 0.9 + u.ph) * u.alt * 0.04, u.c.z + Math.sin(a) * u.R);
+      // heading along the orbit tangent, banked into the turn
+      const dir = Math.sign(u.w); u.obj.rotation.set(0, -a - (dir > 0 ? 0 : Math.PI), 0, 'YXZ'); u.obj.rotateZ(dir * 0.38);
+      const prop = u.obj.getObjectByName('prop'); if (prop) prop.rotation.z += 1.7;
+      u.ring.material.opacity = 0.35 + 0.25 * Math.sin(t * 3);
+      // keep the model readable from far away: a minimum on-screen size
+      const s = Math.max(1, this.cam.dist / (Math.min(this.cw, this.ch) * 9)); u.obj.scale.setScalar((u.obj.userData.s0 ||= u.obj.scale.x) * Math.min(4, s));
+    }
+    return true;
+  }
+  // ---- supply network view: routes from hubs to own task forces / the front, hub markers, interdicted squares
+  // net = { level, via, hubs: [{cell, name, kind, linked, cap}], interdicted: {cell: turn} } (supply.js computeNetwork)
+  drawSupply(net) {
+    if (this.supplyObjs) { for (const o of this.supplyObjs) { this.dyn.remove(o); o.geometry?.dispose(); } }
+    this.supplyObjs = [];
+    if (!this.showSupply || !net) return;
+    const C = this.C, ends = new Set(C.forces.map(f => f.cell));
+    for (const c of this.def.aor.cells) if (C.owner[c.id] === 'player' && C.frontline?.(c.id)) ends.add(c.id);
+    this.supplyMat ||= this.lineMat('#a9d48a', 3, 0.85, true); this.supplyWeak ||= this.lineMat('#e8b85a', 2.4, 0.8, true);
+    const seen = new Set();
+    for (const id of ends) {
+      const path = []; let cur = id, k = 0; while (cur && k++ < 60) { path.unshift(cur); cur = net.via?.[cur]; }
+      if (path.length < 2) continue; const sig = path.join('>'); if (seen.has(sig)) continue; seen.add(sig);
+      const g = new LineGeometry(); g.setPositions(path.flatMap(p => { const v = this.cellCenter(p); return [v.x, 0.025, v.z]; }));
+      const l = new Line2(g, (net.level?.[id] ?? 1) >= 1 ? this.supplyMat : this.supplyWeak); l.computeLineDistances(); l.renderOrder = 7; this.dyn.add(l); this.supplyObjs.push(l);
+    }
+    const ICON = { railhead: '🚆', base: '▣', ammo: '◆', depot: '◆', source: '▲' };
+    for (const hb of net.hubs || []) {
+      const p = this.cellCenter(hb.cell); p.y = 0.03; const e = document.createElement('div');
+      e.className = 'c2-hub ' + (hb.cap >= 1 ? 'ok' : hb.cap > 0 ? 'half' : 'cut') + (hb.kind ? ' ' + hb.kind : '');
+      e.innerHTML = `<i>${ICON[hb.kind] || '◆'}</i><span>${esc(hb.name || hb.kind)}</span>`; e.title = `${hb.name || 'Supply hub'} — ${hb.kind || 'hub'}${hb.cap >= 1 ? ', working' : hb.cap > 0 ? ', reduced throughput' : ', cut off from the rear'}`;
+      this.labels.appendChild(e); this.badges.push({ e, pos: p });
+    }
+    for (const id of Object.keys(net.interdicted || {})) { const p = this.cellCenter(id); p.y = 0.03; const e = document.createElement('div'); e.className = 'c2-intd'; e.textContent = '✕ interdicted'; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
   }
   // ------------------------------------------------------------------ dynamic: tokens, badges, arrows, path
   buildDynamic() {
@@ -394,6 +509,18 @@ export class StrategicMap {
     { const hq = C.hq || this.def.start.hq; if (C.cell(hq)) { const p = this.cellCenter(hq); p.x += this.cw * 0.33; p.z += this.ch * 0.28; const e = document.createElement('div'); e.className = 'c2-hq'; e.innerHTML = 'HQ'; e.title = 'Brigade headquarters — reinforcements arrive here'; this.labels.appendChild(e); this.badges.push({ e, pos: p }); } }
     // enemy attacks being prepared
     for (const a of C.pendingAttacks) this.arrow(this.cellCenter(a.from), this.cellCenter(a.to), COL.enemy, `${['', 'company', 'reinf. company', 'battalion'][a.strength]} attack expected`);
+    // v4: operation-goal squares, own / found enemy batteries, the supply network (Supply view), this week's UAVs
+    for (const g of C.def.goal?.cells || []) { const c = C.cell(g.cell); if (!c) continue; const p = this.cellCenter(g.cell); p.x += this.cw * 0.3; p.z -= this.ch * 0.34; p.y = 0.03;
+      const e = document.createElement('div'); e.className = 'c2-goalm' + (C.owner[g.cell] === 'player' ? ' held' : ''); e.innerHTML = `<i>★</i><span>${g.pts}</span>`; e.title = `Operation goal: ${g.name || C.cellName(g.cell)} (${g.pts} pts)${C.owner[g.cell] === 'player' ? ' — held' : ''}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
+    for (const b of C.batteries?.('player') || []) { const c = C.cell(b.cell); if (!c) continue; const p = this.cellCenter(b.cell); p.x -= this.cw * 0.3; p.z -= this.ch * 0.3; p.y = 0.03;
+      const e = document.createElement('div'); e.className = 'c2-bat own' + (b.down ? ' down' : b.acted === C.turn ? ' used' : '') + (this.targeting?.bat === b.id ? ' sel' : ''); e.innerHTML = `<svg viewBox="0 0 24 18" width="22" height="16"><rect x="1" y="1" width="22" height="16" fill="${COL.own}" stroke="#0d1520" stroke-width="1.6"/><circle cx="12" cy="9" r="3" fill="#0d1520"/></svg>`; e.title = `${b.name}${b.down ? ' (being rebuilt)' : b.acted === C.turn ? ' (acted this week)' : ''}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
+    for (const b of C.foundBatteries?.() || []) { const p = this.cellCenter(b.cell); p.x += this.cw * 0.28; p.z += this.ch * 0.1; p.y = 0.03;
+      const e = document.createElement('div'); e.className = 'c2-bat foe'; e.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 1 L23 12 L12 23 L1 12 Z" fill="${COL.enemy}" stroke="#1a0c0a" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="#1a0c0a"/></svg>`; e.title = `Enemy battery found: ${b.name || b.kind}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
+    this.drawSupply(C.supplyNet?.player);
+    this.setUavs([...(C.uavLog || []).filter(l => l.turn === C.turn).map(l => ({ cell: l.cell, type: l.type, side: 'player', lost: l.lost, cells: l.cells }))]);
+    // squares that just opened fade in
+    const jo = C.justOpened?.length ? C.justOpened.join(',') + '@' + C.turn : null;
+    if (jo && jo !== this.fadeKey) { this.fadeKey = jo; this.fade = { cells: new Set(C.justOpened), k: 0 }; (this.anims ||= []).push({ t: 0, dur: 2.2, step: k => { this.fade.k = k; this.paintOverlay(); }, done: () => { this.fade = null; this.paintOverlay(); } }); }
     if (this.path) this.showPath(this.path, true);
     // place the new markers now (not on the next frame: they would flash in the top-left corner for a frame)
     if (this.camera && this.W) { this.updateCamera(); this.placeLabels(performance.now()); }
@@ -514,7 +641,8 @@ export class StrategicMap {
     }
     // render on demand: camera moved, state changed, animations, or a slow tick for the pulsing markers
     const sig = `${this.cam.x.toFixed(4)},${this.cam.z.toFixed(4)},${this.cam.dist.toFixed(4)},${this.cam.yaw.toFixed(4)},${this.cam.pitch.toFixed(4)},${this.W},${this.H}`;
-    if (sig === this.lastSig && !this.dirty && !this.anims.length && now - (this.lastRender || 0) < 140) return;
+    const flying = this.animUavs(now);
+    if (sig === this.lastSig && !this.dirty && !flying && !this.anims.length && now - (this.lastRender || 0) < 140) return;
     this.lastSig = sig; this.dirty = false; this.lastRender = now;
     this.updateCamera();
     // pulses
@@ -556,6 +684,47 @@ export class StrategicMap {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = v => (Math.round(v * 10) / 10).toString();
 const pips = (mp, max) => { let s = ''; for (let i = 0; i < Math.ceil(max); i++) s += `<i class="${mp >= i + 1 - 1e-6 ? 'on' : mp > i + 1e-6 ? 'half' : ''}"></i>`; return s; };
+// recon UAV for the strategic map (procedural, no markings): UA — a Leleka-100-style blended flying wing with wingtip
+// fins and a pusher propeller; RU — an Orlan-10-style high-wing monoplane with a tractor propeller and tail fin;
+// type 'quad' — a small quadcopter. Forward = +Z; built at real proportions (span 1) and scaled up for the map.
+export function uavModel(side, type, cell) {
+  const g = new THREE.Group(), M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, metalness: 0.15 });
+  const body = M(side === 'RU' ? '#7a7f70' : '#9aa1a8'), dark = M('#2b2d2f'), glass = M('#1c2630');
+  const add = (geo, mat, x = 0, y = 0, z = 0, name) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (name) m.name = name; g.add(m); return m; };
+  if (type === 'quad') {
+    add(new THREE.BoxGeometry(0.16, 0.06, 0.22), dark);
+    for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const arm = add(new THREE.BoxGeometry(0.03, 0.02, 0.26), dark, sx * 0.1, 0.01, sz * 0.1); arm.rotation.y = sx * sz * Math.PI / 4;
+      const r = add(new THREE.CylinderGeometry(0.11, 0.11, 0.005, 20), new THREE.MeshBasicMaterial({ color: '#d0d4d8', transparent: true, opacity: 0.35 }), sx * 0.19, 0.04, sz * 0.19); r.name = 'rotor';
+    }
+    g.scale.setScalar(cell * 0.08 / 0.5); return g;
+  }
+  if (side === 'RU') {
+    // Orlan-10 style: slim fuselage, high straight wing, tail boom with a tall fin and tailplane, nose propeller
+    const fus = add(new THREE.CapsuleGeometry(0.06, 0.62, 4, 12), body); fus.rotation.x = Math.PI / 2;
+    const wing = add(new THREE.BoxGeometry(1.55, 0.02, 0.2), body, 0, 0.07, 0.05);
+    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.02, 0.06, 0.18), body, s * 0.775, 0.09, 0.05);
+    add(new THREE.CylinderGeometry(0.018, 0.012, 0.5, 8).rotateX(Math.PI / 2), body, 0, 0.02, -0.55);
+    add(new THREE.BoxGeometry(0.5, 0.015, 0.12), body, 0, 0.03, -0.78);
+    add(new THREE.BoxGeometry(0.015, 0.2, 0.14), body, 0, 0.12, -0.78);
+    add(new THREE.SphereGeometry(0.045, 12, 8), glass, 0, -0.06, 0.15);   // camera turret
+    const prop = add(new THREE.CircleGeometry(0.17, 24), new THREE.MeshBasicMaterial({ color: '#cfd3d6', transparent: true, opacity: 0.32, side: THREE.DoubleSide }), 0, 0, 0.42, 'prop');
+    add(new THREE.BoxGeometry(0.34, 0.025, 0.01), dark, 0, 0, 0.415).parent = prop;
+  } else {
+    // Leleka-100 style: blended flying wing, swept leading edge, fins at the tips, pusher propeller
+    const sh = new THREE.Shape(); sh.moveTo(0, 0.32); sh.lineTo(0.95, -0.12); sh.lineTo(0.95, -0.26); sh.lineTo(0.12, -0.18); sh.lineTo(0, -0.24); sh.lineTo(-0.12, -0.18); sh.lineTo(-0.95, -0.26); sh.lineTo(-0.95, -0.12); sh.closePath();
+    const wing = new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false }); wing.rotateX(Math.PI / 2); wing.translate(0, 0.015, 0); add(wing, body);
+    const pod = add(new THREE.CapsuleGeometry(0.07, 0.36, 4, 12), body, 0, 0.03, 0.02); pod.rotation.x = Math.PI / 2;
+    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.015, 0.16, 0.14), body, s * 0.94, 0.06, 0.18);
+    add(new THREE.SphereGeometry(0.045, 12, 8), glass, 0, -0.06, 0.18);
+    const prop = add(new THREE.CircleGeometry(0.16, 24), new THREE.MeshBasicMaterial({ color: '#cfd3d6', transparent: true, opacity: 0.32, side: THREE.DoubleSide }), 0, 0.03, -0.27, 'prop');
+    add(new THREE.BoxGeometry(0.32, 0.025, 0.01), dark, 0, 0.03, -0.265).parent = prop;
+  }
+  // the props were built as group children; parent the blade to its disc so both spin
+  const p = g.getObjectByName('prop'); for (const ch of [...g.children]) if (ch.parent === p && !p.children.includes(ch)) { g.remove(ch); p.add(ch); ch.position.set(0, 0, 0); }
+  g.scale.setScalar(cell * 0.16 / 1.9);
+  return g;
+}
 export function echelon(n) { return n <= 2 ? '•••' : n <= 6 ? 'I' : 'II'; }
 // NATO-style friendly frame with an icon from the force's composition
 export function natoSvg(units, w = 40, h = 28, hostile = false) {

@@ -10,6 +10,7 @@ const { defs } = await loadCampaigns();
 let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  FAIL:', m); } };
 function seeded(s) { return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
+const def0 = C => C.def.aor.cells.every(c => C.isOpen(c.id));
 function invariants(V, where) {
   const bad = [];
   for (const c of V.sdef[V.opId].aor.cells) { const a = V.side.UA.owner[c.id], b = V.side.RU.owner[c.id]; if ((a === 'player') === (b === 'player')) bad.push(`owner ${c.id} UA:${a} RU:${b}`); }
@@ -24,6 +25,7 @@ function invariants(V, where) {
   for (const t of V.side.UA.forces) if (V.side.RU.forces.some(x => x.cell === t.cell)) bad.push(`UA ${t.name} and an RU tf share ${t.cell}`);
   ok(!bad.length, `${where}: ${bad.slice(0, 5).join('; ')}`);
 }
+const stats = { fires: 0, uav: 0, cb: 0 };
 // a simple commander: merge stacks, attack the weakest reachable target with the strongest force, otherwise advance
 function play(V, f, rnd) {
   const C = V.side[f], foes = V.foes(f);
@@ -32,10 +34,15 @@ function play(V, f, rnd) {
     if (!C.tf(t.id) || t.planned) continue;
     const R = C.reach(t), targets = C.def.aor.cells.filter(c => C.owner[c.id] !== 'player').map(c => ({ id: c.id, p: C.plan(t.id, c.id, R) })).filter(x => x.p.ok && x.p.attack);
     const val = id => (foes.some(x => x.cell === id) ? -foes.filter(x => x.cell === id).reduce((a, x) => a + x.power, 0) : -(C.garrison[id] || 1) * 2) + (C.cell(id).vp || 0);
-    if (targets.length && C.tfPower(t) > 2.5 && rnd() < 0.8) { const tg = targets.sort((a, b) => val(b.id) - val(a.id))[0]; const r = V.apply(f, 'planAttack', [t.id, tg.id, rnd() < 0.5]); ok(r === null, `${f} planAttack ${tg.id}: ${r}`); continue; }
+    if (targets.length && C.tfPower(t) > 2.5 && rnd() < 0.8) { const tg = targets.sort((a, b) => val(b.id) - val(a.id))[0]; const r = V.apply(f, 'planAttack', [t.id, tg.id, rnd() < 0.5]); ok(r === null, `${f} planAttack ${tg.id}: ${r}`);
+      const bt = C.batteries().find(b => !C.fireCheck(b.id, 'suppress', tg.id)); if (bt) { const fr = V.apply(f, 'fire', [bt.id, 'suppress', tg.id]); ok(typeof fr === 'object' && fr.ok && C.firePlans.length > 0, `${f} plans a fire mission`); stats.fires++; }
+      continue; }
     const moves = Object.keys(R.dist).filter(id => id !== t.cell && C.plan(t.id, id, R).ok);
     if (moves.length && rnd() < 0.7) V.apply(f, 'move', [t.id, moves[Math.floor(rnd() * moves.length)]]);
   }
+  // drones over the enemy's squares, counter-battery on found guns
+  for (let i = 0; i < 2; i++) { const c = C.def.aor.cells.find(x => C.owner[x.id] !== 'player' && !C.fresh(x.id) && !C.uavCheck('quad', x.id)); if (c) { const u = V.apply(f, 'flyUav', ['quad', c.id]); if (typeof u === 'object') stats.uav++; } }
+  for (const eb of C.arty.enemy) { const bt = C.batteries().find(b => !C.fireCheck(b.id, 'counterbattery', eb.cell)); if (bt) { V.apply(f, 'fire', [bt.id, 'counterbattery', eb.cell]); stats.cb++; } }
   if (C.lp > 60 && rnd() < 0.5) { const u = C.units.find(x => C.replaceCost(x) > 0 && C.replaceCost(x) < C.lp); if (u) V.apply(f, 'replenish', [u.uid]); }
   if (C.lp > 80 && rnd() < 0.3) { const c = C.def.catalog.find(x => C.catalogAvailable(x) && C.unitCost(x) < C.lp); if (c) V.apply(f, 'orderUnit', [c.key]); }
   if (rnd() < 0.2) { const t = C.forces.find(x => x.units.length > 2 && !x.planned); if (t) V.apply(f, 'split', [t.id, [t.units[0]]]); }
@@ -46,6 +53,7 @@ for (const opId of ['UA', 'RU']) for (const host of ['UA', 'RU']) {
   const realRandom = Math.random; Math.random = seeded(99 + opId.charCodeAt(1));
   console.log(`== operation ${opId}, host ${host}`);
   const V = new VersusGame(defs, opId, host);
+  for (const f of ['UA', 'RU']) { const C = V.side[f]; ok(C.batteries().length >= 3 && C.batteries().every(b => C.owner[b.cell] === 'player'), `${f} artillery group on own squares`); ok(C.hubs('player').length >= 2, `${f} has supply hubs (${C.hubs('player').length})`); ok(def0(C), `${f} whole map open`); }
   for (const f of ['UA', 'RU']) { const C = V.side[f]; ok(C.def.versus && C.def.mapId === opId, `${f} def versus/mapId`); ok(C.forces.length >= 2, `${f} has task forces (${C.forces.length})`); ok(C.directives.length >= 1, `${f} has directives`); ok((C.def.aor.supplySources || []).length > 0 && C.forces.every(t => (t.supply ?? 0) >= 0.5), `${f} forces in supply`); ok(!C.def.directives.some(d => d.final), `${f} no final directive`); }
   invariants(V, 'start');
   // commands outside the planning phase / after ready are refused
@@ -81,7 +89,9 @@ for (const opId of ['UA', 'RU']) for (const host of ['UA', 'RU']) {
   while (V.phase !== 'over' && weeks < 70) {
     play(V, 'UA', rnd); play(V, 'RU', rnd);
     V.setReady('UA', true); V.setReady('RU', true); ok(V.bothReady(), 'both ready');
+    const plans = { UA: V.side.UA.firePlans.filter(p => p.kind === 'suppress').map(p => p.cell), RU: V.side.RU.firePlans.filter(p => p.kind === 'suppress').map(p => p.cell) };
     V.buildQueue();
+    for (const f of ['UA', 'RU']) for (const cell of plans[f]) ok(V.side[f].suppressed[cell]?.by === 'player' && V.side[OTHER(f)].suppressed[cell]?.by === 'enemy', `${f} fire lands on ${cell} for both sides`);
     for (let b; (b = V.nextAttack());) { pvp++; // a "fought" PvP battle: resolved by the staff here (the real one runs in the battle iframes)
       V.autoBattle(b); }
     battles = V.history.length;
@@ -95,5 +105,6 @@ for (const opId of ['UA', 'RU']) for (const host of ['UA', 'RU']) {
   console.log(`  ${weeks} weeks, ${battles} battles (${pvp} vs task forces), result ${JSON.stringify(V.result)} · cells UA ${own('UA')} RU ${own('RU')} · LP UA ${V.side.UA.lp} RU ${V.side.RU.lp}`);
   Math.random = realRandom;
 }
+ok(stats.fires > 20 && stats.uav > 20, `versus commanders used fires (${stats.fires}), drones (${stats.uav}), counter-battery (${stats.cb})`);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

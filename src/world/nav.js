@@ -395,7 +395,7 @@ export class NavGrid {
         const t = segRect(ax, az, bx, bz, o); if (t === null) continue;
         const y = ay + (by - ay) * t; if (y >= o.h || (o.y0 && y < o.y0 && ay + (by - ay) * segT1 < o.y0)) continue;   // over it, or under a tree crown
         if (o.foliage) {
-          if (noFoliage) continue;
+          if (noFoliage === true || (noFoliage === 'veg' && o.veg)) continue;   // 'veg': single bushes / crowns don't stop a round, belts do
           // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
           const L = Math.hypot(bx - ax, bz - az), inside = (segT1 - t) * L;
           const endIn = t <= 0.0001 || segT1 >= 0.9999;
