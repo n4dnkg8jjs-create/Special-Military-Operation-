@@ -183,7 +183,7 @@ const URBAN_W = `
           ${LAYER('wR', 'clamp(sp.g * 1.4 - 0.18 + (fine - 0.5) * 0.4, 0.0, 1.0)', ['wD', 'wK', 'wG'])}
           ${LAYER('wM', 'clamp(max(sp.b * 1.15 - 0.2, smoothstep(0.3, 0.9, warE.b) * 0.6) + (vn(wp * 0.7) - 0.5) * 0.5, 0.0, 0.9)', ['wD', 'wK', 'wG', 'wR'])}
           // shell-churned earth (war map G): broken clods eat into whatever is there in ragged tongues
-          ${LAYER('wC', 'smoothstep(0.42, 0.95, warE.g + (clump - 0.5) * 0.35 + (vn(wp * 0.21 + 4.0) - 0.5) * 0.4) * 0.65', ['wD', 'wK', 'wG', 'wR', 'wM'])}`;
+          ${LAYER('wC', 'smoothstep(0.3, 1.0, warE.g + (clump - 0.5) * 0.45 + (vn(wp * 0.21 + 4.0) - 0.5) * 0.5) * 0.45', ['wD', 'wK', 'wG', 'wR', 'wM'])}`;
 const RURAL_W = `
           vec2 wob = vec2(vn(wp * 0.15) - 0.5, vn(wp * 0.15 + 31.0) - 0.5) * 4.0;
           vec4 sp = texture2D(tSplat, clamp((wp + wob) / splatSize + 0.5, 0.001, 0.999));
@@ -212,4 +212,4 @@ const RURAL_W = `
           // mud: vehicle-churned (war map A), wet ground (war B), damp hollows; it fills the low spots first
           float aM = clamp(smoothstep(0.25, 0.8, warE.a + (clump - 0.5) * 0.35 + (vn(wp * 0.21 + 4.0) - 0.5) * 0.3) * 0.85 + smoothstep(0.4, 0.95, warE.b) * 0.45 + smoothstep(0.3, 0.16, mac) * 0.18, 0.0, 0.95);
           ${LAYER('wM', 'aM', ['wD', 'wF', 'wG', 'wPl', 'wS', 'wK', 'wR'])}
-          ${LAYER('wC', 'smoothstep(0.42, 0.95, warE.g + (clump - 0.5) * 0.35 + (vn(wp * 0.21 + 4.0) - 0.5) * 0.4) * 0.65', ['wD', 'wF', 'wG', 'wPl', 'wS', 'wK', 'wR', 'wM'])}`;
+          ${LAYER('wC', 'smoothstep(0.3, 1.0, warE.g + (clump - 0.5) * 0.45 + (vn(wp * 0.21 + 4.0) - 0.5) * 0.5) * 0.45', ['wD', 'wF', 'wG', 'wPl', 'wS', 'wK', 'wR', 'wM'])}`;

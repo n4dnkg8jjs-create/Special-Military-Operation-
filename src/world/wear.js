@@ -32,13 +32,13 @@ export const warGroundGLSL = (urban, opt = {}) => `
     float nA = wfbm(wp * 0.55), nB = wn1(wp * 3.1), nC = wn1(wp * 9.7);
     // shell-churned earth: dark broken clods, lighter upturned subsoil (loess) flecks, crumbs
     float nW = wfbm(wp * 0.21 + 4.0);   // metre-scale break-up of the soft war-map ramps
-    float ch = smoothstep(0.25, 0.85, war.g + (nA - 0.5) * 0.6 + (nW - 0.5) * 0.5);
+    float ch = smoothstep(0.12, 0.95, war.g + (nA - 0.5) * 0.6 + (nW - 0.5) * 0.55);
     float clod = wn1(wp * 3.1 + 2.0) * 0.7 + nC * 0.3;
     vec3 cb = col;   // relative to what is there: churned earth is darker, with lighter subsoil flecks
-    vec3 churn = cb * mix(vec3(0.64, 0.61, 0.56), vec3(0.98, 0.94, 0.86), smoothstep(0.45, 0.75, clod));
+    vec3 churn = cb * mix(vec3(0.74, 0.66, 0.56), vec3(1.0, 0.93, 0.82), smoothstep(0.4, 0.75, clod));   // warm turned soil, not grey
     churn = mix(churn, cb * vec3(1.15, 1.08, 0.94), smoothstep(0.66, 0.88, wfbm(wp * 0.6 + 9.0)) * 0.35);   // loess / subsoil thrown up
     churn *= 0.85 + 0.3 * nB;
-    col = mix(col, churn, ch * ${opt.churnTex ? '0.55' : '0.72'});   // churnTex: the host already blends churned clods (ground.js)
+    col = mix(col, churn, ch * ${opt.churnTex ? '0.4' : '0.6'});   // churnTex: the host already blends churned clods (ground.js)
     ${urban ? `
     // brick / concrete dust and small debris
     float du = smoothstep(0.3, 0.9, war.a + (nB - 0.5) * 0.55 + (nA - 0.5) * 0.3);
@@ -56,7 +56,7 @@ export const warGroundGLSL = (urban, opt = {}) => `
     burnt = mix(burnt, col * vec3(0.42, 0.36, 0.3), smoothstep(0.55, 0.8, wn1(wp * 2.4 + 1.0)) * 0.35) * (0.8 + 0.4 * nC);   // half-burnt stalks
     float rim = smoothstep(0.0, 0.25, sc) * (1.0 - smoothstep(0.35, 0.7, sc));
     col = mix(col, col * vec3(0.55, 0.47, 0.38), rim * 0.6);   // singed, browned edge of the burn
-    col = mix(col, burnt, smoothstep(0.3, 0.75, sc) * 0.92);
+    col = mix(col, burnt, smoothstep(0.2, 0.95, sc) * smoothstep(0.2, 0.95, sc) * 0.7);   // gradual: charcoal only in the heart of the burn
     // damp ground and standing water
     gWet = smoothstep(0.25, 0.9, war.b + (nA - 0.5) * 0.4 + (nW - 0.5) * 0.3);
     gPud = smoothstep(0.74, 0.8, war.b * 0.7 + wn1(wp * 0.31 + 3.0) * 0.3 + wn1(wp * 1.7) * 0.1) * smoothstep(0.6, 0.75, war.b);
@@ -81,10 +81,19 @@ export function paintWar(city, MAP_SIZE, opt = {}) {
   const mk = () => { const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.strokeStyle = '#fff'; x.lineCap = 'round'; x.lineJoin = 'round'; return x; };
   const L = { r: mk(), g: mk(), b: mk(), a: mk() };
   const P = (x, z) => [(x + o) * k, (z + o) * k];
+  // soft ragged blob: radial fade (dense core, feathered rim) inside a noisy outline, plus a few smaller satellite
+  // splotches, so churn / scorch / mud patches break up into the ground instead of reading as flat polygons
+  const blob1 = (ctx, x, z, r, alpha, ragged) => {
+    const [cx, cz] = P(x, z), R0 = r * (1 + ragged * 0.5) * k;
+    const g = ctx.createRadialGradient(cx, cz, 0, cx, cz, Math.max(1, R0));
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,0.85)'); g.addColorStop(0.8, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save(); ctx.fillStyle = g; ctx.globalAlpha = Math.min(1, alpha); ctx.beginPath(); const n = 28, ph = R() * 6.28;
+    for (let i = 0; i <= n; i++) { const a = i / n * 6.28, rr = r * (1 - ragged * 0.5 + ragged * city.noise2(Math.cos(a + ph) * 1.8 + x * 0.1, Math.sin(a + ph) * 1.8 + z * 0.1, 21)) * (1 + ragged * 0.5); const [px, pz] = P(x + Math.cos(a) * rr, z + Math.sin(a) * rr); i ? ctx.lineTo(px, pz) : ctx.moveTo(px, pz); }
+    ctx.fill(); ctx.restore();
+  };
   const blob = (ctx, x, z, r, alpha, ragged = 0.45) => {
-    ctx.globalAlpha = Math.min(1, alpha); ctx.beginPath(); const n = 16, ph = R() * 6.28;
-    for (let i = 0; i <= n; i++) { const a = i / n * 6.28, rr = r * (1 - ragged * 0.5 + ragged * city.noise2(Math.cos(a + ph) * 1.8 + x * 0.1, Math.sin(a + ph) * 1.8 + z * 0.1, 21)); const [px, pz] = P(x + Math.cos(a) * rr, z + Math.sin(a) * rr); i ? ctx.lineTo(px, pz) : ctx.moveTo(px, pz); }
-    ctx.fill();
+    blob1(ctx, x, z, r, alpha, ragged);
+    if (r > 1.2) { const m = 2 + Math.floor(R() * 3); for (let i = 0; i < m; i++) { const a = R() * 6.28, d = r * (0.55 + R() * 0.5), rs = r * (0.18 + R() * 0.25); blob1(ctx, x + Math.cos(a) * d, z + Math.sin(a) * d, rs, alpha * (0.5 + R() * 0.4), 0.6); } }
   };
   const api = { L, P, k, blob, line(ctx, pts, w, alpha) { ctx.globalAlpha = alpha; ctx.lineWidth = w * k; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(...P(p[0], p[1])) : ctx.moveTo(...P(p[0], p[1]))); ctx.stroke(); } };
   // craters: churned ring, scorched core on the big ones, water in the bottom
@@ -499,20 +508,22 @@ export function craterMesh(scene, T, fallbackMap, cap, tint = 0x9c9182) {
   const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
   g.setAttribute('aCell', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
   if (atlas) {
-    m.customProgramCacheKey = () => 'crater_atlas_v6';
+    m.customProgramCacheKey = () => 'crater_atlas_v6b';
     m.onBeforeCompile = sh => {
       // ground look v6: the decal's outer fringe is eroded by world-space noise (no round stamp edge, no two craters
       // alike) and its tone drifts a little, so it settles into the ground instead of sitting on it
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec3 vCrW; ${WAR_NOISE}`).replace('#include <map_fragment>', `#include <map_fragment>
+        varying vec3 vCrW; varying vec2 vCrUv; ${WAR_NOISE}`).replace('#include <map_fragment>', `#include <map_fragment>
         {
           float cn = wn1(vCrW.xz * 1.6) * 0.6 + wn1(vCrW.xz * 5.1 + 3.0) * 0.4;
-          diffuseColor.a *= smoothstep(0.0, 0.55, diffuseColor.a * 1.3 + (cn - 0.55) * 0.55);
+          // feathered outer half: alpha falls off gradually from 0.22 to 0.5 of the decal radius, ragged with noise
+          float rd = length(vCrUv - 0.5) + (cn - 0.5) * 0.14;
+          diffuseColor.a *= smoothstep(0.0, 0.7, diffuseColor.a + (cn - 0.55) * 0.45) * (1.0 - smoothstep(0.22, 0.5, rd));
           diffuseColor.rgb *= 0.9 + 0.18 * cn;
           diffuseColor.rgb = mix(diffuseColor.rgb * vec3(0.92, 0.84, 0.72), diffuseColor.rgb, smoothstep(0.25, 0.7, diffuseColor.a));   // dust fringe: warm soil, not grey
         }`);
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell; varying vec3 vCrW;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCrW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;')
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell; varying vec3 vCrW; varying vec2 vCrUv;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCrW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz; vCrUv = uv;')
         .replace('#include <uv_vertex>', `#include <uv_vertex>
         vec2 cOff = vec2(mod(aCell, 2.0), 1.0 - floor(aCell / 2.0)) * 0.5;
         #ifdef USE_MAP
