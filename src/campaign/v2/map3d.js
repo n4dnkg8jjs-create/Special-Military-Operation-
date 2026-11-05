@@ -43,6 +43,9 @@ export class StrategicMap {
     this.lat0 = (latS + latN) / 2; this.lon0 = (lonW + lonE) / 2; this.kx = KX(this.lat0);
     this.x0 = this.X(lonW); this.x1 = this.X(lonE); this.z0 = this.Z(latN); this.z1 = this.Z(latS);
     this.cw = (this.x1 - this.x0) / A.cols; this.ch = (this.z1 - this.z0) / A.rows;
+    // v5: the grid can grow past the original AOR (growth.js): column / row numbers start at col0 / row0 (RU: negative
+    // columns west of the original grid); the map is rebuilt for each grid version (C.gridV)
+    this.col0 = A.col0 || 0; this.row0 = A.row0 || 0; this.gridV = C.gridV || 0;
     // renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -72,8 +75,8 @@ export class StrategicMap {
   X(lon) { return (lon - this.lon0) * this.kx; }
   Z(lat) { return -(lat - this.lat0) * KY; }
   V(ll, y = 0) { return new THREE.Vector3(this.X(ll[1]), y, this.Z(ll[0])); }
-  cellCenter(id) { const c = this.C.cell(id); return new THREE.Vector3(this.x0 + (c.col + 0.5) * this.cw, 0, this.z0 + (c.row + 0.5) * this.ch); }
-  cellAtWorld(x, z) { const col = Math.floor((x - this.x0) / this.cw), row = Math.floor((z - this.z0) / this.ch); return this.C.cellAt(col, row)?.id || null; }
+  cellCenter(id) { const c = this.C.cell(id); return new THREE.Vector3(this.x0 + (c.col - this.col0 + 0.5) * this.cw, 0, this.z0 + (c.row - this.row0 + 0.5) * this.ch); }
+  cellAtWorld(x, z) { const col = Math.floor((x - this.x0) / this.cw) + this.col0, row = Math.floor((z - this.z0) / this.ch) + this.row0; return this.C.cellAt(col, row)?.id || null; }
   // screen position (CSS px, relative to the viewport) of a cell centre or a world point; null if behind the camera
   screenOf(id, y = 0) { const p = typeof id === 'string' ? this.cellCenter(id) : id.clone(); p.y = y; this.updateCamera(); p.project(this.camera); if (p.z > 1) return null; const r = this.canvas.getBoundingClientRect(); return { x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height }; }
   aorCenter() { return { x: (this.x0 + this.x1) / 2, z: (this.z0 + this.z1) / 2 }; }
@@ -174,7 +177,7 @@ export class StrategicMap {
     }
     g.restore();
     const cells = this.def.aor.cells, cpx = this.cw * kmPx, cpy = this.ch * kmPx;
-    const cellPx = c => [(c.col) * cpx, (c.row) * cpy];
+    const cellPx = c => [(c.col - this.col0) * cpx, (c.row - this.row0) * cpy];
     for (const c of cells) {
       const [px, py] = cellPx(c), r = rng(hash(c.id));
       if (c.terrain === 'forest' && !G?.woods?.length) { g.fillStyle = sea.wood; for (let k = 0; k < 26; k++) { g.beginPath(); g.ellipse(px + cpx * (0.15 + r() * 0.7), py + cpy * (0.15 + r() * 0.7), cpx * (0.06 + r() * 0.12), cpy * (0.05 + r() * 0.1), r() * 3, 0, 7); g.fill(); } }
@@ -215,7 +218,7 @@ export class StrategicMap {
       for (const s of O.streets || []) { g.strokeStyle = s.k >= 2 ? '#a69e88' : 'rgba(170,162,140,0.75)'; g.lineWidth = s.k >= 2 ? 2 : 1.2; line(s.p); g.stroke(); }
       for (const pass of [0, 1]) for (const r of O.roads || []) { g.strokeStyle = pass ? (r.k >= 3 ? '#d9cfb2' : '#bdb49a') : 'rgba(30,28,22,0.7)'; g.lineWidth = (r.k >= 3 ? 4.5 : 3) + (pass ? 0 : 2.5); line(r.p); g.stroke(); }
     } else {   // cell roads only
-      for (const c of cells) if (c.road) for (const n of this.C.neighbors(c.id)) { const d = this.C.cell(n); if (!d.road || (d.col !== c.col && d.row !== c.row)) continue; g.strokeStyle = c.road === 2 && d.road === 2 ? '#d9cfb2' : '#b0a78e'; g.lineWidth = c.road === 2 && d.road === 2 ? 4 : 2.5; g.beginPath(); g.moveTo((c.col + 0.5) * cpx, (c.row + 0.5) * cpy); g.lineTo((d.col + 0.5) * cpx, (d.row + 0.5) * cpy); g.stroke(); }
+      for (const c of cells) if (c.road) for (const n of this.C.neighbors(c.id)) { const d = this.C.cell(n); if (!d.road || (d.col !== c.col && d.row !== c.row)) continue; g.strokeStyle = c.road === 2 && d.road === 2 ? '#d9cfb2' : '#b0a78e'; g.lineWidth = c.road === 2 && d.road === 2 ? 4 : 2.5; g.beginPath(); g.moveTo((c.col - this.col0 + 0.5) * cpx, (c.row - this.row0 + 0.5) * cpy); g.lineTo((d.col - this.col0 + 0.5) * cpx, (d.row - this.row0 + 0.5) * cpy); g.stroke(); }
     }
     this.groundTex.needsUpdate = true;
   }
@@ -288,7 +291,7 @@ export class StrategicMap {
   }
   paintOverlay() {
     const C = this.C, A = this.def.aor, g = this.ovCv.getContext('2d'), W = this.ovCv.width, H = this.ovCv.height, cx = W / A.cols, cy = H / A.rows;
-    g.clearRect(0, 0, W, H);
+    g.clearRect(0, 0, W, H); g.save(); g.translate(-this.col0 * cx, -this.row0 * cy);
     for (const c of A.cells) {
       const o = C.owner[c.id], x = c.col * cx, y = c.row * cy, known = C.known(c.id);
       // closed squares (beyond the AOR so far): a dark veil; squares that just opened fade in (refresh -> this.fade)
@@ -313,23 +316,23 @@ export class StrategicMap {
     // supply sources and forward depots
     for (const id of [...(A.supplySources || []), ...(C.depots || [])]) { const c = C.cell(id); if (!c || C.owner[id] !== 'player') continue; const x = (c.col + 0.5) * cx, y = (c.row + 0.85) * cy, dep = (C.depots || []).includes(id);
       g.fillStyle = dep ? 'rgba(143,176,105,0.95)' : 'rgba(143,176,105,0.6)'; g.strokeStyle = '#1b1d17'; g.lineWidth = 2; g.beginPath(); g.rect(x - 11, y - 7, 22, 14); g.fill(); g.stroke(); g.beginPath(); g.moveTo(x - 11, y + 2); g.lineTo(x + 11, y + 2); g.stroke(); }
-    this.ovTex.needsUpdate = true;
+    g.restore(); this.ovTex.needsUpdate = true;
     // front line along the cell borders (3D, crisp at every zoom)
     const seg = [];
     for (const c of A.cells) { const o = C.owner[c.id] === 'player'; for (const [dc, dr] of [[1, 0], [0, 1]]) { const n = C.cellAt(c.col + dc, c.row + dr); if (!n || (C.owner[n.id] === 'player') === o) continue;
-      const x = this.x0 + (c.col + 1) * this.cw, z = this.z0 + (c.row + 1) * this.ch;
+      const x = this.x0 + (c.col - this.col0 + 1) * this.cw, z = this.z0 + (c.row - this.row0 + 1) * this.ch;
       if (dc) seg.push(x, 0.01, z - this.ch, x, 0.01, z); else seg.push(x - this.cw, 0.01, z, x, 0.01, z); } }
     if (this.cellFront) { this.scene.remove(this.cellFront, this.cellFrontG); this.cellFront.geometry.dispose(); this.cellFrontG.geometry.dispose(); }
     if (seg.length) { const g1 = new LineSegmentsGeometry(); g1.setPositions(seg); const g2 = new LineSegmentsGeometry(); g2.setPositions(seg); this.cellFront = new LineSegments2(g1, this.cellFrontMat); this.cellFrontG = new LineSegments2(g2, this.cellFrontGlow); this.cellFront.renderOrder = 4; this.cellFrontG.renderOrder = 3; this.scene.add(this.cellFrontG, this.cellFront); }
   }
   paintHighlight() {
     this.dirty = true;
-    const C = this.C, A = this.def.aor, g = this.hlCv.getContext('2d'), s = 48; g.clearRect(0, 0, this.hlCv.width, this.hlCv.height);
+    const C = this.C, A = this.def.aor, g = this.hlCv.getContext('2d'), s = 48; g.clearRect(0, 0, this.hlCv.width, this.hlCv.height); g.save(); g.translate(-this.col0 * s, -this.row0 * s);
     if (this.reachSet) for (const [id, kind] of this.reachSet) { const c = C.cell(id); if (!c) continue; g.fillStyle = kind === 'attack' ? 'rgba(224,80,63,0.22)' : 'rgba(150,200,255,0.16)'; g.fillRect(c.col * s, c.row * s, s, s); g.strokeStyle = kind === 'attack' ? 'rgba(255,120,100,0.75)' : 'rgba(170,210,255,0.55)'; g.lineWidth = 1.5; g.setLineDash([4, 3]); g.strokeRect(c.col * s + 2, c.row * s + 2, s - 4, s - 4); g.setLineDash([]); }
     this.paintTargeting(g, s);
     if (this.selCell) { const c = C.cell(this.selCell); if (c) { g.strokeStyle = 'rgba(216,178,90,1)'; g.lineWidth = 3; g.strokeRect(c.col * s + 1.5, c.row * s + 1.5, s - 3, s - 3); } }
     if (this.hover) { const c = C.cell(this.hover); if (c) { g.fillStyle = 'rgba(255,255,255,0.08)'; g.fillRect(c.col * s, c.row * s, s, s); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 2; g.strokeRect(c.col * s + 1, c.row * s + 1, s - 2, s - 2); } }
-    this.hlTex.needsUpdate = true;
+    g.restore(); this.hlTex.needsUpdate = true;
   }
   // ------------------------------------------------------------------ v4: targeting, UAVs, supply lines, closed squares
   // Targeting overlay (fire missions / UAV sorties): T = { valid: Map(cellId -> 'ok' | 'bad'), color, from: cellId,
@@ -379,7 +382,7 @@ export class StrategicMap {
       // observed area: a square outline over the squares the drone sees, and the sensor footprint under it
       const cells = (u.cells || [u.cell]).map(id => this.C.cell(id)).filter(Boolean);
       const c0 = Math.min(...cells.map(x => x.col)), c1 = Math.max(...cells.map(x => x.col)), r0 = Math.min(...cells.map(x => x.row)), r1 = Math.max(...cells.map(x => x.row));
-      const x0 = this.x0 + c0 * this.cw, x1 = this.x0 + (c1 + 1) * this.cw, z0 = this.z0 + r0 * this.ch, z1 = this.z0 + (r1 + 1) * this.ch;
+      const x0 = this.x0 + (c0 - this.col0) * this.cw, x1 = this.x0 + (c1 - this.col0 + 1) * this.cw, z0 = this.z0 + (r0 - this.row0) * this.ch, z1 = this.z0 + (r1 - this.row0 + 1) * this.ch;
       const ag = new LineGeometry(); ag.setPositions([x0, 0.02, z0, x1, 0.02, z0, x1, 0.02, z1, x0, 0.02, z1, x0, 0.02, z0]);
       this.uavAreaMat ||= this.lineMat('#7fd6ff', 2.4, 0.85, true); this.uavAreaFoe ||= this.lineMat('#ff9c8c', 2.4, 0.85, true);
       const area = new Line2(ag, own ? this.uavAreaMat : this.uavAreaFoe); area.computeLineDistances(); area.renderOrder = 8;
@@ -455,6 +458,7 @@ export class StrategicMap {
     for (const o of [...this.dyn.children]) { this.dyn.remove(o); o.geometry?.dispose(); }
   }
   refresh() {
+    if ((this.C.gridV || 0) !== this.gridV && this.on.regrid) { this.on.regrid(); return; }   // v5: the grid has grown: rebuild
     this.dirty = true; const C = this.C; this.paintGround(); this.paintOverlay(); this.paintHighlight(); this.clearDyn();
     if (this.trees && this.treeSeason !== this.season) { this.treeSeason = this.season; const R = rng(9), col = new THREE.Color(); for (let i = 0; i < this.trees.count; i++) this.trees.setColorAt(i, col.set(this.treeColor(R()))); this.trees.instanceColor.needsUpdate = true; }
     // task forces
@@ -466,9 +470,11 @@ export class StrategicMap {
       const lead = fs.some(x => x.id === this.sel) ? f.id === this.sel : i === 0;
       const e = document.createElement('div'); e.className = 'c2-tok own' + (f.id === this.sel ? ' sel' : '') + (fs.length >= 2 && !lead ? ' compact' : '') + (f.planned ? ' plan' : '') + (f.reserve ? ' res' : '') + ((f.supply ?? 1) < 0.5 ? ' oos' : '');
       if (lead && fs.length > 1) e.style.zIndex = '2';
-      const us = C.tfUnits(f), mpMax = C.tfMpMax(f);
-      e.innerHTML = `<div class="c2-tok-ech">${echelon(us.length)}</div>${natoSvg(us)}<div class="c2-tok-n">${esc(f.name)}</div><div class="c2-tok-mp">${pips(f.mp, mpMax)}${(f.supply ?? 1) < 0.5 ? '<b class="c2-oos">NO SUPPLY</b>' : ''}${f.attacked ? '<b class="c2-used">ATTACKED</b>' : ''}</div><div class="c2-stem"></div>`;
-      e.title = `${f.name}: ${us.length} units · MP ${fmt(f.mp)}/${mpMax} · ${f.stance}`;
+      const us = C.tfUnits(f), mpMax = C.tfMpMax(f), sp = C.spotStatus?.(f.id);
+      if (sp?.spotted) e.classList.add('spotted');
+      e.innerHTML = `<div class="c2-tok-ech">${echelon(us.length)}</div>${natoSvg(us)}<div class="c2-tok-n">${esc(f.name)}</div><div class="c2-tok-mp">${pips(f.mp, mpMax)}${(f.supply ?? 1) < 0.5 ? '<b class="c2-oos">NO SUPPLY</b>' : ''}${f.attacked ? '<b class="c2-used">ATTACKED</b>' : ''}${sp?.spotted ? '<b class="c2-spot">◉ SPOTTED</b>' : ''}</div><div class="c2-stem"></div>`;
+      e.title = `${f.name}: ${us.length} units · MP ${fmt(f.mp)}/${mpMax} · ${f.stance}${sp?.spotted ? ` — SPOTTED: a formation this big (signature ${sp.sig}) is seen by the enemy up to ${sp.depth} squares behind the line; expect artillery and drones` : ''}`;
+      if (sp?.spotted) this.spotRing(p, COL.enemy);
       e.addEventListener('pointerdown', ev => { ev.stopPropagation(); if (ev.button === 0) this.on.select?.(f.id); else if (ev.button === 2) { ev.preventDefault(); this.on.order?.(f.cell, f.id); } });
       e.addEventListener('contextmenu', ev => ev.preventDefault());
       e.addEventListener('wheel', ev => this.onWheel(ev), { passive: false });   // zoom and the route preview work with the cursor over a token too
@@ -489,12 +495,26 @@ export class StrategicMap {
       e.title = known ? `${C.cellName(c.id)}: enemy ${['', 'company', 'reinforced company', 'battalion'][clamp(Math.round(g), 1, 3)]}${C.fort[c.id] ? `, fortifications ${C.fort[c.id]}` : ''}` : `${C.cellName(c.id)}: enemy strength unknown — reconnoitre`;
       this.labels.appendChild(e); this.badges.push({ e, pos: p, enemy: true });
     }
+    // v5: enemy formations spotted because of their size (single player; versus: C.foes with .spotted)
+    const spBy = {}; for (const f of C.spottedEnemy?.() || []) (spBy[f.cell] ||= []).push(f);
+    for (const [cell, fs] of Object.entries(spBy)) fs.forEach((f, i) => {
+      const p = this.cellCenter(cell); p.z += this.ch * 0.12; p.y = 0.02; const sx = (i - (fs.length - 1) / 2) * 46;
+      const e = document.createElement('div'); e.className = 'c2-tok foe spotted' + (i ? ' compact' : '');
+      const units = Array.from({ length: Math.min(6, f.n) }, (_, k) => ({ kind: f.kind === 'tank' ? 'tank' : k % 3 === 2 ? 'tank' : 'mech', veh: { kind: f.kind === 'tank' || k % 3 === 2 ? 'tank' : 'ifv' } }));
+      e.innerHTML = `<div class="c2-tok-ech foe">${echelon(f.n)}</div>${natoSvg(units, 34, 34, true)}<div class="c2-tok-n foe">${esc(f.name)}</div><div class="c2-tok-mp"><b class="c2-spot">◉ SPOTTED</b></div><div class="c2-stem foe"></div>`;
+      e.title = `Spotted without reconnaissance: ${f.name} — about ${f.n} companies massed here (signature ${f.sig}). Big formations give themselves away: a target for your guns and drones.`;
+      e.addEventListener('pointerdown', ev => { ev.stopPropagation(); if (ev.button === 0) this.on.cell?.(cell); else if (ev.button === 2) { ev.preventDefault(); this.on.order?.(cell); } });
+      e.addEventListener('contextmenu', ev => ev.preventDefault()); e.addEventListener('wheel', ev => this.onWheel(ev), { passive: false }); e.addEventListener('pointermove', ev => this.hoverAt(ev.clientX, ev.clientY));
+      this.labels.appendChild(e); this.badges.push({ e, pos: p, foe: true, sx });
+      if (!i) this.spotRing(this.cellCenter(cell), COL.accent);
+    });
     // versus: the other player's task forces this side can see (hostile frames)
     const foeBy = {}; for (const f of C.foes || []) (foeBy[f.cell] ||= []).push(f);
     for (const [cell, fs] of Object.entries(foeBy)) fs.forEach((f, i) => {
       const p = this.cellCenter(cell); p.z -= this.ch * 0.05; p.y = 0.02; const sx = (i - (fs.length - 1) / 2) * 46;
-      const e = document.createElement('div'); e.className = 'c2-tok foe' + (i ? ' compact' : '');
-      e.innerHTML = `<div class="c2-tok-ech foe">${echelon(f.n)}</div>${natoSvg(f.units || [], 34, 34, true)}<div class="c2-tok-n foe">Enemy · ${f.n} unit${f.n === 1 ? '' : 's'}</div><div class="c2-stem foe"></div>`;
+      const e = document.createElement('div'); e.className = 'c2-tok foe' + (i ? ' compact' : '') + (f.spotted ? ' spotted' : '');
+      e.innerHTML = `<div class="c2-tok-ech foe">${echelon(f.n)}</div>${natoSvg(f.units || [], 34, 34, true)}<div class="c2-tok-n foe">Enemy · ${f.n} unit${f.n === 1 ? '' : 's'}</div>${f.spotted ? '<div class="c2-tok-mp"><b class="c2-spot">◉ SPOTTED</b></div>' : ''}<div class="c2-stem foe"></div>`;
+      if (f.spotted && !i) this.spotRing(this.cellCenter(cell), COL.accent);
       e.title = `Enemy task force: ${f.n} units (combat power ~${f.power})`;
       e.addEventListener('pointerdown', ev => { ev.stopPropagation(); if (ev.button === 0) this.on.cell?.(cell); else if (ev.button === 2) { ev.preventDefault(); this.on.order?.(cell); } });
       e.addEventListener('contextmenu', ev => ev.preventDefault()); e.addEventListener('wheel', ev => this.onWheel(ev), { passive: false }); e.addEventListener('pointermove', ev => this.hoverAt(ev.clientX, ev.clientY));
@@ -524,6 +544,11 @@ export class StrategicMap {
     if (this.path) this.showPath(this.path, true);
     // place the new markers now (not on the next frame: they would flash in the top-left corner for a frame)
     if (this.camera && this.W) { this.updateCamera(); this.placeLabels(performance.now()); }
+  }
+  // a pulsing ring on the ground around a spotted formation
+  spotRing(p, color) {
+    const R = Math.min(this.cw, this.ch) * 0.42, m = new THREE.Mesh(new THREE.RingGeometry(R * 0.9, R, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthTest: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2; m.position.set(p.x, 0.012, p.z); m.renderOrder = 6; m.userData.pulse = true; this.dyn.add(m);
   }
   arrow(a, b, color, text) {
     const d = new THREE.Vector3().subVectors(b, a); const L = d.length(); if (L < 1e-6) return; d.normalize();

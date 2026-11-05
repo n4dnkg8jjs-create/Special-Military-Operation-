@@ -9,6 +9,8 @@
 import { Campaign2, setRandom } from './state.js';
 import * as F from './fires.js';
 import { normalize } from './index.js';
+import { nextBand, applyBand } from './growth.js';
+import { spotted } from './recon.js';
 
 export const OTHER = f => (f === 'UA' ? 'RU' : 'UA');
 const FLIP = { north: 'south', south: 'north', east: 'west', west: 'east' };
@@ -27,7 +29,11 @@ export function sideDef2(defs, opId, faction) {
   // supply (supply.js): the other side's sources and hubs swap over; the map does not expand in versus (both
   // commanders see the whole sector)
   const flipSide = h => ({ ...h, side: mine ? (h.side || 'player') : ((h.side || 'player') === 'player' ? 'enemy' : 'player') });
-  const aor = { ...A, cells, enemyEdge: mine ? A.enemyEdge : FLIP[A.enemyEdge], supplySources: mine ? [...(A.supplySources || [])] : [...(A.enemySources || [])],
+  // v5: the grid extension (growth.js) — the same bands for both commanders (the host grows both sides together);
+  // the defending side sees them as its own rear (owners / hubs flipped, its supply sources move out with the edge)
+  const ext = A.ext ? { ...A.ext, edgeSide: mine ? 'enemy' : 'player', bands: A.ext.bands.map(b => ({ ...b, forces: [], batteries: [], directives: mine ? (b.directives || []) : [],
+    hubs: (b.hubs || []).map(flipSide), cells: b.cells.map(c => { const o = owner(c); return { ...c, owner: o, garrison: o === 'player' ? 0 : 1 }; }) })) } : undefined;
+  const aor = { ...A, cells, ext, enemyEdge: mine ? A.enemyEdge : FLIP[A.enemyEdge], supplySources: mine ? [...(A.supplySources || [])] : [...(A.enemySources || [])],
     enemySources: mine ? [...(A.enemySources || [])] : [...(A.supplySources || [])], hubs: (A.hubs || []).map(flipSide), reveal: 99 };
   const byId = Object.fromEntries(cells.map(c => [c.id, c])), at = (col, row) => byId[`c${col}_${row}`];
   const nb = c => { const o = []; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if (dx || dy) { const n = at(c.col + dx, c.row + dy); if (n) o.push(n); } return o; };
@@ -85,6 +91,18 @@ export class VersusGame {
     this.sync();
   }
   C(f) { return this.side[f]; }
+  // v5: the grid grows past the original sector when the attacking side's taken ground nears its enemy edge
+  // (growth.js) — both commanders' maps grow by the same band; the new squares belong to the defender
+  grow() {
+    const added = []; let b;
+    while ((b = nextBand(this.side[this.opId])) && added.length < 3) {
+      for (const f of ['UA', 'RU']) { const C = this.side[f], bb = C.baseDef.aor.ext.bands.find(x => x.id === b.id); if (bb) applyBand(C, bb); }
+      for (const c of b.cells) if (this.own[c.id] == null) this.own[c.id] = OTHER(this.opId);
+      added.push(b.id);
+    }
+    if (added.length) this.sync();
+    return added;
+  }
   // canonical ownership → both sides' owner maps, supply, contested cells settle
   sync() {
     for (const f of ['UA', 'RU']) { const C = this.side[f]; for (const id of Object.keys(this.own)) C.owner[id] = this.own[id] === f ? 'player' : 'enemy'; }
@@ -143,20 +161,22 @@ export class VersusGame {
   foes(f) {
     const me = this.side[f], them = this.side[OTHER(f)], out = [];
     for (const t of them.forces) {
-      const seen = me.forces.some(x => me.adjacent(x.cell, t.cell)) || (me.recon[t.cell] != null && me.recon[t.cell] >= me.turn - 1);
+      // v5: a big formation gives itself away (recon.js signature) even without a drone over it
+      const big = spotted(them, 'player', t);
+      const seen = me.forces.some(x => me.adjacent(x.cell, t.cell)) || (me.recon[t.cell] != null && me.recon[t.cell] >= me.turn - 1) || !!big;
       if (!seen) continue;
       const us = them.tfUnits(t).filter(u => them.alive(u));
-      out.push({ id: t.id, cell: t.cell, n: us.length, units: us.map(u => ({ kind: u.kind, veh: u.veh && !u.veh.lost ? { kind: u.veh.kind } : null })), power: Math.round(them.tfPower(t) * 2) / 2 });
+      out.push({ id: t.id, cell: t.cell, n: us.length, spotted: !!big, units: us.map(u => ({ kind: u.kind, veh: u.veh && !u.veh.lost ? { kind: u.veh.kind } : null })), power: Math.round(them.tfPower(t) * 2) / 2 });
     }
     return out;
   }
   // the state the joiner (or a reconnecting joiner) needs
   view(f) {
-    const C = this.side[f], { def, cellById, grid, blocked, ...rest } = C;
+    const C = this.side[f], { def, baseDef, cellById, grid, blocked, ...rest } = C;
     return { opId: this.opId, faction: f, turn: this.turn, phase: this.phase, c: JSON.parse(JSON.stringify(rest)), foes: this.foes(f), ready: !!this.ready[f], oppReady: !!this.ready[OTHER(f)], ack: this.acks[f] || 0, result: this.result, battle: this.battle ? { ...this.battle } : null };
   }
   save() {
-    const ser = C => { const { def, cellById, grid, blocked, ...rest } = C; return JSON.parse(JSON.stringify(rest)); };
+    const ser = C => { const { def, baseDef, cellById, grid, blocked, ...rest } = C; return JSON.parse(JSON.stringify(rest)); };
     return { v: 2, opId: this.opId, host: this.host, turn: this.turn, own: this.own, ready: this.ready, phase: this.phase, queue: this.queue, qi: this.qi, initiative: this.initiative, acks: this.acks, result: this.result, history: this.history, pendingBattle: this.pendingBattle || null, sides: { UA: ser(this.side.UA), RU: ser(this.side.RU) } };
   }
   // ---- end of the week: the attack queue (alternating sides, the initiative alternates weekly)
@@ -212,7 +232,7 @@ export class VersusGame {
     D.applyResult({ ...rDef, sector: b.cell, mode: 'defend', win: !rAtt.win, lineOnly: !(b.defUids || []).length });
     D.pendingAttacks = [];
     if (rAtt.win) this.own[b.cell] = b.f;
-    this.sync();
+    this.sync(); if (rAtt.win) this.grow();
     // a defender pushed out lands on a square that is still its own (sync may have moved the line under it)
     for (const S of [A, D]) for (const t of [...S.forces]) if (S.owner[t.cell] !== 'player') S.retreat(t);
     this.history.push({ turn: this.turn, f: b.f, cell: b.cell, win: !!rAtt.win, auto: !!rAtt.auto });
@@ -228,7 +248,7 @@ export class VersusGame {
         else if ((C.garrison[id] ?? 1) < 1) C.garrison[id] = Math.min(1, (C.garrison[id] ?? 1) + 0.15);
       }
     }
-    this.sync(); for (const f of ['UA', 'RU']) this.side[f].resetMoves();
+    this.sync(); this.grow(); for (const f of ['UA', 'RU']) this.side[f].resetMoves();
     this.turn++; this.ready = {}; this.queue = null; this.qi = 0; this.phase = 'plan'; this.battle = null; this.initiative = OTHER(this.initiative);
     this.decide();
   }

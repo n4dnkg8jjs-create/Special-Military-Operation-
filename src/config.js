@@ -166,5 +166,5 @@ export const TUNING = {
   ticketBleed: { perObj: 24, ramp: 90, fresh: 0.35 },
   mortarStrikes: 3,
   // movement speeds (m/s)
-  walk: 1.55, run: 4.2, crouchWalk: 1.2, crouchRun: 2.8, crawl: 0.45,
+  walk: 1.55, run: 4.2, crouchWalk: 1.2, crouchRun: 2.8, crawl: 0.45, highCrawl: 0.7,
 };

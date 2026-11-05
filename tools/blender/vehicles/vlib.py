@@ -477,7 +477,10 @@ def round_coaming(r, hinge=(0, 1), segs=24, h=0.022, mat='rolled', depth=0.01):
     """Fixed hatch ring for round_lid(r): raised ring outside the lid edge, dark opening plate inside, hinge brackets.
     depth = how far the ring reaches below z=0 (use more on curved cast roofs so it meets the surface all round)."""
     b = lathe([(r * 1.005, -depth), (r * 1.12, -depth), (r * 1.12, h * 0.6), (r * 1.07, h), (r * 1.005, h)], segs, 'z', mat=mat, cap=False)
-    b.add(cyl(r * 1.0, 0.006, segs, c=(0, 0, 0.001), mat='decal'))       # 'decal' kind = dark hatch interior
+    # 'decal' kind = dark hatch interior.  vehicles_v5: lifted to z 0.004..0.010 (inside the closed lid's dome, so hidden
+    # while closed) - at z -0.002..0.004 the painted roof plate under it showed through / z-fought, so an opened hatch still
+    # looked closed.
+    b.add(cyl(r * 0.95, 0.006, segs, c=(0, 0, 0.007), mat='decal'))
     hd = V((hinge[0], hinge[1], 0)).normalized()
     t = V((-hd.y, hd.x, 0))
     for s in (-1, 1):
@@ -534,3 +537,20 @@ def rect_coaming(w, l, rad=0.06, mat='rolled'):
     b = prism([(x * 1.08 + math.copysign(0.012, x), y * 1.08 + math.copysign(0.012, y)) for x, y in poly], 0.022, 'z', c=0.001, mat=mat)
     b.add(prism([(x * 0.99, y * 0.99) for x, y in poly], 0.004, 'z', c=0.0135, mat='decal'))
     return b
+
+def snap(part, target, d=(-1, 0, 0), max_d=0.12, sink=0.002, bvh=None):
+    """Slide `part` along direction d until it touches `target` (a part or a BVHTree), sunk `sink` m into it:
+    used for bolts, bosses, brackets that must sit on a curved / dished surface (vehicles_v5 floating-part fixes).
+    Rays go from every vertex of `part`; the shortest hit decides.  No hit within max_d: part unchanged."""
+    t = bvh or (target if isinstance(target, BVHTree) else bvh_of(target))
+    D = V(d).normalized()
+    if min((t.find_nearest(v.co)[3] or 9) for v in part.bm.verts) < 0.004:
+        return part                     # already touching / embedded
+    best = None
+    for v in part.bm.verts:
+        loc, nrm, idx, dist = t.ray_cast(v.co + D * -1e-4, D, max_d)
+        if loc is not None and (best is None or dist < best):
+            best = dist
+    if best is not None:
+        part.move(*(D * (best - 1e-4 + sink)))
+    return part

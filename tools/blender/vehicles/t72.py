@@ -113,10 +113,11 @@ def road_wheel():
         r.rot('X', math.degrees(a))
         w.add(r)
     # hub cap with bolts
-    w.add(lathe([(0, 0.0), (0.085, 0.0), (0.085, 0.03), (0.06, 0.05), (0.0, 0.055)], 16, 'x', mat='rim', c=(0.21, 0, 0)))
+    bv = L.bvh_of(w)            # hub cap + bolts snapped onto the dished disc (were floating ~2 cm off it)
+    w.add(L.snap(lathe([(0, 0.0), (0.085, 0.0), (0.085, 0.03), (0.06, 0.05), (0.0, 0.055)], 16, 'x', mat='rim', c=(0.23, 0, 0)), None, bvh=bv))
     for i in range(8):
         a = math.tau * i / 8
-        w.add(bolt(0.011, 0.012, 6, 'rim').rot('Y', 90), Matrix.Translation((0.212, 0.115 * math.cos(a), 0.115 * math.sin(a))))
+        w.add(L.snap(bolt(0.011, 0.012, 6, 'rim').rot('Y', 90).move(0.24, 0.115 * math.cos(a), 0.115 * math.sin(a)), None, bvh=bv))
     return w
 
 def sprocket():
@@ -150,10 +151,11 @@ def idler():
                      (0.28, xo + 0.03 * np.sign(xo)), (0.30, xo + 0.03 * np.sign(xo)), (0.30, xo - 0.03 * np.sign(xo)),
                      (0.27, xo - 0.03 * np.sign(xo)), (0.0, xo - 0.035 * np.sign(xo))], 32, 'x', mat='rim'))
     # lightening holes suggested by recessed bosses
+    bv = L.bvh_of(w)
     for i in range(6):
         a = math.tau * i / 6
-        w.add(cyl(0.05, 0.01, 12, 'x', c=(0.11, 0.17 * math.cos(a), 0.17 * math.sin(a)), mat='gunmetal'))
-    w.add(lathe([(0, 0.0), (0.07, 0.0), (0.07, 0.05), (0.04, 0.07), (0, 0.07)], 14, 'x', mat='rim', c=(0.1, 0, 0)))
+        w.add(L.snap(cyl(0.05, 0.01, 12, 'x', c=(0.14, 0.17 * math.cos(a), 0.17 * math.sin(a)), mat='gunmetal'), None, bvh=bv))
+    w.add(L.snap(lathe([(0, 0.0), (0.07, 0.0), (0.07, 0.05), (0.04, 0.07), (0, 0.07)], 14, 'x', mat='rim', c=(0.14, 0, 0)), None, bvh=bv))
     return w
 
 def track_path():
@@ -630,8 +632,10 @@ def turret_b3():
     T_.add(cyl(0.03, 0.08, 8, 'z', c=(0.1, -0.9, 1.22)))
     T_.add(antenna_base(), Matrix.Translation((-0.55, -0.85, 0.56)))
     # lifting eyes on turret sides
+    bv = L.bvh_of(T_)            # lifting eyes welded to the cast wall (were 3.6 cm off it)
     for s in (1, -1):
-        T_.add(lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False), Matrix.Translation((s * 0.95, -0.7, 0.5)))
+        eye = lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False).move(s * 0.95, -0.7, 0.5)
+        T_.add(L.snap(eye, None, d=(-s, 0, -0.3), max_d=0.3, sink=0.01, bvh=bv))
     # side stowage boxes
     for s in (1, -1):
         T_.add(box(0.12, 0.8, 0.28, c=(s * 1.2, -0.6, 0.24), bev=0.015, segs=2))
@@ -756,7 +760,8 @@ def turret_av():
     T_.add(antenna_base(), Matrix.Translation((-0.55, -0.85, 0.56)))
     for s in (1, -1):
         T_.add(box(0.12, 0.8, 0.28, c=(s * 1.2, -0.55, 0.24), bev=0.015, segs=2))
-        T_.add(lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False), Matrix.Translation((s * 0.95, -0.7, 0.5)))
+        eye = lathe([(0.03, -0.012), (0.05, -0.012), (0.05, 0.012), (0.03, 0.012)], 12, 'y', cap=False).move(s * 0.95, -0.7, 0.5)
+        T_.add(L.snap(eye, None, d=(-s, 0, -0.3), max_d=0.3, sink=0.01, bvh=L.bvh_of(T_)))
     # canvas tarp roll strapped on the rear stowage (common on UA tanks)
     T_.add(cyl(0.14, 1.5, 14, 'x', c=(0, -1.25, 0.62), mat='canvas'))
     return T_

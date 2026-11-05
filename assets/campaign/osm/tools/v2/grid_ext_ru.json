@@ -1,0 +1,25 @@
+{
+  "names": {
+    "Бажане": {"name": "Bazhane"}, "Бажане Друге": {"name": "Bazhane Druhe"}, "Бажане Перше": {"name": "Bazhane Pershe"},
+    "Східне": {"name": "Skhidne"}, "Сонячне": {"name": "Soniachne"},
+    "Blahodatne": {"kind": "village", "size": 3}, "Komyshivka": {"kind": "village", "size": 2},
+    "Netailove": {"size": 3}, "Novoselivka Persha": {"size": 3}, "Karlivka": {"size": 2}, "Halytsynivka": {"size": 3}
+  },
+  "notes": {
+    "Netailove": "Village on the Vovcha west of Pervomaiske, on the road from Avdiivka towards Pokrovsk; fought over in the spring and summer of 2024 after Avdiivka fell.",
+    "Novoselivka Persha": "Large village on the Vovcha north-west of Avdiivka, where the O0542 from Lastochkyne and Orlivka runs on to the west; fought over in the summer of 2024.",
+    "Karlivka": "Village on the dam of the Karlivka reservoir (Vovcha): the crossing that anchored the Ukrainian line south-west of the salient in 2024.",
+    "Prohres": "Village on the rail line and road from Ocheretyne towards Pokrovsk; fought over in the spring of 2024.",
+    "Sokil": "Small village north-west of Ocheretyne; fought over in the spring of 2024.",
+    "Yevhenivka": "Village west of Ocheretyne on the road towards Pokrovsk.",
+    "Yasnobrodivka": "Hamlet on the Vovcha west of Tonenke.",
+    "Komyshivka": "Village in the rear of the Ukrainian line west of Novoselivka Persha.",
+    "Halytsynivka": "Village on the Vovcha upstream of the Karlivka reservoir; Ukrainian rear area.",
+    "Blahodatne": "Large village on the Pokrovsk road in the Ukrainian rear.",
+    "Kalynove": "Village on the north shore of the Karlivka reservoir.",
+    "Ptyche": "Village west of Novoselivka Persha.",
+    "Zavitne": "Village in the Ukrainian rear west of Komyshivka."
+  },
+  "garrison": {"Novoselivka Persha": 2, "Netailove": 2, "Karlivka": 2, "Prohres": 2},
+  "fort": {"Novoselivka Persha": 2, "Netailove": 2, "Karlivka": 3, "Prohres": 2}
+}

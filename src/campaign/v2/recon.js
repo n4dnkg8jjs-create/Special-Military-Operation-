@@ -55,3 +55,40 @@ export function fly(C, side, type, cellId, rnd) {
   return { ok: true, lost, cells, risk: Math.round(risk * 100) / 100, type, cell: cellId };
 }
 export function weekly(C, side, hqSupplied) { const U = C.uav?.[side]; if (!U) return; U.used = 0; if (hqSupplied && U.stock < (U.max || UAV_MAX)) U.stock++; }
+
+// ------------------------------------------------------------------ big formations give themselves away (campaign v5)
+// A battalion group massed into one task force cannot hide on a front watched around the clock by drones, Orlan /
+// Leleka patrols, satellites and radio direction finding: columns, vehicle parks, assembly areas and the radio traffic
+// of a big headquarters are found even without a dedicated sortie, and then draw artillery, Lancets and UAV
+// attention. Small dispersed groups stay hidden unless a drone looks at their square or they are in contact.
+// SIGNATURE = companies in the task force (player: unit records alive; enemy: 3 per point of strength — a battalion)
+//   +1 if it moved this / last week, +1 if it attacked (or is preparing an announced attack), -1 in a town, works or
+//   woods when it kept still. SIGNATURE >= SPOT_SIZE (5, i.e. more than four companies) = SPOTTED by the other side,
+//   if it stands within SPOT_DEPTH squares of that side's line: 2 squares at 5, +2 per point above (6 -> 4, 7 -> 6,
+//   8+ -> 8). Spotted task forces are known to the other side (strength, position) for its next week, the enemy AI
+//   aims spoiling fire at the biggest one it sees and both sides' suppression hits a spotted mass twice as hard.
+export const SPOT_SIZE = 5, SPOT_DEPTH_MAX = 8;
+const COVER = new Set(['urban', 'industrial', 'forest']);
+export function companies(C, side, f) { return side === 'player' ? C.tfUnits(f).filter(u => C.alive(u)).length : Math.max(1, Math.round((f.str || 0) * 3)); }
+// { n, sig, depth, moved, attacked } for a task force of `side` ('player' = C.forces, 'enemy' = C.eforces)
+export function signature(C, side, f) {
+  const n = companies(C, side, f), T = C.turn;
+  let moved, attacked;
+  if (side === 'player') { moved = (f.mp < C.tfMpMax(f) - 1e-6) || (f.movedT ?? -9) >= T - 1; attacked = !!f.attacked || !!f.planned || (f.attackedT ?? -9) >= T - 1; }
+  else { moved = (f.movedT ?? -9) >= T - 1; attacked = !!f.attacked || (f.attackedT ?? -9) >= T - 1; }
+  const c = C.cell(f.cell), cover = c && COVER.has(c.terrain) && !moved && !attacked ? 1 : 0;
+  const sig = n + (moved ? 1 : 0) + (attacked ? 1 : 0) - cover;
+  return { n, sig, moved, attacked, cover: !!cover, depth: sig >= SPOT_SIZE ? Math.min(SPOT_DEPTH_MAX, 2 + (sig - SPOT_SIZE) * 2) : 0 };
+}
+// is task force f of `side` spotted by the other side right now? -> the signature (with .spotted, .dist) or null
+export function spotted(C, side, f) {
+  const s = signature(C, side, f); if (s.sig < SPOT_SIZE) return null;
+  const obs = side === 'player' ? 'enemy' : 'player', d = depth(C, obs, f.cell);
+  return d <= s.depth ? { ...s, dist: d, spotted: true } : null;
+}
+// all task forces of `side` the other side sees because of their size: [{ id, cell, name, kind, str|n, sig, depth }]
+export function spottedList(C, side) {
+  const list = side === 'player' ? C.forces : (C.eforces || []), out = [];
+  for (const f of list) { const s = spotted(C, side, f); if (s) out.push({ id: f.id, cell: f.cell, name: f.name, kind: f.kind, str: f.str, n: s.n, sig: s.sig, depth: s.depth, moved: s.moved, attacked: s.attacked }); }
+  return out.sort((a, b) => b.sig - a.sig);
+}

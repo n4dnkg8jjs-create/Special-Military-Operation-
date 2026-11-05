@@ -1,6 +1,9 @@
 // Compacts the raw OSM extracts (assets/campaign/osm/<side>/*.json) into one small file per side for the strategic
 // 3D map: building footprints as oriented boxes, streets, main roads, rivers, rail, woods and tree rows.
 // usage: node src/campaign/v2/tools/osm_compact.mjs UA|RU   -> src/campaign/v2/data/osm_<side>.json
+//        node src/campaign/v2/tools/osm_compact.mjs UA --ext /tmp/osmv2/UAX   -> src/campaign/v2/data/osm_<side>_ext.json
+//        (campaign v5 grid extension: the OSM API map tiles of the extension; features inside the main file's
+//        sector patches are skipped so nothing is drawn twice)
 // Data © OpenStreetMap contributors (ODbL).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,8 +12,12 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../../..');
 const side = process.argv[2] || 'UA';
-const dir = path.join(root, 'assets/campaign/osm', side);
-const out = path.join(here, '../data', `osm_${side}.json`);
+const extDir = process.argv.includes('--ext') ? process.argv[process.argv.indexOf('--ext') + 1] : null;
+const dir = extDir || path.join(root, 'assets/campaign/osm', side);
+const out = path.join(here, '../data', extDir ? `osm_${side}_ext.json` : `osm_${side}.json`);
+const skip = extDir ? JSON.parse(fs.readFileSync(path.join(here, '../data', `osm_${side}.json`), 'utf8')).patches : [];
+const inSkip = p => p && skip.some(([a, b, c, d]) => p[0] >= a && p[0] <= c && p[1] >= b && p[1] <= d);
+const relSeen = new Set();
 
 const nodes = new Map(), ways = new Map(), rels = [];
 const patches = [];
@@ -21,7 +28,7 @@ for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
   for (const e of d.elements) {
     if (e.type === 'node') nodes.set(e.id, [e.lat, e.lon]);
     else if (e.type === 'way') ways.set(e.id, e);
-    else if (e.type === 'relation') rels.push(e);
+    else if (e.type === 'relation') { if (!relSeen.has(e.id)) { relSeen.add(e.id); rels.push(e); } }
   }
 }
 const lat0 = [...nodes.values()].reduce((a, n) => a + n[0], 0) / Math.max(1, nodes.size);
@@ -73,6 +80,7 @@ for (const r of rels) {
 for (const w of ways.values()) {
   const t = w.tags || {}; if (usedInRoute.has(w.id)) continue;
   const p = pts(w); if (p.length < 2) continue;
+  if (extDir && (t.building || (t.highway && STREET[t.highway] != null)) && inSkip(p[0])) continue;
   if (t.building) { const b = obb(p, t); if (b) res.buildings.push(b); continue; }
   if (t.highway && STREET[t.highway] != null) { const q = simplify(p, 3); res.streets.push({ k: STREET[t.highway], p: q.map(v => v.map(r5)) }); continue; }
   if (t.railway === 'rail') { res.rail.push(simplify(p, 5).map(v => v.map(r5))); continue; }

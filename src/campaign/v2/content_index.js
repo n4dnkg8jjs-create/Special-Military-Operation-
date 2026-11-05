@@ -137,6 +137,47 @@ export function validate2(def) {
     const reached = is.date || is.when || is.after || is.turn != null || D.some(o => o.next?.success === d.id || o.next?.failure === d.id);
     if (!reached) err(`${w} is never issued`);
   }
+  // v5: grid extension (growth.js) — bands of real squares past the original grid, added as the front approaches
+  if (A.ext) {
+    const X = A.ext, all = new Map(byId), bandIds = new Set(), key = X.dir === 'south' || X.dir === 'north' ? 'row' : 'col';
+    if (X.dir !== A.enemyEdge) err(`aor.ext.dir ${X.dir} must be the enemy edge ${A.enemyEdge}`);
+    if (!Array.isArray(X.bbox) || X.bbox.length !== 4) err('aor.ext.bbox');
+    if (!(X.bands || []).length) err('aor.ext: no bands');
+    let edge = X.dir === 'south' || X.dir === 'east' ? Math.max(...cells.map(c => c[key])) : Math.min(...cells.map(c => c[key]));
+    const step = X.dir === 'south' || X.dir === 'east' ? 1 : -1;
+    for (const b of X.bands || []) {
+      const w = `ext band ${b.id}`;
+      if (bandIds.has(b.id)) err(`${w} duplicate`); bandIds.add(b.id);
+      if (!b.name || !b.text) err(`${w} name / text`);
+      const vals = [...new Set(b.cells.map(c => c[key]))].sort((p, q) => step * (p - q));
+      if (vals[0] !== edge + step) err(`${w} does not start next to the grid edge (${vals[0]} vs ${edge + step})`);
+      const other = key === 'row' ? 'col' : 'row', span = [...new Set(cells.map(c => c[other]))];
+      if (b.cells.length !== vals.length * span.length) err(`${w} incomplete: ${b.cells.length} cells`);
+      edge = vals[vals.length - 1];
+      for (const c of b.cells) {
+        if (all.has(c.id)) err(`${w} duplicate cell ${c.id}`); all.set(c.id, c);
+        if (c.id !== `c${c.col}_${c.row}`) err(`${w} cell id ${c.id}`);
+        if (!TERRAIN.includes(c.terrain) || ![0, 1, 2].includes(c.road) || c.owner !== 'enemy') err(`${w} cell ${c.id} terrain/road/owner`);
+        if (!(c.fort >= 0 && c.fort <= 3) || !(c.garrison >= 1 && c.garrison <= 3)) err(`${w} cell ${c.id} fort/garrison`);
+        if (c.battleMap !== (def.id === 'UA' ? 'robotyne' : 'avdiivka')) err(`${w} cell ${c.id} battleMap`);
+        if (!(c.latlon[0] >= X.bbox[0] && c.latlon[0] <= X.bbox[2] && c.latlon[1] >= X.bbox[1] && c.latlon[1] <= X.bbox[3])) err(`${w} cell ${c.id} outside ext bbox`);
+        if (c.settlement && (!c.settlement.name || !SETTLE.includes(c.settlement.kind))) err(`${w} cell ${c.id} settlement`);
+      }
+      const inB = id => b.cells.some(c => c.id === id);
+      if (!(b.sources || []).length) err(`${w} no enemy sources`);
+      for (const id of b.sources || []) if (!inB(id) || all.get(id)[key] !== edge) err(`${w} source ${id} not on the band's outer edge`);
+      for (const h of b.hubs || []) if (!inB(h.cell) || !['railhead', 'base', 'ammo'].includes(h.kind) || h.side !== 'enemy') err(`${w} hub ${h.name}`);
+      for (const f of b.forces || []) if (!inB(f.cell)) err(`${w} force ${f.name} not in the band`);
+      for (const d of b.directives || []) {
+        if (dIds.has(d.id)) err(`${w} directive ${d.id} duplicate`); dIds.add(d.id);
+        if (!KINDS.includes(d.kind) || !d.title || !d.text || !d.from) err(`${w} directive ${d.id}`);
+        if (d.issue?.when !== `grown:${b.id}`) err(`${w} directive ${d.id} must be issued when the band is added`);
+        for (const t of d.targets || []) if (!all.has(t)) err(`${w} directive ${d.id} target ${t}`);
+        if (d.deadline == null) err(`${w} directive ${d.id} deadline`);
+        for (const s2 of d.sources || []) if (!s2.title || !/^https?:\/\//.test(s2.url || '')) err(`${w} directive ${d.id} source`);
+      }
+    }
+  }
   // enemy
   const EN = def.enemy || {};
   for (const lvl of [1, 2, 3]) { const t = EN.forceTemplates?.[lvl]; if (!Array.isArray(t) || !t.length) err(`enemy.forceTemplates[${lvl}]`); else for (const e of t) if (!ENEMY_KINDS.includes(e.kind)) err(`enemy template ${lvl} kind ${e.kind}`); }

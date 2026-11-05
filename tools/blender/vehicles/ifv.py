@@ -111,10 +111,11 @@ def road_wheel(R, hw, style):
             a = math.tau * i / 8 + math.pi / 8
             w.add(cyl(0.042 * sr, 0.012, 12, 'x', c=(xo - 0.003, 0.205 * sr * math.cos(a), 0.205 * sr * math.sin(a)), mat='gunmetal'))
         w.add(lathe([(0.125 * sr, 0.0), (0.145 * sr, 0.0), (0.145 * sr, 0.012), (0.125 * sr, 0.012)], 24, 'x', mat='rim', c=(xo, 0, 0)))
-    w.add(lathe([(0, 0.0), (0.085 * sr, 0.0), (0.085 * sr, 0.028), (0.06 * sr, 0.045), (0.0, 0.05)], 16, 'x', mat='rim', c=(0.21 * sa, 0, 0)))
+    bv = L.bvh_of(w)            # hub cap + bolts snapped onto the disc (vehicles_v5: were floating)
+    w.add(L.snap(lathe([(0, 0.0), (0.085 * sr, 0.0), (0.085 * sr, 0.028), (0.06 * sr, 0.045), (0.0, 0.05)], 16, 'x', mat='rim', c=(0.23 * sa, 0, 0)), None, bvh=bv))
     for i in range(6):
         a = math.tau * i / 6
-        w.add(bolt(0.011, 0.012, 6, 'rim').rot('Y', 90), Matrix.Translation((0.212 * sa, 0.115 * sr * math.cos(a), 0.115 * sr * math.sin(a))))
+        w.add(L.snap(bolt(0.011, 0.012, 6, 'rim').rot('Y', 90).move(0.24 * sa, 0.115 * sr * math.cos(a), 0.115 * sr * math.sin(a)), None, bvh=bv))
     return w
 
 def sprocket(R, nt, gap=0.07):
@@ -145,10 +146,11 @@ def idler(R, gap=0.07):
         xo = sg * gap
         w.add(lathe([(0.0, xo - 0.04 * sg), (0.12 * k, xo + 0.015 * sg), (0.24 * k, xo + 0.01 * sg), (0.27 * k, xo + 0.028 * sg),
                      (R, xo + 0.028 * sg), (R, xo - 0.028 * sg), (0.27 * k, xo - 0.028 * sg), (0.0, xo - 0.03 * sg)][::sg], 30, 'x', mat='rim'))
+    bv = L.bvh_of(w)
     for i in range(6):
         a = math.tau * i / 6
-        w.add(cyl(0.05 * k, 0.01, 12, 'x', c=(gap + 0.035, 0.17 * k * math.cos(a), 0.17 * k * math.sin(a)), mat='gunmetal'))
-    w.add(lathe([(0, 0.0), (0.07 * k, 0.0), (0.07 * k, 0.04), (0.04 * k, 0.06), (0, 0.06)], 14, 'x', mat='rim', c=(gap + 0.03, 0, 0)))
+        w.add(L.snap(cyl(0.05 * k, 0.01, 12, 'x', c=(gap + 0.07, 0.17 * k * math.cos(a), 0.17 * k * math.sin(a)), mat='gunmetal'), None, bvh=bv))
+    w.add(L.snap(lathe([(0, 0.0), (0.07 * k, 0.0), (0.07 * k, 0.04), (0.04 * k, 0.06), (0, 0.06)], 14, 'x', mat='rim', c=(gap + 0.07, 0, 0)), None, bvh=bv))
     return w
 
 def return_roller(r, w=0.11):
@@ -503,8 +505,9 @@ def bmp3_side_skirt(H, s):
         H.add(box(0.026, yb - ya, 0.02, c=(x + s * 0.008, yc, z1 + 0.01)))
     # front mudguard over the idler sloping down + rubber flap
     H.add(prism([(2.82, z0), (3.1, 1.24), (3.1, 1.2), (2.82, z0 - 0.04)], 0.3, 'x', c=s * (c['UP_X'] - 0.13), bev=0.006, segs=1))
-    H.add(box(0.34, 0.01, 0.14, c=(s * G3['trk_x'], 2.98, 0.96), mat='skirt', bev=0.003, segs=1))
-    H.add(box(0.36, 0.012, 0.2, c=(s * G3['trk_x'], -3.32, 0.78), mat='skirt', bev=0.004, segs=1))
+    bv = L.bvh_of(H)             # vehicles_v5: flaps hung 9 cm below the mudguards -> snapped up onto them
+    H.add(L.snap(box(0.34, 0.01, 0.14, c=(s * G3['trk_x'], 2.98, 0.96), mat='skirt', bev=0.003, segs=1), None, d=(0, 0, 1), max_d=0.4, sink=0.01, bvh=bv))
+    H.add(L.snap(box(0.36, 0.012, 0.2, c=(s * G3['trk_x'], -3.32, 0.78), mat='skirt', bev=0.004, segs=1), None, d=(0, 0, 1), max_d=0.4, sink=0.01, bvh=bv))
 
 def bmp3_sides(H, s, hit):
     c = B3
@@ -851,7 +854,7 @@ def bmp3_lids(hullE, turE, tz):
         lids.append(VB.hatch_lid('bow_' + tag, p, piv, ax, hullE, L.place(M3, plate_pt(c['NOSE'], c['GL'], s * 0.88, 0.9, 0.0)),
                                  open_deg=80, note='bow MG gunner hatch, hinged at its front (lower) edge; the glacis already tilts it 16 deg'))
     p, piv, ax = L.round_lid(B3_HULL_HATCH['driver'], 0.045, hinge=(1, 0))
-    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, L.place(M3, plate_pt(c['NOSE'], c['GL'], 0, 0.9, 0.0)), open_deg=120,
+    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, L.place(M3, plate_pt(c['NOSE'], c['GL'], 0, 0.9, 0.0)), open_deg=108,
                              axis_world=(0, 1, 0), note='side-hinged on its left edge (clear of the 100 mm barrel above it); swings up and over to the left'))
     return lids
 
@@ -1083,11 +1086,12 @@ def bradley_sides(H, s):
                 H.add(bolt(0.014, 0.01, 6).rot('Y', 90 * s), Matrix.Translation((xs + s * 0.016, yy, zz)))
         H.add(box(0.09, 0.05, 0.05, c=(s * (X + 0.045), yc, 1.17)))
     H.add(prism([(2.4, 1.2), (3.05, 1.2), (3.15, 0.95), (2.4, 0.66)], 0.03, 'x', c=xs, bev=0.008, segs=1))
-    H.add(box(0.45, 0.012, 0.22, c=(s * GB['trk_x'], -3.08, 0.6), mat='skirt', bev=0.004, segs=1))
+    bv = L.bvh_of(H)             # vehicles_v5: flap, eyes and tow cable hung off the sloped upper side -> snapped onto it
+    H.add(L.snap(box(0.45, 0.012, 0.22, c=(s * GB['trk_x'], -3.08, 0.6), mat='skirt', bev=0.004, segs=1), None, d=(0, 0, 1), max_d=0.4, sink=0.01, bvh=bv))
     # side lifting eyes, tow cable along the upper side, grab rails
     for y in (-2.6, 1.6):
-        H.add(lathe([(0.035, -0.018), (0.065, -0.018), (0.065, 0.018), (0.035, 0.018)], 12, 'y', cap=False), Matrix.Translation((s * (X + 0.06), y, 1.92)))
-    H.add(tow_cable((s * (X + 0.06), 1.2, 1.94), (s * (X + 0.06), -1.2, 1.94)))
+        H.add(L.snap(lathe([(0.035, -0.018), (0.065, -0.018), (0.065, 0.018), (0.035, 0.018)], 12, 'y', cap=False).move(s * (X + 0.06), y, 1.92), None, d=(-s, 0, -0.25), max_d=0.3, sink=0.008, bvh=bv))
+    H.add(L.snap(tow_cable((s * (X + 0.06), 1.2, 1.94), (s * (X + 0.06), -1.2, 1.94)), None, d=(-s, 0, -0.25), max_d=0.3, sink=0.006, bvh=bv))
     H.add(rail([(s * (X - 0.05), -1.6, c['ROOF']), (s * (X - 0.05), -1.6, c['ROOF'] + 0.06), (s * (X - 0.05), -2.4, c['ROOF'] + 0.06), (s * (X - 0.05), -2.4, c['ROOF'])], r=0.012, rad=0.03))
 
 def bradley_roof_rear(H):
@@ -1218,7 +1222,8 @@ def bradley_turret():
     isu = box(0.4, 0.44, 0.32, c=(ix, iy, 0.76), bev=0.02, segs=2)
     isu.add(box(0.3, 0.012, 0.14, c=(ix, iy + 0.222, 0.78), mat='glass'))
     for x in (ix - 0.17, ix + 0.17):
-        isu.add(box(0.16, 0.03, 0.2, c=(x, iy + 0.26, 0.78), bev=0.006, segs=1).rot('Z', 60 if x < ix else -60, (x + (-0.08 if x < ix else 0.08), iy + 0.24, 0.78)))
+        door = box(0.16, 0.03, 0.2, c=(x, iy + 0.26, 0.78), bev=0.006, segs=1).rot('Z', 60 if x < ix else -60, (x + (-0.08 if x < ix else 0.08), iy + 0.24, 0.78))
+        isu.add(L.snap(door, isu, d=((0.5 if x < ix else -0.5), -1, 0), max_d=0.25, sink=0.004))     # vehicles_v5: doors hung 5 cm off the sight box
     isu.add(box(0.44, 0.1, 0.02, c=(ix, iy + 0.24, 0.93)))
     T_.add(isu)
     # commander's hatch (right rear) in a raised ring of 6 vision blocks; gunner's hatch (left rear)
@@ -1287,20 +1292,27 @@ def bradley_tow():
     m1 = (x0 - 0.1, y1 + 0.03, zc); m2 = (x0 + 0.1, y1 + 0.03, zc)
     return t, hinge, m1, m2
 
-def bradley_brat_turret():
+def bradley_brat_turret(off=(0, 0, 0), bvh=None):
+    """BRAT tiles on the turret right side + front cheeks, in world coords (moved by off).  The side row is snapped
+    onto the turret wall when bvh (turret body, world) is given (vehicles_v5: it stood 9 cm off the wall)."""
     c = BR
     E = B(mat='era')
+    S_ = B(mat='era')
     tile = era_block(0.34, 0.3, 0.09, bev=0.008, bolts=True)
     me = tile.to_mesh('_bratt')
     M = side_frame(1, 4)
     for y in (-0.55, -0.15, 0.25):
-        E.add_mesh(me, L.place(M, V((1.1, y, 0.3))))
+        S_.add_mesh(me, L.place(M, V((1.1, y, 0.3))))
     for s in (1, -1):
         for k in range(2):
             Mf = Matrix.Rotation(math.radians(-s * 38), 4, 'Z') @ L.frame_from_normal(V((0, 1, 0)))
             E.add_mesh(me, L.place(Mf, V((s * (0.56 + k * 0.28), 1.12 - k * 0.22, 0.2))))
-    E.add(box(0.06, 1.1, 0.04, c=(1.05, -0.15, 0.48)))
+    S_.add(box(0.06, 1.1, 0.04, c=(1.05, -0.15, 0.48)))
     bpy.data.meshes.remove(me)
+    E.move(*off); S_.move(*off)
+    if bvh is not None:
+        L.snap(S_, None, d=(-1, 0, 0), max_d=0.3, sink=0.004, bvh=bvh)
+    E.add(S_)
     return E
 
 def bradley_gun():
@@ -1331,7 +1343,8 @@ def bradley_lids(hullE, turE, tz):
         lids.append(VB.hatch_lid(role, p, piv, ax, turE, Matrix.Translation((x, c['TY'] + y, tz + z)), open_deg=100))
     x, y, r = BR_HATCH['driver']
     p, piv, ax = L.round_lid(r, 0.045, hinge=(0, -1))
-    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, Matrix.Translation((x, y, c['ROOF'])), open_deg=100))
+    lids.append(VB.hatch_lid('driver', p, piv, ax, hullE, Matrix.Translation((x, y, c['ROOF'])), open_deg=80,
+                             note='opens to 80 deg: at 100 deg the lid leant 8 cm into the turret front (vehicles_v5 checker)'))
     p, piv, ax = L.rect_lid(1.0, 0.9, t=0.035, hinge='y-', rad=0.07)
     lids.append(VB.hatch_lid('cargo', p, piv, ax, hullE, Matrix.Translation((0, -2.25, c['ROOF'])), open_deg=100,
                              note='troop roof hatch; when open it stands where the rear deck riders (ride_seat_5/6) sit'))
@@ -1358,10 +1371,11 @@ def build_bradley():
     ramp_mesh = L.node_mesh('ramp_geo', rp, rampE, hinge)
     tz = c['ROOF'] + 0.01
     TU = bradley_turret().move(0, c['TY'], tz)
+    tu_bvh = L.bvh_of(TU)
     turE = L.node_empty('turret', hullE, (0, c['TY'], tz))
     turE['traverse_deg_s'] = D.STATIC['bradley_ua']['mobility']['turret_traverse_deg_s']
     tur_mesh = L.node_mesh('turret_geo', TU, turE, (0, c['TY'], tz))
-    era_t = L.node_mesh('era_turret', bradley_brat_turret().move(0, c['TY'], tz), turE, (0, c['TY'], tz))
+    era_t = L.node_mesh('era_turret', bradley_brat_turret((0, c['TY'], tz), tu_bvh), turE, (0, c['TY'], tz))
     tw, th, m1, m2 = bradley_tow()
     P0 = lambda o: (o[0], c['TY'] + o[1], tz + o[2])
     tw.move(0, c['TY'], tz)

@@ -66,7 +66,7 @@ export class Squad {
   }
   ammoFrac() {
     const sp = this.support;
-    if (sp) return sp.drones != null ? (sp.drones + (sp.drone ? 1 : 0)) / 3 : sp.abandoned ? 0 : (sp.ammo + (sp.loaded ? 1 : 0)) / 5;
+    if (sp) return sp.drones != null ? (sp.drones + (sp.drone ? 1 : 0)) / (sp.capacity?.() || 5) : sp.abandoned ? 0 : (sp.ammo + (sp.loaded ? 1 : 0)) / 5;
     let have = 0, max = 0;
     for (const s of this.effective) { const w = s.weapon; have += s.mags * w.mag + s.inMag; max += (s.role.mags + 1) * w.mag; }
     return max ? have / max : 0;
@@ -593,7 +593,10 @@ export class Squad {
       if (kneelTeam) { s.stance = (s.suppression > 70 || this.pinned) && !s.supportClip && !(s.path && s.pathI < s.path.length) ? 'prone' : 'crouch'; continue; }
       if (s.inBuilding) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
       const moving = s.path && s.pathI < s.path.length;
-      if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
+      // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
+      // instead of popping up into a crouch-walk after the first metre; he gets up (prone_up) once it eases
+      if (moving && s.stance === 'prone' && !this.run && !this.routing && (s.crawl || s.suppression > 50)) s.stance = 'prone';
+      else if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
       else {
         const threat = s.target ? s.target.pos : null;
         const cov = threat ? this.game.nav.coverFrom(s.pos.x, s.pos.z, threat.x, threat.z) : 0;
@@ -752,7 +755,7 @@ export class Squad {
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
       let base = this.run || this.routing ? TUNING.run : TUNING.walk;
       if (s.stance === 'crouch') base = Math.min(base, this.run ? TUNING.crouchRun : TUNING.crouchWalk);
-      if (s.stance === 'prone') base = TUNING.crawl;
+      if (s.stance === 'prone') base = !s.crawl && (s.suppression || 0) < 80 ? (TUNING.highCrawl || 0.7) : TUNING.crawl;   // v5: high crawl on a bound unless the fire is heavy; low crawl when creeping / heavily suppressed
       if (this.assault) base *= 1.06;
       if (s.state === 'light' && s.legWound) base *= 0.55;
       if (s.state === 'critical') base = 0.3;

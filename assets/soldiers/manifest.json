@@ -5262,7 +5262,7 @@
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",
-  "size_bytes": 5074136,
+  "size_bytes": 5136404,
   "contents": "skeleton + sockets + clips only (no meshes); tracks: Hips translation + rotation of all 31 joints, 30 fps, linear",
   "in_place": "loops have horizontal root motion stripped (Hips keeps vertical bob); deaths and the vehicle exits (hatch_exit*, dismount_*) keep root motion and end on the root",
   "time_scaling": "ground_speed_mps is the clip's natural speed; the game time-scales by speed / ground_speed_mps. walk_rifle is a native 1.47 m/s tactical walk (CMU 07_01, pelvis lowered, soft knees, rifle at low ready; game 1.55 m/s = x1.06) and run_rifle a native 4.17 m/s weighty combat run (CMU 16_45, bent knees, 12 deg lean, rifle at port; game 4.2 m/s = x1.01). The planted foot is pinned to the ground sliding back at exactly ground_speed_mps, so there is no foot sliding at those speeds.",
@@ -5444,7 +5444,6 @@
     "root_motion": false,
     "notes": "military low crawl (\"po-plastunski\"): body flat on the ground (bare torso ~0.6 cm above it), rifle lying on the right forearm (right hand on the pistol grip = weapon_socket, left hand free), contralateral 1.40 s cycle: right elbow + left leg drive (0-0.70 s) while the left elbow reaches and the right leg is drawn up, then the mirror; frog-kick legs (thigh drawn up along the ground, inner edge of the boot planted and pushed back until the leg is long, the recovering leg slides forward with the knee out - feet never lifted), elbows plant and pull, left palm planted, chest and pelvis roll over the planted side, head up; planted boots / elbows slide back at exactly 0.45 m/s in the in-place clip (still in the world at that ground speed)",
     "events": {
-     "weapon": "weapon_socket (right hand), the left hand is free",
      "left_push": [
       0.0,
       0.7
@@ -5452,7 +5451,8 @@
      "right_push": [
       0.7,
       1.4
-     ]
+     ],
+     "weapon": "weapon_socket (right hand), the left hand is free"
     }
    },
    "wounded_crawl": {
@@ -11706,6 +11706,59 @@
     "direction": "in place",
     "root_motion": false,
     "notes": "casualty lying on his back on the pickup bed (floor y = 0 in the root frame, head towards -Z), knees slightly up, right hand on the belly dressing, left on the chest, breathing, slow head turns; the game places the root on a stretcher_N empty of pickup.glb (its +Z faces the tailgate)"
+   },
+   "high_crawl": {
+    "duration_s": 0.733,
+    "frames": 23,
+    "fps": 30,
+    "loop": true,
+    "ground_speed_mps": 0.7,
+    "direction": "forward (+Z)",
+    "root_motion": false,
+    "notes": "high crawl: body off the ground on the forearms and knees (hips ~0.47 m), rifle along the right forearm (right hand on the pistol grip = weapon_socket, muzzle forward, clear of the ground), left palm down; contralateral 0.72 s cycle: left knee + right forearm planted 0-0.36 s while the right knee and the left elbow advance, then the mirror; shins trail flat, insteps down; head up looking ahead; planted knees / elbows slide back at exactly 0.70 m/s in the in-place clip",
+    "events": {
+     "left_knee": [
+      0.0,
+      0.36
+     ],
+     "right_knee": [
+      0.36,
+      0.72
+     ],
+     "weapon": "weapon_socket (right hand), the left hand is free"
+    }
+   },
+   "prone_down": {
+    "duration_s": 0.9,
+    "frames": 28,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "crouch_idle -> prone_idle transition, 0.90 s: off hand reaches for the ground, hips pitch forward and drop with the knees down, chest lowered onto the elbows, legs straighten back last; first / last frame == the cached stance poses; ground clamp: no part below the floor",
+    "events": {
+     "down": [
+      0.0,
+      0.9
+     ]
+    }
+   },
+   "prone_up": {
+    "duration_s": 0.867,
+    "frames": 27,
+    "fps": 30,
+    "loop": false,
+    "ground_speed_mps": 0.0,
+    "direction": "in place",
+    "root_motion": false,
+    "notes": "prone_idle -> crouch_idle transition, 0.85 s: push up on the elbows, legs drawn in under the hips, torso comes up to the kneel; rifle stays in the right hand; first / last frame == the cached stance poses; ground clamp: no part below the floor",
+    "events": {
+     "down": [
+      0.0,
+      0.85
+     ]
+    }
    }
   },
   "atgm_fpv": {

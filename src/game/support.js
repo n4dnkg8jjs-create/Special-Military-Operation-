@@ -3,9 +3,9 @@ import { WEAPONS } from '../config.js';
 import { MAP } from '../world/city.js';
 import { trunkHit } from '../world/vegetation.js';
 
-// Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 3 drones).
+// Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 5 drones).
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
-const TUNING_EVADE_MISS = 0.3;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
+const TUNING_EVADE_MISS = 0.26;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
 const UP = new THREE.Vector3(0, 1, 0);
 
 function evTime(g, clip, ev, def) { const man = g.assets.manifest.soldiers || {}, mc = man.soldier_anims?.clips || man.clips || {}; return mc[clip]?.events?.[ev] ?? def; }
@@ -295,12 +295,17 @@ export class AtgmTeam {
 }
 
 // ---------------------------------------------------------------- FPV team
-// pilot (goggles, controller) + helper who launches. 3 drones. A drone climbs, flies to the target at ~110 km/h
+// pilot (goggles, controller) + helper who launches. FPV_DRONES (5) drones. A drone climbs, flies to the target at ~110 km/h
 // and dives in; it can miss, be shot down (hard), or be dodged (rarely). Vehicles: top/engine-deck hits are the
 // most effective (often start a fire); anti-drone cages set many warheads off early.
+// v5 ("a tiny bit more effective", ~10-15 %): terminal-dive miss chances x0.85, jink-miss 0.3 -> 0.26, enemy EW jams x0.85,
+// ground fire brings it down x0.88 less often, and the pilot passes over caged hulls when there is a bare one about.
+export const FPV_DRONES = 5;
+const FPV_MISS = { moving: 0.17, parked: 0.068, inf: 0.10 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
 export class FpvTeam {
-  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = 3; this.drone = null; this.scanT = 15 + Math.random() * 10; this.W = WEAPONS.fpv; }   // first sortie after the pilot has a picture
+  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 15 + Math.random() * 10; this.W = WEAPONS.fpv; }   // first sortie after the pilot has a picture
   status() { return this.drone ? (this.drone.phase === 'launch' ? 'LAUNCHING DRONE' : 'DRONE AIRBORNE') : !this.drones ? 'OUT OF DRONES' : this.scanT > 3 ? `PREPPING · ${this.drones} LEFT` : `${this.drones} DRONE${this.drones > 1 ? 'S' : ''} READY`; }
+  capacity() { return this.drones + this.launched; }   // FPV_DRONES + campaign fpvDrones mods (campaignBattle adds to .drones)
   pilot() { return this.sq.effective[0]; }
   helper() { return this.sq.effective[1] || this.sq.effective[0]; }
   update(dt) {
@@ -326,14 +331,14 @@ export class FpvTeam {
       // unless they are down in the cellar
       if (u.type === 'squad' && (u.mounted || (u.building && !(u.building.house && u.effective.some(m => m.inBuilding && !m.cellar && !m.cellarMove))))) continue;
       const taken = g.squads.some(o => o !== sq && o.side === sq.side && (o.support?.missile?.t === u || o.support?.drone?.target === u));
-      const sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) : 60 + u.effective.length * 8) - d * 0.08;
+      const sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) - (u.cage || 0) * 80 + (Math.abs(u.speed || 0) < 1 ? 15 : 0) : 60 + u.effective.length * 8) - d * 0.08;
       if (sc > bs) { bs = sc; best = u; }
     }
     if (best) this.launch(best);
   }
   launch(target) {
     const g = this.g, h = this.helper();
-    this.drones--;
+    this.drones--; this.launched++;
     const A = g.assets.gltf; let mesh = A.fpv_drone ? A.fpv_drone.scene.clone(true) : null;
     if (mesh) mesh.traverse(o => { if (o.isMesh) o.visible = !/_LOD1$/i.test(o.name); });
     if (!mesh) { mesh = new THREE.Group(); const m = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }); for (const r of [0.785, -0.785]) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.02, 0.03), m); a.rotation.y = r; mesh.add(a); } const w = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0x4a4f3c })); w.rotation.x = Math.PI / 2; w.position.set(0, -0.04, 0.08); mesh.add(w); for (let i = 0; i < 4; i++) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.004, 10), new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.4 })); p.name = 'prop_' + i; p.position.set(Math.cos(i * 1.571 + 0.785) * 0.15, 0.02, Math.sin(i * 1.571 + 0.785) * 0.15); mesh.add(p); } }
@@ -379,7 +384,7 @@ export class FpvTeam {
       const tc = tgt.type === 'vehicle' ? tgt.pos : (d.man?.effective ? d.man.pos : tgt.center());
       const hd = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z);
       // terminal attack: a steep dive (roof / engine deck), only once the drone can see down onto the target
-      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? 0.2 : 0.08) : 0.12) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || Math.random() < (M[od]?.ewJam || 0); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
+      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? FPV_MISS.moving : FPV_MISS.parked) : FPV_MISS.inf) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || Math.random() < (M[od]?.ewJam || 0) * FPV_EW; } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
       if (d.phase === 'climb') { want = tmpA.set(0, 9, 0); if (d.pos.y > Math.min(d.alt, 16)) d.phase = 'cruise'; }
       else if (d.phase === 'cruise') { // fly level at altitude; climb over anything tall in the way
         const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1, vy = THREE.MathUtils.clamp((d.alt - d.pos.y) * 1.2, -5, 9);
@@ -427,7 +432,7 @@ export class FpvTeam {
           s.droneAlertT = 1.5; s.heading = Math.atan2(d.pos.x - s.pos.x, d.pos.z - s.pos.z);
           if (s.weapon.type !== 'at' && Math.random() < dt * 4) { const mz = s.muzzleWorld(tmpB); g.fx.muzzle(mz, tmpA.subVectors(d.pos, mz).normalize(), 0.8); if (g.camDist(mz) < 120) g.sfx(s.weapon.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos, { gain: 0.7 }); }
         }
-        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1);
+        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN;
         if (Math.random() < p * dt * 4) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
       }
     }

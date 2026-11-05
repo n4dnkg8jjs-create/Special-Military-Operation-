@@ -51,7 +51,9 @@ function reach0(C, f) {
 export function forcesAt(C, cell) { return (C.eforces || []).filter(f => f.cell === cell); }
 export function strengthAt(C, cell) { return (C.garrison[cell] || 0) + forcesAt(C, cell).reduce((a, f) => a + f.str * (0.6 + 0.4 * (f.supply ?? 1)), 0); }
 const urbanOf = c => (['urban', 'industrial'].includes(c.terrain) ? 1 : c.terrain === 'village' || c.terrain === 'forest' ? 0.5 : 0);
-function seen(C, tf) { return C.neighbors(tf.cell).some(n => C.owner[n] === 'enemy') || (C.eintel?.[tf.cell] ?? -9) >= C.turn - 1; }
+// a player task force the enemy knows about: in contact, under its drones, or a big formation that gave itself away
+function seen(C, tf) { return C.neighbors(tf.cell).some(n => C.owner[n] === 'enemy') || (C.eintel?.[tf.cell] ?? -9) >= C.turn - 1 || bigSpotted(C, tf); }
+function bigSpotted(C, tf) { return !!(C.espots && C.espots.turn === C.turn && C.espots.list.some(x => x.id === tf.id && x.cell === tf.cell)); }
 function playerDef(C, cell) {
   const c = C.cell(cell), vis = (C.eintel?.[cell] ?? -9) >= C.turn - 1 || C.neighbors(cell).some(n => C.owner[n] === 'enemy' && forcesAt(C, n).length);
   let p = 2.0 + (C.fort[cell] || 0) * 0.6 + urbanOf(c);
@@ -82,8 +84,11 @@ export function enemyAI(C, rnd, p) {
     C.euavLog = r;
   }
   // ---- 2. assess
+  // (v5) spotted big player formations up to two squares from its line count as a threat too (60%): it reacts to a
+  // concentration it sees forming in the player's rear
+  const massNear = c => C.forces.filter(t => bigSpotted(C, t) && !C.adjacent(t.cell, c.id) && cheb(C.cell(t.cell), c) === 2).reduce((s, t) => s + C.tfPower(t) * 0.6, 0);
   const threats = front.map(c => {
-    const pow = C.neighbors(c.id).filter(n => C.owner[n] === 'player').reduce((a, n) => a + C.forcesAt(n).filter(t => seen(C, t)).reduce((s, t) => s + C.tfPower(t), 0), 0);
+    const pow = C.neighbors(c.id).filter(n => C.owner[n] === 'player').reduce((a, n) => a + C.forcesAt(n).filter(t => seen(C, t)).reduce((s, t) => s + C.tfPower(t), 0), 0) + massNear(c);
     const def = strengthAt(C, c.id) * EF_POWER + (C.fort[c.id] || 0) * (urbanOf(c) >= 1 ? 1.0 : 0.6) + urbanOf(c);
     return { cell: c.id, pow, def, ratio: pow / Math.max(0.5, def), v: value(C, c.id) };
   }).filter(t => t.pow > 0).sort((a, b) => b.ratio * b.v - a.ratio * a.v);
@@ -105,7 +110,7 @@ export function enemyAI(C, rnd, p) {
   const reserve = fs.length >= 3 ? fs.filter(f => !inContact(f)).sort((a, b) => b.str - a.str)[0] : null;
   if (reserve) reserve.reserve = true; for (const f of fs) if (f !== reserve) f.reserve = false;
   const used = new Set();
-  const moveTo = (f, cell, Rf) => { const d = (Rf || reach(C, f)).dist[cell]; if (d == null || d > f.mp + 1e-6) return false; f.cell = cell; f.mp -= d; return true; };
+  const moveTo = (f, cell, Rf) => { const d = (Rf || reach(C, f)).dist[cell]; if (d == null || d > f.mp + 1e-6) return false; if (cell !== f.cell) f.movedT = C.turn; f.cell = cell; f.mp -= d; return true; };
   // ---- 4. defend
   for (const t of threats) {
     if (t.ratio < (t.v >= 7 ? 0.6 : 0.8) || (forcesAt(C, t.cell).length && t.ratio < (t.v >= 7 ? 0.8 : 1.3))) continue;
@@ -141,7 +146,7 @@ export function enemyAI(C, rnd, p) {
     // concentrate on the staging square and combine
     const lead = best.pick[0].f; moveTo(lead, best.s);
     for (const g of best.pick.slice(1)) { if (moveTo(g.f, best.s)) { lead.str = Math.min(3, lead.str + g.f.str); lead.max = Math.min(3, (lead.max || lead.str) + (g.f.max || g.f.str)); C.eforces = C.eforces.filter(x => x !== g.f); log.push(`${g.f.name} joins ${lead.name}`); } used.add(g.f); }
-    used.add(lead); lead.attacked = true;
+    used.add(lead); lead.attacked = true; lead.attackedT = C.turn;
     announced.push({ tf: lead, to: o.cell, from: best.s });
   }
   // ---- idle task forces: close up to the most threatened sector (or hold)
@@ -157,6 +162,9 @@ export function enemyAI(C, rnd, p) {
   const shoot = (kind, cell) => { for (const b of bats) { if (b.acted === C.turn) continue; if (F.fireCheck(C, 'enemy', b, kind, cell)) continue; const r = F.fire(C, 'enemy', b.id, kind, cell, rnd); if (r.ok) { C.applyFire(r, rnd); return true; } } return false; };
   for (const pb of (C.arty?.player || []).filter(b => F.found(C, 'enemy', b))) if (rnd() < 0.6) shoot('counterbattery', pb.cell);
   for (const a of announced) shoot('suppress', a.to);
+  // (v5) the biggest player formation it can see gets artillery attention first
+  const masses = (C.espots?.turn === C.turn ? C.espots.list : []).filter(x => C.tf(x.id)?.cell === x.cell);
+  for (const m of masses.slice(0, 1)) if (shoot('suppress', m.cell)) log.push(`fire on the spotted formation at ${C.cellName(m.cell)}`);
   const spoil = threats.flatMap(t => C.neighbors(t.cell).filter(n => C.owner[n] === 'player' && C.forcesAt(n).some(x => seen(C, x)))).sort((a, b) => C.forcesAt(b).reduce((s, t) => s + C.tfPower(t), 0) - C.forcesAt(a).reduce((s, t) => s + C.tfPower(t), 0));
   for (const cell of [...new Set(spoil)].slice(0, 2)) shoot('suppress', cell);
   if ((C.ammo?.enemy || 0) >= 2 && p >= 0.14) { const ch = chokepoints(C, C.supplyNet.player, 3).find(x => C.isOpen ? true : true); if (ch) shoot('interdict', ch.cell); }

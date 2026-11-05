@@ -83,6 +83,12 @@ export class CommanderV2 extends CommanderV1 {
       this.note('reinforcement arrived -> reserve');
     }
     this.planT -= dt; if (this.planT <= 0) { this.planT = 4; try { this.plan(false); } catch (e) { console.error('[AI plan]', e); } }
+    if (this.dbg) for (const b of this.units) if (!b.dead && b.sq && !b.sq.destroyed) {   // diagnostics: why squads break
+      const sq = b.sq, c = sq.center();
+      if (sq.routing && !b.dbgRout) { const tk = this.intel.list(30).filter(e => e.veh && D([e.x, e.z], [c.x, c.z]) < 400).map(e => `${e.u.kind}@${Math.round(D([e.x, e.z], [c.x, c.z]))}`); this.note(`ROUT ${sq.name} role=${b.role} men ${sq.effective.length}/${sq.soldiers.length} known inf ${this.intel.near(c.x, c.z, 150, 30).filter(e => !e.veh).length} veh ${tk.join(',')} bld=${!!sq.building} contact ${Math.round(g.time - (b.firstFire ?? g.time))}s ago`); }
+      b.dbgRout = sq.routing;
+      if (!sq.mounted && sq.underFireT < 0.5 && b.firstFire == null) b.firstFire = g.time;
+    }
     for (const b of this.units) if (!b.dead) { b.t -= dt; if (b.t <= 0) { b.t = 1.2 + Math.random() * 0.6; try { this.think(b); } catch (e) { console.error('[AI]', e); b.t = 5; } } }
     this.fireT -= dt; if (this.fireT <= 0) { this.fireT = 5; try { this.fireSupport(); } catch (e) { console.error('[AI fire]', e); } }
     if (this.dbg) { this.dbgT = (this.dbgT || 0) - dt; if (this.dbgT <= 0) { this.dbgT = 1; this.dbg.update(); } }
@@ -169,7 +175,7 @@ export class CommanderV2 extends CommanderV1 {
       const cands = g.objectives.filter(o => o.owner !== 'enemy');
       if (pool.length >= 2 && cands.length && !(this.posture === 'hold' && !cands.some(o => o.owner === 'player'))) {
         const cen = pool.reduce((a, b) => { const p = this.upos(b); return [a[0] + p[0] / pool.length, a[1] + p[1] / pool.length]; }, [0, 0]);
-        const score = o => (o.owner === 'player' ? 30 : 18) - 3.5 * pic[o.id].known - 10 * (this.objFail[o.id] || 0) - D(cen, [o.x, o.z]) * 0.025 - pic[o.id].armour * 3 + (this.lostT[o.id] ? 6 : 0);
+        const score = o => (o.owner === 'player' ? 30 : 18) - 3.5 * pic[o.id].known - 10 * (this.objFail[o.id] || 0) - D(cen, [o.x, o.z]) * 0.025 - pic[o.id].armour * 10 + (this.lostT[o.id] ? 6 : 0);
         const best = cands.sort((a, b) => score(b) - score(a))[0];
         // don't throw a weak company at a strong position: wait for the reserve / reinforcement unless time presses
         if (pw >= pic[best.id].known * 0.9 || (now > g.roundLen * 0.6 || this.posture === 'attack') && pw >= pic[best.id].known * 0.6) {
@@ -192,7 +198,7 @@ export class CommanderV2 extends CommanderV1 {
         this.note(`${b.sq.name}: joins ${near.type} on ${near.obj}`); continue;
       }
       if (this.posture === 'attack' || behind) {
-        const t = g.objectives.filter(o => o.owner !== 'enemy').sort((p, q) => (pic[p.id].known - pic[q.id].known) * 3 + D(cp, [p.x, p.z]) * 0.01 - D(cp, [q.x, q.z]) * 0.01)[0];
+        const t = g.objectives.filter(o => o.owner !== 'enemy' && !pic[o.id].armour).sort((p, q) => (pic[p.id].known - pic[q.id].known) * 3 + D(cp, [p.x, p.z]) * 0.01 - D(cp, [q.x, q.z]) * 0.01)[0];
         if (t && pic[t.id].known <= this.power(b) * 1.2 + 2) { this.newOp('counter', t.id, [b]); this.note(`${b.sq.name}: hasty attack on ${t.id}`); }
       }
     }
@@ -276,7 +282,8 @@ export class CommanderV2 extends CommanderV1 {
       if (o.owner === 'enemy' && !o.contested) { const g0 = units[0]; this.endOp(op, 'taken'); g0.obj = op.obj; this.setTask(g0, 'garrison', this.oxz(op.obj), 'hold ' + op.obj); return; }
       if (o.owner === 'player' || pic[op.obj].known > 1.5) {   // somebody is there
         const close = units.some(b => D(this.upos(b), this.oxz(op.obj)) < 260);
-        if (close && pic[op.obj].known <= pw * 1.0) {   // meeting engagement, not outclassed: press on (hasty attack)
+        const armHere = this.intel.list(40).some(e => e.armour && D([e.x, e.z], [o.x, o.z]) < 220);
+        if (close && pic[op.obj].known <= pw * 1.0 && !armHere) {   // meeting engagement, not outclassed: press on (hasty attack)
           this.endOp(op, 'contact -> hasty attack'); this.newOp('counter', op.obj, units); this.note(`hasty attack on ${op.obj} (ours ${pw.toFixed(1)} vs known ${pic[op.obj].known.toFixed(1)})`); return;
         }
         // outclassed / still far: a deliberate attack with more units (the contact was the recon)
@@ -326,9 +333,15 @@ export class CommanderV2 extends CommanderV1 {
       return;
     }
     if (op.phase === 'prep') {
+      // early fire: the first mission goes in as soon as defenders are spotted at the objective (one is kept for the assault)
+      if (!op.earlyFire && op.type === 'attack') { const cl = this.intel.cluster(45, [o.x, o.z], 100), left = g.enemyMortars ?? (g.campaign?.enemyMortars ?? TUNING.mortarStrikes), gun = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0;
+        if (cl && (left >= 2 || gun) && this.mission(cl.e.x, cl.e.z, `early fire on ${op.obj} defenders`, cl.e.dug ? 12 : 20)) { op.earlyFire = true; this.stats.prepFires++; } }
       const ready = man.filter(b => atAP(b) || b.task?.contact).length >= Math.ceil(man.length * 0.6);
       const fixReady = !op.fix || !op.units.has(op.fix) || op.fix.arrived || now - op.pt > 60;
       // fire preparation first (the rounds take ~10-20 s to come down), the assault goes in as it lifts
+      // enemy armour covering the objective: the assault waits (hidden) while the ATGM / FPV / tanks work on it
+      const armObj = this.intel.list(40).filter(e => e.armour && D([e.x, e.z], [o.x, o.z]) < 260).length;
+      if (armObj && now - op.pt < 130) { op.why = 'waiting: enemy armour on the objective'; return; }
       if (op.assaultAt == null && ((ready && fixReady) || now - op.pt > (op.type === 'counter' ? 50 : 90))) { this.prepFire(op); op.assaultAt = now + (op.prepped ? 14 : 0); }
       if (op.assaultAt != null && now >= op.assaultAt) {
         op.phase = 'assault'; op.pt = now; op.smoked = false;
@@ -337,6 +350,11 @@ export class CommanderV2 extends CommanderV1 {
         this.note(`${op.obj}: ASSAULT (${man.length} squads, lane ${op.lane})`);
       }
       return;
+    }
+    // the assault is going in and still has its strength: the reserve follows up as the second wave
+    if (op.phase === 'assault' && !op.followOn && now - op.pt > 20 && manP >= manP0 * 0.5) {
+      const res = this.units.find(b => b.role === 'reserve' && this.alive(b) && !b.sq.routing);
+      if (res) { op.followOn = true; this.reserveUsed = true; res.op = op; op.units.add(res); op.man.add(res); this.setTask(res, op.type === 'counter' ? 'counter' : 'manoeuvre', this.oxz(op.obj), `follow-on wave on ${op.obj}`, { assault: true }); this.stats.reserveCommits.push({ t: Math.round(now), obj: op.obj, why: 'follow-on wave' }); this.note(`reserve ${res.sq.name}: follow-on wave on ${op.obj}`); }
     }
   }
   // short = go to ground in the nearest cover / building away from the enemy (30 m) instead of a long run back in the open
@@ -429,6 +447,8 @@ export class CommanderV2 extends CommanderV1 {
     if (v.hp < v.def.hp * (this.cautious() ? 0.5 : 0.4) && !b.vRetreat) { b.vRetreat = true; this.stats.vehRetreats++; const h = this.assembly(b.obj || g.objectives[0].id, [v.pos.x, v.pos.z]); v.orderMove(h[0], h[1], null, true); this.note(`${v.name}: damaged, pulling back`); return; }
     if (b.vRetreat || v.path) return;
     if (b.role === 'reserve' || b.role === 'garrison') return;
+    // a thin-skinned carrier under the eyes of enemy armour: out of its sight (it is worth 16-22 tickets)
+    if (v.kind !== 'tank' && g.time - (b.vHideT || 0) > 12) { const arm = this.armourOn(v.pos.x, v.pos.z, 900).filter(e => e.u.kind === 'tank' || e.u.kind === 'ifv'); if (arm.length) { b.vHideT = g.time; const h = this.hideFrom(v.pos, arm, 70); if (h && D(h, [v.pos.x, v.pos.z]) > 6) { v.orderMove(h[0], h[1], null, true); b.vT = g.time; return; } } }
     const c = sq.center(), rpg = this.intel.rpgNear(v.pos.x, v.pos.z, 75);
     if (rpg > 0 && c.distanceTo(v.pos) > 35) { const d = V3(v.pos.x - c.x, v.pos.z - c.z); if (d.lengthSq() < 1) d.set(this.ourSide[0] - v.pos.x, 0, this.ourSide[1] - v.pos.z); d.normalize(); const [x, z] = g.nav.nearestFree(c.x + d.x * 45, c.z + d.z * 45, 2.0, 20); v.orderMove(x, z); return; }
     if (g.time - (b.vT || 0) < 20) return; b.vT = g.time;
@@ -451,7 +471,9 @@ export class CommanderV2 extends CommanderV1 {
     const key = `${Math.round(tgt[0] / 60)},${Math.round(tgt[1] / 60)}`;
     if (b.posKey === key && b.task?.dest) return;
     const hot = sq.underFireT < 3 && sq.morale < 55;
-    if (b.task?.dest && !hot && g.time - (b.taskT || 0) < 40) return;
+    if (b.task?.dest && !hot && g.time - (b.taskT || 0) < 75) return;
+    // the present spot already covers the new target (sight line, in range): stay — every move costs a pack-up / set-up
+    if (b.task?.dest && !hot) { const d0 = D(b.task.dest, tgt); if (d0 > 120 && d0 < 480 && sees(g, b.task.dest[0], b.task.dest[1], tgt[0], tgt[1], 1.4, 1.6)) { b.posKey = key; b.task.why = why; return; } }
     const p = firePosition(g, tgt, this.toUs(obj), 230, 420, 0.8, false); if (!p) return;
     b.posKey = key; this.setTask(b, 'overwatch', p, why); b.sent = false; this.stats.atgmMoves++;
   }
@@ -503,6 +525,8 @@ export class CommanderV2 extends CommanderV1 {
     if (b.state === 'routed') { this.regroup(b, 'rallied after breaking — regroup'); return; }
     const c = sq.center(), cp = [c.x, c.z];
     const moving = sq.effective.some(s => (s.path && s.pathI < s.path.length) || s.pathReq || s.waitTeam);
+    // enemy armour looking at us in the open: out of its sight first, whatever else is going on
+    if (b.role !== 'reserve' && b.state !== 'strongpoint' && g.time - (b.dodgeT || 0) > 2.5) { b.dodgeT = g.time; if (this.dodgeArmour(b)) { b.wait = 3; return; } }
     if (b.wait > 0) { b.wait -= 1.5; return; }
     if (sq.order?.type === 'storm' || sq.order?.type === 'clear') return;
     // regrouping: out of contact until the nerve is back, then back into the pool
@@ -585,6 +609,11 @@ export class CommanderV2 extends CommanderV1 {
       return;
     }
     const near = D(vp, tgtObj) < (b.role === 'occupy' && !known ? 70 : 200);
+    if ((danger || near) && !v.destroyed && !v.immobile && v.hp > v.def.hp * 0.5 && (b.hideTries || 0) < 2) {
+      const arm = this.armourOn(v.pos.x, v.pos.z, 450);
+      if (arm.length) { const h = this.hideFrom(v.pos, arm, 60); if (h && D(h, vp) > 6) { b.hideTries = (b.hideTries || 0) + 1; v.orderMove(h[0], h[1], null, true); b.mvT = g.time + 30; this.note(`${sq.name}: carrier ducks out of sight of enemy ${arm[0].u.kind} before dismounting`); return; } }
+    }
+    if (v.path && b.hideTries && g.time < b.mvT) return;   // still driving into the hide
     if (danger || near || (!v.path && D(vp, dest) < 30)) {
       if (!v.destroyed) v.halt();
       sq.dismount(Math.atan2(tgtObj[0] - v.pos.x, tgtObj[1] - v.pos.z)); b.state = 'advance'; b.wait = 2;
@@ -597,6 +626,20 @@ export class CommanderV2 extends CommanderV1 {
   // fire teams when the enemy is near; contact on the way -> fire and manoeuvre instead
   moveInf(b, dest, o = {}) {
     const g = this.g, sq = b.sq, c = sq.center(), cp = [c.x, c.z], dist = D(cp, dest);
+    if (sq.building && g.time - (b.hopT || -99) < 16) return;   // a hop: look and shoot from the building a while
+    // enemy about and buildings on the way: bound from building to building (cover + firing positions) rather than
+    // across the open
+    if (!o.final && dist > 50 && this.intel.near(c.x, c.z, 320, 45).length) {
+      const ux = (dest[0] - c.x) / dist, uz = (dest[1] - c.z) / dist;
+      let hop = null, hs = 1e9;
+      for (const bl of g.allBuildings()) {
+        if (bl.collapsedAll || bl === sq.building) continue; const dx = bl.x - c.x, dz = bl.z - c.z, al = dx * ux + dz * uz, lat = Math.abs(dx * uz - dz * ux);
+        if (al < 12 || al > Math.min(70, dist - 5) || lat > 35) continue;
+        if (!bl.slots.some(sl => !sl.occupant && !sl.panel.gone) || bl.slots.some(sl => sl.occupant && sl.occupant.squad.side !== sq.side)) continue;
+        const sc = lat * 1.5 - al * 0.3; if (sc < hs) { hs = sc; hop = bl; }
+      }
+      if (hop) { sq.orderGarrison(hop); b.hopT = g.time; b.wait = 3; this.stats.hops = (this.stats.hops || 0) + 1; return; }
+    }
     const ct = this.contactNear(sq, c, 170);
     if (ct && !o.final && this.react(b, ct, dest, o)) return;
     const path = g.nav.findPath(c.x, c.z, dest[0], dest[1], 0.45, false, 60000);
@@ -691,6 +734,44 @@ export class CommanderV2 extends CommanderV1 {
       if (sc > bs) { bs = sc; best = bl; }
     }
     return best;
+  }
+  // ---------------------------------------------------------------- armour awareness
+  // known enemy armour (tank / IFV / APC) within r of (x,z) that has a sight line onto the point
+  armourOn(x, z, r = 320, age = 40) {
+    const out = [];
+    for (const e of this.intel.list(age)) { if (!e.armour) continue; const d = D([e.x, e.z], [x, z]); if (d > r || d < 8) continue; if (sees(this.g, e.x, e.z, x, z, 2.4, 1.2)) out.push(e); }
+    return out.sort((a, b) => D([a.x, a.z], [x, z]) - D([b.x, b.z], [x, z]));
+  }
+  // nearest spot within r (prefer a building) out of sight of the given armour
+  hideFrom(c, arm, r = 30) {
+    const g = this.g, nav = g.nav, T = arm.slice(0, 2);
+    let best = null, bs = -1e9;
+    for (let rr = 4; rr <= r; rr += 4) for (let a = 0; a < 12; a++) {
+      const x = c.x + Math.cos(a / 12 * 6.283 + rr) * rr, z = c.z + Math.sin(a / 12 * 6.283 + rr) * rr, i = nav.idx(x, z);
+      if (!nav.passable(i, 0.45)) continue;
+      if (T.some(e => sees(g, e.x, e.z, x, z, 2.4, 1.0))) continue;
+      const sc = -rr * 0.05 + (T.length ? Math.min(...T.map(e => D([e.x, e.z], [x, z]))) * 0.004 : 0) + (nav.coverFrom(x, z, T[0].x, T[0].z) >= 0.5 ? 0.5 : 0);
+      if (sc > bs) { bs = sc; best = [x, z]; }
+    }
+    return best;
+  }
+  // infantry caught in the open under the eyes of enemy armour: into a building / out of its sight at once, and wait
+  // there (the armour is the ATGM / FPV / tank / RPG ambush's job). Returns true when it gave an order.
+  dodgeArmour(b) {
+    const g = this.g, sq = b.sq; if (sq.building || sq.trench || sq.order?.type === 'storm' || sq.order?.type === 'clear') return false;
+    if (g.time < (b.hideT || 0)) return true;
+    const c = sq.center(), arm = this.armourOn(c.x, c.z, 300);
+    if (!arm.length) return false;
+    // close enough for the RPGs and in some cover: fight it
+    if (D([arm[0].x, arm[0].z], [c.x, c.z]) < 70 && sq.effective.some(s => s.weaponKey === 'rpg7' || s.rpg22 > 0)) return false;
+    const bld = this.nearBuilding(c, 22, sq);
+    if (!b.hideNote || g.time - b.hideNote > 20) { b.hideNote = g.time; this.note(`${sq.name}: enemy ${arm[0].u.kind} at ${Math.round(D([arm[0].x, arm[0].z], [c.x, c.z]))} m sees us — ${bld ? 'into a building' : 'out of its sight'}`); }
+    if (bld) { sq.orderGarrison(bld); b.hideT = g.time + 14; if (b.state !== 'regroup') b.state = 'strongpoint', b.holdT = g.time + 20; this.stats.hides = (this.stats.hides || 0) + 1; return true; }
+    const h = this.hideFrom(c, arm, 34);
+    if (h) { sq.orderMove(h[0], h[1], Math.atan2(arm[0].x - h[0], arm[0].z - h[1]), 10, true); b.hideT = g.time + 10; this.stats.hides = (this.stats.hides || 0) + 1; if (b.task) b.task.why = `hiding from enemy ${arm[0].u.kind}`; return true; }
+    // nowhere to hide close by: back off out of its reach
+    const ax = c.x - arm[0].x, az = c.z - arm[0].z, L = Math.hypot(ax, az) || 1, [bx, bz] = g.nav.nearestFree(c.x + ax / L * 40, c.z + az / L * 40, 0.5, 10);
+    sq.orderMove(bx, bz, Math.atan2(-ax, -az), 12, true); b.hideT = g.time + 9; this.stats.hides = (this.stats.hides || 0) + 1; return true;
   }
   // ---------------------------------------------------------------- debug
   debugLines() {

@@ -21,7 +21,7 @@ export class Tour {
   set C(v) { }
   // ------------------------------------------------------------------ the steps
   build() {
-    const ui = this.ui, map = ui.map, C = new Proxy({}, { get: (_, k) => { const c = ui.C, v = c[k]; return typeof v === 'function' ? v.bind(c) : v; } });
+    const ui = this.ui, map = new Proxy({}, { get: (_, k) => { const m = ui.map, v = m[k]; return typeof v === 'function' ? v.bind(m) : v; } }), C = new Proxy({}, { get: (_, k) => { const c = ui.C, v = c[k]; return typeof v === 'function' ? v.bind(c) : v; } });
     const tf = () => C.forces.find(f => f.id === this.tfId) || C.forces.find(f => !f.reserve) || C.forces[0];
     const sel = () => { const f = tf(); if (f && ui.sel !== f.id) ui.select(f.id); return f; };
     const fly = (cell, dist = 11) => { if (!cell) return; const c = map.cellCenter(cell); map.flyTo({ x: c.x, z: c.z, dist, pitch: 0.95, yaw: map.cam.yaw }, 0.9); };
@@ -51,6 +51,10 @@ export class Tour {
         body: `<b>Right-click an enemy square</b> to give an attack order: it shows the staff's <b>odds</b>. ${isVs ? 'Attacks are carried out when both commanders end the week — against the other player\'s task forces it becomes a real battle for both of you.' : '<b>Fight the battle</b> takes you to the real-time battle map; <b>Auto-resolve</b> is instant but earns less LP.'} Win, and the square is yours.` },
       { id: 'split', title: 'Split and merge', target: () => this.union('.c2-card.tfsel .c2-units', '.c2-card.tfsel .c2-acts'), before: sel, place: 'left',
         body: `Tick units and <b>Split off</b> to send a detachment to another square. Move task forces onto one square and <b>Merge</b> them for a stronger blow — each task force attacks once a week.` },
+      { id: 'spot', title: 'Big formations are seen', when: () => !!C.spotStatus, target: () => [...document.querySelectorAll('.c2-card.tfsel .c2-kv')].find(e => /Signature/.test(e.textContent)) || document.querySelector('.c2-card.tfsel'), before: sel, place: 'left',
+        body: `Massing gives you away. A task force of <b>more than four companies</b> — or a smaller one that moved or attacked this week — is <b>spotted</b> by the enemy without any drone (<b>◉ SPOTTED</b> on its token): he knows where it is, aims his guns and drones at it, and it takes heavier losses under fire. The bigger it is, the deeper behind the line it is seen. Small dispersed groups stay hidden until reconnoitred or in contact. The enemy's concentrations show up on your map the same way — a target for your artillery.` },
+      { id: 'grow', title: 'Pushing past the map', when: () => !!C.growthStatus?.()?.next, target: () => this.cellsRect(this.edgeCell, 1), before: () => { const f = tf(), A = C.def.aor, g = C.growthStatus(), c = f && C.cell(f.cell); if (!c) return; this.edgeCell = (g.dir === 'west' ? C.cellAt(A.col0 || 0, c.row) : g.dir === 'east' ? C.cellAt((A.col0 || 0) + A.cols - 1, c.row) : g.dir === 'north' ? C.cellAt(c.col, A.row0 || 0) : C.cellAt(c.col, (A.row0 || 0) + A.rows - 1))?.id; fly(this.edgeCell, 16); },
+        body: `The grid is not the limit. When ground you have taken comes within <b>three squares of the map's edge</b>, the map <b>grows past it</b>: new ${C.growthStatus?.()?.dir === 'west' || C.growthStatus?.()?.dir === 'east' ? 'columns' : 'rows'} of real terrain from OpenStreetMap — villages, roads, rivers, woods and the enemy's mapped fortification lines — join the map with their garrisons, supply hubs and new directives (next: <b>${C.growthStatus?.()?.next?.name || ''}</b>).` },
       { id: 'supply', title: 'Supply and depots', target: () => document.querySelector('.c2-views .c2-supply'), before: () => { this.supplyWas ??= map.showSupply; if (!map.showSupply) ui.toggleSupply(); fly(tf()?.cell, 16); }, after: () => { if (map.showSupply !== this.supplyWas) ui.toggleSupply(); },
         body: `Supply flows from the rear through <b>logistics hubs</b> along the roads to your squares (<kbd>L</kbd> shows the routes). Lose or let the enemy shell a hub and everything behind it starves. Cut off, a task force moves at half speed, gets no replacements and fights worse. Click a supplied own square to build a <b>forward depot</b> (30 LP).` },
       { id: 'fires', title: 'Artillery fire missions', when: () => !!C.batteries && C.batteries('player').length > 0, target: () => document.querySelector('.c2-left'), place: 'right', before: () => { ui.tab = 'ops'; ui.renderLeft(); },
@@ -87,7 +91,7 @@ export class Tour {
   // screen bbox of the cells within k squares of a cell (projected corners)
   cellsRect(cell, k = 0) {
     const C = this.C, m = this.ui.map, c = cell && C.cell(cell); if (!c) return null;
-    const pts = []; for (const [dc, dr] of [[-k, -k], [k + 1, -k], [-k, k + 1], [k + 1, k + 1]]) { const x = m.x0 + Math.max(0, Math.min(C.def.aor.cols, c.col + dc)) * m.cw, z = m.z0 + Math.max(0, Math.min(C.def.aor.rows, c.row + dr)) * m.ch; const p = m.screenOf(new (m.cellCenter(cell).constructor)(x, 0, z)); if (p) pts.push(p); }
+    const pts = []; for (const [dc, dr] of [[-k, -k], [k + 1, -k], [-k, k + 1], [k + 1, k + 1]]) { const c0 = m.col0 || 0, r0 = m.row0 || 0, x = m.x0 + Math.max(0, Math.min(C.def.aor.cols, c.col - c0 + dc)) * m.cw, z = m.z0 + Math.max(0, Math.min(C.def.aor.rows, c.row - r0 + dr)) * m.ch; const p = m.screenOf(new (m.cellCenter(cell).constructor)(x, 0, z)); if (p) pts.push(p); }
     if (pts.length < 4) return null;
     const x0 = Math.min(...pts.map(p => p.x)), y0 = Math.min(...pts.map(p => p.y)), x1 = Math.max(...pts.map(p => p.x)), y1 = Math.max(...pts.map(p => p.y));
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };

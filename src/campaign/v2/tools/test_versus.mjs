@@ -13,7 +13,7 @@ function seeded(s) { return () => { s = (s * 1664525 + 1013904223) >>> 0; return
 const def0 = C => C.def.aor.cells.every(c => C.isOpen(c.id));
 function invariants(V, where) {
   const bad = [];
-  for (const c of V.sdef[V.opId].aor.cells) { const a = V.side.UA.owner[c.id], b = V.side.RU.owner[c.id]; if ((a === 'player') === (b === 'player')) bad.push(`owner ${c.id} UA:${a} RU:${b}`); }
+  for (const c of V.side[V.opId].def.aor.cells) { const a = V.side.UA.owner[c.id], b = V.side.RU.owner[c.id]; if ((a === 'player') === (b === 'player')) bad.push(`owner ${c.id} UA:${a} RU:${b}`); }
   for (const f of ['UA', 'RU']) {
     const C = V.side[f], seen = new Set();
     for (const t of C.forces) { if (C.owner[t.cell] !== 'player') bad.push(`${f} tf ${t.name} on enemy cell ${t.cell}`); if (!t.units.length) bad.push(`${f} empty tf`); for (const u of t.units) { if (seen.has(u)) bad.push(`${f} unit ${u} twice`); seen.add(u); if (!C.unit(u)) bad.push(`${f} missing unit ${u}`); } if (!isFinite(t.mp)) bad.push(`${f} mp NaN`); }
@@ -104,6 +104,30 @@ for (const opId of ['UA', 'RU']) for (const host of ['UA', 'RU']) {
   const own = f => Object.values(V.own).filter(x => x === f).length;
   console.log(`  ${weeks} weeks, ${battles} battles (${pvp} vs task forces), result ${JSON.stringify(V.result)} · cells UA ${own('UA')} RU ${own('RU')} · LP UA ${V.side.UA.lp} RU ${V.side.RU.lp}`);
   Math.random = realRandom;
+}
+// v5: the grid grows for both commanders together; big formations are seen by the other player
+{ const GR = await import('../growth.js');
+  for (const op of ['UA', 'RU']) {
+    setRandom(seeded(99)); const V = new VersusGame(defs, op, op), A = V.side[op], D = V.side[OTHER(op)], X = A.baseDef.aor.ext;
+    ok(V.grow().length === 0, `${op}: no growth at the start of a versus game`);
+    const e = GR.edgeLine(A.def.aor, X.dir), take = A.def.aor.cells.find(c => A.owner[c.id] !== 'player' && c.owner !== 'player' && Math.abs(c[e.key] - e.v) === 3);
+    V.own[take.id] = op; V.sync(); const g = V.grow();
+    ok(g.length === 1 && A.grown.join() === g.join() && D.grown.join() === g.join(), `${op}: both sides grow by ${g}`);
+    ok(A.def.aor.cells.length === D.def.aor.cells.length && A.def.aor.cells.length > V.sdef[op].aor.cells.length, `${op}: both maps have ${A.def.aor.cells.length} squares`);
+    const band = X.bands[0];
+    ok(band.cells.every(c => V.own[c.id] === OTHER(op) && A.owner[c.id] === 'enemy' && D.owner[c.id] === 'player'), `${op}: new squares belong to the defender on both maps`);
+    ok(band.sources.every(id => D.def.aor.supplySources.includes(id)) && band.sources.every(id => A.def.aor.enemySources.includes(id)), `${op}: the defender's supply sources move out to the new edge`);
+    ok(band.cells.some(c => (D.supplied[c.id] ?? 0) >= 1), `${op}: the defender supplies its new rear`);
+    invariants(V, `${op} after growth`);
+    const S = JSON.parse(JSON.stringify(V.save())), V2 = new VersusGame(defs, S.opId, S.host, S);
+    ok(V2.side.UA.def.aor.cells.length === A.def.aor.cells.length && V2.side.RU.grown.join() === g.join(), `${op}: the grown grid survives save / restore`);
+    const M = mirror2(defs, JSON.parse(JSON.stringify(V.view(OTHER(op)))));
+    ok(M.def.aor.cells.length === A.def.aor.cells.length && M.owner[band.cells[0].id] === 'player', `${op}: the joiner's mirror has the grown grid`);
+    // a massed task force is shown to the other commander without recon
+    const T = A.forces[0]; for (const f of [...A.forces]) if (f !== T) { f.cell = T.cell; A.merge(T.id, f.id); }
+    const fr = A.def.aor.cells.find(c => A.owner[c.id] === 'player' && A.frontline(c.id) && !D.forces.some(t => D.adjacent(t.cell, c.id)) && !D.recon[c.id]); T.cell = fr.id;
+    ok(V.foes(OTHER(op)).some(x => x.id === T.id && x.spotted), `${op}: the massed brigade is spotted by the other player`);
+  }
 }
 ok(stats.fires > 20 && stats.uav > 20, `versus commanders used fires (${stats.fires}), drones (${stats.uav}), counter-battery (${stats.cb})`);
 console.log(`\n${pass} passed, ${fail} failed`);

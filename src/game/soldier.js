@@ -9,7 +9,7 @@ export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic'
 const PISTOL_CLIP = { aim_stand: 'pistol_aim', fire_stand: 'pistol_fire', idle_rifle: 'pistol_idle', walk_rifle: 'pistol_walk', run_rifle: 'pistol_run', aim_crouch: 'pistol_crouch_aim', fire_crouch: 'pistol_fire', crouch_idle: 'pistol_crouch_aim', reload_stand: 'pistol_aim', reload_crouch: 'pistol_crouch_aim' };
 
 // One infantryman: visual (skinned MakeHuman mesh + gear + weapon), animation state machine and combat state.
-const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
+const CLIP_SPEED = { walk_rifle: 1.45, run_rifle: 3.9, crouch_walk: 1.0, prone_crawl: 0.45, high_crawl: 0.7, wounded_crawl: 0.3, limp_walk: 0.9, drag_wounded: 0.8 };
 let SHARED = null, SHARED_EVENTS = {};
 const _dv = new THREE.Vector3();
 
@@ -170,7 +170,7 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive|medevac_cab|medevac_lift|medevac_load|wounded_lifted|wounded_load)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive|prone_down|prone_up|medevac_cab|medevac_lift|medevac_load|wounded_lifted|wounded_load)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
@@ -241,6 +241,19 @@ export class Soldier {
     const sp = this.vel.length();
     const st = this.stance;
     let clip, ts = 1, alt = [];
+    // v5: getting down / up is a real move (prone_down / prone_up, ~0.9 s, the man holds still meanwhile) instead of a 0.3 s
+    // cross-fade that swung the whole body about the hips through the ground; not for dives, wounded, riders, or a man who
+    // flips stance again within 1.5 s (just the cross-fade then)
+    this.stanceAge = (this.stanceAge || 0) + dt;
+    if (st !== this.lastSt) {
+      const was = this.lastSt; this.lastSt = st;
+      if (was && this.stanceAge > 1.5 && (was === 'prone') !== (st === 'prone') && (this.state === 'ok' || this.state === 'light') && !this.inside && !(this.dodgeT > 0) && this.mixer) {
+        const n = st === 'prone' ? 'prone_down' : 'prone_up';
+        if (hasClip(n)) { this.proneTrans = n; this.proneTransT = clipDuration(n, 0.9); this.aimStopT = Math.max(this.aimStopT || 0, this.proneTransT * 0.85); }
+      } else this.proneTransT = 0;
+      this.stanceAge = 0;
+    }
+    if (this.proneTransT > 0) this.proneTransT -= dt;
     if (this.state === 'dead') { clip = this.deathClip; }
     else if (this.state === 'critical' || this.state === 'stable') {
       if (this.dragger && this.dragger.dragPhase === 'drag') { clip = 'being_dragged'; alt = ['wounded_ground']; }
@@ -265,10 +278,13 @@ export class Soldier {
     else if (this.throwT > 0) { clip = this.throwWindow ? 'throw_grenade_window' : 'throw_grenade'; alt = ['throw_grenade']; }
     else if (this.stackT > 0) { clip = 'cqb_stack'; alt = ['crouch_idle']; }
     else if (this.dodgeT > 0) { clip = this.dodgeClip || 'dodge_dive'; alt = ['dodge_dive', 'pinned_prone', 'prone_idle']; }
+    else if (this.proneTransT > 0 && !this.dragging && sp < 0.4) { clip = this.proneTrans; alt = [st === 'prone' ? 'prone_idle' : 'crouch_idle']; }
     else if (this.supportClip && sp < 0.15) { clip = this.supportClip; ts = this.supportTs || 1; alt = this.supportAlt || ['crouch_idle']; }
     else if (this.droneAlertT > 0 && sp < 0.15 && !this.ducking && this.weaponKey !== 'rpg7') { clip = 'drone_shoot'; alt = ['aim_stand']; }
     else if (sp > 0.15) {
-      if (st === 'prone') { clip = 'prone_crawl'; alt = ['crouch_walk']; }
+      // prone: low crawl (flat, slow) or, moving faster (squad.js: longer bounds while not under heavy fire), the high crawl on
+      // forearms and knees; hysteresis so the two don't flicker while the speed settles
+      if (st === 'prone') { this.hiCrawl = sp > 0.6 ? true : sp < 0.5 ? false : !!this.hiCrawl; clip = this.hiCrawl && hasClip('high_crawl') ? 'high_crawl' : 'prone_crawl'; alt = ['prone_crawl', 'crouch_walk']; }
       else if (this.state === 'light' && this.legWound) clip = 'limp_walk';
       else if (st === 'crouch' && sp < 2.2) clip = 'crouch_walk';
       else if (sp > 2.4) clip = 'run_rifle'; else clip = 'walk_rifle';
@@ -280,6 +296,16 @@ export class Soldier {
     else if ((this.target || this.groundAim) && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
     else if (this.target || this.groundAim) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
     else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
+    // v5: a man lying on a slope lies along it (pitch the model about the hips to the ground under head and feet) instead of
+    // poking his head into the rise or floating over a dip
+    if (this.mixer && this.model && this.state !== 'dead') {
+      let px = 0;
+      if (st === 'prone' && (this.state === 'ok' || this.state === 'light') && !this.inside && !(this.proneTransT > 0) && !(this.dodgeT > 0)) {
+        const gh = this.squad?.game?.city?.groundHeight;
+        if (gh) { const fx = Math.sin(this.heading) * 0.8, fz = Math.cos(this.heading) * 0.8; px = THREE.MathUtils.clamp(-Math.atan2(gh(this.pos.x + fx, this.pos.z + fz) - gh(this.pos.x - fx, this.pos.z - fz), 1.6), -0.35, 0.35); }
+      }
+      if (px || this.model.rotation.x) { this.model.rotation.x += (px - this.model.rotation.x) * Math.min(1, dt * 5); if (Math.abs(this.model.rotation.x) < 1e-4 && !px) this.model.rotation.x = 0; }
+    }
     if (this.netClip && this.state !== 'dead') { clip = this.netClip; alt = ['idle_rifle']; ts = this.netTs || 1; }   // versus joiner: the host's exact clip
     if (this.mixer) {
       this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);

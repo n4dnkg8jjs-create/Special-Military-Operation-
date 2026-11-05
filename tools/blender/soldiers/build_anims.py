@@ -294,6 +294,15 @@ def build_all(rig, R, only=None):
         if want('prone_crawl'):
             import clips_crawl as CR    # rebuilt (frog-kick low crawl, planted contacts); the old prone_crawl() below is kept for reference
             out['prone_crawl'] = CR.prone_crawl(rig, lm, relq, relp)
+    if want('high_crawl'):
+        import clips_crawl as CR    # v5: forearms-and-knees high crawl
+        out['high_crawl'] = CR.high_crawl(rig, lm)
+    if want('prone_down') or want('prone_up'):
+        import clips_crawl as CR    # v5: crouch <-> prone transitions from the cached crouch_idle / prone_idle poses
+        _cc = pickle.load(open(f'{BUILD}/clips.pkl', 'rb'))
+        for _n, _d in (('prone_down', 0.9), ('prone_up', 0.85)):
+            if want(_n):
+                out[_n] = CR.prone_transition(rig, out.get('crouch_idle') or _cc['crouch_idle'], out.get('prone_idle') or _cc['prone_idle'], _n, _d)
     import clips_extra as CX
     if want('wounded_crawl'):
         import clips_crawl as CR

@@ -45,7 +45,7 @@ export function measure(model) {
   const hullMeshes = under(hull, p => p === turret || GEAR.test(p.name) || /cope_cage|hatch_lid|door|ramp/i.test(p.name));
   const turMeshes = turret ? under(turret, p => p === gun || /cope_cage|hatch_lid/i.test(p.name)) : [];
   const H = pointsIn(hullMeshes, hull), T = turret ? pointsIn(turMeshes, turret) : null;
-  return { hull, turret, gun, hullMeshes, turMeshes, H, T, hasCage: !!cageMesh && cageMesh.visible !== false };
+  return { hull, turret, gun, hullMeshes, turMeshes, H, T, hasCage: !!cageMesh && cageMesh.visible !== false, cageNode: cageMesh };
 }
 
 // ---------------------------------------------------------------- geometry helpers
@@ -67,12 +67,16 @@ function cast(meshes, space, from, dir) {
   const rc = new THREE.Raycaster(); const o = from.clone().applyMatrix4(space.matrixWorld), d = dir.clone().transformDirection(space.matrixWorld);
   rc.set(o, d); rc.far = 20; const h = rc.intersectObjects(meshes, false); return h.find(x => x.face) || null;
 }
+// surface under (x, z) seen from above (local y in `space`), or null; side surface x seen from outside at (y, z)
+function downY(meshes, space, x, z, from = 6) { const h = cast(meshes, space, V3(x, from, z), V3(0, -1, 0)); if (!h) return null; return h.point.clone().applyMatrix4(new THREE.Matrix4().copy(space.matrixWorld).invert()).y; }
+function sideX(meshes, space, sx, y, z) { const h = cast(meshes, space, V3(sx * 8, y, z), V3(-sx, 0, 0)); if (!h) return null; return h.point.clone().applyMatrix4(new THREE.Matrix4().copy(space.matrixWorld).invert()).x; }
 function mesh(geos, mat, name) { if (!geos.length) return null; const m = new THREE.Mesh(mergeGeometries(geos.map(g => g.index ? g.toNonIndexed() : g)), mat); m.name = name; m.castShadow = true; m.userData.kit = true; return m; }
 
 // ---------------------------------------------------------------- the kits
-function cageFrame(geos, x0, x1, z0, z1, base, top, posts = true) {
+function cageFrame(geos, x0, x1, z0, z1, base, top, posts = true, foot = null) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ix = (x1 - x0) * 0.32, iz = (z1 - z0) * 0.32;
-  if (posts) for (const sx of [-1, 1]) for (const sz of [-1, 1]) bar(geos, V3(cx + sx * ix, base, cz + sz * iz), V3(cx + sx * (x1 - x0) / 2, top, cz + sz * (z1 - z0) / 2), 0.026);
+  // foot(x, z) -> roof height under the post foot (welded on, 1 cm into the plate); falls back to `base`
+  if (posts) for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const fx = cx + sx * ix, fz = cz + sz * iz, fy = foot?.(fx, fz); bar(geos, V3(fx, fy != null && fy > base - 0.6 && fy < top - 0.1 ? fy - 0.01 : base, fz), V3(cx + sx * (x1 - x0) / 2, top, cz + sz * (z1 - z0) / 2), 0.026); }
   for (const z of [z0, z1]) bar(geos, V3(x0, top, z), V3(x1, top, z), 0.025);
   for (const x of [x0, x1]) bar(geos, V3(x, top, z0), V3(x, top, z1), 0.025);
   const nx = Math.max(2, Math.round((x1 - x0) / 0.3)), nz = Math.max(2, Math.round((z1 - z0) / 0.4));
@@ -81,11 +85,14 @@ function cageFrame(geos, x0, x1, z0, z1, base, top, posts = true) {
 }
 const BUILD = {
   cage(M, out) {
-    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T } : { node: M.hull, P: M.H };
-    const P = S.P, roof = P.q('y', 0.9), x0 = P.q('x', 0.03) - 0.18, x1 = P.q('x', 0.97) + 0.18, z0 = P.q('z', 0.03) - 0.25, z1 = P.q('z', 0.97) + 0.2;
+    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T, meshes: M.turMeshes } : { node: M.hull, P: M.H, meshes: M.hullMeshes };
+    let P = S.P, roof = P.q('y', 0.9), x0 = P.q('x', 0.03) - 0.18, x1 = P.q('x', 0.97) + 0.18, z0 = P.q('z', 0.03) - 0.25, z1 = P.q('z', 0.97) + 0.2;
     if (M.hasCage) {
-      // the model has its cage: hang nets / chain curtains from its rim (rim ~0.45 m over the roof)
-      const geos = [], top = roof + 0.42, y0 = roof - 0.12;
+      // the model has its cage: hang nets / chain curtains from its rim — measured from the cage mesh itself
+      const cm = []; M.cageNode.traverse(o => { if (o.isMesh && !/_LOD1$/i.test(o.name)) cm.push(o); });
+      const C = pointsIn(cm, S.node);
+      if (C.n > 20) { x0 = C.q('x', 0.005); x1 = C.q('x', 0.995); z0 = C.q('z', 0.005); z1 = C.q('z', 0.995); }
+      const geos = [], top = C.n > 20 ? C.q('y', 0.995) : roof + 0.42, y0 = top - 0.5;
       const strip = (x, z, rot) => { const g = new THREE.PlaneGeometry(0.22, top - y0, 1, 1); g.rotateY(rot); g.translate(x, (top + y0) / 2, z); geos.push(g); };
       for (let x = x0 + 0.15; x <= x1 - 0.1; x += 0.3) { strip(x, z1 + 0.04, 0); strip(x, z0 - 0.04, 0); }
       for (let z = z0 + 0.15; z <= z1 - 0.1; z += 0.3) { strip(x1 + 0.04, z, Math.PI / 2); strip(x0 - 0.04, z, Math.PI / 2); }
@@ -93,7 +100,7 @@ const BUILD = {
       out.push([S.node, mesh(geos, mats().net, 'kit_cage_nets')], [S.node, mesh(fr, mats().steel, 'kit_cage_rim')]);
       return;
     }
-    const geos = []; cageFrame(geos, x0, x1, z0, z1, roof - 0.02, roof + 0.42);
+    const geos = []; cageFrame(geos, x0, x1, z0, z1, roof - 0.02, roof + 0.42, true, (x, z) => downY(S.meshes, S.node, x, z));
     out.push([S.node, mesh(geos, mats().steel, 'kit_cage')]);
   },
   roof(M, out) {
@@ -102,7 +109,10 @@ const BUILD = {
     const tb = M.turret && M.T?.n > 20 ? (() => { const v = new THREE.Vector3(0, 0, M.T.q('z', 0.03)).applyMatrix4(M.turret.matrix); return v.z - 0.15; })() : P.q('z', 0.5);
     const troof = M.turret && M.T?.n > 20 ? M.turret.position.y + M.T.q('y', 0.92) : deck + 0.6;
     const top = troof + 0.55, geos = [];
-    for (const x of [x0, x1]) for (const z of [zs, (zs + tb) / 2, tb]) bar(geos, V3(x, deck - 0.05, z), V3(x * 0.96, top, z), 0.03);
+    for (const x of [x0, x1]) for (const z of [zs, (zs + tb) / 2, tb]) {
+      let foot = null; for (const f of [0.97, 0.9, 0.82, 0.74]) { const y = downY(M.hullMeshes, M.hull, x * f, z, top - 0.05); if (y != null) { foot = V3(x * f, y - 0.01, z); break; } }
+      bar(geos, foot || V3(x, deck - 0.05, z), V3(x * 0.96, top, z), 0.03);
+    }
     const fr = []; cageFrame(fr, x0, x1, zs, tb, top, top, false); geos.push(...fr);
     out.push([M.hull, mesh(geos, mats().steel, 'kit_roof')]);
     const sheet = new THREE.PlaneGeometry(x1 - x0, tb - zs, 1, 1); sheet.rotateX(-Math.PI / 2); sheet.translate((x0 + x1) / 2, top - 0.01, (zs + tb) / 2);
@@ -168,8 +178,10 @@ const BUILD = {
     }
   },
   sight(M, out) {
-    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T } : { node: M.hull, P: M.H };
-    const P = S.P, roof = P.q('y', 0.93), x = P.q('x', 0.22), z = P.q('z', 0.78);
+    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T, meshes: M.turMeshes } : { node: M.hull, P: M.H, meshes: M.hullMeshes };
+    const P = S.P, x = P.q('x', 0.22), z = P.q('z', 0.78), r0 = P.q('y', 0.93);
+    const hy = [[0, 0], [-0.12, -0.12], [0.12, 0.12], [-0.12, 0.12], [0.12, -0.12]].map(([dx, dz]) => downY(S.meshes, S.node, x + dx, z + dz, r0 + 1)).filter(y => y != null && y > r0 - 0.5);
+    const roof = hy.length ? Math.max(...hy) : r0;
     const body = new THREE.BoxGeometry(0.34, 0.3, 0.42); body.translate(x, roof + 0.15, z);
     const hood = new THREE.BoxGeometry(0.38, 0.04, 0.5); hood.translate(x, roof + 0.32, z + 0.03);
     const base = new THREE.CylinderGeometry(0.12, 0.15, 0.08, 10); base.translate(x, roof + 0.02, z);
@@ -178,17 +190,22 @@ const BUILD = {
     out.push([S.node, mesh([lens], mats().glass, 'kit_sight_lens')]);
   },
   ew(M, out) {
-    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T } : { node: M.hull, P: M.H };
-    const P = S.P, roof = P.q('y', 0.93), x = P.q('x', 0.7), z = P.q('z', 0.2), geos = [];
+    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T, meshes: M.turMeshes } : { node: M.hull, P: M.H, meshes: M.hullMeshes };
+    const P = S.P, x = P.q('x', 0.7), z = P.q('z', 0.2), geos = [], r0 = P.q('y', 0.93);
+    const hy = [[-0.2, -0.14], [0.2, -0.14], [-0.2, 0.14], [0.2, 0.14], [0, 0]].map(([dx, dz]) => downY(S.meshes, S.node, x + dx, z + dz, r0 + 1)).filter(y => y != null && y > r0 - 0.5);
+    const roof = hy.length ? Math.max(...hy) : r0, lo = hy.length ? Math.min(...hy) : r0;
+    if (roof - lo > 0.015) { const leg = new THREE.BoxGeometry(0.42, roof - lo + 0.02, 0.28); leg.translate(x, (roof + lo) / 2, z); geos.push(leg); }   // plinth down to the lowest roof point
     const box = new THREE.BoxGeometry(0.5, 0.24, 0.36); box.translate(x, roof + 0.12, z); geos.push(box);
     const fin = new THREE.BoxGeometry(0.52, 0.02, 0.3); for (let i = 0; i < 4; i++) { const f = fin.clone(); f.translate(x, roof + 0.05 + i * 0.05, z); geos.push(f); }
     for (const [dx, dz, hgt] of [[-0.18, -0.12, 1.3], [0.18, -0.12, 1.1], [-0.18, 0.12, 0.9], [0.18, 0.12, 1.2]]) { const a = new THREE.CylinderGeometry(0.008, 0.014, hgt, 5); a.translate(x + dx, roof + 0.24 + hgt / 2, z + dz); geos.push(a); const b = new THREE.CylinderGeometry(0.025, 0.025, 0.05, 6); b.translate(x + dx, roof + 0.25, z + dz); geos.push(b); }
     out.push([S.node, mesh(geos, mats().box, 'kit_ew')]);
   },
   smoke(M, out) {
-    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T } : { node: M.hull, P: M.H };
+    const S = M.turret && M.T?.n > 20 ? { node: M.turret, P: M.T, meshes: M.turMeshes } : { node: M.hull, P: M.H, meshes: M.hullMeshes };
     const P = S.P, y = P.q('y', 0.7), z = P.q('z', 0.7), geos = [];
-    for (const [sx, x] of [[-1, P.q('x', 0.02)], [1, P.q('x', 0.98)]]) {
+    for (const [sx, x0] of [[-1, P.q('x', 0.02)], [1, P.q('x', 0.98)]]) {
+      const xs = [0, 0.05, -0.05].map(dy => sideX(S.meshes, S.node, sx, y + 0.05 + dy, z - 0.05)).filter(v => v != null && Math.abs(v - x0) < 0.6);
+      const x = xs.length ? (sx > 0 ? Math.min(...xs) : Math.max(...xs)) + sx * 0.005 : x0;
       for (let i = 0; i < 4; i++) {
         const t = new THREE.CylinderGeometry(0.045, 0.045, 0.28, 8); t.rotateX(Math.PI / 2 - 0.5); t.rotateY(-sx * (0.35 + i * 0.18)); t.translate(x + sx * 0.08, y + (i % 2) * 0.1, z - Math.floor(i / 2) * 0.1); geos.push(t);
       }

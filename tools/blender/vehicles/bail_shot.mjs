@@ -24,13 +24,20 @@ page.on('console', m => { if (m.type() === 'error') console.log('[page]', m.text
 await page.goto(`http://localhost:${server.address().port}/index.html?${query}`);
 await page.waitForFunction('window.__done === true', null, { timeout: 900000 });
 const info = await page.evaluate(([dist, yawOff, pitch]) => {
+  const THREE_V = window.game.pos?.constructor || (window.game.vehicles[0].pos.constructor);
   const g = window.game, Q = new URLSearchParams(location.search);
   const v = g.playerUnits.filter(u => u.type === 'vehicle')[+(Q.get('bail') || 0)];
   const lids = {}; v.model.traverse(o => { if (/^hatch_lid_[A-Za-z_]+$/.test(o.name) && !/_geo/.test(o.name)) lids[o.name] = [o.rotation.x, o.rotation.y, o.rotation.z].map(a => +a.toFixed(3)); });
   g.cam.lookAt(v.pos.x, v.pos.z); g.cam.tDist = dist; g.cam.tYaw = v.heading + yawOff; g.cam.tPitch = pitch;
   for (let i = 0; i < 60; i++) g.cam.update(0.05);
+  if (Q.has('noveg')) g.scene.traverse(o => { if (o.isInstancedMesh || /tree|veg|grass|bush|foliage/i.test(o.name)) o.visible = false; });   // clear view of the roof hatches
   g.scene.fog.density = 0; g.frame(0.0001); g.renderer.render(0.016, g.time);
-  return { name: v.name, kind: v.kind, model: v.vman?.file || v.model?.name, abandoned: v.abandoned, destroyed: v.destroyed, pos: [v.pos.x, v.pos.z].map(Math.round), lids,
+  // vehicles_v5 debug: what is drawn at each hatch rim (visible meshes whose world bbox holds the rim point)
+  const atRim = {}; const P = new THREE_V(); v.model.updateMatrixWorld(true);
+  v.model.traverse(e => { if (!/^hatch_[a-z]+(_[A-Za-z]+)?$/.test(e.name) || /^hatch_lid/.test(e.name)) return; e.getWorldPosition(P); const hits = [];
+    v.model.traverse(o => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (!p.visible) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).expandByScalar(0.06); if (b.containsPoint(P)) hits.push(o.name + (o.parent ? '<' + o.parent.name : '')); });
+    atRim[e.name] = hits; });
+  return { atRim, far: v.far, name: v.name, kind: v.kind, model: v.vman?.file || v.model?.name, abandoned: v.abandoned, destroyed: v.destroyed, pos: [v.pos.x, v.pos.z].map(Math.round), lids,
     crew: g.squads.filter(s => s.name === `${v.name} crew`).map(s => s.soldiers.map(m => m.role?.role || m.role).join(',')) };
 }, [+dist, +yawOff, +pitch]);
 await page.screenshot({ path: out, timeout: 600000 });

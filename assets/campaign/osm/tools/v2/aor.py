@@ -1,8 +1,12 @@
-# aor.py SIDE -> /tmp/osmv2/aor_SIDE.json : per-cell terrain stats + simplified geometry (lat/lon) from OSM tiles
+# aor.py SIDE (UA|RU|UAX|RUX) -> /tmp/osmv2/aor_SIDE.json : per-cell terrain stats + simplified geometry (lat/lon) from OSM tiles
 import json, glob, math, sys, collections
 side = sys.argv[1]
 G = {'UA': dict(latN=47.610, lonW=35.650, dLa=0.01809, dLo=0.02658, cols=14, rows=14),
-     'RU': dict(latN=48.270, lonW=37.560, dLa=0.01809, dLo=0.02693, cols=12, rows=12)}[side]
+     'RU': dict(latN=48.270, lonW=37.560, dLa=0.01809, dLo=0.02693, cols=12, rows=12),
+     # grid extensions (campaign v5: the grid grows past the original AOR) — cell ids keep the parent grid's numbering
+     'UAX': dict(latN=47.35674, lonW=35.650, dLa=0.01809, dLo=0.02658, cols=14, rows=7, col0=0, row0=14),
+     'RUX': dict(latN=48.270, lonW=37.40242, dLa=0.01809, dLo=0.02693, cols=6, rows=12, col0=-6, row0=0)}[side]
+COL0, ROW0 = G.get('col0', 0), G.get('row0', 0)
 latN, lonW, dLa, dLo, C, R = G['latN'], G['lonW'], G['dLa'], G['dLo'], G['cols'], G['rows']
 latS, lonE = latN - R*dLa, lonW + C*dLo
 KX = 111.32*math.cos(math.radians((latN+latS)/2)); KY = 110.57
@@ -117,7 +121,7 @@ for r in range(R):
         nb = sum(1 for la, lo in bunkers if s0 <= la <= s1 and w0 <= lo <= w1)
         pl = [p for p in places if s0 <= p['lat'] <= s1 and w0 <= p['lon'] <= w1]
         refs = sorted({t.get('ref') for t, p in roads if t.get('ref') and seglen_in(p, b) > 0.2})
-        cells.append(dict(id=f'c{c}_{r}', col=c, row=r, latlon=[round((s0+s1)/2, 5), round((w0+w1)/2, 5)], frac=frac,
+        cells.append(dict(id=f'c{c+COL0}_{r+ROW0}', col=c+COL0, row=r+ROW0, latlon=[round((s0+s1)/2, 5), round((w0+w1)/2, 5)], frac=frac,
                           road2=round(rl[2], 2), road1=round(rl[1], 2), track=round(tl, 2), stream=round(sl, 2), fortKm=round(fl, 2), bunkers=nb,
                           places=pl, refs=refs))
     print('row', r, file=sys.stderr)

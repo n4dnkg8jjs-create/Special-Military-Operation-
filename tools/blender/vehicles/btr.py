@@ -417,6 +417,7 @@ def tyre_wheel():
                  (0.19, 0.07, 'rim'), (0.165, 0.09, 'rim'), (0.15, 0.10, 'rim'), (0.13, 0.13, 'rim'), (0.11, 0.155, 'rim'),
                  (0.08, 0.175, 'rim'), (0.045, 0.188, 'rim'), (0.0, 0.192, 'rim')], 32, 'x', mat='rim', cap=False)
     rim.add(lathe([(0.25, -0.125, 'rim'), (0.236, -0.118, 'rim'), (0.228, -0.10, 'rim'), (0.225, -0.03, 'rim'), (0.0, -0.03, 'rim')], 32, 'x', mat='rim', cap=False))
+    rim.add(cyl(0.1, 0.16, 16, 'x', c=(-0.105, 0, 0), mat='gunmetal'))      # hub / wheel-reduction housing (vehicles_v5: the wheel floated 2.8 cm off the hull)
     for i in range(10):
         a = math.tau * i / 10
         rim.add(bolt(0.017, 0.024, 6, 'rim').rot('Y', 90), Matrix.Translation((0.088, 0.172 * math.cos(a), 0.172 * math.sin(a))))
@@ -554,12 +555,12 @@ def turret_bppu():
         ang = math.atan2(nrm.y, nrm.x)
         c0 = V((s_ * 0.66, -0.52, 0.40))
         tang = V((-nrm.y, nrm.x, 0)) * (1 if s_ > 0 else -1)      # along the corner face, pointing forward
-        br = box(0.06, 0.40, 0.14, bev=0.006, segs=1)
-        t.add(br, Matrix.Translation(c0) @ Matrix.Rotation(ang, 4, 'Z'))
+        grp = box(0.06, 0.40, 0.14, bev=0.006, segs=1).xf(Matrix.Translation(c0) @ Matrix.Rotation(ang, 4, 'Z'))
         for i in range(3):
             p = c0 + nrm * 0.07 + tang * ((i - 1) * 0.12) + V((0, 0, 0.06))
             d = V((s_ * (0.25 + 0.08 * i), 1.0, 0.75))
-            t.add(tucha_tube(), Matrix.Translation(p) @ align_y(d))
+            grp.add(tucha_tube(), Matrix.Translation(p) @ align_y(d))
+        t.add(L.snap(grp, t, d=-nrm, max_d=0.25, sink=0.006))      # vehicles_v5: bracket pushed onto the corner face (5 cm gap)
     # stowage box on the turret rear
     t.add(box(0.92, 0.24, 0.30, c=(0, -0.80, 0.34), bev=0.015, segs=2))
     t.add(box(0.94, 0.26, 0.025, c=(0, -0.80, 0.49), bev=0.005, segs=1))
@@ -771,8 +772,9 @@ def build(variant):
     for x in (-0.15, 0.15):
         wj.add(cyl(0.025, 0.1, 10, 'x', c=(x, 0.24, 0.03)))
     H.add(wj, L.place(ML_, wjc))
-    H.add(box(0.12, 0.2, 0.08, c=(0, -3.8, 1.05), bev=0.01, segs=1))           # tow pintle housing
-    H.add(tube(fillet_path([(0, -3.86, 1.08), (0, -3.98, 1.08), (0, -3.98, 0.98)], 0.04, 3), 0.025, 8))
+    pin = box(0.12, 0.2, 0.08, c=(0, -3.8, 1.05), bev=0.01, segs=1)           # tow pintle housing
+    pin.add(tube(fillet_path([(0, -3.86, 1.08), (0, -3.98, 1.08), (0, -3.98, 0.98)], 0.04, 3), 0.025, 8))
+    H.add(L.snap(pin, H, d=(0, 1, 0), max_d=0.3, sink=0.01))                   # vehicles_v5: onto the rear plate (4.6 cm gap)
 
     if is82:
         # tarp roll strapped across the rear edge of the roof, stowage box on the rear plate

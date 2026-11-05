@@ -181,5 +181,74 @@ for (const side of Object.keys(defs)) {
   // persistence of v4 state
   C2.save(); const C3 = Campaign2.load(defs); ok(C3 && C3.eforces.length === C2.eforces.length && C3.arty.player.length === C2.arty.player.length && C3.uav.player.stock === C2.uav.player.stock, 'v4 state persists');
 }
+// ------------------------------------------------------------------ v5: big formations reveal themselves; the grid grows
+const R5 = await import('../recon.js'), GR5 = await import('../growth.js');
+for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).filter(d => d.aor.ext)) {
+  console.log(`== v5 ${def.id}`);
+  setRandom(seeded(77)); for (const k of Object.keys(mem)) delete mem[k];
+  // --- reveal: a dispersed task force is hidden, the brigade massed on one square is spotted
+  { const C = new Campaign2(def), T = C.forces[0];
+    ok(!C.spotStatus(T.id).spotted && C.spotStatus(T.id).sig < R5.SPOT_SIZE, `a dispersed task force stays hidden (signature ${C.spotStatus(T.id).sig})`);
+    for (const f of [...C.forces]) if (f !== T) { f.cell = T.cell; C.merge(T.id, f.id); }
+    const st = C.spotStatus(T.id);
+    ok(st.n > 4 && st.sig >= R5.SPOT_SIZE && st.depth >= 2, `the massed brigade has a big signature (${st.n} coy, sig ${st.sig}, depth ${st.depth})`);
+    // move the mass next to the line: spotted (within depth), the enemy learns where it is
+    const front = def.aor.cells.find(c => C.owner[c.id] === 'player' && C.frontline(c.id) && C.supplied[c.id] >= 1);
+    T.cell = front.id; ok(C.spotStatus(T.id).spotted, 'the mass at the front is SPOTTED');
+    T.mp = C.tfMpMax(T); T.movedT = -9; const sig0 = R5.signature(C, 'player', T).sig; T.movedT = C.turn; ok(R5.signature(C, 'player', T).sig > sig0, `movement raises the signature (${sig0} -> ${R5.signature(C, 'player', T).sig})`);
+    // a 4-company group sitting still in the open is hidden, the same group after moving is seen
+    { const C4 = new Campaign2(def), t4 = C4.forces[0]; const us = C4.tfUnits(t4); const c4 = def.aor.cells.find(c => C4.owner[c.id] === 'player' && C4.frontline(c.id) && !['urban', 'industrial', 'forest'].includes(c.terrain));
+      t4.cell = c4.id; t4.units = C4.units.filter(u => !C4.forces.slice(1).some(f => f.units.includes(u.uid)) || true).slice(0, 4).map(u => u.uid); for (const f of C4.forces.slice(1)) f.units = f.units.filter(id => !t4.units.includes(id)); C4.forces = C4.forces.filter(f => f.units.length);
+      t4.mp = C4.tfMpMax(t4); ok(!C4.spotStatus(t4.id).spotted, `4 companies keeping still are hidden (sig ${C4.spotStatus(t4.id).sig})`);
+      t4.movedT = C4.turn; ok(C4.spotStatus(t4.id).spotted, `4 companies on the move are seen (sig ${C4.spotStatus(t4.id).sig})`); }
+    // the enemy's week: it knows the spotted square and aims fire at it
+    C.pendingAttacks = []; C.endTurn();
+    ok(C.espots && C.espots.list.some(x => x.id === T.id), 'the enemy recorded the spotted formation');
+    ok((C.eintel[C.espots.list[0].cell] ?? -9) >= C.turn - 1, 'spotting gives the enemy fresh intel on that square');
+    ok(C.fireLog.some(f => f.side === 'enemy' && f.turn === C.turn && C.espots.list.some(x => x.cell === f.cell)) || C.ammo.enemy < 1, 'enemy artillery fires at the spotted formation'); }
+  // --- the enemy's concentration is spotted by the player
+  { const C = new Campaign2(def); const fs = C.eforces.slice(0, 3), lead = fs[0];
+    for (const f of fs.slice(1)) { lead.str += f.str; C.eforces = C.eforces.filter(x => x !== f); }
+    const near = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && C.frontline(c.id)); lead.cell = near.id;
+    C.updateSpots();
+    ok(C.spottedEnemy().some(x => x.id === lead.id), `an enemy concentration (str ${lead.str.toFixed(1)}) is spotted without recon`);
+    ok(C.cellIntel(near.id).forces.some(x => x.id === lead.id && x.spotted), 'cellIntel lists the spotted enemy formation');
+    const small = C.eforces.find(f => f !== lead && f.str <= 1.1 && !C.forces.some(t => C.adjacent(t.cell, f.cell)));
+    if (small) ok(!C.spottedEnemy().some(x => x.id === small.id), `a single battalion group (str ${small.str}) stays hidden`);
+    const g0 = lead.str; C.suppressed = {}; const r = { side: 'player', kind: 'suppress', cell: near.id, n: 1, battery: C.batteries()[0].id }; C.applyFire(r);
+    ok(g0 - lead.str >= 0.089, `suppression hits a spotted mass 1.5x as hard (-${(g0 - lead.str).toFixed(2)})`); }
+  // --- growth: the grid stays as it is until taken ground nears the enemy edge, then the next band joins
+  { const C = new Campaign2(def), X = def.aor.ext, n0 = def.aor.cells.length;
+    ok(C.checkGrowth().length === 0 && C.def.aor.cells.length === n0, 'no growth at the start');
+    const e = GR5.edgeLine(C.def.aor, X.dir), key = e.key;
+    const take = def.aor.cells.filter(c => c.owner !== 'player' && Math.abs(c[key] - e.v) === 3 && c.terrain !== 'water').sort((a, b) => (b.road || 0) - (a.road || 0))[0];
+    const far = def.aor.cells.filter(c => c.owner !== 'player' && Math.abs(c[key] - e.v) === 5)[0];
+    if (far) { C.owner[far.id] = 'player'; ok(C.checkGrowth().length === 0, 'no growth while the front is 5 squares from the edge'); C.owner[far.id] = 'enemy'; }
+    C.owner[take.id] = 'player';
+    const g = C.checkGrowth(), b1 = X.bands[0];
+    ok(g.length === 1 && g[0] === b1.id, `taking ${C.cellName(take.id)} (3 from the edge) adds band ${b1.id}`);
+    ok(C.def.aor.cells.length === n0 + b1.cells.length && def.aor.cells.length === n0, `grid grew by ${b1.cells.length} squares; the content definition is untouched`);
+    ok(b1.cells.every(c => C.cell(c.id) && C.owner[c.id] === 'enemy' && C.garrison[c.id] >= 1), 'new squares enemy-held with garrisons');
+    const A = C.def.aor; ok(A.cells.length === A.cols * A.rows && A.cells.every(c => c.col >= A.col0 && c.col < A.col0 + A.cols && c.row >= A.row0 && c.row < A.row0 + A.rows), `grown grid is a full ${A.cols}x${A.rows} rectangle (col0 ${A.col0}, row0 ${A.row0})`);
+    ok(A.bbox[0] <= def.aor.bbox[0] && A.bbox[1] <= def.aor.bbox[1] && (A.bbox[0] < def.aor.bbox[0] || A.bbox[1] < def.aor.bbox[1]), 'bbox expanded');
+    const edgeCell = b1.cells.find(c => c[key] === (X.dir === 'south' ? A.row0 + A.rows - 1 : A.col0));
+    ok(edgeCell && C.neighbors(edgeCell.id).length >= 3, 'new squares are linked into the grid');
+    ok((A.enemySources || []).every(id => C.cell(id)) && b1.sources.every(id => A.enemySources.includes(id)) && !A.enemySources.some(id => C.cell(id)[key] === e.v), 'enemy supply sources moved out to the new edge');
+    ok(b1.cells.filter(c => C.owner[c.id] === 'enemy').every(c => (C.esupplied[c.id] ?? 0) >= 0) && b1.cells.some(c => C.esupplied[c.id] >= 1), 'new squares are on the enemy supply network');
+    ok((b1.hubs || []).every(h => C.hubs('enemy').some(x => x.cell === h.cell)), 'band hubs work for the enemy');
+    ok((b1.forces || []).every(f => C.eforces.some(x => x.name === f.name && x.cell === f.cell)), 'band garrison task forces arrive');
+    ok((b1.directives || []).every(d => C.directives.some(a => a.id === d.id)), 'band directive issued');
+    ok(C.gridV === 1 && C.lastGrowth?.band === b1.id, 'grid version bumped for the 3D map');
+    // persistence of the grown grid
+    C.save(); const L2 = Campaign2.load(defs); ok(L2 && L2.def.aor.cells.length === n0 + b1.cells.length && L2.grown.join() === b1.id && L2.owner[b1.cells[0].id] === 'enemy', 'grown grid persists');
+    // a capture in the battle flow triggers growth too: next band after taking a square 3 from the new edge
+    const e2 = GR5.edgeLine(C.def.aor, X.dir), t2 = b1.cells.find(c => Math.abs(c[key] - e2.v) <= 3 && c.terrain !== 'water');
+    C.owner[t2.id] = 'player'; C.pendingAttacks = []; C.endTurn(); ok(C.grown.includes(X.bands[1].id), `end of week adds band ${X.bands[1].id}`);
+    const tf = C.forces[0]; C.battle = { mode: 'attack', tf: tf.id, cell: X.bands[1].cells[0].id }; C.owner[X.bands[1].cells[X.bands[1].cells.length - 1].id] = 'player';
+    C.applyResult({ sector: X.bands[1].cells[0].id, mode: 'attack', win: true, units: [], enemyKia: 3, enemyVehLost: 0, objectivesHeld: 1 });
+    ok(C.grown.includes(X.bands[2].id) && C.def.aor.cells.length === n0 + X.bands.reduce((a, b) => a + b.cells.length, 0), 'a won attack near the new edge adds the last band');
+    ok(C.growthStatus().next === null, 'no more bands after the last');
+    for (let i = 0; i < 3 && !C.outcome(); i++) C.endTurn(); ok(true, 'the grown campaign keeps running'); }
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

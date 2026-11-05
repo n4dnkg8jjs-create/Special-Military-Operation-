@@ -27,6 +27,11 @@ function botFires(C, goals) {
     const d = id => { const p = C.cell(id), q = C.cell(tgt); return Math.max(Math.abs(p.col - q.col), Math.abs(p.row - q.row)); };
     const best = opts.filter(id => !C.moveBattery || true).sort((a, b2) => d(a) - d(b2)).find(id => { const e = C.moveBattery(b.id, id); return !e; }); }
 }
+// v5: enemy formations spotted because of their size are shelled first (they take double attrition)
+function botSpotted(C) {
+  for (const m of C.spottedEnemy?.() || []) { for (const b of C.batteries()) if (!C.fireCheck(b.id, 'suppress', m.cell)) { C.fire(b.id, 'suppress', m.cell); STAT.shotSpotted++; break; } }
+}
+const STAT = { shotSpotted: 0 };
 function prep(C, cell) { let n = 0; for (const b of C.batteries()) { if (n >= 2) break; if (!C.fireCheck(b.id, 'suppress', cell)) { C.fire(b.id, 'suppress', cell); n++; } } return n; }
 function botInterdict(C) {
   if (C.ammo.player < 4) return;
@@ -68,7 +73,7 @@ function botTurn(C) {
     const dest = Object.keys(R.dist).filter(id => C.plan(tf.id, id, R).ok).sort((a, b) => cheb(C, a, tgt) - cheb(C, b, tgt))[0];
     if (dest && cheb(C, dest, tgt) < cheb(C, tf.cell, tgt)) C.move(tf.id, dest);
   }
-  botFires(C, goals); botInterdict(C);
+  botSpotted(C); botFires(C, goals); botInterdict(C);
   // spend LP
   for (let i = 0; i < 4; i++) { const u = C.units.filter(x => C.replaceCost(x) > 4 && C.replaceCost(x) < C.lp - 10 && (C.tfOf(x.uid)?.supply ?? 1) >= 0.5).sort((a, b) => C.replaceCost(b) - C.replaceCost(a))[0]; if (!u) break; C.replenish(u.uid); }
   const t = C.def.tech.find(x => C.techAvailable(x.id) && x.lp < C.lp - 30); if (t) C.orderTech(t.id);
@@ -77,11 +82,13 @@ function botTurn(C) {
 const tot = {};
 for (const side of Object.keys(defs)) {
   if (ONLY && side !== ONLY) continue;
-  const agg = tot[side] = { goal: 0, pct: 0, eatk: 0, fires: 0, uav: 0, uavLost: 0, ok: 0, fail: 0, battles: 0, won: 0, taken: 0, lost: 0, lp: 0, spent: 0, wins: 0, results: {}, perDir: {} };
+  const agg = tot[side] = { grown: 0, spotOwn: 0, spotEn: 0, firedSpot: 0, goal: 0, pct: 0, eatk: 0, fires: 0, uav: 0, uavLost: 0, ok: 0, fail: 0, battles: 0, won: 0, taken: 0, lost: 0, lp: 0, spent: 0, wins: 0, results: {}, perDir: {} };
   for (let s = 0; s < SEEDS; s++) {
     setRandom(seeded(1000 + s * 77)); const rr = Math.random; Math.random = seeded(5000 + s * 31);
     const C = new Campaign2(defs[side]); let n = 0;
-    while (!C.outcome() && n++ < 70) { botTurn(C); C.endTurn(); }
+    STAT.shotSpotted = 0;
+    while (!C.outcome() && n++ < 70) { botTurn(C); C.endTurn(); agg.spotOwn += C.espots?.turn === C.turn ? C.espots.list.length : 0; agg.spotEn += C.spottedEnemy().length; }
+    agg.grown += (C.grown || []).length; agg.firedSpot += STAT.shotSpotted;
     const o = C.outcome(), sc = C.score();
     const G = C.goalProgress(); agg.goal += C.goalDone ? 1 : 0; agg.pct += G ? G.pct : 0; agg.eatk += C.stats.eAttacks || 0; agg.fires += C.fireLog.filter(f => f.side === 'player').length; agg.uav += C.uavLog.length; agg.uavLost += C.uav.player.lost || 0;
     agg.ok += sc.ok; agg.fail += sc.fail; agg.battles += C.stats.battles; agg.won += C.stats.won; agg.taken += C.stats.cellsTaken; agg.lost += C.stats.cellsLost; agg.lp += C.lp; agg.wins += o?.win ? 1 : 0; agg.results[o?.title] = (agg.results[o?.title] || 0) + 1;
@@ -93,5 +100,6 @@ for (const side of Object.keys(defs)) {
   const S = SEEDS;
   console.log(`== ${side}: wins ${agg.wins}/${S} ${JSON.stringify(agg.results)} · directives ${(agg.ok / S).toFixed(1)} ok / ${(agg.fail / S).toFixed(1)} failed · battles won ${agg.won}/${agg.battles} · squares +${(agg.taken / S).toFixed(1)} / -${(agg.lost / S).toFixed(1)} · LP left ${Math.round(agg.lp / S)}`);
   console.log(`   main goal achieved ${agg.goal}/${S} · goal held at end ${Math.round(agg.pct / S * 100)}% · enemy attacks/run ${(agg.eatk / S).toFixed(1)} · own fire missions/run ${(agg.fires / S).toFixed(0)} · UAV sorties/run ${(agg.uav / S).toFixed(0)} (lost ${(agg.uavLost / S).toFixed(1)})`);
+  console.log(`   v5: grid bands added/run ${(agg.grown / S).toFixed(1)} · own task forces spotted (task-force-weeks)/run ${(agg.spotOwn / S).toFixed(1)} · enemy formations spotted/run ${(agg.spotEn / S).toFixed(1)} · fire missions on spotted enemy/run ${(agg.firedSpot / S).toFixed(1)}`);
   console.log('   ' + Object.entries(agg.perDir).map(([id, p]) => `${id.replace(/^(ua|ru)_/, '')} ${p.ok}/${p.n}`).join(' · '));
 }

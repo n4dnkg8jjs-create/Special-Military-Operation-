@@ -49,6 +49,11 @@ def compose_paint(d, scheme, decals=None, seed=1):
     KC = S.get('kind_colors') or {}
     for k_ in KC:
         paintable = paintable & ~km[k_]
+    # kinds that stay clean (pickup cab interior seen through the glass): little dust / mud / cavity grime
+    clean = np.zeros((h, w), bool)
+    for k_ in S.get('clean_kinds', ()):
+        clean |= km[k_]
+    cleanf = clean.astype(np.float32)
     # ---------------- base paint
     n_big = T.fbm(P, 0.45, 4, seed)
     col = T.mix(C(S['base']), C(S['base2']), T.sstep(0.3, 0.7, n_big))
@@ -103,7 +108,7 @@ def compose_paint(d, scheme, decals=None, seed=1):
     # ---------------- cavity grime + streaks
     cav = np.clip(1 - ao, 0, 1)
     grime = C((38, 34, 27))
-    col = T.mix(col, grime, np.clip(cav ** 1.3 * 0.9, 0, 0.8))
+    col = T.mix(col, grime, np.clip(cav ** 1.3 * 0.9, 0, 0.8) * (1 - 0.7 * cleanf))
     vert = np.clip(1 - np.abs(up) * 1.4, 0, 1)
     streak = T.fbm(P * np.array([1, 1, 0.07], np.float32), 26, 3, seed + 13)
     streak_m = T.sstep(0.55, 0.72, streak) * vert * T.sstep(0.45, 0.65, T.fbm(P, 1.4, 2, seed + 14)) * paintable
@@ -135,14 +140,14 @@ def compose_paint(d, scheme, decals=None, seed=1):
     wheelish = km['rim'] | tyre
     dust_m = np.where(wheelish, 0.18 + 0.25 * dn2 + cav * 0.35, dust_m)
     dust_m = np.where(gm | wood | canvas, dust_m * 0.4, dust_m)
-    dust_m = np.clip(dust_m, 0, 1) * S['dust_amt']
+    dust_m = np.clip(dust_m, 0, 1) * S['dust_amt'] * (1 - 0.75 * cleanf)
     col = T.mix(col, C(S['dust']), np.clip(dust_m, 0, 1) * 0.62)
     rough = rough * (1 - dust_m * 0.7) + 0.92 * dust_m * 0.7
     metal *= (1 - dust_m)
     mudn = T.fbm(P, 11, 4, seed + 22)
     mud_m = T.sstep(0.95, 0.4, z) * T.sstep(0.5, 0.62, mudn + 0.3 * T.sstep(0.95, 0.3, z))
     mud_m = np.where(wheelish, T.sstep(0.52, 0.62, mudn) * 0.45, mud_m)
-    mud_m = mud_m * S.get('mud_amt', 1.0)
+    mud_m = mud_m * S.get('mud_amt', 1.0) * (1 - 0.9 * cleanf)
     col = T.mix(col, C(S['mud']), mud_m * 0.75)
     rough = rough * (1 - mud_m) + 0.8 * mud_m
     height += mud_m * 0.0008 * mudn
@@ -209,8 +214,20 @@ def compose_wreck(d, seed=7):
     return col.astype(np.float32), rough, metal, height
 
 # --------------------------------------------------------------------------------------------- materials
-def simple_materials():
-    glass = T.principled('glass', color=(0.015, 0.02, 0.022), rough=0.06, metal=0.0)
+def simple_materials(glass_alpha=None):
+    if glass_alpha is not None:
+        # see-through glazing (pickup cab): glTF alphaMode BLEND
+        glass = T.principled('glass_clear', color=(0.03, 0.04, 0.045), rough=0.04, metal=0.0)
+        glass.node_tree.nodes['Principled BSDF'].inputs['Alpha'].default_value = glass_alpha
+        if hasattr(glass, 'surface_render_method'):
+            glass.surface_render_method = 'BLENDED'
+        if hasattr(glass, 'blend_method'):
+            try:
+                glass.blend_method = 'BLEND'
+            except Exception:
+                pass
+    else:
+        glass = T.principled('glass', color=(0.015, 0.02, 0.022), rough=0.06, metal=0.0)
     light = T.principled('light_lens', color=(0.55, 0.55, 0.5), rough=0.08, metal=0.1)
     return glass, light
 
@@ -332,15 +349,19 @@ def stats(root):
     return out
 
 # --------------------------------------------------------------------------------------------- finalize
-def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_mats=None, out=None):
+def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_mats=None, out=None, glass_alpha=None):
     t0 = time.time()
     root = d['root']
-    glass, light = simple_materials()
+    glass, light = simple_materials(glass_alpha)
     T.atlas_unwrap(d['atlas'])
     print('  unwrap done %.1fs' % (time.time() - t0))
     if d.get('lids'):
         set_lids(d['lids'], 1.0)          # bake AO with the hatches open (lid undersides / openings get real occlusion)
+    for o in d.get('bake_hide', ()):          # e.g. separate glass objects: no AO shadow on the cab interior
+        o.hide_render = True
     data = T.bake_inputs(d['atlas'], 2048, 1024)
+    for o in d.get('bake_hide', ()):
+        o.hide_render = False
     if d.get('lids'):
         set_lids(d['lids'], 0.0)
     print('  bakes done %.1fs' % (time.time() - t0))
@@ -367,6 +388,8 @@ def finalize(d, name, scheme, decals=None, wreck_fn=None, lod_ratio=0.3, track_m
     lodmesh = {}
     lods = []
     for o in d['lod0']:
+        if o in d.get('nolod', ()):        # e.g. glass panes: nothing to decimate, stay visible at range
+            continue
         key = o.data.name
         if key in lodmesh:
             lo = L.link(bpy.data.objects.new(o.name + '_LOD1', lodmesh[key]))

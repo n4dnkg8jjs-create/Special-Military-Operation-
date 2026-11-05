@@ -126,6 +126,10 @@ def chassis():
         # front leaf spring pack
         for k in range(5):
             H.add(box(0.09, 1.5 - k * 0.2, 0.022, c=(s * FR_X, AXLES[0], WZ + 0.12 + k * 0.024), mat='gunmetal'))
+        # vehicles_v5: axle seat under the pack, front hanger + rear shackle up to the rail (the pack floated)
+        H.add(box(0.12, 0.2, 0.05, c=(s * FR_X, AXLES[0], WZ + 0.09), mat='gunmetal'))
+        for yy in (AXLES[0] + 0.72, AXLES[0] - 0.72):
+            H.add(box(0.08, 0.08, FR_Z0 - (WZ + 0.11) + 0.02, c=(s * FR_X, yy, (FR_Z0 + WZ + 0.11) / 2), mat='gunmetal'))
         # rear bogie balancer springs
         for k in range(6):
             H.add(box(0.1, 1.9 - k * 0.22, 0.024, c=(s * FR_X, (AXLES[1] + AXLES[2]) / 2, WZ + 0.1 + k * 0.026), mat='gunmetal'))
@@ -239,6 +243,9 @@ def bonnet_cab():
             st.add(box(0.3, y1d - y0d - 0.1, 0.03, c=(s * (bx - 0.05), (y0d + y1d) / 2, 0.62), bev=0.006, segs=1))
             for yy in (y0d + 0.08, y1d - 0.08):
                 st.add(box(0.02, 0.03, 0.36, c=(s * (bx + 0.08), yy, 0.77)))
+                # vehicles_v5: hanger bracket from the frame rail to the step (the steps floated beside the cab)
+                xa, xb = FR_X + 0.04, bx + 0.09
+                st.add(box(xb - xa, 0.05, 0.05, c=(s * (xa + xb) / 2, yy, 0.955), mat='gunmetal'))
             C.add(st)
         # mirrors on arms at the front corners
         C.add(tube([(s * bx, cy1 - 0.08, belt + 0.3), (s * (bx + 0.25), cy1 + 0.05, belt + 0.45)], 0.015, 6, 'gunmetal'))
@@ -275,7 +282,7 @@ def rear_body():
     R = B()
     y0, y1 = CAB_Y[0] - 0.08, REAR_Y + 0.05
     R.add(box(2.5, y0 - y1, 0.05, c=(0, (y0 + y1) / 2, DECK - 0.025), bev=0.008, segs=1))
-    R.add(box(2.4, y0 - y1, 0.22, c=(0, (y0 + y1) / 2, DECK - 0.16), mat='rolled'))     # platform sub-frame
+    R.add(box(1.6, y0 - y1, 0.22, c=(0, (y0 + y1) / 2, DECK - 0.16), mat='rolled'))     # platform sub-frame (inside the tyres: vehicles_v5)
     # anti-slip plate pattern rows on the deck around the mount
     for y in np.arange(y1 + 0.2, y0 - 0.1, 0.32):
         for x in (-1.1, -0.85, 0.85, 1.1):
@@ -302,7 +309,7 @@ def rear_body():
             c.add(box(w - 0.06, 0.025, 0.012, c=(xc, yy, DECK + h + 0.004)))
         return c
     R.add(container(-0.82, 0.05, 0.8, 1.35, 0.55))     # charges (left, behind cab)
-    R.add(container(-0.82, -1.0, 0.8, 0.7, 0.5))
+    R.add(container(-0.82, -0.78, 0.8, 0.6, 0.5))      # (clear of the turntable: vehicles_v5)
     R.add(container(0.82, -0.75, 0.8, 1.15, 0.5))      # projectiles (right, behind the spare)
     R.add(container(0.0, 0.42, 0.7, 0.55, 0.42))       # FCS / electronics box behind the cab
     R.add(box(0.5, 0.35, 0.3, c=(0.0, -0.15, DECK + 0.15), bev=0.015, segs=2))    # hydraulic power pack
@@ -345,8 +352,8 @@ def rear_body():
     R.add(box(0.52, 0.72, 0.03, c=(1.0, 0.5, 1.22)))
     for x in (0.75, 1.0):
         R.add(cyl(0.11, 0.6, 14, 'y', c=(x, -0.35, 1.0), mat='rolled'))
-    R.add(cyl(0.12, 0.7, 14, 'y', c=(-0.85, -0.45, 0.95), mat='gunmetal'))         # silencer
-    R.add(tube([(-0.85, -0.1, 0.95), (-0.98, 0.0, 1.2), (-1.0, 0.0, 2.6)], 0.06, 10, 'gunmetal'))
+    R.add(cyl(0.12, 0.7, 14, 'y', c=(-0.62, -0.3, 0.95), mat='gunmetal'))         # silencer (inboard of the rear tyres: vehicles_v5)
+    R.add(tube([(-0.62, 0.05, 0.95), (-0.66, 0.2, 1.12), (-0.98, 0.0, 1.32), (-1.0, 0.0, 2.6)], 0.06, 10, 'gunmetal'))
     R.add(cyl(0.075, 0.25, 12, 'z', c=(-1.0, 0.0, 2.45), mat='gunmetal'))           # stack guard
     for k in range(5):
         R.add(box(0.012, 0.07, 0.4, c=(-1.0 - 0.075 * math.cos(k), 0.0 - 0.075 * math.sin(k), 2.45), mat='rolled'))
@@ -397,15 +404,17 @@ def gun_mount():
             a = math.tau * k / 3
             wh.add(tube([(0, 0, 0), (0, r * math.cos(a), r * math.sin(a))], 0.008, 4))
         wh.add(cyl(0.012, 0.08, 6, 'x', c=(-0.04, r * 0.7, 0)))
+        wh.add(cyl(0.02, 0.31, 8, 'x', c=(0.155, 0, 0)))            # vehicles_v5: shaft into the carriage cheek
         M.add(wh, Matrix.Translation((-0.78, y, z)))
     M.add(box(0.12, 0.12, 0.6, c=(-0.68, ty - 0.1, tz - 0.3), bev=0.01, segs=1))            # sight bracket
+    M.add(box(0.2, 0.08, 0.08, c=(-0.55, ty - 0.1, tz - 0.45), bev=0.008, segs=1))           # bracket arm to the cheek
     M.add(box(0.16, 0.22, 0.18, c=(-0.7, ty - 0.1, tz + 0.08), bev=0.015, segs=2))           # panoramic sight
     M.add(cyl(0.05, 0.12, 12, 'z', c=(-0.7, ty - 0.12, tz + 0.23)))
     M.add(box(0.08, 0.1, 0.08, c=(-0.7, ty - 0.05, tz + 0.32), bev=0.01, segs=1))
     M.add(box(0.06, 0.012, 0.04, c=(-0.7, ty + 0.002, tz + 0.33), mat='glass'))
-    M.add(box(0.4, 0.4, 0.06, c=(-0.85, ty - 0.55, cz + 0.62), bev=0.01, segs=1))            # gunner's seat + post
-    M.add(box(0.4, 0.06, 0.4, c=(-0.85, ty - 0.75, cz + 0.85), bev=0.01, segs=1))
-    M.add(cyl(0.03, 0.55, 8, 'z', c=(-0.85, ty - 0.55, cz + 0.33)))
+    M.add(box(0.4, 0.4, 0.06, c=(-0.74, ty - 0.55, cz + 0.62), bev=0.01, segs=1))            # gunner's seat + post (on the turntable)
+    M.add(box(0.4, 0.06, 0.4, c=(-0.74, ty - 0.75, cz + 0.85), bev=0.01, segs=1))
+    M.add(cyl(0.03, 0.57, 8, 'z', c=(-0.72, ty - 0.55, cz + 0.33)))
     # control/FCS box on the right cheek, hydraulic lines
     M.add(box(0.2, 0.42, 0.36, c=(0.64, ty + 0.05, tz - 0.62), bev=0.015, segs=2))
     M.add(box(0.012, 0.3, 0.2, c=(0.745, ty + 0.05, tz - 0.6), mat='gunmetal'))
@@ -428,12 +437,13 @@ def gun_155():
     for s in (1, -1):
         G.add(lathe([(0, -0.2), (0.075, -0.2), (0.075, 1.85), (0.06, 1.92), (0, 1.94)], 14, 'y', c=(s * 0.16, 0, -0.3)))
     G.add(box(0.05, 2.2, 0.05, c=(-0.3, 0.6, 0.12), bev=0.01, segs=1))           # sight linkage bar
+    G.add(cyl(0.075, 1.0, 16, 'x', c=(0, 0, 0), mat='bare'))                      # vehicles_v5: trunnion pins into the cheek bosses (the gun floated)
     for y in np.linspace(-0.2, 1.6, 6):
         for s in (1, -1):
             G.add(bolt(0.013, 0.009).rot('Y', 90 * s), Matrix.Translation((s * 0.28, y, 0.1)))
     # elevating sector on the left of the cradle
     sec = prism([(math.cos(a) * 0.62, math.sin(a) * 0.62) for a in np.linspace(math.radians(-110), math.radians(-40), 9)] + [(0, 0)],
-                0.04, 'x', c=-0.33, bev=0.006, segs=1)
+                0.04, 'x', c=-0.30, bev=0.006, segs=1)
     G.add(sec)
     # breech ring + block, loading tray / rammer behind
     G.add(box(0.46, 0.4, 0.46, c=(0, -0.95, 0.0), bev=0.03, segs=2))
@@ -441,7 +451,7 @@ def gun_155():
     G.add(cyl(0.03, 0.4, 8, 'x', c=(0, -1.1, -0.15), mat='bare'))                 # breech handle shaft
     for s in (1, -1):
         G.add(box(0.05, 0.9, 0.05, c=(s * 0.24, -1.55, -0.12), bev=0.008, segs=1))
-        G.add(rail([(s * 0.3, -1.2, 0.05), (s * 0.34, -1.4, 0.25), (s * 0.34, -1.9, 0.25), (s * 0.3, -2.0, 0.05)], r=0.014, rad=0.06))
+        G.add(rail([(s * 0.22, -1.1, 0.05), (s * 0.34, -1.4, 0.25), (s * 0.34, -1.9, 0.25), (s * 0.24, -2.0, 0.05)], r=0.014, rad=0.06))
     G.add(prism([(-0.17, -0.06), (0.17, -0.06), (0.2, 0.04), (-0.2, 0.04)], 0.8, 'y', c=-1.6, bev=0.008, segs=1).move(0, 0, -0.14))
     G.add(box(0.26, 0.14, 0.14, c=(0, -2.0, -0.12), bev=0.012, segs=1))           # rammer head housing
     # barrel

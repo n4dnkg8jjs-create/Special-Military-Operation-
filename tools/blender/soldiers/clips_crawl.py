@@ -18,7 +18,7 @@ import anim as A
 import clips as C
 from anim import FPS, fk_global, smooth
 from qmath import qmul, qinv, qrot, qaxis, qeuler, qslerp, qfrom_mat, qfix_continuity
-from clips_extra import add_euler, hand_q, arm_to, leg_to, to_clip, noise
+from clips_extra import add_euler, hand_q, arm_to, leg_to, to_clip, noise, ground_clamp
 
 Y = np.array([0, 1.0, 0])
 ANKLE_SIDE = 0.060           # ankle joint height when the boot lies on its inner edge
@@ -139,6 +139,9 @@ def prone_crawl(rig, lm, relq=None, relp=None, T=1.4, speed=0.45):
     ph = 2 * np.pi * t / T
     c, s = np.cos(ph), np.sin(ph)
     lq, root = lying_base(rig, F)
+    # v5: head kept low (user: "still looks weird"): neck less extended, the face a hand's width off the ground, eyes ahead
+    add_euler(rig, lq, 'Neck', 9, 0, 0)
+    add_euler(rig, lq, 'Head', 3, 0, 0)
     # contralateral cycle: u = 0 left knee drawn + right elbow forward (both start driving), u = 0.5 the mirror
     add_euler(rig, lq, 'Hips', 0, -5 * c, 7 * c)                  # pelvis rolls up / yaws forward on the drawn-leg side
     add_euler(rig, lq, 'LowerBack', 0, 2.5 * c, -2.5 * c)
@@ -382,3 +385,267 @@ def wounded_crawl(rig, T=2.0, speed=0.24):
 
 def _e(err):
     return {k: round(float(v), 4) for k, v in err.items()}
+
+
+# ====================================================================================== v5: high crawl + prone transitions
+def knee_cycle(rig, gq, root, side, u0, speed, T, dx=0.14, yk=0.065, lift=0.05, duty=0.5):
+    """high-crawl leg: the knee is planted (world-fixed: slides back at `speed` in the in-place clip) for `duty` of the cycle,
+    then lifted a little and brought forward; shin trails flat behind the knee, instep on the ground (sole up).
+    Returns knee point, ankle target, foot rotation and the planted mask; the hip height that keeps the planted thigh
+    exactly one thigh length from its knee is returned too (caller sets the root from it)."""
+    I = rig.I; sk = rig.sk
+    F = len(gq); t = np.arange(F) / FPS
+    sx = 1 if side == 'Left' else -1
+    stride = speed * T * duty
+    u = ((t / T) - u0) % 1.0
+    planted = u < duty
+    w = np.where(planted, u / duty, smooth(np.clip((u - duty) / (1 - duty), 0, 1)))
+    kz = np.where(planted, stride / 2 - stride * w, -stride / 2 + stride * w)      # relative to the hip (clip space)
+    ky = np.where(planted, yk, yk + lift * np.sin(np.pi * w))
+    return kz, ky, planted, sx, dx
+
+
+def high_crawl(rig, lm, relq=None, relp=None, T=0.72, speed=0.70):
+    """high crawl: body off the ground on the forearms and knees, rifle along the right forearm (right hand on the pistol grip =
+    weapon_socket, muzzle forward and up off the ground), left palm down; contralateral: right elbow + left knee advance together,
+    then left elbow + right knee.  Planted knees / forearms slide back at exactly `speed` (still in the world at that ground speed)."""
+    I = rig.I; sk = rig.sk
+    F = int(round(T * FPS)) + 1
+    t = np.arange(F) / FPS
+    ph = 2 * np.pi * t / T
+    c, s = np.cos(ph), np.sin(ph)
+    L1t = np.linalg.norm(sk.head[I['LeftLeg']] - sk.head[I['LeftUpLeg']])
+    L2t = np.linalg.norm(sk.head[I['LeftFoot']] - sk.head[I['LeftLeg']])
+    lq, root = lying_base(rig, F, hip_pitch=104.0)
+    for b, e in (('LowerBack', (2, 0, 0)), ('Spine', (-2, 0, 0)), ('Spine1', (-6, 0, 0)), ('Neck', (-44, 0, 0)), ('Head', (-24, 0, 0))):
+        lq[:, I[b]] = qeuler(*e, order='YXZ')
+    add_euler(rig, lq, 'Hips', 0, 4 * c, -5 * c)                    # pelvis rolls / yaws toward the advancing knee
+    add_euler(rig, lq, 'Spine1', 0, -4 * c, 4 * c)                  # chest counter-rotates toward the advancing elbow
+    add_euler(rig, lq, 'Head', 0, 3 * c, 0)
+    root[:, 0] += 0.02 * c
+    # left knee planted u in [0, .5) (drives with the right elbow), right knee [.5, 1)
+    legs = {sd: knee_cycle(rig, None if False else lq, root, sd, u0, speed, T) for sd, u0 in (('Left', 0.0), ('Right', 0.5))}
+    # hip joint height: the planted thigh is exactly L1 long from its knee (hips bob a few cm with each knee step)
+    gq0 = rig.global_from_local(lq)
+    gp0 = fk_global(sk, gq0, root * [1, 0, 1])
+    hip_off = {sd: gp0[:, I[sd + 'UpLeg']] for sd in ('Left', 'Right')}         # thigh joints relative to the root
+    hy = np.zeros(F)
+    for f in range(F):
+        sd = 'Left' if legs['Left'][2][f] else 'Right'
+        kz, ky, pl, sx, dx = legs[sd]
+        ho = hip_off[sd][f]
+        dxx = sx * dx - ho[0] + root[f, 0] * 0; dzz = kz[f] - ho[2]
+        hy[f] = ky[f] + np.sqrt(max(L1t ** 2 - dxx ** 2 - dzz ** 2, 0.04)) - ho[1]
+    k = np.exp(-0.5 * (np.arange(-3, 4) / 1.5) ** 2); k /= k.sum()
+    hy = np.convolve(np.concatenate([hy[-4:-1], hy, hy[1:4]]), k, 'valid')
+    root[:, 1] = hy
+    gq = rig.global_from_local(lq)
+    # ---- chest height: the planted elbow's shoulder sits one upper-arm length above its (world-fixed) elbow spot
+    L1 = rig.L1['Right']; YE = 0.05; stride = speed * T * 0.5
+    gp = fk_global(sk, gq, root)
+    Sm = {sd: gp[:, I[sd + 'Arm']].mean(0) for sd in ('Left', 'Right')}
+
+    def espot(side, tf):
+        sx = 1 if side == 'Left' else -1
+        u = ((tf / T) - (0.0 if side == 'Right' else 0.5)) % 1.0
+        z0 = Sm[side][2] + 0.02 + stride / 2
+        z = z0 - stride * (u / 0.5) if u < 0.5 else z0 - stride + stride * smooth((u - 0.5) / 0.5)
+        return np.array([Sm[side][0] - sx * 0.02, YE, z]), u < 0.5
+    bones = (('LowerBack', 0.25), ('Spine', 0.35), ('Spine1', 0.40))
+    for f in range(F):
+        side = 'Right' if (t[f] / T) % 1.0 < 0.5 else 'Left'
+        Es, _ = espot(side, t[f])
+        base = lq[f:f + 1].copy()
+
+        def apply(x):
+            l = base.copy()
+            for b, w in bones:
+                l[0, I[b]] = qmul(l[0, I[b]], qeuler(-x[0] * w, 0, x[1] * w, order='YXZ'))
+            return l
+
+        def resid(x):
+            g_ = rig.global_from_local(apply(x))
+            S = fk_global(sk, g_, root[f:f + 1])[0, I[side + 'Arm']]
+            d = np.hypot(S[0] - Es[0], S[2] - Es[2])
+            req = YE + np.sqrt(max(L1 ** 2 - min(d, L1 * 0.98) ** 2, 0))
+            return np.array([S[1] - req, 0.004 * x[0], 0.004 * x[1]])
+        x = np.zeros(2)
+        for _ in range(8):
+            r0 = resid(x); J = np.zeros((3, 2))
+            for kk in range(2):
+                dxv = np.zeros(2); dxv[kk] = 0.5
+                J[:, kk] = (resid(x + dxv) - r0) / 0.5
+            x = np.clip(x - np.linalg.lstsq(J, r0, rcond=None)[0], [-40, -14], [40, 14])
+        lq[f] = apply(x)[0]
+    gq = A.smooth_locals(rig, rig.global_from_local(lq), ('LowerBack', 'Spine', 'Spine1'), 1.6, loop=True)
+    lq = rig.local(gq)
+    # ---- legs: knee on its spot, shin trailing flat behind it, instep down
+    gp = fk_global(sk, gq, root)
+    for sd in ('Left', 'Right'):
+        kz, ky, pl, sx, dx = legs[sd]
+        H = gp[:, I[sd + 'UpLeg']]
+        K = np.zeros((F, 3)); Ak = np.zeros((F, 3))
+        for f in range(F):
+            z = kz[f]; y = ky[f]
+            xk = sx * dx
+            v2 = L1t ** 2 - (xk - H[f, 0]) ** 2 - (z - H[f, 2]) ** 2
+            if pl[f]:
+                y = H[f, 1] - np.sqrt(max(v2, 0.0004))     # planted: knee fixed in x/z, its height follows the (smoothed) hips
+            else:
+                y = max(y, H[f, 1] - np.sqrt(max(v2, 0.0004)))
+            K[f] = [xk, y, z]
+            sh = np.array([sx * 0.10, 0.0, -1.0]); sh /= np.linalg.norm(sh)
+            Ak[f] = K[f] + sh * L2t * np.cos(np.radians(9)) + np.array([0, L2t * np.sin(np.radians(9)) + (0 if pl[f] else 0.4 * (y - ky[f])), 0])
+        fq = foot_q([sx * 0.10, -0.55, -1.0], [0.0, 1.0, -0.35])
+        pole = K + (K - (H + Ak) / 2) * 2.0
+        gq = leg_to(rig, gq, root, sd, Ak, pole, foot_q=fq)
+    # ---- arms: forearms on the ground, elbows planted alternately (right with the left knee)
+    gp = fk_global(sk, gq, root)
+    L2 = rig.L2['Right']; HL = rig.hand['Left']; HR = rig.hand['Right']
+    arm_t = {}
+    for side, sx, u0 in (('Right', -1, 0.0), ('Left', 1, 0.5)):
+        u = ((t / T) - u0) % 1.0
+        S = gp[:, I[side + 'Arm']]
+        pull = u < 0.5
+        z0 = Sm[side][2] + 0.02 + stride / 2
+        ez = np.where(pull, z0 - stride * (u / 0.5), z0 - stride + stride * smooth(np.clip((u - 0.5) / 0.5, 0, 1)))
+        lift = np.where(pull, 0.0, 0.07 * np.sin(np.pi * np.clip((u - 0.5) / 0.5, 0, 1)))
+        E = np.zeros((F, 3))
+        for f in range(F):
+            d = np.array([Sm[side][0] - sx * 0.02 - S[f, 0], ez[f] - S[f, 2]]); dxz = np.linalg.norm(d)
+            ye = S[f, 1] - np.sqrt(max(L1 ** 2 - dxz ** 2, 0.0))
+            if ye < YE + lift[f]:
+                ye = YE + lift[f]; r = np.sqrt(max(L1 ** 2 - (S[f, 1] - ye) ** 2, 1e-6)); d = d / max(dxz, 1e-6) * r
+            elif dxz > L1 * 0.999:
+                d = d / dxz * L1 * 0.999; ye = S[f, 1]
+            E[f] = [S[f, 0] + d[0], ye, S[f, 2] + d[1]]
+        inward = np.radians(22 if side == 'Right' else 34)
+        fdir = np.stack([np.full(F, -sx * np.sin(inward)), np.full(F, 0.06), np.full(F, np.cos(inward))], 1)
+        fdir[:, 1] += np.where(pull, 0.0, 0.12 * np.sin(np.pi * np.clip((u - 0.5) / 0.5, 0, 1)))
+        fdir /= np.linalg.norm(fdir, axis=1, keepdims=True)
+        Wr = E + fdir * L2
+        pole = E + (E - (S + Wr) / 2) * 1.5
+        arm_t[side] = (E, Wr, fdir, u, pull, pole)
+    E, Wr, fdir, uR, pullR, poleR = arm_t['Right']
+    hqR = np.zeros((F, 4))
+    for f in range(F):
+        zf = fdir[f] * [1, 0, 1]; zf /= np.linalg.norm(zf)
+        yaw = np.radians(8)
+        Zg = np.array([zf[0] * np.cos(yaw) + zf[2] * np.sin(yaw), -0.04, -zf[0] * np.sin(yaw) + zf[2] * np.cos(yaw)]); Zg /= np.linalg.norm(Zg)
+        Xg = np.array([0.0, -1.0, 0.0]); Xg = Xg - Zg * (Xg @ Zg); Xg /= np.linalg.norm(Xg)
+        Xg = (Xg * np.cos(np.radians(25)) + np.cross(Zg, Xg) * np.sin(np.radians(25)))
+        Yg = np.cross(Zg, Xg)
+        hqR[f] = qmul(qfrom_mat(np.stack([Xg, Yg, Zg], 1)), qinv(rig.sock_q))
+    palmR = Wr + qrot(hqR, np.broadcast_to(HR['palm'] - HR['wrist'], (F, 3)))
+    gq = arm_to(rig, gq, root, 'Right', palmR, hqR, poleR, twist=0.6)
+    E, Wl, fdir, uL, pullL, poleL = arm_t['Left']
+    hqL = hand_q(rig, 'Left', fdir * [1, 0, 1] + [0, -0.15, 0], np.array([0, -1.0, 0]))
+    palmL = Wl + qrot(hqL, np.broadcast_to(HL['palm'] - HL['wrist'], (F, 3)))
+    gq = arm_to(rig, gq, root, 'Left', palmL, hqL, poleL, twist=0.6)
+    lq = rig.local(gq)
+    rig.finger_curl(lq, 'Right', 58, 72, 22)
+    rig.finger_curl(lq, 'Left', 22, 28, 8)
+    gq = rig.global_from_local(lq)
+    # rifle clear of the ground
+    import build_anims as BA
+    gpos = fk_global(sk, gq, root)
+    gq_r = gq[:, I['RightHand']]
+    gqw = qmul(gq_r, np.broadcast_to(rig.sock_q, (F, 4)))
+    gpw = gpos[:, I['RightHand']] + qrot(gq_r, np.broadcast_to(rig.sock_t, (F, 3)))
+    lowp = np.stack([gpw + qrot(gqw, np.broadcast_to(p_, (F, 3))) for p_ in BA.GUN_LOW_PTS], 1)[..., 1].min(1)
+    need = A._grow_smooth(np.maximum(0.012 - lowp, 0), 2, loop=True)
+    if need.max() > 0.001:
+        gq = arm_to(rig, gq, root, 'Right', palmR + np.outer(need, Y), hqR, poleR, twist=0.6)
+        lq = rig.local(gq); rig.finger_curl(lq, 'Right', 58, 72, 22); gq = rig.global_from_local(lq)
+    gq[-1] = gq[0]; root[-1] = root[0]
+    return to_clip('high_crawl', rig, gq, root, True, speed,
+                   notes=f'high crawl: body off the ground on the forearms and knees (hips ~{root[:, 1].mean():.2f} m), rifle along the right forearm '
+                         f'(right hand on the pistol grip = weapon_socket, muzzle forward, clear of the ground), left palm down; contralateral {T:.2f} s cycle: '
+                         f'left knee + right forearm planted 0-{T / 2:.2f} s while the right knee and the left elbow advance, then the mirror; shins trail flat, '
+                         f'insteps down; head up looking ahead; planted knees / elbows slide back at exactly {speed:.2f} m/s in the in-place clip',
+                   events={'left_knee': [0.0, T / 2], 'right_knee': [T / 2, T], 'weapon': 'weapon_socket (right hand), the left hand is free'})
+
+
+def prone_transition(rig, crouch, prone, name='prone_down', dur=0.9):
+    """crouch_idle (kneeling, rifle in both hands) -> prone_idle: the off-hand reaches for the ground first, the hips pitch forward
+    and drop while the knees stay down, the chest is lowered onto the elbows, the legs straighten back last.  Built by per-bone-group
+    time-warped interpolation of the two cached poses (frame 0 of each) + a ground clamp (no part ever below the floor).
+    prone_up = the same motion reversed (push up on the elbows, draw the knees in, come up to the kneel)."""
+    I = rig.I; sk = rig.sk
+    F = int(round(dur * FPS)) + 1
+    t = np.arange(F) / FPS / dur                         # 0..1
+    lq0, r0 = crouch['lq'][0], crouch['root'][0]
+    lq1, r1 = prone['lq'][0], prone['root'][0]
+    def win(a, b):
+        return smooth(np.clip((t - a) / (b - a), 0, 1))
+    groups = {
+        'arms': (0.00, 0.55, ('Shoulder', 'Arm', 'ForeArm', 'Hand', 'Finger', 'Thumb')),
+        'hips': (0.12, 0.80, ('Hips',)),
+        'spine': (0.15, 0.85, ('LowerBack', 'Spine')),
+        'head': (0.25, 1.00, ('Neck', 'Head')),
+        'legs': (0.35, 1.00, ('UpLeg', 'Leg', 'Foot', 'Toe', 'HipJoint')),
+    }
+    W = np.zeros((F, rig.n))
+    for j, nm in enumerate(sk.names):
+        W[:, j] = win(0.1, 0.9)
+        for a_, b_, keys in groups.values():
+            if any(k in nm for k in keys):
+                W[:, j] = win(a_, b_); break
+    lq = np.zeros((F, rig.n, 4))
+    for f in range(F):
+        for j in range(rig.n):
+            lq[f, j] = qslerp(lq0[j], lq1[j], W[f, j])
+    wr = win(0.12, 0.85)
+    root = r0[None] * (1 - wr[:, None]) + r1[None] * wr[:, None]
+    gq = rig.global_from_local(lq)
+    # legs: the knees go down onto the ground first and stay on it (shins trailing flat), then slide back as the hips drop and
+    # the body lies down; the hip height follows from the thigh length over the knee (no floating, no legs through the ground)
+    L1t = np.linalg.norm(sk.head[I['LeftLeg']] - sk.head[I['LeftUpLeg']]); L2t = np.linalg.norm(sk.head[I['LeftFoot']] - sk.head[I['LeftLeg']])
+    g0 = fk_global(sk, rig.global_from_local(lq0[None]), r0[None])[0]; g1 = fk_global(sk, rig.global_from_local(lq1[None]), r1[None])[0]
+    w1 = win(0.0, 0.32); w2 = win(0.32, 0.88)
+    KN = {}; AN = {}
+    for sd, sx in (('Left', 1), ('Right', -1)):
+        k0, a0 = g0[I[sd + 'Leg']], g0[I[sd + 'Foot']]; k1, a1 = g1[I[sd + 'Leg']], g1[I[sd + 'Foot']]
+        kk = np.array([sx * 0.13, 0.065, -0.04])
+        K = (k0[None] * (1 - w1[:, None]) + kk[None] * w1[:, None]) * (1 - w2[:, None]) + k1[None] * w2[:, None]
+        sh = np.array([sx * 0.06, np.sin(np.radians(10)), -np.cos(np.radians(10))]); sh /= np.linalg.norm(sh)
+        akn = kk + sh * L2t
+        Aa = (a0[None] * (1 - w1[:, None]) + akn[None] * w1[:, None]) * (1 - w2[:, None]) + (K + (a1 - k1)[None]) * w2[:, None]
+        KN[sd] = K; AN[sd] = Aa
+    # root height from the knees (both thighs reach their knees), never below the interpolated prone height
+    gpz = fk_global(sk, gq, root * [1, 0, 1])
+    hyk = np.zeros(F)
+    for f in range(F):
+        hs = []
+        for sd in ('Left', 'Right'):
+            ho = gpz[f, I[sd + 'UpLeg']]; K = KN[sd][f]
+            d2 = (K[0] - ho[0]) ** 2 + (K[2] - ho[2]) ** 2
+            hs.append(K[1] + np.sqrt(max(L1t ** 2 * 0.985 - d2, 0.0)) - ho[1])
+        hyk[f] = min(hs)
+    wk = np.clip(1 - w2 * 1.15, 0, 1) * win(0.0, 0.2)                 # crouch start / prone end keep their own heights
+    root[:, 1] = root[:, 1] * (1 - wk) + np.minimum(hyk, root[:, 1] + 0.05) * wk
+    gq = rig.global_from_local(lq)
+    gp = fk_global(sk, gq, root)
+    for sd in ('Left', 'Right'):
+        H = gp[:, I[sd + 'UpLeg']]
+        pole = KN[sd] + (KN[sd] - (H + AN[sd]) / 2) * 2.0
+        gq = leg_to(rig, gq, root, sd, AN[sd], pole, foot_q=gq[:, I[sd + 'Foot']].copy())
+    lq = rig.local(gq)
+    root = ground_clamp(rig, gq, root, floor=0.0)
+    # smooth the clamp so it doesn't jerk
+    k = np.exp(-0.5 * (np.arange(-4, 5) / 2.0) ** 2); k /= k.sum()
+    y = np.concatenate([np.repeat(root[:1, 1], 4), root[:, 1], np.repeat(root[-1:, 1], 4)])
+    root[:, 1] = np.maximum(np.convolve(y, k, 'valid'), root[:, 1])
+    low = np.minimum(A.sole_low(rig, gq, root, 'Left'), A.sole_low(rig, gq, root, 'Right'))
+    lift = A._grow_smooth(np.maximum(0.002 - low, 0), 3)
+    lift[0] = 0.0; lift[-1] = 0.0
+    root[:, 1] += lift
+    ev = {'down': [0.0, dur]}
+    if name == 'prone_up':
+        gq = gq[::-1].copy(); root = root[::-1].copy()
+    return to_clip(name, rig, gq, root, False, 0.0,
+                   notes=(f'{"crouch_idle -> prone_idle" if name == "prone_down" else "prone_idle -> crouch_idle"} transition, {dur:.2f} s: '
+                          + ('off hand reaches for the ground, hips pitch forward and drop with the knees down, chest lowered onto the elbows, legs straighten back last'
+                             if name == 'prone_down' else 'push up on the elbows, legs drawn in under the hips, torso comes up to the kneel; rifle stays in the right hand')
+                          + '; first / last frame == the cached stance poses; ground clamp: no part below the floor'),
+                   events=ev)

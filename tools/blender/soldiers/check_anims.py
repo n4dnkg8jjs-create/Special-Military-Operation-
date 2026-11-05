@@ -72,6 +72,9 @@ LOCO += ['pistol_walk', 'pistol_run']
 # 'world' slide = horizontal travel after adding ground_speed * t (the game moves the root at that speed)
 CRAWL = {'prone_crawl': [('soleL', 0.0, 0.70, 0.015), ('soleR', 0.70, 1.40, 0.015), ('RightForeArm', 0.05, 0.65, 0.05), ('LeftForeArm', 0.75, 1.35, 0.05)],
          'wounded_crawl': [('palmR', 0.0, 1.0, 0.015), ('palmL', 1.0, 2.0, 0.015), ('soleL', 0.0, 1.0, 0.015)]}
+# v5 high crawl (forearms and knees, body off the ground): planted knees (shin joint) / forearms; no flat-body / boot checks
+CRAWL['high_crawl'] = [('LeftLeg', 0.03, 0.33, 0.03), ('RightLeg', 0.40, 0.70, 0.03), ('RightForeArm', 0.03, 0.33, 0.05), ('LeftForeArm', 0.40, 0.70, 0.05)]
+CRAWL_RAISED = {'high_crawl'}
 CRAWL_FLAT = 0.03          # crawls: the bare torso stays within 3 cm of the ground in every frame
 CRAWL_FEET_UP = 0.06       # crawls: boots never lifted more than 6 cm (sliding on the ground)
 # ---- ATGM / FPV teams + drone reactions (clips_atgm.py)
@@ -613,6 +616,12 @@ def crawl_hatch_checks(name, r, pose, model, B, soles, gun_q, gun_p):
             if slide > tol:
                 r['flags'].append(f'crawl contact {pt} slides {slide:.3f} m in the world ({t0}-{t1} s, tol {tol})')
         r['crawl_slide'] = res
+        if name in CRAWL_RAISED:
+            tv = Torso(B, model).verts(pose)[..., 1].min(1)
+            r['crawl_torso_clear'] = round(float(tv.min()), 4)
+            if tv.min() < 0.0:
+                r['flags'].append(f'high crawl torso through the ground {tv.min():.3f} m')
+            return
         tv = Torso(B, model).verts(pose)[..., 1].min(1)
         r['crawl_flat'] = (round(float(tv.min()), 4), round(float(tv.max()), 4))
         if tv.max() > CRAWL_FLAT:

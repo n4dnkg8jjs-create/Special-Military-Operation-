@@ -57,7 +57,7 @@ export class MedevacTruck extends Vehicle {
     this.hull = N('hull') || this.model; this.turret = null; this.gun = null; this.muzzle = null; this.coax = null;
     this.exhaustN = N('exhaust'); this.roadwheels = []; this.trackMats = [];
     this.model.traverse(o => {
-      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+      if (o.isMesh) { o.castShadow = !o.material?.transparent; o.receiveShadow = true; }   // see-through cab glass casts no shadow into the cab
       if (o.userData?.hidden) o.visible = false;
       if (/_wreck$/i.test(o.name)) { o.visible = false; (this.wreckParts ||= []).push(o); }
       if (/_LOD1$/i.test(o.name)) { o.visible = false; (this.lod1 ||= []).push(o); }

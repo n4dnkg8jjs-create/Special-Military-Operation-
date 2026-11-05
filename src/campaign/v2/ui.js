@@ -40,7 +40,13 @@ export async function openCampaign2(onLaunch) {
 
 async function start(root, C, onLaunch, opts) {
   const get = u => fetch(u).then(r => (r.ok ? r.json() : null)).catch(() => null);
-  const [osm, geo] = await Promise.all([get(new URL(`./data/osm_${C.def.mapId || C.def.id}.json`, import.meta.url)), C.def.aor.geo ? get(C.def.aor.geo) : null]);
+  const X = C.baseDef?.aor?.ext || C.def.aor.ext;
+  const [osm, geo, osmX, geoX] = await Promise.all([get(new URL(`./data/osm_${C.def.mapId || C.def.id}.json`, import.meta.url)), C.def.aor.geo ? get(C.def.aor.geo) : null,
+    X?.osm ? get(new URL(`./data/${X.osm}.json`, import.meta.url)) : null, X?.geo ? get(X.geo) : null]);
+  // v5: the OSM data of the grid extension (drawn once the grid has grown over it) joins the main extracts
+  const join = (a, b) => { if (!a || !b) return a || b; const o = { ...a }; for (const [k, v] of Object.entries(b)) if (Array.isArray(v) && Array.isArray(a[k])) o[k] = [...a[k], ...v]; return o; };
+  if (osm && osmX) Object.assign(osm, join(osm, { ...osmX, patches: [] }));
+  if (geo && geoX) geo.geo = join(geo.geo, geoX.geo);
   const ui = new CampaignScreen(root, C, onLaunch, osm, opts, geo); window.__c2 = ui;
   return ui;
 }
@@ -69,9 +75,10 @@ export class CampaignScreen {
     root.classList.toggle('vs', !!this.vs);
     root.innerHTML = '';
     this.mapEl = h('div', { class: 'c2-map' }); root.appendChild(this.mapEl);
+    this.osm = osm; this.geo = geo;
     this.map = new StrategicMap(this.mapEl, C, osm, geo);
     this.map.viewOffset = 190; this.map.resize();   // keep the camera's centre in the part of the screen the side panel leaves free
-    this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id) };
+    this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id), regrid: () => this.regrid() };
     this.top = h('div', { class: 'c2-top' }); this.left = h('div', { class: 'c2-left' }); this.right = h('div', { class: 'c2-right hidden' });
     this.bottom = h('div', { class: 'c2-bottom' }); this.toastEl = h('div', { class: 'c2-toast' });
     this.goalEl = h('div', { class: 'c2-goal' });
@@ -101,6 +108,22 @@ export class CampaignScreen {
     // the counters in the top bar and the tabs (LP, forces, orders) follow every change, not just the panel clicked
     if (typeof r !== 'string') { this.renderTop(); this.renderLeft(); }
     return r;
+  }
+  // v5: the grid has grown past the original AOR (growth.js): the 3D map is rebuilt over the larger extent, the camera
+  // keeps its place and then glides to the new squares
+  regrid() {
+    const old = this.map, cam = { ...old.tcam }, vo = old.viewOffset, on = old.on, sup = old.showSupply, tgt = old.targeting;
+    old.dispose();
+    this.map = new StrategicMap(this.mapEl, this.C, this.osm, this.geo);
+    this.map.viewOffset = vo; this.map.on = on; this.map.showSupply = sup; this.map.resize(); this.map.jump(cam);
+    if (tgt) this.map.setTargeting(tgt);
+    const g = this.C.lastGrowth;
+    if (g && g.turn >= this.C.turn - 1 && g.cells?.length && !this.opts?.noFly) {
+      const ps = g.cells.map(id => this.map.cellCenter(id)), x = ps.reduce((a, p) => a + p.x, 0) / ps.length, z = ps.reduce((a, p) => a + p.z, 0) / ps.length;
+      this.map.flyTo({ x: (x + cam.x) / 2, z: (z + cam.z) / 2, dist: Math.max(cam.dist, 22), yaw: cam.yaw, pitch: 0.95 }, 1.4);
+      this.toast(`The map extends: ${g.name}`, true);
+    }
+    this.map.refresh(); this.select(this.sel && this.C.tf(this.sel) ? this.sel : null);
   }
   // versus: a new authoritative state for this side (from the host)
   setCampaign(C) {
@@ -233,7 +256,8 @@ export class CampaignScreen {
     const card = h('div', { class: 'c2-card tfsel' });
     card.innerHTML = `<div class="c2-tfh">${natoSvg(us, 44, 31)}<div style="flex:1"><div class="c2-ch lg">${esc(f.name)}</div><div class="c2-ck">${esc(cellRef(C, f.cell))}${f.reserve ? ' · brigade reserve' : ''}</div></div><button class="c2-x" title="Deselect (Esc)">×</button></div>
       <div class="c2-mp">${Array.from({ length: Math.ceil(mx) }, (_, i) => `<i class="${f.mp >= i + 1 - 1e-6 ? 'on' : f.mp > i + 1e-6 ? 'half' : ''}"></i>`).join('')}<span>${fmt(f.mp)} / ${mx} MP${f.attacked ? ' · has attacked' : ''}</span></div>
-      <div class="c2-kv"><span>Supply</span><b class="${(f.supply ?? 1) >= 1 ? 'good' : (f.supply ?? 1) > 0 ? 'warn' : 'bad'}">${(f.supply ?? 1) >= 1 ? 'in supply' : (f.supply ?? 1) > 0 ? 'stretched — at the end of the supply line' : 'OUT OF SUPPLY: half movement, no replacements, battle penalties'}</b></div>`;
+      <div class="c2-kv"><span>Supply</span><b class="${(f.supply ?? 1) >= 1 ? 'good' : (f.supply ?? 1) > 0 ? 'warn' : 'bad'}">${(f.supply ?? 1) >= 1 ? 'in supply' : (f.supply ?? 1) > 0 ? 'stretched — at the end of the supply line' : 'OUT OF SUPPLY: half movement, no replacements, battle penalties'}</b></div>${(() => { const sp = C.spotStatus?.(f.id); if (!sp) return '';
+        return `<div class="c2-kv" title="Big formations give themselves away: a signature of ${sp.size}+ (companies, +1 moving, +1 attacking, −1 still in a town or woods) is seen by the enemy without recon — bigger is seen deeper behind the line"><span>Signature</span><b class="${sp.spotted ? 'bad' : sp.sig >= sp.size ? 'warn' : 'good'}">${sp.n} coy · ${sp.sig}${sp.spotted ? ` — SPOTTED (seen ${sp.depth} sq. deep)` : sp.sig >= sp.size ? ` — would be seen within ${sp.depth} sq. of the line` : ' — hidden'}</b></div>`; })()}`;
     card.querySelector('.c2-x').onclick = () => this.select(null);
     if (f.planned) { const pl = h('div', { class: 'c2-plan' }, `<span>⚔ Attack planned: <b>${esc(cellRef(C, f.planned.cell))}</b>${f.planned.auto ? ' (staff-resolved)' : ''}</span>`); pl.appendChild(h('button', { class: 'c2-btn', onclick: () => { const e = this.act('cancelAttack', f.id); if (e) this.toast(e, false); this.select(f.id); } }, 'Call off')); card.appendChild(pl); }
     const st = h('div', { class: 'c2-seg' });
@@ -267,6 +291,8 @@ export class CampaignScreen {
       <div class="c2-kv"><span>Roads</span><b>${['none (cross-country)', 'local road', 'paved highway'][c.road || 0]}${c.river ? (c.bridge ? ' · river (bridge)' : ' · river (no bridge)') : ''}</b></div>
       <div class="c2-kv"><span>Fortifications</span><b>${(o === 'player' || known) ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[id] || 0] : 'unknown'}</b></div>
       ${o !== 'player' ? `<div class="c2-kv"><span>Enemy strength</span><b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] : 'unknown — reconnoitre'}</b></div>` : `<div class="c2-kv"><span>Supply</span><b class="${sup >= 1 ? 'good' : sup > 0 ? 'warn' : 'bad'}">${sup >= 1 ? 'in supply' : sup > 0 ? 'stretched' : 'cut off'}</b></div>`}
+      ${(() => { const sp = (C.spottedEnemy?.() || []).filter(f => f.cell === id); return sp.length ? `<div class="c2-kv"><span>Spotted</span><b class="bad">${sp.map(f => `${esc(f.name)} (~${f.n} coy)`).join(', ')}</b></div>` : ''; })()}
+      ${c.ext ? '<div class="c2-kv"><span>Map</span><b class="warn">past the original area of responsibility</b></div>' : ''}
       <div class="c2-kv"><span>Value</span><b>${c.vp || 0} VP · +${c.lp || 0} LP/wk</b></div>
       <div class="c2-kv"><span>Battle map</span><b>${esc(c.battleMap || '')}</b></div>${c.notes ? `<div class="c2-desc">${esc(c.notes)}</div>` : ''}`);
     if (C.depotAllowed(id)) card.appendChild(h('button', { class: 'c2-btn', title: 'A forward supply depot extends the supply network from this square', onclick: () => { const e = this.act('buildDepot', id); this.toast(e || 'Forward depot established', !e); this.render(); this.map.refresh(); } }, 'Establish forward depot (30 LP)'));
@@ -768,7 +794,7 @@ export function injectCss() {
 .c2-tok .c2-nato{display:block}.c2-tok-ech{font-size:11px;font-weight:800;line-height:9px;color:#dfe9f7;letter-spacing:1px;text-shadow:0 0 2px #000}
 .c2-tok-n{font-size:12px;font-weight:700;color:#fff;background:rgba(10,18,30,.78);padding:0 5px;margin-top:2px;white-space:nowrap;border:1px solid rgba(79,143,224,.5)}
 .c2-tok-mp{display:flex;gap:2px;margin-top:2px;align-items:center}.c2-tok-mp i{width:7px;height:4px;background:rgba(255,255,255,.18)}.c2-tok-mp i.on{background:#9fd07a}.c2-tok-mp i.half{background:linear-gradient(90deg,#9fd07a 50%,rgba(255,255,255,.18) 50%)}
-.c2-tok-mp b{font-size:9px;letter-spacing:.08em;padding:0 3px;margin-left:3px}.c2-oos{background:var(--en);color:#fff}.c2-used{background:#555;color:#ddd}
+.c2-tok-mp b{font-size:9px;letter-spacing:.08em;padding:0 3px;margin-left:3px}.c2-oos{background:var(--en);color:#fff}.c2-spot{background:#d8b25a;color:#1b1406}.c2-tok.spotted .c2-tok-n{box-shadow:0 0 0 1px #d8b25a,0 0 10px rgba(216,178,90,.55)}.c2-used{background:#555;color:#ddd}
 .c2-stem{position:absolute;bottom:0;left:50%;width:2px;height:22px;background:linear-gradient(rgba(220,235,255,.9),rgba(220,235,255,.1))}
 .c2-tok.sel .c2-nato rect{stroke:var(--acc);stroke-width:3}.c2-tok.sel .c2-tok-n{background:var(--acc);color:#14130f;border-color:var(--acc)}.c2-tok.sel{filter:drop-shadow(0 0 6px rgba(216,178,90,.8))}
 .c2-tok.res .c2-tok-n{opacity:.8}.c2-tok.oos .c2-nato rect{fill:#6c7d93}

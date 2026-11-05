@@ -15,6 +15,7 @@
 import { GRID_RU as G } from './content_grid_ru.js';
 import { THEATRE2 } from './content_theatre.js';
 import { TECH_RU } from './tech.js';
+import { GRID_EXT_RU as GX } from './content_grid_ext_ru.js';
 
 const N = name => { const c = G.cells.find(x => x.name === name); if (!c) throw new Error(`RU grid: no cell named ${name}`); return c.id; };
 const unit = (uid, key, name, kind, men, veh, xp = 0) => ({ uid, key, name, kind, men, menMax: men, wounded: 0, ...(veh ? { veh: { kind: veh, hp: 1, lost: false } } : {}), xp, battles: 0, kills: 0, status: 'ready' });
@@ -32,6 +33,32 @@ const SRC = {
   meduza0219: { title: 'Meduza: Russia has full control of Avdiivka coke plant, says Russian MoD (19 Feb 2024)', url: 'https://meduza.io/en/news/2024/02/19/russia-has-full-control-of-avdiivka-coke-and-chemical-plant-says-russian-defense-ministry' },
   emp0227: { title: 'Euromaidan Press: Ukraine withdraws from Stepove, Severne near Avdiivka (27 Feb 2024)', url: 'https://euromaidanpress.com/2024/02/27/military-ukraine-withdraws-from-stepove-severne-near-avdiivka/' },
 };
+// campaign v5: the grid grows west past the original AOR (growth.js; negative column numbers, content_grid_ext_ru.js)
+const XN = name => { for (const b of GX.bands) { const c = b.cells.find(x => x.name === name); if (c) return c.id; } throw new Error(`RU grid extension: no cell named ${name}`); };
+const EXT_BANDS = {
+  ru_x1: { name: 'Novoselivka Persha – Netailove',
+    text: 'West of Berdychi, Orlivka and Tonenke the Ukrainian rear opens up along the Vovcha: Sokil, Yevhenivka, Novoselivka Persha on the O0542 and Netailove on the road to Pokrovsk.',
+    hubs: [{ cell: XN('Novoselivka Persha'), name: 'Novoselivka Persha supply point (O0542)', kind: 'ammo', side: 'enemy' }],
+    forces: [{ name: 'Mech. bn (Novoselivka Persha)', kind: 'mech', cell: XN('Novoselivka Persha'), str: 1.1 }],
+    directives: [{ id: 'ru_x_novoselivka', issue: { when: 'grown:ru_x1' }, from: 'Group of Forces "Centre"', title: 'Pursue west: Novoselivka Persha', kind: 'capture', targets: [XN('Novoselivka Persha')], deadline: 7,
+      text: 'The enemy\'s line west of Avdiivka is broken. Do not let him dig in on the Vovcha: take Novoselivka Persha and the O0542 crossing before his reserves arrive.',
+      reward: { lp: 60 }, penalty: { lp: 5 }, history: 'After Avdiivka fell in February 2024 Russian forces kept attacking west along the Vovcha towards Pokrovsk; Novoselivka Persha and Netailove were fought over through the spring and summer of 2024.', sources: [SRC.avdiivka] }] },
+  ru_x2: { name: 'Karlivka – Prohres',
+    text: 'The Karlivka reservoir anchors the Ukrainian line to the south-west; north of it Prohres sits on the railway and the road from Ocheretyne to Pokrovsk.',
+    hubs: [{ cell: XN('Karlivka'), name: 'Karlivka supply point (dam road)', kind: 'ammo', side: 'enemy' }],
+    forces: [{ name: 'Rifle bn (Karlivka)', kind: 'inf', cell: XN('Karlivka'), str: 1.0 }],
+    directives: [{ id: 'ru_x_prohres', issue: { when: 'grown:ru_x2' }, from: 'Group of Forces "Centre"', title: 'Cut the railway at Prohres', kind: 'capture', targets: [XN('Prohres')], deadline: 6,
+      text: 'Take Prohres on the Ocheretyne – Pokrovsk railway and road: the enemy\'s northern flank then has no lateral road left.',
+      reward: { lp: 60 }, penalty: { lp: 5 }, history: 'Prohres and the villages along the Ocheretyne – Pokrovsk railway were fought over in the spring of 2024.', sources: [SRC.avdiivka] }] },
+  ru_x3: { name: 'Blahodatne – Halytsynivka',
+    text: 'The Ukrainian rear on the road to Pokrovsk: Blahodatne, Halytsynivka and the villages on the upper Vovcha, depots and reserve positions.',
+    hubs: [{ cell: XN('Blahodatne'), name: 'Blahodatne logistics base (Pokrovsk road)', kind: 'base', side: 'enemy' }],
+    forces: [{ name: 'Mech. bn (Pokrovsk axis reserve)', kind: 'mech', cell: XN('Blahodatne'), str: 1.2 }],
+    directives: [{ id: 'ru_x_blahodatne', issue: { when: 'grown:ru_x3' }, from: 'Group of Forces "Centre"', title: 'Blahodatne', kind: 'capture', targets: [XN('Blahodatne')], deadline: 7,
+      text: 'Take Blahodatne and the enemy\'s logistics base on the Pokrovsk road.', reward: { lp: 90 }, penalty: { lp: 5 },
+      history: 'The 2024 Russian offensive west of Avdiivka was aimed at Pokrovsk, the main logistics hub of the Ukrainian forces in Donetsk oblast.', sources: [SRC.avdiivka] }] },
+};
+const EXT_RU = { dir: GX.dir, bbox: GX.bbox, geo: GX.geo, osm: 'osm_RU_ext', bands: GX.bands.map(b => ({ ...b, ...EXT_BANDS[b.id] })) };
 
 // Brigade scale: every unit record is a COMPANY (fought on the RTS battle map by a representative squad / vehicle), every
 // task force a BATTALION group. In February 2023 the brigade holds the arc from Vesele to Pisky dispersed, a battalion
@@ -107,6 +134,7 @@ export const CAMPAIGN2_RU = {
     ],
     reveal: 3,
     osm: 'assets/campaign/osm/RU/', geo: 'assets/campaign/osm/RU/aor_v2.json',
+    ext: EXT_RU,
     notes: 'Starting line of 6 Feb 2023: Russian forces east and south of the salient (Yasynuvata, Spartak, the Donetsk airport, Pisky), in Vesele, Kamianka and Novoselivka Druha to the north-east; Krasnohorivka contested. The town, the coke plant, the industrial zone, Opytne, Vodiane and the western supply villages Ukrainian-held. Supply from the east and south edges (Yasynuvata railhead, the N-20, the T-05-05 from Donetsk).',
   },
   directives: [
@@ -299,8 +327,8 @@ export const CAMPAIGN2_RU = {
     { key: 'assault', label: 'Assault Coy', desc: 'Six assaulters in heavy armour with grenades and an RPG for trench and building clearing.', kind: 'assault', men: 6, lp: 30, eta: 2, limit: 3 },
     { key: 'assault_plus', label: 'Assault Coy (2nd detachment)', desc: 'Additional assault squads from a second assault detachment.', kind: 'assault', men: 6, lp: 35, eta: 2, req: ['ru_inf_stormco'], limit: 2 },
     { key: 'atgm', label: 'Kornet ATGM team', desc: 'Three-man team with a 9M133 Kornet launcher and missiles.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 3 },
-    { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with quadcopters and drop munitions.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
-    { key: 'fpv_plus', label: 'FPV team (UAV company)', desc: 'Additional FPV strike-drone crews from the brigade\'s UAV company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ru_dr_uav'], limit: 3 },
+    { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with five FPV strike quadcopters.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
+    { key: 'fpv_plus', label: 'FPV team (UAV company)', desc: 'Additional FPV strike-drone crews (five drones each) from the brigade\'s UAV company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ru_dr_uav'], limit: 3 },
     { key: 'spg', label: '2S19M2 Msta-S', desc: 'Tracked 152 mm self-propelled howitzer with a five-man crew.', kind: 'spg', vehicle: 'spg', men: 5, lp: 95, eta: 3, req: ['ru_fire_msta'], limit: 1 },
   ],
   tech: TECH_RU,   // tech tree data: src/campaign/v2/tech.js (vehicle lines + upgrades, support branches)

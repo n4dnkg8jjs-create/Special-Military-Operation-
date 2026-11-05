@@ -131,10 +131,11 @@ def road_wheel_t80():
         w.add(cyl(0.032, 0.012, 10, 'x', c=(0.142, 0.19 * math.cos(a), 0.19 * math.sin(a)), mat='gunmetal'))
         w.add(lathe([(0.032, -0.006), (0.04, -0.004), (0.04, 0.004), (0.032, 0.006)], 10, 'x', mat='rim', cap=False,
                     c=(0.146, 0.19 * math.cos(a), 0.19 * math.sin(a))))
-    w.add(lathe([(0, 0.0), (0.075, 0.0), (0.075, 0.028), (0.052, 0.046), (0.0, 0.05)], 16, 'x', mat='rim', c=(0.185, 0, 0)))
+    bv = L.bvh_of(w)
+    w.add(L.snap(lathe([(0, 0.0), (0.075, 0.0), (0.075, 0.028), (0.052, 0.046), (0.0, 0.05)], 16, 'x', mat='rim', c=(0.2, 0, 0)), None, bvh=bv))
     for i in range(6):
         a = math.tau * i / 6
-        w.add(bolt(0.01, 0.011, 6, 'rim').rot('Y', 90), Matrix.Translation((0.188, 0.1 * math.cos(a), 0.1 * math.sin(a))))
+        w.add(L.snap(bolt(0.01, 0.011, 6, 'rim').rot('Y', 90).move(0.21, 0.1 * math.cos(a), 0.1 * math.sin(a)), None, bvh=bv))
     return w
 
 def idler_t80():
@@ -144,10 +145,13 @@ def idler_t80():
         s = 1 if xo > 0 else -1
         w.add(lathe([(0.0, xo + 0.04 * s), (0.1, xo + 0.03 * s), (0.2, xo + 0.012 * s), (r - 0.02, xo + 0.03 * s), (r, xo + 0.03 * s),
                      (r, xo - 0.03 * s), (r - 0.03, xo - 0.03 * s), (0.0, xo - 0.03 * s)], 30, 'x', mat='rim'))
+    bv = L.bvh_of(w)
+    for xo in (0.075, -0.075):
+        s = 1 if xo > 0 else -1
         for i in range(6):
             a = math.tau * i / 6
-            w.add(cyl(0.04, 0.01, 10, 'x', c=(xo + 0.035 * s, 0.15 * math.cos(a), 0.15 * math.sin(a)), mat='gunmetal'))
-    w.add(lathe([(0, 0.0), (0.065, 0.0), (0.065, 0.05), (0.04, 0.07), (0, 0.07)], 14, 'x', mat='rim', c=(0.1, 0, 0)))
+            w.add(L.snap(cyl(0.04, 0.01, 10, 'x', c=(xo + 0.06 * s, 0.15 * math.cos(a), 0.15 * math.sin(a)), mat='gunmetal'), None, d=(-s, 0, 0), bvh=bv))
+    w.add(L.snap(lathe([(0, 0.0), (0.065, 0.0), (0.065, 0.05), (0.04, 0.07), (0, 0.07)], 14, 'x', mat='rim', c=(0.13, 0, 0)), None, bvh=bv))
     return w
 
 def sprocket_t80():
@@ -464,14 +468,21 @@ def turret_details(T_):
     T_.add(box(2.1, 0.05, 0.04, c=(0, ry - 0.03, SHOULDER - 0.04), bev=0.008, segs=1))      # rear shoulder lip
     return T_
 
-def cope_cage():
-    """2023-24 anti-drone 'mangal' over the turret: square-tube posts, frame, slats + side bars."""
+def cope_cage(TU=None):
+    """2023-24 anti-drone 'mangal' over the turret: square-tube posts, frame, slats + side bars.
+    Post feet are dropped onto the real turret surface (vehicles_v5: the cage floated 27 cm over the sloped roof edges)."""
     C = B(mat='cage')
     top = ROOF + 0.85
+    bv = L.bvh_of(TU) if TU is not None else None
     posts = [(-1.18, 0.5), (1.18, 0.5), (-1.2, -1.1), (1.2, -1.1), (-0.8, -2.55), (0.8, -2.55)]
     for (x, y) in posts:
-        C.add(tube([(x, y, ROOF), (x * 1.04, y, top)], 0.022, 4, 'cage'))
-        C.add(box(0.12, 0.12, 0.012, c=(x, y, ROOF + 0.006), mat='cage'))
+        zf = ROOF
+        if bv is not None:
+            loc, nrm, idx, dist = bv.ray_cast(V((x, y, top)), V((0, 0, -1)), 3.0)
+            if loc is not None:
+                zf = loc.z
+        C.add(tube([(x, y, zf - 0.01), (x * 1.04, y, top)], 0.022, 4, 'cage'))
+        C.add(box(0.12, 0.12, 0.012, c=(x, y, zf + 0.004), mat='cage'))
     fr = [(-1.5, 1.7), (1.5, 1.7), (1.56, -3.15), (-1.56, -3.15)]
     for i in range(4):
         a, b_ = fr[i], fr[(i + 1) % 4]
@@ -584,8 +595,8 @@ def build():
     TU = turret_body()
     turret_details(TU)
     turE = L.node_empty('turret', hullE, (0, TUR_Y, tz))
+    CG = cope_cage(TU)   # before node_mesh: it frees TU's bmesh, and the cage posts are snapped onto the turret
     tur_mesh = L.node_mesh('turret_geo', TU, turE, (0, TUR_Y, tz))
-    CG = cope_cage()
     cage_mesh = L.node_mesh('cope_cage', CG, turE, (0, TUR_Y, tz))
     gunE = L.node_empty('gun_pivot', turE, TRUN)
     G = gun_2a64()

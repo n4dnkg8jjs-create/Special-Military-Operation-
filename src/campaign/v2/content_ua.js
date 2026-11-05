@@ -13,6 +13,7 @@
 import { GRID_UA as G } from './content_grid_ua.js';
 import { THEATRE2 } from './content_theatre.js';
 import { TECH_UA } from './tech.js';
+import { GRID_EXT_UA as GX } from './content_grid_ext_ua.js';
 
 const N = name => { const c = G.cells.find(x => x.name === name); if (!c) throw new Error(`UA grid: no cell named ${name}`); return c.id; };
 const unit = (uid, key, name, kind, men, veh, xp = 0) => ({ uid, key, name, kind, men, menMax: men, wounded: 0, ...(veh ? { veh: { kind: veh, hp: 1, lost: false } } : {}), xp, battles: 0, kills: 0, status: 'ready' });
@@ -29,6 +30,33 @@ const SRC = {
   isw1226: { title: 'ISW / CTP: Russian Offensive Campaign Assessment, 26 Dec 2023', url: 'https://www.criticalthreats.org/analysis/russian-offensive-campaign-assessment-december-26-2023' },
   isw0217: { title: 'ISW / CTP: Russian Offensive Campaign Assessment, 17 Feb 2024', url: 'https://www.criticalthreats.org/analysis/russian-offensive-campaign-assessment-february-17-2024' },
 };
+// campaign v5: the grid grows south past the original AOR (growth.js). Squares of the extension (content_grid_ext_ua.js)
+const XN = name => { for (const b of GX.bands) { const c = b.cells.find(x => x.name === name); if (c) return c.id; } throw new Error(`UA grid extension: no cell named ${name}`); };
+const EXT_BANDS = {
+  ua_x1: { name: 'Nove – Kharkove – Ocheretuvate',
+    text: 'Behind Solodka Balka and Verbove the ground falls away to the R-85 lateral road: Nove, Kharkove and Ocheretuvate, depots and reserve positions behind the second belt.',
+    hubs: [{ cell: XN('Nove'), name: 'Nove supply point', kind: 'ammo', side: 'enemy' }],
+    forces: [{ name: 'Motor-rifle bn (Ocheretuvate)', kind: 'mech', cell: XN('Ocheretuvate'), str: 1.0 }],
+    directives: [{ id: 'ua_x_nove', issue: { when: 'grown:ua_x1' }, from: 'OSUV "Tavria"', title: 'Exploit past the second belt: Nove', kind: 'capture', targets: [XN('Nove')], deadline: 6,
+      text: 'The brigade has broken through the second belt. Push south along the T-04-08 to Nove before the enemy closes the gap with his reserves from Tokmak; keep the flanks on the R-85 under drone watch.',
+      reward: { lp: 60 }, penalty: { lp: 5 },
+      history: 'In reality the 2023 counteroffensive culminated in the Robotyne – Verbove salient: Ukrainian troops did not reach Nove or the R-85.', sources: [SRC.counter] }] },
+  ua_x2: { name: 'The Tokmak line',
+    text: 'North of Tokmak the third Russian belt runs across the T-04-08: a continuous anti-tank ditch, dragon\'s teeth and dozens of bunkers (mapped in OpenStreetMap), with Chervonohirka as its strongpoint.',
+    hubs: [{ cell: XN('Chervonohirka'), name: 'Chervonohirka ammunition point', kind: 'ammo', side: 'enemy' }],
+    forces: [{ name: 'Fortress bn (Tokmak line)', kind: 'inf', cell: XN('Tokmak line (T-04-08)'), str: 1.1 }],
+    directives: [{ id: 'ua_x_tokmak_line', issue: { when: 'grown:ua_x2' }, from: 'OSUV "Tavria" — Intelligence', title: 'Map the Tokmak line', kind: 'recon', targets: [XN('Tokmak line (T-04-08)'), XN('Chervonohirka')], deadline: 5,
+      text: 'The third belt in front of Tokmak is close. Fly drones over the ditch and the strongpoints at Chervonohirka and on the T-04-08: where are the lanes, the bunkers, the reserves?',
+      reward: { lp: 40 }, penalty: { lp: 5 }, history: 'Satellite imagery in 2023 showed a continuous defence line around Tokmak\'s northern approaches, the third of the belts south of Orikhiv.', sources: [SRC.surovikin] }] },
+  ua_x3: { name: 'Tokmak',
+    text: 'Tokmak, the rail junction and supply hub of the whole Russian grouping south of Orikhiv: the railhead on the Fedorivka – Volnovakha line, depots, a fortified town.',
+    hubs: [{ cell: XN('Tokmak station'), name: 'Tokmak railhead (Fedorivka – Volnovakha line)', kind: 'railhead', side: 'enemy' }],
+    forces: [{ name: 'Tokmak garrison (motor-rifle regiment)', kind: 'mech', cell: XN('Tokmak'), str: 1.4 }],
+    directives: [{ id: 'ua_x_tokmak', issue: { when: 'grown:ua_x3' }, from: 'OSUV "Tavria"', title: 'Combat order: the outskirts of Tokmak', kind: 'capture', targets: [XN('Tokmak')], deadline: 8,
+      text: 'Tokmak is in reach. Seize the northern quarters of the town and put the railhead under direct fire: every train that cannot unload in Tokmak is a shell that does not reach the front.',
+      reward: { lp: 150 }, penalty: { lp: 10 }, history: 'Tokmak was the counteroffensive\'s operational objective (cutting the land bridge to Crimea); the front stayed about 20 km north of it.', sources: [SRC.counter] }] },
+};
+const EXT_UA = { dir: GX.dir, bbox: GX.bbox, geo: GX.geo, osm: 'osm_UA_ext', bands: GX.bands.map(b => ({ ...b, ...EXT_BANDS[b.id] })) };
 
 // Brigade scale: every unit record is a COMPANY (fought on the RTS battle map by a representative squad / vehicle), every
 // task force a BATTALION group. In February 2023 the brigade holds the sector dispersed — a battalion per stretch of
@@ -105,6 +133,7 @@ export const CAMPAIGN2_UA = {
     ],
     reveal: 3,
     osm: 'assets/campaign/osm/UA/', geo: 'assets/campaign/osm/UA/aor_v2.json',
+    ext: EXT_UA,
     notes: 'Starting line of 6 Feb 2023 ~2–3 km south of Novodanylivka and Mala Tokmachka. Russian first positions behind minefields in the fields and tree belts north of Robotyne; the main belt (anti-tank ditches, dragon\'s teeth, trenches, bunkers — the "Surovikin line") from south of Robotyne past Novoprokopivka to the heights west of Verbove; a second belt around Solodka Balka. Supply from the north edge (N-08 to Zaporizhzhia, T-04-08, T-08-12).',
   },
   directives: [
@@ -295,8 +324,8 @@ export const CAMPAIGN2_UA = {
     { key: 'assault', label: 'Assault Coy', desc: 'Six assaulters in heavy armour with optics and grenades for trench and house clearing.', kind: 'assault', men: 6, lp: 35, eta: 2, limit: 3 },
     { key: 'assault_plus', label: 'Assault Coy (assault bn)', desc: 'Additional assault squads from the brigade\'s assault company.', kind: 'assault', men: 6, lp: 40, eta: 2, req: ['ua_inf_assault'], limit: 2 },
     { key: 'atgm', label: 'Stugna-P ATGM team', desc: 'Three-man team with a Stugna-P launcher and missiles in transport tubes.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 3 },
-    { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with strike quadcopters and drop munitions.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
-    { key: 'fpv_plus', label: 'FPV team (unmanned systems company)', desc: 'Additional strike-drone crews from the brigade\'s unmanned systems company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ua_dr_uas'], limit: 3 },
+    { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with five FPV strike quadcopters.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
+    { key: 'fpv_plus', label: 'FPV team (unmanned systems company)', desc: 'Additional FPV strike-drone crews (five drones each) from the brigade\'s unmanned systems company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ua_dr_uas'], limit: 3 },
     { key: 'spg', label: '155 mm self-propelled howitzer', desc: 'A 155 mm SP howitzer with its crew (M109 / 2S22 Bohdana class).', kind: 'spg', vehicle: 'spg', men: 5, lp: 100, eta: 4, req: ['ua_fire_spg'], limit: 1 },
   ],
   tech: TECH_UA,   // tech tree data: src/campaign/v2/tech.js (vehicle lines + upgrades, support branches)
