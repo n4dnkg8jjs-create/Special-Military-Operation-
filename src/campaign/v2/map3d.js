@@ -158,6 +158,8 @@ export class StrategicMap {
     if (Math.max(W, H) > GROUND_MAX) { const k = GROUND_MAX / Math.max(W, H); W = Math.round(W * k); H = Math.round(H * k); }
     this.gW = W; this.gH = H;
     this.groundCv = document.createElement('canvas'); this.groundCv.width = W; this.groundCv.height = H;
+    // painted once per season and uploaded as a texture: a CPU canvas (no GPU read-back of the ~50 MB ground on upload)
+    this.groundCv.getContext('2d', { willReadFrequently: true });
     this.groundTex = new THREE.CanvasTexture(this.groundCv); this.groundTex.colorSpace = THREE.SRGBColorSpace; this.groundTex.anisotropy = 8;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(this.x1 - this.x0, this.z1 - this.z0), new THREE.MeshLambertMaterial({ map: this.groundTex }));
     m.rotation.x = -Math.PI / 2; m.position.set((this.x0 + this.x1) / 2, 0, (this.z0 + this.z1) / 2); this.scene.add(m); this.ground = m;

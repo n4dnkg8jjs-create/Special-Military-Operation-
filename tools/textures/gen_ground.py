@@ -242,12 +242,12 @@ def grass():
     def gcol(t, x, y):
         p = patch[int(y) % N, int(x) % N]
         straw = lerp(col([0.44, 0.4, 0.28]), col([0.6, 0.55, 0.4]), t)
-        olive = lerp(col([0.27, 0.29, 0.18]), col([0.42, 0.43, 0.28]), t)
+        olive = lerp(col([0.3, 0.32, 0.19]), col([0.46, 0.47, 0.29]), t)
         grey = lerp(col([0.4, 0.41, 0.35]), col([0.55, 0.56, 0.49]), t)
         c = lerp(straw, olive, 0.4 + 0.5 * p) if r.random() > 0.2 else grey
         return c * (0.75 + 0.35 * t)
     # dead thatch mat underneath (dark grey-brown, matted)
-    blades(cv, r, 30000, 14, 1.6, lambda t, x, y: lerp(col([0.2, 0.18, 0.13]), col([0.34, 0.31, 0.23]), t), lambda t, x, y: 0.25 + 0.2 * t, dens=np.clip(dens + 0.3, 0, 1), droop=0.4)
+    blades(cv, r, 30000, 14, 1.6, lambda t, x, y: lerp(col([0.27, 0.26, 0.17]), col([0.4, 0.38, 0.25]), t), lambda t, x, y: 0.25 + 0.2 * t, dens=np.clip(dens + 0.45, 0, 1), droop=0.4)
     blades(cv, r, 60000, 15, 1.7, gcol, lambda t, x, y: 0.45 + 0.5 * t * (0.6 + 0.4 * tuft[int(y) % N, int(x) % N]), dens=dens, droop=0.6)
     # second pass: longer lodged straw lying flat
     blades(cv, r, 2500, 34, 1.6, lambda t, x, y: lerp(col([0.48, 0.43, 0.31]), col([0.64, 0.58, 0.43]), t), lambda t, x, y: 0.55 + 0.35 * t, dens=dens, droop=0.25)

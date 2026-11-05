@@ -74,7 +74,8 @@ await page.evaluate(() => { const ui = window.__c2; ui.tab = 'hc'; ui.hcTab = 't
 await page.evaluate(() => { const ui = window.__c2; ui.tab = 'log'; ui.renderLeft(); ui.toggleSupply(); }); await shot(`ui_${side}_log_supply.png`);
 // persistence: reload restores the same week
 const before = await page.evaluate(() => ({ turn: window.__c2.C.turn, lp: window.__c2.C.lp }));
-await page.goto(`${base}/index.html?campaign=1&nointro`); await done();
+// (v6: the true-scale map is a heavier first frame under swiftshader: the reload's load event came at ~32 s, over the 30 s default)
+{ const t0 = Date.now(); await page.goto(`${base}/index.html?campaign=1&nointro`, { timeout: 180000 }); console.log('reload: load event after', Date.now() - t0, 'ms'); await done(); }
 const after = await page.evaluate(() => ({ turn: window.__c2.C.turn, lp: window.__c2.C.lp }));
 ok(after.turn === before.turn && after.lp === before.lp, `persisted ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
 
