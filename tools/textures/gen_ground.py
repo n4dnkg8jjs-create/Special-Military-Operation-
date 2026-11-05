@@ -135,7 +135,7 @@ def blades(cv, r, count, length, width, colfn, hfn, dens=None, angle=None, droop
 
 
 # brightness match: the grade was tuned on the old sets' final ground colours (old ground shader output)
-GAIN = {'dirt': 1.15, 'grass': 1.32, 'fallow': 1.25, 'stubble': 1.12, 'rubble': 1.3, 'plowed': 1.0, 'mud': 1.0}
+GAIN = {'dirt': 1.15, 'grass': 1.32, 'fallow': 1.4, 'stubble': 1.12, 'rubble': 1.3, 'plowed': 1.0, 'mud': 1.0}
 
 
 def finish(name, alb, h, rough, nstr, ao_amt=0.35, n_out=512):
@@ -263,7 +263,7 @@ def fallow():
     patch = stretch(fnoise(N, 3, 16, 402, 1.1))
     dens = np.clip((patch - 0.3) * 1.6, 0.0, 1.0) ** 1.3
     cv = Canvas(N, salb, sh * 0.5)
-    blades(cv, r, 15000, 16, 1.8, lambda t, x, y: lerp(col([0.42, 0.38, 0.28]), col([0.6, 0.55, 0.41]), t) if r.random() > 0.25 else lerp(col([0.38, 0.4, 0.34]), col([0.52, 0.54, 0.46]), t), lambda t, x, y: 0.5 + 0.45 * t, dens=dens, droop=0.7)
+    blades(cv, r, 19000, 16, 1.8, lambda t, x, y: lerp(col([0.42, 0.4, 0.27]), col([0.6, 0.57, 0.39]), t) if r.random() > 0.25 else lerp(col([0.38, 0.4, 0.34]), col([0.52, 0.54, 0.46]), t), lambda t, x, y: 0.5 + 0.45 * t, dens=dens, droop=0.7)
     # rosettes of dead weeds (darker brown stars)
     for _ in range(260):
         x, y = r.random() * N, r.random() * N
