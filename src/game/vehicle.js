@@ -179,10 +179,30 @@ export class Vehicle {
     const w = this.def.width / 2 + (outside ? 1.4 + (i >> 1) * 0.6 : 0.8);
     return this.pos.clone().addScaledVector(r, side * w).addScaledVector(f, this.kind === 'btr' ? -0.6 - (i >> 1) * 0.7 : -3);
   }
-  orderMove(x, z, facing = null, fast = false, rev = false) {
+  orderMove(x, z, facing = null, fast = false, rev = null) {
     if (this.destroyed || this.immobile) return;
-    this.order = { type: 'move', x, z, facing }; this.fast = fast; this.revDrive = !!rev;   // rev: back up along the route, front armour kept toward the enemy
+    // reverse gear is chosen automatically (rev === null): a short hop to a point behind the hull, or pulling back
+    // with a known enemy ahead, is done backing up so the front armour stays toward the threat (and the crew ends
+    // facing it); a long or winding route behind is driven nose-first
+    const auto = rev == null; if (auto) rev = this.wantsReverse(x, z);
+    if (auto && rev && facing == null && !this.def.wheeled) facing = this.heading;
+    this.order = { type: 'move', x, z, facing }; this.fast = fast; this.revDrive = !!rev; this.revAuto = auto && !!rev; this.revChk = false; this.revBad = 0;
     this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'btr' ? 1.8 : 2.0, this.def.wheeled ? 'wheeled' : 'tracked');
+  }
+  wantsReverse(x, z) {
+    if (this.kind === 'medevac' || this.spgHold) return false;
+    const dx = x - this.pos.x, dz = z - this.pos.z, d = Math.hypot(dx, dz);
+    if (d < 6 || Math.abs(angDiff(Math.atan2(dx, dz), this.heading)) < 2.0) return false;   // not behind us
+    if (d < 45) return true;                                                               // short shuffle back
+    if (d > 260) return false;
+    const G = this.game, me = this.side;
+    for (const u of G.enemiesOf(me)) {                                                     // backing out of contact
+      const t = u.seenBy?.[me]; if (t == null || G.time - t > 25) continue;
+      const p = u.type === 'vehicle' ? u.pos : u.center?.(); if (!p) continue;
+      const ex = p.x - this.pos.x, ez = p.z - this.pos.z;
+      if (Math.hypot(ex, ez) < 1600 && Math.abs(angDiff(Math.atan2(ex, ez), this.heading)) < 1.1) return true;
+    }
+    return false;
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
   halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.revDrive = false; this.fireAt = null; if (this.spg) this.spg.mission = null; }
@@ -235,8 +255,13 @@ export class Vehicle {
       for (let fx = qx, fz = qz; j < P.length; j++) { const d = Math.hypot(P[j][0] - fx, P[j][1] - fz); if (d >= rem) { cx = fx + (P[j][0] - fx) * rem / d; cz = fz + (P[j][1] - fz) * rem / d; break; } rem -= d; fx = cx = P[j][0]; fz = cz = P[j][1]; }
       const off = Math.hypot(px - qx, pz - qz); if (off > 8) { cx = bx; cz = bz; }   // knocked well off the line: head for the next waypoint
       // reversing: steer the tail at the look-ahead point instead of the nose
+      if (this.revAuto && !this.revChk) {   // route came back long (going round an obstacle): drive it forward instead
+        this.revChk = true; let L = 0; for (let k = this.pathI; k < P.length; k++) L += Math.hypot(P[k][0] - (k > this.pathI ? P[k - 1][0] : px), P[k][1] - (k > this.pathI ? P[k - 1][1] : pz));
+        if (L > Math.max(70, Math.hypot(this.goal[0] - px, this.goal[1] - pz) * 1.5)) { this.revDrive = this.revAuto = false; if (this.order && !this.def.wheeled) this.order.facing = null; }
+      }
       const rv = this.revDrive, want = Math.atan2(cx - px, cz - pz) + (rv ? Math.PI : 0), err = angDiff(want, this.heading);
       turn = THREE.MathUtils.clamp(err * 2.2, -1, 1);
+      if (this.revAuto) { this.revBad = Math.abs(err) > 2.3 ? (this.revBad || 0) + dt : 0; if (this.revBad > 1.5) { this.revDrive = this.revAuto = false; this.revBad = 0; } }   // the route now leads off ahead of the nose
       const cornering = Math.abs(err) > 0.6 ? (def.wheeled ? 0.35 : 0) : Math.abs(err) > 0.3 ? 0.7 : 1;
       // brake ahead of a sharp bend at the next waypoint (and for the end of the route)
       let bend = 1;

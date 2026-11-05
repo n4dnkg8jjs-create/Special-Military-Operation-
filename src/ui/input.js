@@ -7,7 +7,7 @@ export class Input {
     this.g = game; this.hud = hud; game.input = this;
     this.canvas = document.getElementById('view'); this.box = document.getElementById('selbox');
     this.ray = new THREE.Raycaster(); this.ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    this.runMode = false; this.reverseMode = false; this.mode = null;
+    this.runMode = false; this.mode = null;
     const c = this.canvas;
     c.addEventListener('contextmenu', e => e.preventDefault());
     c.addEventListener('pointerdown', e => this.down(e));
@@ -84,7 +84,7 @@ export class Input {
       const g1 = this.groundAt(e.clientX, e.clientY);
       if (d.g0 && g1 && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 25) {
         if (this.g.phase === 'deploy') { for (const p of this.formationPlan(d.g0, g1)) this.g.deployPlace(p.unit, p.x, p.z, p.facing); this.g.sfx('ui_order'); return; }
-        for (const p of this.formationPlan(d.g0, g1)) p.unit.type === 'squad' ? p.unit.orderMove(p.x, p.z, p.facing, p.width, this.runMode || e.altKey) : p.unit.orderMove(p.x, p.z, p.facing, this.runMode, this.reverseMode);
+        for (const p of this.formationPlan(d.g0, g1)) p.unit.type === 'squad' ? p.unit.orderMove(p.x, p.z, p.facing, p.width, this.runMode || e.altKey) : p.unit.orderMove(p.x, p.z, p.facing, this.runMode);
         this.g.sfx('ui_order'); return;
       }
       if (this.g.phase === 'deploy') { if (g1) this.moveSelected(g1.x, g1.z, null); return; }
@@ -114,7 +114,7 @@ export class Input {
     sel.forEach((u, i) => {
       const off = (i - (sel.length - 1) / 2) * 22;
       const px = x + right[0] * off, pz = z + right[1] * off;
-      if (u.type === 'squad') u.orderMove(px, pz, f, 18, this.runMode); else u.orderMove(px, pz, f, this.runMode, this.reverseMode);
+      if (u.type === 'squad') u.orderMove(px, pz, f, 18, this.runMode); else u.orderMove(px, pz, f, this.runMode);
     });
     this.g.sfx('ui_order');
   }
@@ -143,7 +143,6 @@ export class Input {
   }
   command(o) {
     const sel = [...this.hud.selected]; const g = this.g;
-    if (o === 'reverse') { this.reverseMode = !this.reverseMode; this.hud.alert?.(this.reverseMode ? 'Reverse: vehicle moves back up, front toward the enemy' : 'Reverse off'); }
     if (o === 'run') { this.runMode = !this.runMode; for (const u of sel) if (u.type === 'squad') u.run = this.runMode; }
     if (o === 'holdfire') { const v = !sel.every(u => u.holdFire); for (const u of sel) u.holdFire = v; }
     if (o === 'halt') for (const u of sel) u.halt();
@@ -174,7 +173,7 @@ export class Input {
   }
   key(e) {
     if (e.repeat) return; const g = this.g;
-    const map = { KeyR: 'run', KeyZ: 'reverse', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke', KeyC: 'fireground' };
+    const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke', KeyC: 'fireground' };
     if (map[e.code]) { this.command(map[e.code]); return; }
     if (e.code === 'Enter' && g.phase === 'deploy') { g.startBattle(); return; }
     if (e.code === 'Tab') { e.preventDefault(); this.hud.rosterMini = !this.hud.rosterMini; this.hud.rebuildCards(); return; }
