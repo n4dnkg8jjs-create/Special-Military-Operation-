@@ -30,7 +30,14 @@ const D = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 //  * defend   — one garrison per held objective in trenches / buildings; withdraws when hopeless and short of
 //               tickets (trading space for tickets).
 // Damaged vehicles pull back, broken squads regroup out of contact, the reserve is kept until it is needed.
-export function Commander(game) { return Q.has('ainew') ? new CommanderV2(game) : new CommanderV1(game); }   // v2 behind ?ainew until it out-plays v1 in benchmarks (previews/ai_v2/summary_final.md)
+// v2 holds ground better (positional defence on the map's trench systems + counterattacks: robotyne/avdiivka campaign
+// attack battles 446/292 tickets vs v1 356/199, more objectives held) but still attacks worse than v1, so: v2 when the
+// enemy defends a campaign sector (the player attacks), v1 otherwise. ?ainew forces v2, ?aiold forces v1.
+export function Commander(game) {
+  if (Q.has('ainew')) return new CommanderV2(game);
+  if (Q.has('aiold')) return new CommanderV1(game);
+  return game.campaign?.mode === 'attack' ? new CommanderV2(game) : new CommanderV1(game);
+}
 
 export class CommanderV2 extends CommanderV1 {
   constructor(game) {
