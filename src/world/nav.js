@@ -13,8 +13,10 @@ export const VEH_COST = {
 // Infantry route costs (per metre, on top of the cell cost; open ground = 1): scrape = right against a wall (clear < 0.9 m),
 // wallBand = along a wall / fence (0.9-2.6 m off it: a slight pull towards facades), threat = a cell a known enemy can
 // see into (findPath opts.threat), heur / heurThr = A* heuristic weight without / with a threat (navbench.mjs: threat 1.25 +
-// heurThr 1.3 cut the exposed share of routes from 52 % to 37 % for 4 % more length, ~3 ms a query).
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.25, heur: 1.0, heurThr: 1.3 };
+// heurThr 1.8 cut the exposed share of routes from 52 % to 42 % for 2 % more length, ~1.5 ms a query). thrIter: a threat
+// query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
+// exposed, the search would flood the map).
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.25, heur: 1.0, heurThr: 1.8, thrIter: 40000 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -236,7 +238,8 @@ export class NavGrid {
       const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1; heap.push(h(s), s);
       const D = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1], DX = [1, -1, 0, 0, 1, -1, 1, -1], DZ = [0, 0, 1, -1, 1, 1, -1, -1], C = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
       let it = 0, best = s, bestH = h(s);
-      while (heap.size && it++ < maxIter) {
+      const cap = this._thr ? Math.min(maxIter, INF_COST.thrIter) : maxIter;
+      while (heap.size && it++ < cap) {
         const k = heap.pop(); if (cl[k] === gen) continue; cl[k] = gen;
         if (k === t) { best = k; break; }
         const hk = h(k); if (hk < bestH) { bestH = hk; best = k; }
@@ -251,6 +254,7 @@ export class NavGrid {
         }
       }
       this.lastIter = it;
+      if (this._thr && best !== t && it >= cap) { this._thr = null; return this.findPathInf(sx, sz, tx, tz, clearance, maxIter, null); }
       const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
       return this.smoothInf(raw, clearance, best === t ? [tx, tz] : null);
     } finally { this._thr = null; }

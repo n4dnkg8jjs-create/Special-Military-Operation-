@@ -703,7 +703,7 @@ const BUILD = {
         const tb = k => Array.from({ length: 4 }, (_, i) => { const dir = o_.clone().multiplyScalar(0.7).add(V3(0, 0.62, 0)).add(V3(0, 0, 0.42)).normalize().applyAxisAngle(UP, sx * (i - 1.5) * 0.1); const foot = c.p.clone().add(o_.clone().multiplyScalar(k)).add(a_.clone().multiplyScalar((i - 1.5) * 0.075)); return [foot, foot.clone().add(dir.multiplyScalar(0.3))]; });
         let k = 0.1;
         for (let it = 0; it < 6; it++) {
-          let need = 0; for (const [f, e] of tb(k)) for (const q of [f, e, f.clone().lerp(e, 0.5)]) { const back = cast(S.meshes, S.node, q.clone().add(o_.clone().multiplyScalar(0.5)), o_.clone().negate(), 1.0); if (back && 0.5 - back.dist < 0.06) need = Math.max(need, 0.06 - (0.5 - back.dist)); }
+          let need = 0; for (const [f, e] of tb(k)) for (const q of [f, e, f.clone().lerp(e, 0.5)]) { const back = cast(S.meshes, S.node, q.clone().add(o_.clone().multiplyScalar(0.5)), o_.clone().negate(), 1.0); if (back && back.dist - 0.5 < 0.06) need = Math.max(need, 0.06 - (back.dist - 0.5)); }   // clearance of q from the turret along the side normal
           if (need <= 0) break; k += need + 0.01;
         }
         if (k > 0.2) continue;

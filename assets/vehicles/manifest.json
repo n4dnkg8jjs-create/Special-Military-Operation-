@@ -9389,7 +9389,7 @@
     ],
     "bed_floor_height": 0.88
    },
-   "markings": "red crosses on the front doors, bed sides, bonnet and tailgate; dirty white civilian paint, no badges",
+   "markings": "red crosses on the front doors, bed sides, bonnet and tailgate, a white red-cross air panel on the bed tarp and a red-cross flag on the rear hoop; dirty white civilian paint, no badges",
    "sources": [
     "https://www.toyota.com.au/hilux/specs (Hilux double cab: 5325 x 1855 x 1815 mm, wheelbase 3085 mm, track 1540 mm, 265/65R17)",
     "https://www.mitsubishi-motors.com/en/products/l200 (L200 double cab: 5305 x 1815 x 1780 mm, wheelbase 3000 mm, bed 1520 x 1470 mm)"
@@ -9406,27 +9406,27 @@
     "note": "unarmoured: rifle fire disables it, any AT round destroys it"
    },
    "file": "assets/vehicles/pickup.glb",
-   "file_mb": 7.29,
+   "file_mb": 7.89,
    "tris": {
-    "lod0": 72416,
-    "lod1": 21663,
-    "hull_wreck": 16412
+    "lod0": 77300,
+    "lod1": 23127,
+    "hull_wreck": 18950
    },
    "model_bbox_m": {
     "min": [
      -1.19,
      -0.011,
-     -2.955
+     -2.972
     ],
     "max": [
      1.19,
-     2.246,
+     2.61,
      2.799
     ],
     "size": [
      2.38,
-     2.257,
-     5.754
+     2.621,
+     5.771
     ]
    },
    "materials": [
@@ -9750,7 +9750,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 35428,
+        "tris": 40312,
         "pos": [
          0.0,
          0.0,
@@ -9761,7 +9761,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 10623,
+        "tris": 12087,
         "pos": [
          0.0,
          0.0,
@@ -9894,8 +9894,8 @@
         "name": "stretcher_1",
         "type": "empty",
         "pos": [
-         0.47,
-         0.885,
+         0.5,
+         0.915,
          -1.8
         ]
        },
@@ -9904,7 +9904,7 @@
         "type": "empty",
         "pos": [
          0.0,
-         0.885,
+         0.915,
          -1.8
         ]
        },
@@ -9912,8 +9912,8 @@
         "name": "stretcher_3",
         "type": "empty",
         "pos": [
-         -0.47,
-         0.885,
+         -0.5,
+         0.915,
          -1.8
         ]
        },
@@ -10019,7 +10019,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 16412,
+      "tris": 18950,
       "pos": [
        0.0,
        0.0,

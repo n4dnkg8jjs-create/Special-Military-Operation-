@@ -179,8 +179,8 @@ export class DamageSkin {
     } else if (region === 'torso') {
       const hip = this.bindPos('Hips', new THREE.Vector3()), nk = this.bindPos('Neck', new THREE.Vector3()); if (!hip || !nk) return null;
       const t = 0.22 + 0.55 * R(), ang = Math.atan2(dir.x, dir.z) + (R() - 0.5) * 1.6;
-      const c = hip.clone().lerp(nk, t); c.x += Math.sin(ang) * 0.15; c.z += Math.cos(ang) * 0.115;
-      w = { c, r: 0.075 + 0.03 * R(), seg: null, out: new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang)) };
+      const c = hip.clone().lerp(nk, t); c.x += Math.sin(ang) * 0.17; c.z += Math.cos(ang) * 0.15;   // on the plate carrier / jacket surface
+      w = { c, r: 0.085 + 0.03 * R(), seg: null, out: new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang)) };
     } else {
       const side = R() < 0.5 ? 'L' : 'R';
       const kind = { thigh: 'thigh', shin: 'shin', upperarm: 'arm', fore: 'fore' }[region] ||
