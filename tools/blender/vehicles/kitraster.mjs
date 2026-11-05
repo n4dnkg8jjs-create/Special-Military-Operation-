@@ -8,7 +8,7 @@ import zlib from 'node:zlib';
 import * as THREE from 'three';
 import { loadGlb, pose, KK, kindOf } from './kitnode.mjs';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', '..');
-const { attachKits } = await import(path.join(root, 'src/game/vehicleKit.js'));
+const { attachKits } = await import(process.env.KITSRC ? path.resolve(process.env.KITSRC) : path.join(root, 'src/game/vehicleKit.js'));
 const man = JSON.parse(fs.readFileSync(path.join(root, 'assets/vehicles/manifest.json'), 'utf8')).vehicles;
 
 export function png(file, W, H, rgb) {
@@ -21,7 +21,7 @@ export function png(file, W, H, rgb) {
 const COL = { kit_steel: [0.42, 0.40, 0.31], kit_weld: [0.25, 0.24, 0.2], kit_chain: [0.62, 0.6, 0.53], kit_weldmesh: [0.55, 0.53, 0.45], kit_era: null, kit_bag: null, kit_link: [0.3, 0.29, 0.26], kit_box: [0.34, 0.37, 0.25], kit_glass: [0.05, 0.06, 0.08], kit_black: [0.08, 0.08, 0.08], kit_cable: [0.1, 0.1, 0.1] };
 // draw meshes into a tile; views: [[az, el]], target centre c, radius r
 export function render(scene, W, H, views, opt = {}) {
-  const SS = 2, w = W * SS, h = H * SS, cols = views.length > 1 ? 2 : 1, rows = Math.ceil(views.length / cols), tw = Math.floor(w / cols), th = Math.floor(h / rows);
+  const SS = 2, w = W * SS, h = H * SS, cols = opt.cols || (views.length > 1 ? 2 : 1), rows = Math.ceil(views.length / cols), tw = Math.floor(w / cols), th = Math.floor(h / rows);
   const img = new Float32Array(w * h * 3), zb = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) { const y = Math.floor(i / w) % th; const g = 0.62 + 0.18 * (1 - y / th); img.set([g * 0.92, g * 0.95, g], i * 3); }
   const items = [];

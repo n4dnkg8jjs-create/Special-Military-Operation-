@@ -233,12 +233,12 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     n_d = TX.noise3(P, 0.12, seed + 9, 3)
     n_s = TX.noise3(P, 0.035, seed + 19, 2)                        # splatter scale
     wetm = np.clip((0.42 - y) / 0.18, 0, 1) ** 1.2                # wet, dark mud right above the boots
-    dirt = np.clip((0.62 - y) / 0.40, 0, 1) ** 1.4 * 0.62
+    dirt = np.clip((0.70 - y) / 0.42, 0, 1) ** 1.2 * 0.75
     grime = np.zeros_like(y)
     for side in ('Left', 'Right'):
         k = J(side + 'Leg')
         kd = np.sum(((P - k - [0, -0.01, 0.07]) * [1.0, 0.8, 1.0]) ** 2, -1)
-        dirt += 0.85 * np.exp(-kd / 0.085 ** 2)                    # knees (front)
+        dirt += 1.0 * np.exp(-kd / 0.10 ** 2)                      # knees (front)
         dirt += 0.30 * np.exp(-np.sum(((P - k - [0, -0.18, 0.06]) * [1, 0.45, 1]) ** 2, -1) / 0.07 ** 2)   # shin fronts
         e = J(side + 'ForeArm')
         dirt += 0.45 * np.exp(-np.sum((P - e - [0, 0, -0.03]) ** 2, -1) / 0.065 ** 2)   # back of the elbows
@@ -275,7 +275,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     alb = base * sh[..., None]
     # worn / abraded raised edges a little lighter (cavity > 1 = ridge)
     alb = alb * (1 + up(np.clip(cav - 1.0, 0, 0.12))[..., None] * 0.8)
-    a_d = dt[..., None] * (0.55 + 0.3 * wm)
+    a_d = np.clip(dt[..., None] * (0.68 + 0.3 * wm), 0, 0.9)
     alb = alb * (1 - a_d) + mud * a_d
     alb = alb * (1 - up(grime)[..., None] * 0.35)
     pa = up(patch[..., 3])

@@ -328,10 +328,7 @@ def bed_body():
         Bd.add(box(BW - BED_IN - 0.02, y0 - y1 - 0.02, 0.022, c=(s * (BED_IN + BW) / 2 - s * 0.012, (y0 + y1) / 2, BED_TOP + 0.009), mat='skirt', bev=0.008, segs=2))
         for yy in (y0 - 0.12, y1 + 0.12):
             Bd.add(box(0.05, 0.04, 0.006, c=(s * (BED_IN + BW) / 2, yy, BED_TOP + 0.022), mat='decal'))
-        # inner wheel-arch hump (liner)
-        Bd.add(hull([(s * BED_IN, AXR + 0.45, BED_FLOOR), (s * BED_IN, AXR - 0.45, BED_FLOOR), (s * (BED_IN - 0.19), AXR + 0.42, BED_FLOOR),
-                     (s * (BED_IN - 0.19), AXR - 0.42, BED_FLOOR), (s * BED_IN, AXR + 0.32, BED_FLOOR + 0.27), (s * BED_IN, AXR - 0.32, BED_FLOOR + 0.27),
-                     (s * (BED_IN - 0.19), AXR + 0.28, BED_FLOOR + 0.25), (s * (BED_IN - 0.19), AXR - 0.28, BED_FLOOR + 0.25)], mat='canvas', bev=0.03, segs=2))
+        # (no inner wheel-arch humps: the bed floor at 0.88 m is above the arch top at 0.86 m, so three litters fit side by side)
         # tie-down hooks
         for yy in (y0 - 0.2, y1 + 0.25):
             Bd.add(rail([(s * (BED_IN + 0.002), yy - 0.05, BED_FLOOR + 0.33), (s * (BED_IN - 0.035), yy - 0.05, BED_FLOOR + 0.33),
@@ -675,22 +672,22 @@ def seat(xc, yh, zh, width=0.5, rear=False):
     zc = zh - 0.03
     cush = hull([(xc - w, yh - 0.1, zc - 0.1), (xc + w, yh - 0.1, zc - 0.1), (xc - w, yh + 0.42, zc - 0.08), (xc + w, yh + 0.42, zc - 0.08),
                  (xc - w + 0.02, yh - 0.1, zc), (xc + w - 0.02, yh - 0.1, zc), (xc - w + 0.02, yh + 0.40, zc + 0.04), (xc + w - 0.02, yh + 0.40, zc + 0.04)],
-                mat='wood', bev=0.035, segs=3)
+                mat='cast', bev=0.035, segs=3)
     S.add(cush)
     for sx in (-1, 1):   # cushion side bolsters
-        S.add(box(0.07, 0.42, 0.05, c=(xc + sx * (w - 0.04), yh + 0.15, zc + 0.03), mat='wood', bev=0.025, segs=2))
+        S.add(box(0.07, 0.42, 0.05, c=(xc + sx * (w - 0.04), yh + 0.15, zc + 0.03), mat='cast', bev=0.025, segs=2))
     # backrest, reclined ~17 deg
     rk = math.radians(17)
     bb = V((xc, yh - 0.13, zc - 0.06))
     bt = bb + V((0, -math.sin(rk), math.cos(rk))) * 0.6
-    back = beam(bb, bt, 2 * w - 0.02, 0.12, mat='wood', up=(0, 1, 0.3), bev=0.035)
+    back = beam(bb, bt, 2 * w - 0.02, 0.12, mat='cast', up=(0, 1, 0.3), bev=0.035)
     S.add(back)
     for sx in (-1, 1):
-        S.add(beam(bb + V((sx * (w - 0.035), 0.04, 0.05)), bt + V((sx * (w - 0.035), 0.04, -0.1)), 0.07, 0.1, mat='wood', up=(0, 1, 0.3), bev=0.025))
+        S.add(beam(bb + V((sx * (w - 0.035), 0.04, 0.05)), bt + V((sx * (w - 0.035), 0.04, -0.1)), 0.07, 0.1, mat='cast', up=(0, 1, 0.3), bev=0.025))
     # headrest + posts
     for sx in (-0.07, 0.07):
         S.add(cyl(0.007, 0.12, 6, 'z', c=(xc + sx, bt.y - 0.005, bt.z + 0.04), mat='bare'))
-    S.add(box(0.26, 0.09, 0.17, c=(xc, bt.y - 0.01, bt.z + 0.17), mat='wood', bev=0.035, segs=2))
+    S.add(box(0.26, 0.09, 0.17, c=(xc, bt.y - 0.01, bt.z + 0.17), mat='cast', bev=0.035, segs=2))
     if not rear:
         # base frame + runners down to the floor, recline lever
         S.add(box(2 * w - 0.12, 0.42, zc - 0.1 - FLOOR_Z + 0.005, c=(xc, yh + 0.15, (zc - 0.1 + FLOOR_Z) / 2), mat='gunmetal'))
@@ -771,7 +768,7 @@ def interior():
     for x in (-0.45, 0.45):
         for sx in (-0.07, 0.07):
             I.add(cyl(0.007, 0.12, 6, 'z', c=(x + sx, -0.85, 1.43), mat='bare'))
-        I.add(box(0.26, 0.09, 0.15, c=(x, -0.855, 1.54), mat='wood', bev=0.035, segs=2))
+        I.add(box(0.26, 0.09, 0.15, c=(x, -0.855, 1.54), mat='cast', bev=0.035, segs=2))
     I.add(box(1.5, 0.45, 0.3, c=(0, -0.43, FLOOR_Z + 0.15), mat='cast', bev=0.02, segs=1))      # bench base
     for s in (1, -1):
         I.add(beam((s * 0.742, 0.02, 1.62), (s * 0.742, 0.02, 0.62), 0.045, 0.006, mat='skirt'))
@@ -942,6 +939,149 @@ def wheel():
     return t
 
 
+# ================================================================================================ casualty-evacuation bed kit
+LIT_X = (-0.50, 0.0, 0.50)       # litter centres (stretcher_1..3 slots)
+LIT_Y = (-1.16, -2.48)           # litter length (grips included) inside the bulkhead plate and the closed tailgate
+LIT_Z = BED_FLOOR + 0.035        # canvas top = the casualty's floor (wounded_on_bed root plane)
+HOOP_Y = (-1.07, -1.80, -2.52)   # canopy hoops (front = roll bar)
+HOOP_X = (BED_IN + BW) / 2 - 0.01
+HOOP_Z = 1.99                    # top of the hoops (20 cm over the cab roof)
+TARP_Y = (-1.07, -1.80)          # olive tarp over the front half (sun / rain / IR), the rear half open for loading
+
+
+def sag_sheet(x0, x1, y0, y1, z, sag, nx=10, ny=8, mat='wood', drop=0.0, thick=0.004):
+    """canvas sheet over x0..x1 / y0..y1 at height z, sagging between its edges, side flaps hanging `drop` at x0 / x1"""
+    bm = bmesh.new(); grid = []
+    xs = list(np.linspace(x0, x1, nx + 1))
+    for j in range(ny + 1):
+        y = y0 + (y1 - y0) * j / ny; row = []
+        for i, x in enumerate(xs):
+            u = (x - x0) / (x1 - x0); v = j / ny
+            row.append(bm.verts.new((x, y, z - sag * math.sin(math.pi * u) * (0.35 + 0.65 * math.sin(math.pi * v)))))
+        if drop > 0:   # side flaps: two more rows down the sides
+            row = [bm.verts.new((x0 - 0.01, y, z - drop))] + row + [bm.verts.new((x1 + 0.01, y, z - drop))]
+        grid.append(row)
+    for j in range(ny):
+        for i in range(len(grid[0]) - 1):
+            bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
+    b = B(bm, mat)
+    b.solidify(thick)
+    return b
+
+
+def bed_kit():
+    """Field conversion for casualty evacuation (Ukrainian volunteer / brigade casevac pickups 2023-25, see
+    previews/vehicles_v6/REFERENCES.md): welded roll bar + two canopy hoops on the bed rails, olive tarp over the front
+    half with blanket rolls, jerrycans and a white red-cross air panel strapped on top, three folding litters lashed to
+    the bed floor, steel plates on the bed walls, oxygen bottle and trauma bags on the roll bar, IV bag on the middle
+    hoop, red-cross flag on the rear hoop, LED light bar."""
+    K = B()
+    # ---- hoops: bent tube from rail cap to rail cap, clamp plates on the rail caps
+    for k, y in enumerate(HOOP_Y):
+        r = 0.026 if k == 0 else 0.02
+        K.add(rail([(-HOOP_X, y, BED_TOP + 0.02), (-HOOP_X, y, HOOP_Z - 0.03), (-HOOP_X + 0.06, y, HOOP_Z), (HOOP_X - 0.06, y, HOOP_Z),
+                    (HOOP_X, y, HOOP_Z - 0.03), (HOOP_X, y, BED_TOP + 0.02)], r=r, rad=0.09, segs=8, mat='gunmetal', foot=False))
+        for sx in (1, -1):
+            K.add(box(0.11, 0.1, 0.012, c=(sx * HOOP_X, y, BED_TOP + 0.024), mat='gunmetal'))
+            K.add(box(0.012, 0.1, 0.07, c=(sx * (BW - 0.004), y, BED_TOP - 0.02), mat='gunmetal'))   # clamp jaw over the outer wall
+    # roll-bar diagonal brace + top rails joining the hoops
+    K.add(tube([(-HOOP_X + 0.05, HOOP_Y[0], BED_TOP + 0.1), (HOOP_X - 0.1, HOOP_Y[0], HOOP_Z - 0.04)], 0.018, 8, 'gunmetal'))
+    for sx in (1, -1):
+        K.add(tube([(sx * (HOOP_X - 0.06), HOOP_Y[0], HOOP_Z), (sx * (HOOP_X - 0.06), HOOP_Y[2], HOOP_Z)], 0.017, 8, 'gunmetal'))
+    # ---- tarp over the front half (sags between the hoops, side flaps), rolled-up rear tarp on the middle hoop
+    K.add(sag_sheet(-HOOP_X - 0.02, HOOP_X + 0.02, TARP_Y[0] + 0.03, TARP_Y[1] - 0.03, HOOP_Z + 0.022, 0.045, drop=0.3))
+    K.add(cyl(0.065, 2 * HOOP_X, 12, 'x', c=(0, HOOP_Y[1] - 0.08, HOOP_Z + 0.07), mat='wood'))
+    for sx in (-0.55, 0.0, 0.55):
+        K.add(cyl(0.072, 0.03, 12, 'x', c=(sx, HOOP_Y[1] - 0.08, HOOP_Z + 0.07), mat='skirt'))   # tie straps
+    # ---- on the tarp: blanket rolls, two jerrycans, the white air-recognition panel (red cross from decals())
+    zt = HOOP_Z + 0.03
+    K.add(cyl(0.085, 0.62, 12, 'y', c=(-0.66, -1.43, zt + 0.07), mat='cast'))                       # grey wool blanket roll
+    for yy in (-1.25, -1.61):
+        K.add(cyl(0.09, 0.025, 12, 'y', c=(-0.66, yy, zt + 0.07), mat='skirt'))
+    K.add(box(0.2, 0.26, 0.05, c=(-0.66, -1.43, zt + 0.175), mat='cage', bev=0.01, segs=1))          # folded rescue blanket (gold / orange foil)
+    for k, x in enumerate((0.15, 0.53)):
+        can = box(0.165, 0.47, 0.35, c=(0, 0, 0), mat='wood', bev=0.02, segs=2)
+        for sx in (1, -1):
+            can.add(beam((sx * 0.083, -0.17, -0.12), (sx * 0.083, 0.17, 0.12), 0.008, 0.03, mat='wood', up=(sx, 0, 0)))
+            can.add(beam((sx * 0.083, -0.17, 0.12), (sx * 0.083, 0.17, -0.12), 0.008, 0.03, mat='wood', up=(sx, 0, 0)))
+        for yy in (-0.12, 0.0, 0.12):
+            can.add(box(0.03, 0.06, 0.04, c=(0, yy, 0.19), mat='wood', bev=0.008, segs=1))
+        can.rot('Y', 90)
+        K.add(can.move(x, -1.43, zt + 0.083))
+    K.add(box(0.76, 0.012, 0.012, c=(0.34, -1.3, zt + 0.172), mat='skirt'))
+    K.add(box(0.76, 0.012, 0.012, c=(0.34, -1.56, zt + 0.172), mat='skirt'))
+    K.add(box(0.46, 0.46, 0.006, c=(-0.3, -1.45, zt + 0.003), mat='rolled'))                     # air panel (white, decal cross)
+    # ---- litters: aluminium poles, olive canvas, stirrup feet, lashing straps to the floor rings
+    for x in LIT_X:
+        for sx in (1, -1):
+            K.add(tube([(x + sx * 0.225, LIT_Y[0], LIT_Z), (x + sx * 0.225, LIT_Y[1], LIT_Z)], 0.016, 8, 'bare'))
+            for y in (LIT_Y[0] + 0.25, LIT_Y[1] - 0.25):
+                K.add(box(0.03, 0.03, LIT_Z - BED_FLOOR - 0.01, c=(x + sx * 0.225, y, (LIT_Z + BED_FLOOR) / 2 - 0.006), mat='bare'))
+                K.add(beam((x + sx * 0.225, y + 0.04, LIT_Z + 0.012), (x + sx * 0.255, y + 0.07, BED_FLOOR + 0.004), 0.03, 0.004, mat='skirt', up=(0, 0, 1)))
+            for y in LIT_Y:
+                K.add(cyl(0.02, 0.07, 8, 'y', c=(x + sx * 0.225, y - (0.035 if y == LIT_Y[0] else -0.035) * -1, LIT_Z), mat='skirt'))   # grips
+        K.add(box(0.43, LIT_Y[0] - LIT_Y[1] - 0.12, 0.005, c=(x, sum(LIT_Y) / 2, LIT_Z - 0.006), mat='wood'))
+        for y in (LIT_Y[0] + 0.06, LIT_Y[1] - 0.06):                                              # spreader bars
+            K.add(tube([(x - 0.225, y, LIT_Z - 0.012), (x + 0.225, y, LIT_Z - 0.012)], 0.009, 6, 'bare'))
+    # ---- steel plates (field armour) on the inner bed walls, bolted
+    for sx in (1, -1):
+        K.add(box(0.008, BED_Y[0] - BED_Y[1] - 0.12, BED_TOP - BED_FLOOR - 0.12, c=(sx * (BED_IN - 0.005), sum(BED_Y) / 2, (BED_TOP + BED_FLOOR) / 2 + 0.03), mat='gunmetal'))
+        for y in np.linspace(BED_Y[0] - 0.15, BED_Y[1] + 0.15, 4):
+            for z in (BED_FLOOR + 0.14, BED_TOP - 0.06):
+                K.add(cyl(0.012, 0.012, 6, 'x', c=(sx * (BED_IN - 0.012), y, z), mat='bare'))
+    K.add(box(2 * BED_IN - 0.04, 0.008, BED_TOP - BED_FLOOR - 0.12, c=(0, BED_Y[0] - 0.072, (BED_TOP + BED_FLOOR) / 2 + 0.03), mat='gunmetal'))
+    # ---- oxygen bottle (white, black valve + regulator) strapped upright to the right roll-bar post, inside the bed
+    ox, oy = HOOP_X - 0.04, HOOP_Y[0] - 0.1
+    K.add(cyl(0.065, 0.52, 14, 'z', c=(ox - 0.02, oy, BED_TOP + 0.02 + 0.26), mat='rolled'))
+    K.add(cyl(0.05, 0.06, 12, 'z', c=(ox - 0.02, oy, BED_TOP + 0.02 + 0.55), mat='rolled', r2=0.03))
+    K.add(box(0.05, 0.05, 0.08, c=(ox - 0.02, oy, BED_TOP + 0.66), mat='skirt'))
+    K.add(cyl(0.022, 0.02, 10, 'y', c=(ox - 0.02, oy - 0.03, BED_TOP + 0.67), mat='bare'))
+    for z in (BED_TOP + 0.15, BED_TOP + 0.42):
+        K.add(cyl(0.069, 0.025, 14, 'z', c=(ox - 0.02, oy, z), mat='skirt'))
+    K.add(box(0.035, 0.07, 0.03, c=(ox + 0.02, oy + 0.06, BED_TOP + 0.42), mat='skirt'))
+    K.add(box(0.012, 0.012, 0.014, c=(ox - 0.02, oy, BED_TOP + 0.022), mat='skirt'))
+    # bottle foot cup on the rail cap
+    K.add(cyl(0.072, 0.03, 14, 'z', c=(ox - 0.02, oy, BED_TOP + 0.035), mat='gunmetal'))
+    # ---- trauma bags: red bag on the left roll-bar post, olive bag on the middle hoop (straps over the tube)
+    K.add(box(0.13, 0.26, 0.32, c=(-HOOP_X + 0.075, HOOP_Y[0] - 0.15, BED_TOP + 0.4), mat='era', bev=0.03, segs=2))
+    K.add(box(0.14, 0.03, 0.03, c=(-HOOP_X + 0.07, HOOP_Y[0] - 0.15, BED_TOP + 0.58), mat='skirt'))
+    K.add(box(0.012, 0.18, 0.16, c=(-HOOP_X + 0.145, HOOP_Y[0] - 0.15, BED_TOP + 0.34), mat='rolled'))   # white patch (decal cross)
+    for z in (BED_TOP + 0.3, BED_TOP + 0.5):
+        K.add(box(0.15, 0.025, 0.012, c=(-HOOP_X + 0.03, HOOP_Y[0] - 0.03, z), mat='skirt'))
+    K.add(box(0.11, 0.3, 0.24, c=(-HOOP_X + 0.07, HOOP_Y[1] + 0.2, BED_TOP + 0.3), mat='wood', bev=0.025, segs=2))
+    K.add(box(0.06, 0.03, 0.22, c=(-HOOP_X + 0.035, HOOP_Y[1] + 0.07, BED_TOP + 0.22), mat='skirt'))
+    # ---- IV bag on a hook under the middle hoop, line down to the litter
+    K.add(rail([(0.18, HOOP_Y[1], HOOP_Z - 0.02), (0.18, HOOP_Y[1], HOOP_Z - 0.09), (0.21, HOOP_Y[1], HOOP_Z - 0.12)], r=0.005, rad=0.02, mat='bare', foot=False))
+    K.add(box(0.1, 0.025, 0.16, c=(0.2, HOOP_Y[1], HOOP_Z - 0.22), mat='rolled', bev=0.01, segs=2))
+    K.add(tube([(0.2, HOOP_Y[1], HOOP_Z - 0.3), (0.21, HOOP_Y[1] - 0.05, HOOP_Z - 0.55), (0.24, HOOP_Y[1] - 0.15, BED_TOP + 0.05)], 0.004, 4, 'bare'))
+    # ---- red-cross flag on a pole clamped to the rear hoop (right)
+    fx, fy = HOOP_X - 0.01, HOOP_Y[2]
+    K.add(tube([(fx + 0.03, fy, BED_TOP + 0.3), (fx + 0.03, fy, HOOP_Z + 0.62)], 0.012, 6, 'bare'))
+    for z in (BED_TOP + 0.35, HOOP_Z - 0.05):
+        K.add(box(0.06, 0.04, 0.03, c=(fx + 0.015, fy, z), mat='gunmetal'))
+    bm = bmesh.new(); rows = []
+    for j in range(3):
+        z = HOOP_Z + 0.6 - j * 0.15; row = []
+        for i in range(6):
+            y = fy - i * 0.09
+            row.append(bm.verts.new((fx + 0.03 + 0.035 * math.sin(i * 1.3 + j * 0.2), y, z - 0.012 * i)))
+        rows.append(row)
+    for j in range(2):
+        for i in range(5):
+            bm.faces.new((rows[j][i], rows[j][i + 1], rows[j + 1][i + 1], rows[j + 1][i]))
+    fl = B(bm, 'rolled'); fl.solidify(0.004); K.add(fl)
+    # ---- LED light bar on the roll bar top (work light for night loading) + amber strobe
+    K.add(box(0.7, 0.07, 0.07, c=(0, HOOP_Y[0] + 0.02, HOOP_Z + 0.06), mat='skirt', bev=0.012, segs=2))
+    K.add(box(0.66, 0.01, 0.045, c=(0, HOOP_Y[0] + 0.057, HOOP_Z + 0.06), mat='light'))
+    for sx in (1, -1):
+        K.add(box(0.03, 0.05, 0.05, c=(sx * 0.3, HOOP_Y[0] + 0.01, HOOP_Z + 0.012), mat='gunmetal'))
+    K.add(cyl(0.035, 0.07, 12, 'z', c=(-0.5, HOOP_Y[0], HOOP_Z + 0.055), mat='cage'))
+    # ---- mud flaps (rubber) behind the rear wheels
+    for sx in (1, -1):
+        K.add(box(0.26, 0.012, 0.3, c=(sx * (TRACK / 2), AXR - RA - 0.05, SILL - 0.08), mat='skirt'))
+    return K
+
+
 # ================================================================================================ build
 def build():
     t0 = time.time()
@@ -958,6 +1098,7 @@ def build():
     H.add(bull_bar())
     H.add(flares_and_trim())
     H.add(roof_rack())
+    H.add(bed_kit())
     H.add(chassis())
     I = interior()
     print('  interior tris', I.tris())
@@ -1026,8 +1167,8 @@ def build():
             L.node_empty(f'cab_door_{w}{tag}', hullE, (s * (BW + 0.15), (y0 + y1) / 2, 0.0), 0.1)
         L.node_empty(f'dismount_{tag}', hullE, (s * (BW + 0.75), 0.55, 0.0), 0.1)
     stretchers = []
-    for i, x in enumerate((-0.47, 0.0, 0.47)):
-        e = L.node_empty(f'stretcher_{i + 1}', hullE, (x, -1.80, BED_FLOOR + 0.005), 0.12)
+    for i, x in enumerate(LIT_X):
+        e = L.node_empty(f'stretcher_{i + 1}', hullE, (x, -1.80, LIT_Z), 0.12)
         stretchers.append(e)
     lp = L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
     print('  geometry done %.1fs' % (time.time() - t0))
@@ -1073,15 +1214,21 @@ def decals(P, N):
         m += T.decal_mask(P, N, E((s * (BW - 0.02 + 0.03), -1.82, 1.08)), E((s, 0, 0)), (0, 0, 1), T.cross_shape(0.13, 0.042))
     m += T.decal_mask(P, N, E((0, 2.2, 1.09)), E((0, 0.08, 1)), (0, 1, 0), T.cross_shape(0.17, 0.055))
     m += T.decal_mask(P, N, E((0, REAR - 0.05, 1.12)), E((0, -1, 0)), (0, 0, 1), T.cross_shape(0.12, 0.04))
+    # bed kit: air-recognition panel on the tarp, patch on the red trauma bag (white cross there: handled as a red
+    # cross on white by the panel being 'rolled'), the flag on the rear hoop (both faces)
+    m += T.decal_mask(P, N, E((-0.3, -1.45, HOOP_Z + 0.036)), E((0, 0, 1)), E((0, 1, 0)), T.cross_shape(0.19, 0.06))
+    m += T.decal_mask(P, N, E((-HOOP_X + 0.151, HOOP_Y[0] - 0.15, BED_TOP + 0.34)), E((1, 0, 0)), (0, 0, 1), T.cross_shape(0.065, 0.022))
+    for s in (1, -1):
+        m += T.decal_mask(P, N, E((HOOP_X + 0.02 + s * 0.04, HOOP_Y[2] - 0.22, HOOP_Z + 0.43)), E((s, 0, 0)), (0, 0, 1), T.cross_shape(0.1, 0.032))
     return m
 
 
 VB.SCHEMES['civ_white'] = dict(base=(206, 206, 198), base2=(194, 195, 188), camo=None, dust=(158, 150, 132), mud=(112, 100, 84),
-                               wear=0.6, dust_amt=0.42, mud_amt=0.45, fade=(222, 221, 214), rough_base=0.36, decal_rgb=(168, 22, 20),
+                               wear=0.7, dust_amt=0.5, mud_amt=0.62, fade=(222, 221, 214), rough_base=0.36, decal_rgb=(168, 22, 20),
                                kind_colors={'skirt': ((30, 30, 29), 0.72, 0.0), 'canvas': ((26, 26, 25), 0.92, 0.0),
                                             'era': ((150, 18, 14), 0.3, 0.0), 'cage': ((205, 110, 22), 0.2, 0.0),
-                                            'cast': ((62, 62, 59), 0.7, 0.0), 'wood': ((78, 80, 78), 0.95, 0.0)},
-                               clean_kinds=('cast', 'wood'))
+                                            'cast': ((62, 62, 59), 0.7, 0.0), 'wood': ((86, 88, 58), 0.95, 0.0)},
+                               clean_kinds=('cast',))
 
 
 def write_armor():
@@ -1114,7 +1261,7 @@ def write_armor():
 STATIC = dict(faction='any', name='Pickup (casualty evacuation)', kind='medevac', wheeled=True, crew=1, passengers=2, casualty_slots=3,
               real_dimensions_m=dict(length=5.33, width=1.855, height=1.815, height_over_rack=1.98, wheelbase=3.085, wheel_track=1.54,
                                      ground_clearance=0.29, tyre='265/65 R17 (dia 0.776 m)', bed_inner=[1.52, 1.51], bed_floor_height=0.88),
-              markings='red crosses on the front doors, bed sides, bonnet and tailgate; dirty white civilian paint, no badges',
+              markings='red crosses on the front doors, bed sides, bonnet and tailgate, a white red-cross air panel on the bed tarp and a red-cross flag on the rear hoop; dirty white civilian paint, no badges',
               sources=['https://www.toyota.com.au/hilux/specs (Hilux double cab: 5325 x 1855 x 1815 mm, wheelbase 3085 mm, track 1540 mm, 265/65R17)',
                        'https://www.mitsubishi-motors.com/en/products/l200 (L200 double cab: 5305 x 1815 x 1780 mm, wheelbase 3000 mm, bed 1520 x 1470 mm)'],
               game=dict(hp_suggestion=160, speed_kmh=dict(road=110, off_road=45), game_speed=16.5, accel=5.0, turn_rate=1.35,
@@ -1126,7 +1273,7 @@ def main(argv):
     d = build()
     orient_empties(d)
     VB.SOOT[:] = [((0.66, -2.1, 0.4), 0.18)]
-    out = os.path.join(VB.REPO, 'previews', 'vehicles_v5', '_dev_' + NAME + '.glb') if dev else None
+    out = os.path.join(VB.REPO, 'previews', 'vehicles_v6', '_dev_' + NAME + '.glb') if dev else None
     info = VB.finalize(d, NAME, 'civ_white', decals, wreck, out=out, lod_ratio=0.3, glass_alpha=0.3)
     info['doors'] = d['doors_man']
     info['wheel_radius_m'] = WR

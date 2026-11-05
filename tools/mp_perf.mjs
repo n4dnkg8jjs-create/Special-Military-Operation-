@@ -38,7 +38,7 @@ const plan = await H.evaluate(() => {
   return null;
 });
 console.log('plan', JSON.stringify(plan));
-await closeModals(H); await closeModals(G); await G.click('#c2 .c2-end'); await H.waitForTimeout(1500); await closeModals(H); await H.click('#c2 .c2-end');
+await closeModals(H); await closeModals(G); await G.evaluate(() => window.__vsUi.vs.toggleReady()); await H.waitForTimeout(2500); await H.evaluate(() => { if (!window.__vsUi.vs.isReady()) window.__vsUi.vs.toggleReady(); });   // (the END WEEK buttons, without clicking through overlays)
 console.log('host end', await H.$eval('#c2 .c2-end', e => e.textContent).catch(() => '?'), 'guest end', await G.$eval('#c2 .c2-end', e => e.textContent).catch(() => '?'));
 await H.waitForSelector('.vs-frame', { timeout: 300000, state: 'attached' }); await G.waitForSelector('.vs-frame', { timeout: 300000, state: 'attached' });
 const FA = await (await H.$('.vs-frame')).contentFrame(), FB = await (await G.$('.vs-frame')).contentFrame();

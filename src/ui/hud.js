@@ -224,6 +224,7 @@ export class HUD {
       if (u.side === 'player') rows += row('Mags per man', s.filter(x => x.effective).map(x => x.weaponKey === 'rpg7' ? `${x.inMag + x.mags}r` : `${x.mags}`).join(' '));
       rows += row('Status', u.mounted ? `Mounted in ${esc(u.carrier?.name)}` : u.building ? (u.inCellar ? 'In the cellar (G: back up)' : u.building.house ? 'Garrisoned (G: cellar)' : 'Garrisoned') : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
       if (u.holdFire) rows += row('Fire', 'Holding fire');
+      if (u.order?.type === 'clear' && u.clearStatus) { const cs = u.clearStatus(); rows += row('Trench', esc(cs[0])); if (cs[1]) rows += row('Fire group', esc(cs[1])); }
       const sp = u.support;
       if (sp && sp.drones != null) { rows += row('System', 'FPV strike drones (PG-7VL)'); rows += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / ${sp.capacity?.() ?? 5}`); rows += row('Team', sp.status()); }
       else if (sp) { rows += row('System', `${sp.W.name} · ${sp.W.range} m`); rows += row('Missiles', `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? ' + 1 in flight' : ''}`); rows += row('Team', sp.status()); }

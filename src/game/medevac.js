@@ -298,7 +298,7 @@ export class MedevacTruck extends Vehicle {
           break;
         }
         case 'enter':
-          if (m.t >= m.T) { m.task = 'in'; s.inside = 'btr'; s.netClip = null; if (!this.medics.some(q => q.i > 0 && q.task !== 'in' && q.s.alive)) this.door('tailgate', false); }
+          if (m.t >= m.T) { m.task = 'in'; s.inside = 'btr'; s.netClip = null; if (!this.load.length && !this.medics.some(q => q.i > 0 && q.task !== 'in' && q.s.alive)) this.door('tailgate', false); }   // loaded: the tailgate stays down (litters + feet over it, as on real casevac pickups)
           break;
       }
       // movement (path following, collisions) and facing, then animation
@@ -417,7 +417,7 @@ export class MedevacTruck extends Vehicle {
     // the wounded reach the casualty collection point: saved
     const n = this.load.length;
     for (const c of this.load) { c.onBed = null; c.saved = true; c.root.visible = false; g.stats[this.side].evac++; }
-    this.saved += n; this.load = [];
+    this.saved += n; this.load = []; this.door('tailgate', false);
     if (this.side === 'player') g.hud?.alert(`${this.name}: ${n} wounded handed over at the aid station — back in about ${Math.round(this.tripT)} s`, 'good');
   }
   comeBack() {

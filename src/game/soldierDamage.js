@@ -268,7 +268,7 @@ export function damageTick(s, dt) {
     s._dmgSelfAid = st === 'light' ? 15 + Math.random() * 25 : null;
   }
   if (st !== s._dmgSt) {
-    if (st === 'stable') { D.treat(true); D.backMud = Math.max(D.backMud, 0.5); ch = true; }
+    if (st === 'stable') { D.treat(true); D.backMud = Math.max(D.backMud, 0.5); D.rips = Math.max(D.rips, 0.25); ch = true; }   // clothing cut open for the dressing
     if (st === 'critical' || st === 'dead') { D.backMud = Math.max(D.backMud, 0.35); ch = true; }
   }
   s._dmgHp = s.hp; s._dmgSt = st;

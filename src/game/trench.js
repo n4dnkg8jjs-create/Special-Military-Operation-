@@ -333,7 +333,7 @@ export const TrenchMixin = {
       if (thrower && (occupied || this.assault || Math.random() < 0.6)) { O.phase = 'dugout'; O.dug = d; O.dfrag = 0; O.dugS = pr.s; O.p = Math.min(O.p, pr.s - 4.5); O.waitT = 1.2; return this.clearPlace(dt); }
       O.doneDug.add(d);
     }
-    if (ahead && da > 5 && da < 14 && thrower && (O.lastFrag ?? -99) < g.time - 5) {   // a defender in the bay: grenade him first
+    if (ahead && da > 8 && da < 16 && thrower && (O.lastFrag ?? -99) < g.time - 5) {   // a defender in the bay (8 m+ out: lethal radius 6 m): grenade him first
       O.lastFrag = g.time; g.combat.throwGrenade(thrower, ahead); O.phase = 'bang'; O.waitT = 3.4; O.frags++;
       if (g.camDist(thrower.pos) < 80) g.sfx('grenade_throw', thrower.pos);
       return this.clearPlace(dt);
@@ -391,6 +391,14 @@ export const TrenchMixin = {
       const h = halves[O.bound++ % halves.length];
       this.supportMove(O, S.length < 3 ? S : h, Math.min(R.total, O.supS + Math.min(16, want - O.supS)));
     }
+  },
+  // info panel lines: [assault group, fire group]
+  clearStatus() {
+    const O = this.order; if (!O?.v6) return ['Clearing', ''];
+    const A = O.grp.a.length, S = O.grp.s.length, bays = Math.max(1, O.corners.length), bay = Math.min(bays, O.next + 1);
+    const a = O.phase === 'move' ? `assault group (${A}) moving to the trench end` : O.phase === 'dugout' ? `assault group (${A}) clearing a dugout` : O.phase === 'bang' ? `assault group (${A}) - grenade, bay ${bay}/${bays}` : `assault group (${A}) clearing bay ${bay}/${bays}`;
+    const f = !S ? '' : O.lifted ? `${S} men - fire lifted, overwatch` : O.grp.s.some(s => s.fireAt) ? `${S} men suppressing ahead of the assault` : `${S} men moving to a fire position`;
+    return [a, f];
   },
   liftFire(O, why) {
     if (O.lifted) return; O.lifted = true;

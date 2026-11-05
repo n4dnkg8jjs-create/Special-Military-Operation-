@@ -1,0 +1,11 @@
+import fs from 'node:fs'; import * as THREE from 'three';
+import { loadGlb, pose } from './kitnode.mjs';
+const K = await import('../../../src/game/vehicleKit.js');
+const man = JSON.parse(fs.readFileSync('assets/vehicles/manifest.json','utf8')).vehicles;
+const [vn, lidn] = process.argv.slice(2); const V = man[vn];
+const sc = loadGlb(V.file); pose(sc, V, {}); const M = K.measure(sc);
+const h = [...M.hatchT, ...M.hatchH].find(h => 'hatch_lid_' + h.role === lidn); console.log('rect', JSON.stringify(h));
+pose(sc, V, { open: 1 }); const lid = sc.getObjectByName(lidn); const node = M.hatchT.includes(h) ? M.turret : M.hull;
+const inv = new THREE.Matrix4().copy(node.matrixWorld).invert(), b = new THREE.Box3(), v = new THREE.Vector3();
+lid.traverse(o => { if (o.isMesh && !/_LOD1/.test(o.name)) { const pa = o.geometry.attributes.position; for (let i = 0; i < pa.count; i++) b.expandByPoint(v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv)); } });
+console.log('open bbox', b.min.toArray().map(x=>x.toFixed(2)), b.max.toArray().map(x=>x.toFixed(2)), 'open', JSON.stringify(V.hatch_lids[lidn]));

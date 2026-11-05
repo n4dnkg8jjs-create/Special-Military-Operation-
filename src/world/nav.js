@@ -12,8 +12,9 @@ export const VEH_COST = {
 };
 // Infantry route costs (per metre, on top of the cell cost; open ground = 1): scrape = right against a wall (clear < 0.9 m),
 // wallBand = along a wall / fence (0.9-2.6 m off it: a slight pull towards facades), threat = a cell a known enemy can
-// see into (findPath opts.threat), heur = A* heuristic weight.
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.6, heur: 1.0 };
+// see into (findPath opts.threat), heur / heurThr = A* heuristic weight without / with a threat (navbench.mjs: threat 1.25 +
+// heurThr 1.3 cut the exposed share of routes from 52 % to 37 % for 4 % more length, ~3 ms a query).
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.25, heur: 1.0, heurThr: 1.3 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -230,7 +231,7 @@ export class NavGrid {
     const n = this.n, gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed;
     this._thr = opts?.threat || null; this._thrGen = gen;
     try {
-      const ti = t % n, tj = (t / n) | 0, HW = INF_COST.heur;
+      const ti = t % n, tj = (t / n) | 0, HW = this._thr ? INF_COST.heurThr : INF_COST.heur;
       const h = k => { const dx = Math.abs(k % n - ti), dz = Math.abs(((k / n) | 0) - tj); return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)) * HW; };
       const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1; heap.push(h(s), s);
       const D = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1], DX = [1, -1, 0, 0, 1, -1, 1, -1], DZ = [0, 0, 1, -1, 1, 1, -1, -1], C = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];

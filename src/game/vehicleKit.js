@@ -136,7 +136,19 @@ export function measure(model) {
   const M = { model, hull, turret, gun, hullMeshes, turMeshes, gunMeshes, H, T, hasCage: !!cageMesh && cageMesh.visible !== false, cageNode: cageMesh };
   M.TS = turret && T?.n > 20 ? { node: turret, P: T, meshes: turMeshes, isTurret: true } : { node: hull, P: H, meshes: hullMeshes, isTurret: false };
   // hatches in each node's space: rim empties hatch_<role> + the lid size
-  const hatches = (node) => { const out = [], inv = new THREE.Matrix4().copy(node.matrixWorld).invert(); model.traverse(o => { const m = /^hatch_(?!lid)([a-z_A-Z0-9]+)$/.exec(o.name); if (!m) return; let p = o.parent; while (p && p !== hull && p !== turret) p = p.parent; if (p !== node) return; const w = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv); const lid = N('hatch_lid_' + m[1]); let r = 0.33; if (lid) { const b = new THREE.Box3().setFromObject(lid), s = b.getSize(new THREE.Vector3()); if (s.x > 0 && s.x < 2) r = Math.max(0.25, Math.min(0.55, Math.max(s.x, s.z) / 2 + 0.04)); } out.push({ x: w.x, y: w.y, z: w.z, r, role: m[1] }); }); return out; };
+  const hatches = (node) => { const out = [], inv = new THREE.Matrix4().copy(node.matrixWorld).invert(); model.traverse(o => { const m = /^hatch_(?!lid)([a-z_A-Z0-9]+)$/.exec(o.name); if (!m) return; let p = o.parent; while (p && p !== hull && p !== turret) p = p.parent; if (p !== node) return; const w = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv); const lid = N('hatch_lid_' + m[1]); let r = 0.33, rect = null;
+    if (lid) {
+      // closed lid footprint + the hinge side grown by 0.25 m (an opened lid leans past its hinge line)
+      const lm = []; lid.traverse(o => { if (o.isMesh && !/_LOD1$/.test(o.name)) lm.push(o); }); const L = pointsIn(lm, node, 600);
+      if (L.n > 8) {
+        const hp = new THREE.Vector3().setFromMatrixPosition(lid.matrixWorld).applyMatrix4(inv);
+        let x0 = Math.min(L.q('x', 0), hp.x), x1 = Math.max(L.q('x', 1), hp.x), z0 = Math.min(L.q('z', 0), hp.z), z1 = Math.max(L.q('z', 1), hp.z);
+        const cx = (L.q('x', 0) + L.q('x', 1)) / 2, cz = (L.q('z', 0) + L.q('z', 1)) / 2, dx = hp.x - cx, dz = hp.z - cz;
+        if (Math.abs(dx) > Math.abs(dz)) { if (dx > 0) x1 += 0.25; else x0 -= 0.25; } else { if (dz > 0) z1 += 0.25; else z0 -= 0.25; }
+        rect = { x0: x0 - 0.06, x1: x1 + 0.06, z0: z0 - 0.06, z1: z1 + 0.06 }; r = Math.max(0.25, Math.min(0.6, Math.max(x1 - x0, z1 - z0) / 2));
+      }
+    }
+    out.push({ x: w.x, y: w.y, z: w.z, r, rect, role: m[1] }); }); return out; };
   M.hatchT = turret ? hatches(turret) : []; M.hatchH = hatches(hull);
   return M;
 }
@@ -309,10 +321,14 @@ function buildCage(M, out, info, pl) {
   const isFront = (x, z) => { const a = Math.atan2(x - sv.cx, z - sv.cz); return Math.abs(a) < 0.55; };
   // openings: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
   const holes = [];
-  for (const h of pl.hatches) holes.push({ x0: snap(h.x - h.r - 0.06, Math.floor), x1: snap(h.x + h.r + 0.06, Math.ceil), z0: snap(h.z - h.r - 0.06, Math.floor), z1: snap(h.z + h.r + 0.06, Math.ceil) });
+  for (const h of pl.hatches) { const q = h.rect || { x0: h.x - h.r - 0.06, x1: h.x + h.r + 0.06, z0: h.z - h.r - 0.06, z1: h.z + h.r + 0.06 }; holes.push({ x0: snap(q.x0, Math.floor), x1: snap(q.x1, Math.ceil), z0: snap(q.z0, Math.floor), z1: snap(q.z1, Math.ceil) }); }
   if (pl.spots.ew) { const e = pl.spots.ew; holes.push({ x0: snap(e.x - 0.32, Math.floor), x1: snap(e.x + 0.32, Math.ceil), z0: snap(e.z - 0.26, Math.floor), z1: snap(e.z + 0.26, Math.ceil) }); }
   const zMax = Math.max(...outer.map(p => p[1])) + 1;
-  if (sv.gun && info.kind !== 'tank' && inPoly(outer, sv.gun.x, Math.min(sv.gun.z, sv.gun.zBack) + 0.05)) { const g = sv.gun; holes.push({ x0: snap(g.x - g.hw - 0.07, Math.floor), x1: snap(g.x + g.hw + 0.07, Math.ceil), z0: snap(Math.min(g.z - 0.3, g.zBack), Math.floor), z1: zMax }); }
+  if (sv.gun && info.kind !== 'tank') {
+    const g = sv.gun, zMin = Math.min(...outer.map(p => p[1])) - 1, band = { x0: snap(g.x - g.hw - 0.07, Math.floor), x1: snap(g.x + g.hw + 0.07, Math.ceil) };
+    if (inPoly(outer, g.x, Math.min(g.z, g.zBack) + 0.05)) holes.push({ ...band, z0: snap(Math.min(g.z - 0.3, g.zBack), Math.floor), z1: zMax });
+    else if (g.z < zMin + 1 && inPoly(outer, g.x, (zMin + zMax) / 2)) holes.push({ ...band, z0: snap(zMin, Math.floor), z1: zMax, full: true });   // barrel laid over the cab
+  }
   // supports: perimeter, cross tubes every 0.5 m (x) / 0.6 m (z) along the grid lines, opening frames
   const supports = [];
   for (let i = 0; i < outer.length; i++) supports.push([outer[i], outer[(i + 1) % outer.length]]);
@@ -331,11 +347,23 @@ function buildCage(M, out, info, pl) {
   const cross = [];
   for (let z = Z0 + 5 * CELL; z < Z1 - 2 * CELL; z += 5 * CELL) cross.push(...gridLine(z, true, X0, X1));
   for (let x = X0 + 6 * CELL; x < X1 - 3 * CELL; x += 6 * CELL) cross.push(...gridLine(x, false, Z0, Z1));
+  // opening frames: the hole edges (on grid lines), minus the parts inside another opening
   const frame = [];
-  for (const h of holes) for (const [a, b] of [[[h.x0, h.z0], [h.x1, h.z0]], [[h.x1, h.z0], [h.x1, Math.min(h.z1, zMax - 1)]], [[h.x0, Math.min(h.z1, zMax - 1)], [h.x1, Math.min(h.z1, zMax - 1)]], [[h.x0, h.z0], [h.x0, Math.min(h.z1, zMax - 1)]]]) { const c = clipSeg(a, b, outer); if (c && Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]) > 0.05) frame.push(c); }
+  for (const h of holes) {
+    const zt = Math.min(h.z1, Z1), zb = Math.max(h.z0, Z0);
+    for (const [fixed, alongX, lo, hi] of [[h.z0, true, h.x0, h.x1], [h.z1, true, h.x0, h.x1], [h.x0, false, zb, zt], [h.x1, false, zb, zt]]) {
+      if (hi - lo < 0.05) continue;
+      for (const c of gridLine(fixed, alongX, lo, hi)) if (Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]) > 0.05) frame.push(c);
+    }
+  }
   supports.push(...cross, ...frame);
   const R0 = 0.024, R1 = 0.016;
-  for (const [a, b] of supports.slice(0, outer.length)) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), R0);
+  const outsideHoles = (a, b) => {   // pieces of a segment not crossing an opening
+    const out = []; let p0 = null; const NS = 24, at = t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    for (let k = 0; k < NS; k++) { const m = at((k + 0.5) / NS), inH = holes.some(h => m[0] > h.x0 - 0.03 && m[0] < h.x1 + 0.03 && m[1] > h.z0 - 0.03 && m[1] < h.z1 + 0.03); if (!inH && p0 == null) p0 = k / NS; if (inH && p0 != null) { out.push([at(p0), at(k / NS)]); p0 = null; } }
+    if (p0 != null) out.push([at(p0), b]); return out;
+  };
+  for (const [a, b] of supports.slice(0, outer.length)) for (const [A, B] of outsideHoles(a, b)) tube(col, V3(A[0], top, A[1]), V3(B[0], top, B[1]), R0);
   for (const [a, b] of cross) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), R1);
   for (const [a, b] of frame) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.018);
   scr.push(screenGeo(outer, holes, top + R1 + 0.004, CELL, 0.035, supports));
@@ -346,7 +374,7 @@ function buildCage(M, out, info, pl) {
     const a = outer[i], b = outer[(i + 1) % outer.length]; corners.push(a);
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L > 1.3) corners.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
   }
-  const keep = (x, z) => pl.hatches.every(h => Math.hypot(h.x - x, h.z - z) > h.r + 0.1) && (!sv.gun || Math.abs(x - sv.gun.x) > sv.gun.hw + 0.2 || z < sv.gun.zBack - 0.15);
+  const keep = (x, z) => pl.hatches.every(h => h.rect ? !(x > h.rect.x0 - 0.08 && x < h.rect.x1 + 0.08 && z > h.rect.z0 - 0.08 && z < h.rect.z1 + 0.08) : Math.hypot(h.x - x, h.z - z) > h.r + 0.1) && (!sv.gun || Math.abs(x - sv.gun.x) > sv.gun.hw + 0.2 || z < sv.gun.zBack - 0.15);
   let posts = 0;
   for (const [tx, tz] of corners) {
     if (isFront(tx, tz)) continue;
@@ -362,7 +390,7 @@ function buildCage(M, out, info, pl) {
     }
     if (!foot) continue;
     (pl.feet ||= []).push({ x: foot.p.x, z: foot.p.z });
-    const f = foot.p.clone().add(foot.n.clone().multiplyScalar(-0.01));
+    const f = foot.p.clone().add(foot.n.clone().multiplyScalar(0.004));
     if (foot.n.y > 0.45) { tube(col, f, V3(tx, top, tz), R0); weldPlate(col, foot.p, foot.n, 0.1); }
     else { const s = V3(tx, foot.p.y, tz); tube(col, f, s, R0); tube(col, s.clone().add(V3(0, -0.04, 0)), V3(tx, top, tz), R0); weldPlate(col, foot.p, foot.n, 0.11); tube(col, f.clone().add(V3(0, 0.08, 0)), V3(tx, foot.p.y + 0.22, tz), 0.012); }
     posts++;
@@ -372,8 +400,15 @@ function buildCage(M, out, info, pl) {
   for (let i = 0; i < outer.length; i++) {
     const a = outer[i], b = outer[(i + 1) % outer.length]; const e = norm2([b[0] - a[0], b[1] - a[1]]), on = sgn > 0 ? [e[1], -e[0]] : [-e[1], e[0]];
     if (on[1] > 0.5) continue;
-    const c = curtainGeo(a, b, top - R0, Math.min(0.38, top - sv.yEdge - 0.12), on); if (!c) continue;
-    cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(col, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), 0.007, 4);
+    // pieces of the edge outside the openings (a slot over a gun crosses the rear edge on a truck cab)
+    const pieces = []; let p0 = null; const NS = 24;
+    for (let k = 0; k < NS; k++) { const t0 = k / NS, t1 = (k + 1) / NS, mx = a[0] + (b[0] - a[0]) * (t0 + t1) / 2, mz = a[1] + (b[1] - a[1]) * (t0 + t1) / 2, inH = holes.some(h => mx > h.x0 - 0.02 && mx < h.x1 + 0.02 && mz > h.z0 - 0.05 && mz < h.z1 + 0.05); if (!inH && p0 == null) p0 = t0; if (inH && p0 != null) { pieces.push([p0, t0]); p0 = null; } }
+    if (p0 != null) pieces.push([p0, 1]);
+    for (const [t0, t1] of pieces) {
+      const A = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0], B = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1];
+      const c = curtainGeo(A, B, top - R0, Math.min(0.38, top - sv.yEdge - 0.12), on); if (!c) continue;
+      cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(col, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), 0.007, 4);
+    }
   }
   out.push([node, mesh(col, mats().steel, 'kit_cage')], [node, mesh(scr, mats().chain, 'kit_cage_screen')], [node, mesh(cur, mats().chain, 'kit_cage_curtain')]);
   pl.cage = { top, outer, posts, feet: pl.feet || [] };
@@ -397,6 +432,8 @@ function cageCurtains(M, out) {
   out.push([S.node, mesh(col, mats().steel, 'kit_cage_rim')], [S.node, mesh(cur, mats().chain, 'kit_cage_curtain')]);
 }
 
+// clear of the hull hatches' lid swing (rects from measure) by `m`
+const hullFree = (M, p, m = 0.12) => M.hatchH.every(h => { const q = h.rect || { x0: h.x - h.r, x1: h.x + h.r, z0: h.z - h.r, z1: h.z + h.r }; return !(p.x > q.x0 - m && p.x < q.x1 + m && p.z > q.z0 - m && p.z < q.z1 + m); });
 const BUILD = {
   cage(M, out, info, pl) { if (M.hasCage) cageCurtains(M, out); else buildCage(M, out, info, pl); },
   roof(M, out, info, pl) {
@@ -450,7 +487,7 @@ const BUILD = {
       const c = 0.88 + R() * 0.24, colr = [0.40 * c, 0.42 * c, 0.29 * c];
       const ax = slab([], p, n, u, 1, 1, 1);   // basis only
       let nn = ax.n, vv = ax.v;
-      if (tilt) { const q = new THREE.Quaternion().setFromAxisAngle(ax.u, tilt); nn = nn.clone().applyQuaternion(q); vv = vv.clone().applyQuaternion(q); const lift = Math.sin(Math.abs(tilt)) * BD / 2 + 0.004; const wedge = new THREE.BoxGeometry(BW * 0.9, lift * 2, BD * 0.8); wedge.applyMatrix4(new THREE.Matrix4().makeBasis(ax.u, ax.n, ax.v).setPosition(p.clone().add(ax.n.clone().multiplyScalar(lift - 0.006)))); geos.push(prep(wedge, [0.2, 0.2, 0.16])); p = p.clone().add(ax.n.clone().multiplyScalar(lift * 2 - 0.012)); }
+      if (tilt) { const q = new THREE.Quaternion().setFromAxisAngle(ax.u, tilt); nn = nn.clone().applyQuaternion(q); vv = vv.clone().applyQuaternion(q); const lift = Math.sin(Math.abs(tilt)) * BD / 2 + 0.004; const wedge = new THREE.BoxGeometry(BW * 0.9, lift * 2, BD * 0.8); wedge.applyMatrix4(new THREE.Matrix4().makeBasis(ax.u, ax.n, ax.v).setPosition(p.clone().add(ax.n.clone().multiplyScalar(lift - 0.003)))); geos.push(prep(wedge, [0.2, 0.2, 0.16])); p = p.clone().add(ax.n.clone().multiplyScalar(lift * 2 + 0.004)); }
       const jit = (R() - 0.5) * 0.04, uu = ax.u.clone().applyAxisAngle(nn, jit);
       const g = new THREE.BoxGeometry(BW, BT, BD, 1, 1, 1); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0) { pa.setX(i, pa.getX(i) * 0.94); pa.setZ(i, pa.getZ(i) * 0.86); }   // chamfered lid
       const m = new THREE.Matrix4().makeBasis(uu, nn, new THREE.Vector3().crossVectors(uu, nn)); m.setPosition(p.clone().add(nn.clone().multiplyScalar(BT / 2 - 0.004)));
@@ -483,8 +520,25 @@ const BUILD = {
           const h = cast(S.meshes, S.node, q.clone().add(nrm.clone().multiplyScalar(0.6)), nrm.clone().negate(), 1.2);
           if (!h || Math.abs(h.p.clone().sub(q).dot(nrm)) > 0.02 || h.n.dot(nrm) < 0.95) { ok = false; break; } if (!best) best = h;
         }
-        if (!ok || R() < 0.04) continue;
+        if (!ok || !hullFree(M, best.p) || R() < 0.04) continue;
         brick(geos, best.p, nrm, u);
+      }
+    }
+    // a row along each hull side over the front of the track run (tank skirts / IFV upper side plates), each brick on
+    // the side surface found by a horizontal ray, all four corners checked
+    {
+      const xo = Math.max(Math.abs(P.q('x', 0.002)), Math.abs(P.q('x', 0.998))) + 1;
+      for (const sx of [-1, 1]) for (const fy of tank ? [0.38, 0.5] : [0.6, 0.72]) {
+        const y = P.q('y', fy); let last = null;
+        for (let z = P.q('z', 0.9); z > P.q('z', tank ? 0.45 : 0.4); z -= 0.03) {
+          const h = cast(S.meshes, S.node, V3(sx * xo, y, z), V3(-sx, 0, 0)); if (!h || Math.abs(h.n.x) < 0.75) continue;
+          if (last && last.distanceTo(h.p) < BW + GAP) continue;
+          const u = V3(0, 0, 1).sub(h.n.clone().multiplyScalar(h.n.z)).normalize(), v = new THREE.Vector3().crossVectors(u, h.n);
+          const pr = [[-0.45, -0.4], [0.45, -0.4], [-0.45, 0.4], [0.45, 0.4]].map(([a, b]) => { const q = h.p.clone().add(u.clone().multiplyScalar(a * BW)).add(v.clone().multiplyScalar(b * BD)); const hh = cast(S.meshes, S.node, q.clone().add(h.n.clone().multiplyScalar(0.3)), h.n.clone().negate(), 0.6); return hh ? hh.p.clone().sub(h.p).dot(h.n) : null; });
+          if (pr.some(d => d == null || Math.abs(d) > 0.012) || !hullFree(M, h.p)) continue;
+          last = h.p.clone(); if (R() < 0.05) continue;
+          brick(geos, h.p.clone().add(h.n.clone().multiplyScalar(Math.max(0, ...pr))), h.n, u);
+        }
       }
     }
     out.push([M.hull, mesh(geos, mats().era, 'kit_era_hull')]);
@@ -493,7 +547,10 @@ const BUILD = {
       const T = M.T, S2 = { node: M.turret, meshes: M.turMeshes }, sv = survey(M, M.TS), tg = [];
       const gx = sv.gun ? sv.gun.x : 0, ghw = (sv.gun ? sv.gun.hw : 0.25) + 0.12;
       const R0 = Math.max(T.q('x', 0.99) - T.q('x', 0.01), T.q('z', 0.99) - T.q('z', 0.01)) + 1;
-      const yLo = T.q('y', 0.08), yHi = sv.yEdge - BD * 0.6;
+      const yLo = T.q('y', tank ? 0.08 : 0.3), yHi = sv.yEdge - BD * 0.6;
+      // a turret brick must never sweep over an opened hull hatch lid (driver's hatch in front of the turret)
+      const tp = new THREE.Vector3().setFromMatrixPosition(M.turret.matrixWorld).applyMatrix4(new THREE.Matrix4().copy(M.hull.matrixWorld).invert());
+      const lidSweep = p => M.hatchH.some(hh => { const q = hh.rect; if (!q) return false; const nx = Math.max(q.x0, Math.min(tp.x, q.x1)), nz = Math.max(q.z0, Math.min(tp.z, q.z1)); return Math.hypot(p.x, p.z) + BW * 0.6 > Math.hypot(nx - tp.x, nz - tp.z) && tp.y + p.y < hh.y + 0.75; });
       for (let y = yHi, row = 0; y >= yLo && row < (tank ? 3 : 2); y -= BD + GAP + 0.01, row++) for (const side of [-1, 1]) {
         let last = null;
         for (let a = 2; a < 80; a += 1.5) {
@@ -505,23 +562,25 @@ const BUILD = {
           const t = new THREE.Vector3().crossVectors(UP, h.n).normalize(); let ok = true;
           for (const e of [-0.42, 0.42]) { const q = h.p.clone().add(t.clone().multiplyScalar(e * BW)); const hh = cast(S2.meshes, S2.node, q.clone().add(h.n.clone().multiplyScalar(0.4)), h.n.clone().negate(), 0.8); if (!hh || hh.p.distanceTo(q) > 0.05) { ok = false; break; } }
           if (!ok) continue;
-          last = h.p.clone(); if (R() < 0.04) continue;
+          last = h.p.clone(); if (R() < 0.04 || lidSweep(h.p)) continue;
           brick(tg, h.p, h.n, t, tank ? -0.3 : 0);
         }
       }
       // tanks: a carpet of Kontakt-1 on the turret roof against top-attack drones (2023-24 field practice), laid flat
       // in rows in front of and beside the hatches, clear of the gun, the sight / jammer and the cage feet
       if (tank) {
-        const pl = info._pl, keep = [...(pl?.hatches || M.hatchT).map(h => ({ x: h.x, z: h.z, r: h.r + 0.1 })), ...['sight', 'ew'].filter(k => pl?.spots[k]).map(k => ({ ...pl.spots[k], r: 0.38 })), ...(pl?.cage?.feet || []).map(f => ({ x: f.x, z: f.z, r: 0.12 }))];
-        const free = (x, z) => keep.every(k => Math.hypot(k.x - x, k.z - z) > k.r + BW * 0.45) && !(Math.abs(x - gx) < ghw + 0.05 && z > (sv.gun ? sv.gun.z - 0.35 : 9));
-        const zTop = Math.max(...sv.roof.map(r => r.z)) - 0.15, zLo = (M.hatchT.length ? Math.min(...M.hatchT.map(h => h.z)) : sv.cz) - 0.15;
+        const pl = info._pl, keep = [...(pl?.hatches || M.hatchT).map(h => ({ x: h.x, z: h.z, r: h.r + 0.03 })), ...['sight', 'ew'].filter(k => pl?.spots[k]).map(k => ({ ...pl.spots[k], r: 0.38 })), ...(pl?.cage?.feet || []).map(f => ({ x: f.x, z: f.z, r: 0.12 }))];
+        const free = (x, z) => keep.every(k => Math.hypot(k.x - x, k.z - z) > k.r + BW * 0.4) && !(Math.abs(x - gx) < ghw - 0.04 + BW / 2 && z > (sv.gun ? sv.gun.z - 0.15 : 9));
+        const zTop = Math.max(...sv.roof.map(r => r.z)) - 0.15, zLo = (M.hatchT.length ? Math.min(...M.hatchT.map(h => h.z)) - 0.5 : sv.cz);
         for (let z = zTop; z > zLo; z -= BD + GAP + 0.02) for (let x = sv.xr[0] + 0.2; x < sv.xr[1] - 0.2; x += BW + GAP + 0.01) {
           if (!free(x, z) || !inPoly(sv.outline, x, z)) continue;
           const hs = [[0, 0], [-0.45, -0.4], [0.45, -0.4], [-0.45, 0.4], [0.45, 0.4]].map(([a, b]) => down(S2, x + a * BW, z + b * BD, sv.yMax + 1));
-          if (hs.some(h => !h || h.n.y < 0.8) || Math.max(...hs.map(h => h.p.y)) - Math.min(...hs.map(h => h.p.y)) > 0.035) continue;
-          const yb = Math.max(...hs.map(h => h.p.y)); if (yb > sv.yEdge + 0.12) continue;   // on the roof plate, not on boxes
+          if (hs.some(h => !h || h.n.y < 0.55)) continue;
+          // local plate plane from the five probes: all within 1.5 cm of it (no boxes, lips or hatch rings under the brick)
+          const nn = hs.reduce((a, h) => a.add(h.n), V3(0, 0, 0)).normalize(), c0 = hs[0].p;
+          const dev = hs.map(h => h.p.clone().sub(c0).dot(nn)); if (Math.max(...dev) - Math.min(...dev) > 0.03 || c0.y > sv.yEdge + 0.15) continue;
           if (R() < 0.05) continue;
-          brick(tg, V3(x, yb, z), UP.clone(), V3(1, 0, 0));
+          brick(tg, c0.clone().add(nn.clone().multiplyScalar(Math.max(0, ...dev))), nn, V3(1, 0, 0));
         }
       }
       out.push([M.turret, mesh(tg, mats().era, 'kit_era_turret')]);
@@ -533,17 +592,17 @@ const BUILD = {
     if (!tracked) {
       // wheeled: two courses of bags on the sloped upper hull side between the axles' arches, held by a welded rail
       const geos = [], rail = [];
-      const z0 = P.q('z', 0.12), z1 = P.q('z', 0.82), yU = P.q('y', 0.62), yL = P.q('y', 0.42);
+      const z0 = P.q('z', 0.2), z1 = P.q('z', 0.82), yU = P.q('y', 0.62), yL = P.q('y', 0.42);
       for (const sx of [-1, 1]) {
         const xFar = sx * (Math.max(Math.abs(P.q('x', 0.005)), Math.abs(P.q('x', 0.995))) + 1);
         let railPts = [];
         for (let z = z0; z <= z1; z += 0.5) for (const [k, y] of [[0, yL], [1, (yL + yU) / 2 + 0.05]]) {
           const h = cast(S.meshes, S.node, V3(xFar, y, z), V3(-sx, 0, 0)); if (!h || Math.abs(h.n.x) < 0.35 || h.n.y < -0.3) continue;
           // flatness under the bag: three probes along z must hit within 4 cm of the plane
-          let ok = true; for (const dz of [-0.2, 0.2]) { const hh = cast(S.meshes, S.node, V3(xFar, y, z + dz), V3(-sx, 0, 0)); if (!hh || Math.abs(hh.p.clone().sub(h.p).dot(h.n)) > 0.05) ok = false; }
+          let ok = true; for (const [dz, dy] of [[-0.22, 0], [0.22, 0], [0, 0.1], [0, -0.1], [-0.2, 0.08], [0.2, -0.08]]) { const hh = cast(S.meshes, S.node, V3(xFar, y + dy, z + dz), V3(-sx, 0, 0)); if (!hh || Math.abs(hh.p.clone().sub(h.p).dot(h.n)) > 0.035 + Math.abs(dy) * Math.abs(h.n.y) * 1.2) ok = false; }
           if (!ok) continue;
           const g = bagGeo(0.5 + R() * 0.06, 0.3, 0.17); const n = h.n, v = UP.clone().sub(n.clone().multiplyScalar(n.y)).normalize(), u = new THREE.Vector3().crossVectors(n, v).normalize();   // v: up the slope, u: along the hull
-          g.applyMatrix4(new THREE.Matrix4().makeBasis(u, n, v).multiply(new THREE.Matrix4().makeRotationY((R() - 0.5) * 0.15)).setPosition(h.p.clone().add(n.clone().multiplyScalar(-0.01))));
+          g.applyMatrix4(new THREE.Matrix4().makeBasis(u, n, v).multiply(new THREE.Matrix4().makeRotationY((R() - 0.5) * 0.15)).setPosition(h.p.clone().add(n.clone().multiplyScalar(0.01))));
           const c = 0.8 + R() * 0.3; geos.push(prep(g, [c, c * 0.97, c * 0.9]));
           if (k === 0) railPts.push(h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(0.22)));
           if (k === 0) { weldPlate(rail, h.p.clone().add(v.clone().multiplyScalar(-0.17)), n, 0.07); tube(rail, h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(-0.005)), h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(0.22)), 0.012, 5); }
@@ -569,7 +628,7 @@ const BUILD = {
       if (placed.some(q => q.distanceTo(h.p) < 0.155)) continue;
       // both pads must lie on the plate
       const u = V3(1, 0, 0); let ok = true; for (const e of [-0.25, 0.25]) { const q = h.p.clone().add(u.clone().multiplyScalar(e)); const hh = cast(S.meshes, S.node, q.clone().add(h.n.clone().multiplyScalar(0.4)), h.n.clone().negate(), 0.8); if (!hh || Math.abs(hh.p.clone().sub(q).dot(h.n)) > 0.025) ok = false; }
-      if (!ok) continue;
+      if (!ok || !hullFree(M, h.p)) continue;
       placed.push(h.p); link(geos, h.p, h.n, u);
     }
     out.push([M.hull, mesh(geos, mats().link, 'kit_links_hull')]);
@@ -592,11 +651,14 @@ const BUILD = {
     const hs = [[-0.13, -0.15], [0.13, -0.15], [-0.13, 0.15], [0.13, 0.15], [0, 0]].map(([dx, dz]) => down(S, sp.x + dx, sp.z + dz, pl.sv.yMax + 1)).filter(h => h && h.n.y > 0.3);
     if (hs.length < 3) return;
     const hi = Math.max(...hs.map(h => h.p.y)), lo = Math.min(...hs.map(h => h.p.y));
-    const plinth = new THREE.BoxGeometry(0.3, hi - lo + 0.06, 0.34); plinth.translate(sp.x, (hi + lo) / 2 + 0.02, sp.z); col.push(prep(plinth));
+    // plinth: a box whose bottom vertices are dropped onto the roof under each of them (welded on, 5 mm in)
+    const plinth = new THREE.BoxGeometry(0.28, 0.1, 0.32); plinth.translate(sp.x, hi, sp.z);
+    { const pa = plinth.attributes.position; for (let i = 0; i < pa.count; i++) if (pa.getY(i) < hi) { const h = down(S, pa.getX(i), pa.getZ(i), pl.sv.yMax + 1); pa.setY(i, (h && h.p.y > lo - 0.15 ? h.p.y : lo) - 0.005); } else pa.setY(i, hi + 0.05); }
+    col.push(prep(plinth));
     const y0 = hi + 0.05;
     const body = new THREE.BoxGeometry(0.32, 0.26, 0.4); const pa = body.attributes.position; for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0 && pa.getZ(i) > 0) pa.setZ(i, pa.getZ(i) - 0.07);   // sloped armoured front
     body.translate(sp.x, y0 + 0.13, sp.z); col.push(prep(body));
-    const hood = new THREE.BoxGeometry(0.36, 0.03, 0.2); hood.rotateX(-0.25); hood.translate(sp.x, y0 + 0.27, sp.z + 0.15); col.push(prep(hood));
+    const hood = new THREE.BoxGeometry(0.36, 0.025, 0.3); hood.translate(sp.x, y0 + 0.272, sp.z + 0.02); col.push(prep(hood));
     for (const s of [-1, 1]) { const door = new THREE.BoxGeometry(0.012, 0.16, 0.12); door.rotateY(s * 0.5); door.translate(sp.x + s * 0.17, y0 + 0.13, sp.z + 0.2); col.push(prep(door)); }
     const win = new THREE.BoxGeometry(0.24, 0.13, 0.012); win.translate(sp.x, y0 + 0.13, sp.z + 0.196); gl.push(prep(win));
     const conduit = [V3(sp.x - 0.16, y0 + 0.08, sp.z - 0.1), V3(sp.x - 0.22, y0 + 0.02, sp.z - 0.18), V3(sp.x - 0.22, lo + 0.015, sp.z - 0.3)];
@@ -615,7 +677,7 @@ const BUILD = {
     for (const [a, b] of [[0, 1], [2, 3], [0, 2], [1, 3]]) { const A = legs[a], B = legs[b]; const ym = (deck + Math.max(A.h.p.y, B.h.p.y)) / 2; tube(st, V3(sp.x + A.dx, ym, sp.z + A.dz), V3(sp.x + B.dx, ym, sp.z + B.dz), 0.01, 5); }
     const plate = new THREE.BoxGeometry(0.5, 0.012, 0.38); plate.translate(sp.x, deck + 0.006, sp.z); st.push(prep(plate));
     const box = new THREE.BoxGeometry(0.44, 0.2, 0.32); box.translate(sp.x, deck + 0.112, sp.z); col.push(prep(box));
-    for (let i = 0; i < 5; i++) { const f = new THREE.BoxGeometry(0.006, 0.15, 0.3); f.translate(sp.x - 0.15 + i * 0.075, deck + 0.11, sp.z); col.push(prep(f)); }   // cooling fins along the top
+    for (const sxx of [-1, 1]) for (let i = 0; i < 4; i++) { const f = new THREE.BoxGeometry(0.006, 0.12, 0.26); f.translate(sp.x + sxx * (0.226 + i * 0.0), deck + 0.1, sp.z); if (i === 0) col.push(prep(f)); }   // heat-sink plates on the box ends
     const lid = new THREE.BoxGeometry(0.46, 0.02, 0.34); lid.translate(sp.x, deck + 0.222, sp.z); col.push(prep(lid));
     // antennas: 6 whips in a ring on the lid (different bands, different lengths), black bases + a cable down to the roof
     for (let i = 0; i < 6; i++) {
@@ -629,19 +691,29 @@ const BUILD = {
   smoke(M, out, info, pl) {
     const S = pl.S, P = S.P, sv = pl.sv, geos = [], caps = [];
     for (const sx of [-1, 1]) {
-      let h = null;
-      for (const fz of [0.62, 0.55, 0.7, 0.48, 0.4]) { for (const dy of [0.16, 0.24, 0.1, 0.3]) { const c = cast(S.meshes, S.node, V3(sx * 6, sv.yEdge - dy, P.q('z', fz)), V3(-sx, 0, 0)); if (c && Math.abs(c.n.y) < 0.5 && Math.abs(c.n.x) > 0.6) { h = c; break; } } if (h) break; }
+      // candidate spots on the turret side (front half first); the bracket arm is as long as needed to keep every tube
+      // 6 cm clear of the turret (tube ends probed by rays), and a spot needing an arm over 0.2 m is skipped
+      let h = null, n, out_, al, tubes, arm;
+      for (const fz of [0.62, 0.55, 0.7, 0.48, 0.4, 0.3]) for (const dy of [0.16, 0.24, 0.1, 0.3]) {
+        if (h) break;
+        const c = cast(S.meshes, S.node, V3(sx * 6, sv.yEdge - dy, P.q('z', fz)), V3(-sx, 0, 0)); if (!c || Math.abs(c.n.y) > 0.5 || Math.abs(c.n.x) < 0.6) continue;
+        const n_ = c.n, o_ = n_.clone().setY(0).normalize(), a_ = new THREE.Vector3().crossVectors(UP, o_).normalize();
+        const tb = k => Array.from({ length: 4 }, (_, i) => { const dir = o_.clone().multiplyScalar(0.7).add(V3(0, 0.62, 0)).add(V3(0, 0, 0.42)).normalize().applyAxisAngle(UP, sx * (i - 1.5) * 0.1); const foot = c.p.clone().add(o_.clone().multiplyScalar(k)).add(a_.clone().multiplyScalar((i - 1.5) * 0.075)); return [foot, foot.clone().add(dir.multiplyScalar(0.3))]; });
+        let k = 0.1;
+        for (let it = 0; it < 6; it++) {
+          let need = 0; for (const [f, e] of tb(k)) for (const q of [f, e, f.clone().lerp(e, 0.5)]) { const back = cast(S.meshes, S.node, q.clone().add(o_.clone().multiplyScalar(0.5)), o_.clone().negate(), 1.0); if (back && 0.5 - back.dist < 0.06) need = Math.max(need, 0.06 - (0.5 - back.dist)); }
+          if (need <= 0) break; k += need + 0.01;
+        }
+        if (k > 0.2) continue;
+        h = c; n = n_; out_ = o_; al = a_; tubes = tb; arm = k;
+      }
       if (!h) continue;
-      const n = h.n; weldPlate(geos, h.p, n, 0.16);
-      const base = h.p.clone().add(n.clone().multiplyScalar(0.012));
-      // bracket: a shelf plate out from the side, 4 tubes on it in a fan, angled up 40 deg and outward
-      const shelf = new THREE.BoxGeometry(0.2, 0.014, 0.36); const out_ = n.clone().setY(0).normalize(); shelf.applyMatrix4(new THREE.Matrix4().makeBasis(out_, UP, new THREE.Vector3().crossVectors(out_, UP)).setPosition(base.clone().add(out_.clone().multiplyScalar(0.1)).add(V3(0, -0.06, 0)))); geos.push(prep(shelf));
-      for (let i = 0; i < 4; i++) {
-        const along = new THREE.Vector3().crossVectors(out_, UP).multiplyScalar((i - 1.5) * 0.085 * -sx);
-        const dir = out_.clone().multiplyScalar(0.55).add(V3(0, 0.75, 0)).add(V3(0, 0, 0.5)).normalize().applyAxisAngle(UP, sx * (i - 1.5) * 0.12);
-        const foot = base.clone().add(out_.clone().multiplyScalar(0.1)).add(along).add(V3(0, -0.053, 0));
-        tube(geos, foot, foot.clone().add(dir.clone().multiplyScalar(0.3)), 0.045, 8);
-        const cap = new THREE.CylinderGeometry(0.036, 0.036, 0.01, 8); cap.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir)); const cp = foot.clone().add(dir.clone().multiplyScalar(0.3)); cap.translate(cp.x, cp.y, cp.z); caps.push(prep(cap));
+      weldPlate(geos, h.p, n, 0.1);
+      tube(geos, h.p.clone().add(n.clone().multiplyScalar(0.006)), h.p.clone().add(out_.clone().multiplyScalar(arm)), 0.025, 6);
+      const blk = new THREE.BoxGeometry(0.06, 0.06, 0.32); blk.applyMatrix4(new THREE.Matrix4().makeBasis(out_, UP, al).setPosition(h.p.clone().add(out_.clone().multiplyScalar(arm)))); geos.push(prep(blk));
+      for (const [f, e] of tubes(arm)) {
+        tube(geos, f, e, 0.045, 8);
+        const dir = e.clone().sub(f).normalize(), cap = new THREE.CylinderGeometry(0.036, 0.036, 0.01, 8); cap.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, dir)); cap.translate(e.x, e.y, e.z); caps.push(prep(cap));
       }
     }
     out.push([S.node, mesh(geos, mats().link, 'kit_smoke')], [S.node, mesh(caps, mats().black, 'kit_smoke_caps')]);
