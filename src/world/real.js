@@ -967,6 +967,8 @@ export class RealRural extends Farmland {
     for (const [x, z, L, Dd, rot] of this.hallRects || []) { yx.save(); yx.translate(...P(x, z)); yx.rotate(-rot); yx.globalAlpha = 0.75; yx.fillRect((-L / 2 - 7) * k, (-Dd / 2 - 7) * k, (L + 14) * k, (Dd + 14) * k); yx.restore(); }
     for (const a of this.osm.areas) if (a.t === 'industrial' || a.t === 'school') { yx.globalAlpha = 0.45; path(yx, a.pts, true); yx.fill(); }
     for (const g of this.gardenPolys) { gx.globalAlpha = 0.5 + R() * 0.4; path(gx, g, true); gx.fill(); }
+    // grass verges along roads / tracks (ground look v6): road -> packed / gravel shoulder (yards layer) -> worn grass -> field
+    for (const r of this.osm.roads) if (r.type !== 'drive') { vx.globalAlpha = r.type === 'paved' ? 0.85 : 0.6; vx.lineWidth = (r.w + (r.type === 'paved' ? 15 : 8)) * k; path(vx, r.pts); vx.stroke(); }
     for (const l of [...this.osm.lines.filter(l => l.t === 'tree_row' || l.t === 'hedge' || l.t === 'stream'), ...(MAP.belts || []).map(p => ({ pts: p }))]) { vx.lineWidth = 20 * k; vx.globalAlpha = 1; path(vx, l.pts); vx.stroke(); }
     for (const a of this.osm.areas) if (['grass', 'meadow', 'wood', 'forest', 'scrub'].includes(a.t)) { vx.globalAlpha = 0.9; path(vx, a.pts, true); vx.fill(); }
     yx.globalAlpha = 1;

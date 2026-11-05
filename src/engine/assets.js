@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as Fallback from './fallback.js';
 import { MAP } from '../world/city.js';
+import { GROUND_SETS } from '../world/ground.js';
 
 // Loads GLB assets produced by tools/blender/*. Every asset has a procedural fallback so the game
 // always runs; the HUD logs which ones were substituted.
@@ -48,14 +49,18 @@ export class Assets {
     }));
     this.rubbleKeys = rubbleList.filter(k => this.gltf[k]);
     this.openBacks();
-    // tiling textures
+    // ground material sets (ground look v6, src/world/ground.js): albedo + normal/height/roughness per set
+    this.tex.ground = {};
+    await Promise.all(GROUND_SETS.map(async t => { const g = await this.loadGroundSet(t, renderer); if (g) this.tex.ground[t] = g; else this.missing.push('ground:' + t); }));
+    // tiling textures (the old ground sets only as a stand-in when a v6 set is missing)
     for (const t of ['asphalt', 'concrete', 'brick', 'dirt', 'rubble', 'grass']) {
+      if (['dirt', 'rubble', 'grass'].includes(t) && this.tex.ground[t]) { progress(++done / (jobs.length + 6), t); continue; }
       this.tex[t] = await this.loadTexSet(t, renderer);
       progress(++done / (jobs.length + 6), t);
     }
     { const c = await this.loadTexSet('curb', renderer, true); if (c) this.tex.curb = c; }
-    // farmland ground sets are optional (the ground shader has procedural fallbacks)
-    if (opts.rural || extra.includes('farmland')) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
+    // farmland track strips (+ old field sets only as stand-ins)
+    if (opts.rural || extra.includes('farmland')) for (const t of ['plowed', 'stubble', 'fallow', 'track']) { if (this.tex.ground[t]) continue; const s = await this.loadTexSet(t, renderer, true); if (s) this.tex[t] = s; }
     // shell-crater decal atlas (2 x 2, RGBA albedo + normal; tools/blender/env/crater_tex.py), optional
     {
       const one = (url, srgb) => new Promise(res => texLoader.load(url, t => { t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); if (srgb) t.colorSpace = THREE.SRGBColorSpace; res(t); }, undefined, () => res(null)));
@@ -84,6 +89,16 @@ export class Assets {
       const g = this.gltf[k]; if (!g) continue;
       for (const n of names) for (const v of [n, n + '_lod1', n + '_mid']) g.scene.getObjectByName(v)?.traverse(o => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(two) : two(o.material); });
     }
+  }
+
+  // v6 ground set: <name>_c.jpg (sRGB albedo) + <name>_n.png (linear RGBA: slope x / z, height, roughness)
+  async loadGroundSet(name, renderer) {
+    const base = `assets/textures/ground/${name}`, aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const one = (suf, srgb) => new Promise(res => texLoader.load(`${base}_${suf}`, t => {
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = aniso; if (srgb) t.colorSpace = THREE.SRGBColorSpace; res(t);
+    }, undefined, () => res(null)));
+    const [c, n] = await Promise.all([one('c.jpg', true), one('n.png', false)]);
+    return c && n ? { c, n } : null;
   }
 
   async loadTexSet(name, renderer, optional = false) {

@@ -4,6 +4,7 @@ import { BLOCK } from './nav.js';
 import { instance, trs, farLod } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
+import { groundMaterial } from './ground.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
 // two villages strung along their roads, a kolkhoz farm, cratered everywhere.
@@ -245,100 +246,8 @@ export class Farmland extends City {
     this.groundMesh = ground;
   }
   // ground shader; terrain = the trench / relief mesh variant (no hole discard, darker damp soil below the surface)
-  groundMat(terrain) {
-    const S = this.groundS;
-    const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t || null; };
-    const nrm = this._gNrm ||= (T.dirt?.normalMap ? (() => { const n = T.dirt.normalMap.clone(); n.needsUpdate = true; n.repeat.set(S / 6, S / 6); return n; })() : null);
-    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, normalMap: nrm, normalScale: new THREE.Vector2(0.7, 0.7) });
-    m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'farm_terrain' : 'farm_ground';
-    const has = { PLOW: !!tex('plowed'), STUB: !!tex('stubble'), FALLOW: !!tex('fallow') };
-    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tPlow: { value: tex('plowed') || tex('dirt') }, tStub: { value: tex('stubble') || tex('dirt') }, tFallow: { value: tex('fallow') || tex('grass') || tex('dirt') }, tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() }, tWar: { value: warBlack() } };
-    m.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, U);
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        ${has.PLOW ? '#define HAS_PLOW' : ''}
-        ${has.STUB ? '#define HAS_STUB' : ''}
-        ${has.FALLOW ? '#define HAS_FALLOW' : ''}
-        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tPlow, tStub, tFallow, tSplat, tRows, tHole; uniform float splatSize;
-        ${WAR_GROUND_DECL}
-        float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
-        vec3 tile(sampler2D t, vec2 p){
-          vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.87 + vec2(0.31, 0.57);
-          float n = vn(p * 0.35) * 0.7 + vn(p * 1.3) * 0.3;
-          return mix(texture2D(t, p).rgb, texture2D(t, q).rgb, smoothstep(0.38, 0.62, n)); }
-        vec3 tileRows(sampler2D t, vec2 p){ // rows must stay aligned: offset-only anti-tiling along the rows
-          float n = vn(p * vec2(0.6, 0.12));
-          return mix(texture2D(t, p).rgb, texture2D(t, p + vec2(0.0, 0.43)).rgb, smoothstep(0.35, 0.65, n)); }`)
-        .replace('#include <map_fragment>', `
-          vec2 wp = vWPos.xz;
-          #ifdef GROUND_HOLE
-            vec2 huv = wp / splatSize + 0.5;
-            if (huv.x > 0.0 && huv.y > 0.0 && huv.x < 1.0 && huv.y < 1.0 && texture2D(tHole, huv).r > 0.5) discard;
-          #endif
-          vec2 wob = vec2(vn(wp * 0.15) - 0.5, vn(wp * 0.15 + 31.0) - 0.5) * 4.0;
-          vec2 suv = clamp((wp + wob) / splatSize + 0.5, 0.001, 0.999);
-          vec4 sp = texture2D(tSplat, suv);
-          // beyond the map: more fields (big noise patches of fallow / stubble / ploughed) instead of smeared edge pixels
-          float outside = smoothstep(splatSize * 0.5 - 8.0, splatSize * 0.5 + 6.0, max(abs(wp.x), abs(wp.y)));
-          float fn = vn(floor(wp / 140.0) * 1.37);
-          vec4 farSp = fn < 0.4 ? vec4(0.9, 0.0, 0.0, 0.0) : fn < 0.7 ? vec4(0.1, 0.0, 1.0, 0.0) : vec4(0.05, 1.0, 0.0, 0.0);
-          sp = mix(sp, farSp, outside);
-          vec4 rowT = texture2D(tRows, clamp((wp + wob * 0.6) / splatSize + 0.5, 0.001, 0.999));
-          float rowsX = rowT.r;
-          // headlands: the outer ~10 m of every field is worked across the rows (tractor turning strip)
-          float head = 1.0 - smoothstep(0.42, 0.55, rowT.g + (vn(wp * 0.11) - 0.5) * 0.2);
-          if (head > 0.5) rowsX = 1.0 - rowsX;
-          vec2 fp = rowsX > 0.5 ? wp.yx : wp;
-          vec3 dirt = tile(tDirt, wp / 6.0);
-          vec3 grass = tile(tGrass, wp / 3.5);
-          float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
-          grass = mix(vec3(gl), grass, 0.75) * vec3(1.0, 1.0, 0.84) * clamp(dl / max(gl, 0.02), 1.0, 1.45);
-          // late-summer / autumn steppe: dry straw, ochre weeds and grey wormwood instead of green
-          float dryN = vn(wp * 0.018) * 0.6 + vn(wp * 0.07) * 0.4;
-          vec3 straw = vec3(gl) * vec3(1.16, 1.02, 0.7), wormwood = vec3(gl) * vec3(0.98, 1.0, 0.92);
-          grass = mix(grass, mix(straw, wormwood, smoothstep(0.55, 0.8, vn(wp * 0.045 + 7.0))), 0.42 + 0.3 * dryN);
-          #ifdef HAS_FALLOW
-            vec3 fallow = mix(tile(tFallow, wp / 4.0), grass, 0.38 * smoothstep(0.3, 0.7, vn(wp * 0.09)) + 0.12);
-          #else
-            vec3 fallow = mix(grass, dirt * vec3(1.05, 1.02, 0.9), smoothstep(0.5, 0.8, vn(wp * 0.4)) * 0.45);
-          #endif
-          #ifdef HAS_PLOW
-            vec3 plow = tileRows(tPlow, fp / 4.0);
-          #else
-            float fur = mix(0.5 + 0.5 * sin(fp.x * 7.854 + vn(fp * vec2(0.5, 0.05)) * 2.0), 0.5, clamp(fwidth(fp.x * 1.25) * 2.5, 0.0, 1.0));
-            vec3 plow = dirt * vec3(0.46, 0.42, 0.38) * (0.62 + 0.55 * fur) * (0.85 + 0.3 * vn(wp * 3.1));
-          #endif
-          #ifdef HAS_STUB
-            vec3 stub = tileRows(tStub, fp / 4.0);
-          #else
-            float row = mix(smoothstep(0.25, 0.5, abs(fract(fp.x * 5.55) - 0.5) * 2.0), 0.6, clamp(fwidth(fp.x * 5.55) * 2.0, 0.0, 1.0));
-            vec3 straw = vec3(0.70, 0.60, 0.40) * (0.8 + 0.4 * vn(fp * vec2(12.0, 1.5)));
-            vec3 stub = mix(dirt * vec3(1.08, 1.0, 0.86), straw, (1.0 - row) * 0.75 + 0.15);
-          #endif
-          float fine = vn(wp * 1.7);
-          vec3 col = dirt;
-          col = mix(col, fallow, smoothstep(0.0, 1.0, clamp(sp.r * 1.6 - 0.3 + (fine - 0.5) * 0.4, 0.0, 1.0)));
-          col = mix(col, plow, smoothstep(0.0, 1.0, clamp(sp.g * 1.6 - 0.3 + (fine - 0.5) * 0.3, 0.0, 1.0)));
-          col = mix(col, stub, smoothstep(0.0, 1.0, clamp(sp.b * 1.6 - 0.3 + (fine - 0.5) * 0.3, 0.0, 1.0)));
-          // packed tracks, yards, verges: dusty grey-beige compacted soil, gravel speckle
-          vec3 packed = mix(dirt * vec3(1.1, 1.05, 0.96), vec3(dl) * vec3(1.35, 1.28, 1.12), 0.35) * (0.9 + 0.2 * vn(wp * 4.3));
-          col = mix(col, packed, sp.a * 0.9);
-          // macro variation: damp darker hollows / dry light loess rises, per-field tone, fine mottling
-          float mac = vn(wp * 0.006) * 0.55 + vn(wp * 0.021) * 0.3 + vn(wp * 0.08) * 0.15;
-          col *= 0.84 + 0.3 * mac;
-          col = mix(col, col * vec3(1.08, 1.03, 0.9), smoothstep(0.6, 0.85, vn(wp * 0.009 + 3.0)) * 0.5);
-          col *= 0.94 + 0.12 * vn(floor(wp / 40.0) * 1.7 + rowT.r);
-          #ifdef TERRAIN_MESH
-            float tdep = smoothstep(0.05, 0.55, -vWPos.y);
-            col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
-          #endif
-          ${warGroundGLSL(false)}
-          diffuseColor.rgb *= col;`);
-      sh.fragmentShader = warGroundHooks(sh.fragmentShader);
-    };
-    return m;
+  groundMat(terrain) {   // ground look v6: src/world/ground.js (height-blended, anti-tiled material sets)
+    return groundMaterial(this, terrain, true, MAP_SIZE);
   }
   // splat: R fallow/grass, G ploughed soil, B stubble, A packed dirt; rows texture: field row direction
   paintGround() {
@@ -360,6 +269,8 @@ export class Farmland extends City {
     for (const y of this.yardRects || []) { yx.globalAlpha = y[4] ?? 0.65; yx.fillRect(...P(y[0], y[1]), (y[2] - y[0]) * k, (y[3] - y[1]) * k); }
     for (const g of this.gardenRects || []) { gx.globalAlpha = 0.9; gx.fillRect(...P(g[0], g[1]), (g[2] - g[0]) * k, (g[3] - g[1]) * k); }
     vx.fillStyle = '#fff'; for (const l of this.lawnRects || []) { vx.globalAlpha = 0.9; vx.fillRect(...P(l[0], l[1]), (l[2] - l[0]) * k, (l[3] - l[1]) * k); }  // grassy house yards
+    // grass verges along roads / tracks (ground look v6): road -> packed / gravel shoulder (yards layer) -> worn grass -> field
+    for (const r of ROADS) { const e = r.type === 'track' ? 4 : 7.5; vx.globalAlpha = r.type === 'track' ? 0.6 : 0.85; vx.fillRect(...P(r.x0 - e, r.z0 - e), (r.x1 - r.x0 + e * 2) * k, (r.z1 - r.z0 + e * 2) * k); }
     for (const [x0, z0, x1, z1] of MAP.treelines) { vx.lineWidth = 22 * k; vx.globalAlpha = 1; vx.beginPath(); vx.moveTo(...P(x0, z0)); vx.lineTo(...P(x1, z1)); vx.stroke(); }
     // wheel ruts / trampled lanes across fields: each one runs from a road / track across the field to the next road /
     // track / trail (or off the map), never starting or stopping in the middle of a field

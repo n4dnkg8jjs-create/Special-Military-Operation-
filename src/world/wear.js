@@ -31,13 +31,14 @@ export const warGroundGLSL = (urban, opt = {}) => `
     war *= inMap;
     float nA = wfbm(wp * 0.55), nB = wn1(wp * 3.1), nC = wn1(wp * 9.7);
     // shell-churned earth: dark broken clods, lighter upturned subsoil (loess) flecks, crumbs
-    float ch = smoothstep(0.2, 0.85, war.g + (nA - 0.5) * 0.55);
+    float nW = wfbm(wp * 0.21 + 4.0);   // metre-scale break-up of the soft war-map ramps
+    float ch = smoothstep(0.25, 0.85, war.g + (nA - 0.5) * 0.6 + (nW - 0.5) * 0.5);
     float clod = wn1(wp * 3.1 + 2.0) * 0.7 + nC * 0.3;
     vec3 cb = col;   // relative to what is there: churned earth is darker, with lighter subsoil flecks
     vec3 churn = cb * mix(vec3(0.64, 0.61, 0.56), vec3(0.98, 0.94, 0.86), smoothstep(0.45, 0.75, clod));
     churn = mix(churn, cb * vec3(1.15, 1.08, 0.94), smoothstep(0.66, 0.88, wfbm(wp * 0.6 + 9.0)) * 0.35);   // loess / subsoil thrown up
     churn *= 0.85 + 0.3 * nB;
-    col = mix(col, churn, ch * 0.72);
+    col = mix(col, churn, ch * ${opt.churnTex ? '0.55' : '0.72'});   // churnTex: the host already blends churned clods (ground.js)
     ${urban ? `
     // brick / concrete dust and small debris
     float du = smoothstep(0.3, 0.9, war.a + (nB - 0.5) * 0.55 + (nA - 0.5) * 0.3);
@@ -50,14 +51,14 @@ export const warGroundGLSL = (urban, opt = {}) => `
     col = mix(col, mud, md * 0.72);`}
     // scorch: charcoal, grey-white ash patches, burnt stubble ends at the edge of the burn
     float isl = wfbm(wp * 0.09 + 13.0);   // unburnt islands / fingers of the burn
-    float sc = smoothstep(0.2, 0.72, war.r + (nA - 0.5) * 0.45 + (isl - 0.5) * 0.55 + (nB - 0.5) * 0.15);
+    float sc = smoothstep(0.25, 0.75, war.r + (nA - 0.5) * 0.5 + (isl - 0.5) * 0.55 + (nW - 0.5) * 0.4 + (nB - 0.5) * 0.15);
     vec3 burnt = mix(vec3(0.06, 0.055, 0.05), vec3(0.12, 0.115, 0.108), smoothstep(0.55, 0.85, wfbm(wp * 0.35 + 5.0)) * 0.6);   // charcoal, a little grey ash
     burnt = mix(burnt, col * vec3(0.42, 0.36, 0.3), smoothstep(0.55, 0.8, wn1(wp * 2.4 + 1.0)) * 0.35) * (0.8 + 0.4 * nC);   // half-burnt stalks
     float rim = smoothstep(0.0, 0.25, sc) * (1.0 - smoothstep(0.35, 0.7, sc));
     col = mix(col, col * vec3(0.55, 0.47, 0.38), rim * 0.6);   // singed, browned edge of the burn
     col = mix(col, burnt, smoothstep(0.3, 0.75, sc) * 0.92);
     // damp ground and standing water
-    gWet = smoothstep(0.2, 0.9, war.b + (nA - 0.5) * 0.35);
+    gWet = smoothstep(0.25, 0.9, war.b + (nA - 0.5) * 0.4 + (nW - 0.5) * 0.3);
     gPud = smoothstep(0.74, 0.8, war.b * 0.7 + wn1(wp * 0.31 + 3.0) * 0.3 + wn1(wp * 1.7) * 0.1) * smoothstep(0.6, 0.75, war.b);
     col *= 1.0 - 0.18 * gWet;
     // murky, silty water: brown-grey body (the env map adds the overcast sky on top at low roughness)
@@ -91,7 +92,7 @@ export function paintWar(city, MAP_SIZE, opt = {}) {
   if (cm) for (let i = 0; i < cm.count; i++) {
     cm.getMatrixAt(i, M); M.decompose(v, q, s); const r = s.x * 0.5;   // decal radius
     blob(L.g, v.x, v.z, r * 0.95, 0.38);
-    if (r > 1.6) blob(L.r, v.x, v.z, r * 0.55, 0.35 + Math.min(0.4, r * 0.05));
+    if (r > 1.6) blob(L.r, v.x, v.z, r * 0.5, 0.2 + Math.min(0.25, r * 0.03));   // scorched core only on the big ones, never a black disc
     if (R() < (opt.craterWet ?? 0.3)) blob(L.b, v.x, v.z, r * 0.3, 0.8, 0.3);
   }
   // held positions: the ground all round a strongpoint is churned and trampled
@@ -102,7 +103,9 @@ export function paintWar(city, MAP_SIZE, opt = {}) {
   opt.extra?.(api);
   // blur once per layer, pack
   const read = (ctx, px) => { const c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'); x.filter = `blur(${px}px)`; x.drawImage(ctx.canvas, 0, 0); return x.getImageData(0, 0, N, N).data; };
-  const r = read(L.r, 0.9 * k + 0.5), g = read(L.g, 1.1 * k + 0.5), b = read(L.b, 0.8 * k + 0.5), a = read(L.a, 1.2 * k + 0.5);
+  // wide blur (ground look v6): the ground shaders push these soft ramps around with noise, so the edges come out
+  // ragged at several scales instead of following the painted polygons
+  const r = read(L.r, 2.2 * k + 0.5), g = read(L.g, 2.8 * k + 0.5), b = read(L.b, 1.6 * k + 0.5), a = read(L.a, 2.4 * k + 0.5);
   const out = new Uint8Array(N * N * 4);
   for (let i = 0, n = N * N; i < n; i++) { const p = i * 4; out[p] = r[p]; out[p + 1] = g[p]; out[p + 2] = b[p]; out[p + 3] = a[p]; }
   const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
@@ -233,6 +236,14 @@ export function trackWear(mat, U) {
         c = mix(c, c * vec3(1.06, 1.02, 0.92), hump * 0.3 * (1.0 - mud));               // drier, grassy centre hump
         c = mix(c, vec3(0.05, 0.045, 0.04), smoothstep(0.35, 0.8, war.r + (n1 - 0.5) * 0.4) * 0.8);
         diffuseColor.rgb = c;
+      }`)
+      .replace('#include <alphamap_fragment>', `#include <alphamap_fragment>
+      {
+        // ragged verge instead of the straight alpha ramp: grass tufts and crumbled edge eat into the strip, the strip
+        // frays out into the field in tongues of mud / wheel spill (ground look v6)
+        float e = min(vTUv.x, 1.0 - vTUv.x);
+        float rag = wfbm(vTW.xz * 0.7) * 0.65 + wn1(vTW.xz * 3.7) * 0.35;
+        diffuseColor.a = smoothstep(0.0, 1.0, clamp((e - 0.015 - rag * 0.15) / 0.07, 0.0, 1.0));
       }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = mix(roughnessFactor, 0.65, tWet * 0.5); roughnessFactor = mix(roughnessFactor, 0.4, tPud);`)
@@ -488,9 +499,21 @@ export function craterMesh(scene, T, fallbackMap, cap, tint = 0x9c9182) {
   const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
   g.setAttribute('aCell', new THREE.InstancedBufferAttribute(new Float32Array(cap), 1));
   if (atlas) {
-    m.customProgramCacheKey = () => 'crater_atlas';
+    m.customProgramCacheKey = () => 'crater_atlas_v6';
     m.onBeforeCompile = sh => {
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell;').replace('#include <uv_vertex>', `#include <uv_vertex>
+      // ground look v6: the decal's outer fringe is eroded by world-space noise (no round stamp edge, no two craters
+      // alike) and its tone drifts a little, so it settles into the ground instead of sitting on it
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vCrW; ${WAR_NOISE}`).replace('#include <map_fragment>', `#include <map_fragment>
+        {
+          float cn = wn1(vCrW.xz * 1.6) * 0.6 + wn1(vCrW.xz * 5.1 + 3.0) * 0.4;
+          diffuseColor.a *= smoothstep(0.0, 0.55, diffuseColor.a * 1.3 + (cn - 0.55) * 0.55);
+          diffuseColor.rgb *= 0.9 + 0.18 * cn;
+          diffuseColor.rgb = mix(diffuseColor.rgb * vec3(0.92, 0.84, 0.72), diffuseColor.rgb, smoothstep(0.25, 0.7, diffuseColor.a));   // dust fringe: warm soil, not grey
+        }`);
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell; varying vec3 vCrW;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCrW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;')
+        .replace('#include <uv_vertex>', `#include <uv_vertex>
         vec2 cOff = vec2(mod(aCell, 2.0), 1.0 - floor(aCell / 2.0)) * 0.5;
         #ifdef USE_MAP
           vMapUv = vMapUv * 0.5 + cOff;

@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { MAPS } from './maps.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
+import { groundMaterial } from './ground.js';
 
 // Active map: live bindings, set by setMap() before the world is built.
 export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
@@ -161,63 +162,8 @@ export class City {
     const ground = new THREE.Mesh(g, this.groundMat(false)); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
     this.groundMesh = ground;
   }
-  groundMat(terrain) {
-    const S = this.groundS;
-    const T = this.assets.tex, tex = k => { const t = T[k]?.map; if (t) { t.wrapS = t.wrapT = THREE.RepeatWrapping; } return t; };
-    const nrm = this._gNrm ||= (T.dirt?.normalMap ? (() => { const n = T.dirt.normalMap.clone(); n.needsUpdate = true; n.repeat.set(S / 6, S / 6); return n; })() : null);
-    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, normalMap: nrm, normalScale: new THREE.Vector2(0.8, 0.8) });
-    m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' }; m.customProgramCacheKey = () => terrain ? 'city_terrain' : 'city_ground';
-    const U = this.groundUniforms ||= { tDirt: { value: tex('dirt') }, tGrass: { value: tex('grass') || tex('dirt') }, tRubble: { value: tex('rubble') }, tSplat: { value: null }, splatSize: { value: MAP_SIZE }, tHole: { value: blackTex() }, tWar: { value: warBlack() } };
-    m.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, U);
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tSplat, tHole; uniform float splatSize;
-        ${WAR_GROUND_DECL}
-        float gh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(gh(i), gh(i+vec2(1,0)), f.x), mix(gh(i+vec2(0,1)), gh(i+vec2(1,1)), f.x), f.y); }
-        vec3 tile(sampler2D t, vec2 p){ // anti-tiling: second sample rotated/offset, blended by low-frequency noise
-          vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.87 + vec2(0.31, 0.57);
-          float n = vn(p * 0.35) * 0.7 + vn(p * 1.3) * 0.3;
-          return mix(texture2D(t, p).rgb, texture2D(t, q).rgb, smoothstep(0.38, 0.62, n)); }`)
-        .replace('#include <map_fragment>', `
-          vec2 wp = vWPos.xz;
-          #ifdef GROUND_HOLE
-            vec2 huv = wp / splatSize + 0.5;
-            if (huv.x > 0.0 && huv.y > 0.0 && huv.x < 1.0 && huv.y < 1.0 && texture2D(tHole, huv).r > 0.5) discard;
-          #endif
-          vec2 wob = vec2(vn(wp * 0.21) - 0.5, vn(wp * 0.21 + 31.0) - 0.5) * 2.2;   // break up blurred mask edges
-          vec4 sp = texture2D(tSplat, clamp((wp + wob) / splatSize + 0.5, 0.002, 0.998));
-          float outside = smoothstep(splatSize * 0.5 - 6.0, splatSize * 0.5 + 4.0, max(abs(wp.x), abs(wp.y)));
-          sp = mix(sp, vec4(smoothstep(0.35, 0.6, vn(wp * 0.03)) * 0.85, 0.0, 0.0, 0.25), outside);
-          vec3 dirt = tile(tDirt, wp / 6.0), grass = tile(tGrass, wp / 3.5), rub = tile(tRubble, wp / 5.0);
-          // dry, sun-bleached grass: match the dirt's brightness, desaturate toward straw, let dirt show through
-          float gl = dot(grass, vec3(0.299, 0.587, 0.114)), dl = dot(dirt, vec3(0.299, 0.587, 0.114));
-          grass = mix(vec3(gl), grass, 0.7) * vec3(1.0, 1.0, 0.84);
-          grass = mix(grass, vec3(gl) * vec3(1.1, 1.0, 0.74), 0.32 + 0.25 * vn(wp * 0.05));   // late-summer: dry, straw-grey
-          grass *= clamp(dl / max(gl, 0.02), 1.0, 1.45);
-          grass = mix(grass, dirt * vec3(1.0, 0.98, 0.88), smoothstep(0.45, 0.75, vn(wp * 0.35)) * 0.4);
-          // height blending: each layer's own luminance acts as height so transitions follow the texture
-          float hd = dot(dirt, vec3(0.33)), hg = dot(grass, vec3(0.33)), hr = dot(rub, vec3(0.33));
-          float fine = vn(wp * 1.7);
-          float wg = smoothstep(0.0, 1.0, clamp(sp.r * 1.3 - 0.12 + (hg - hd) * 0.7 + (fine - 0.5) * 0.35 + (vn(wp * 0.45) - 0.5) * 0.3, 0.0, 1.0));
-          float wr = smoothstep(0.0, 1.0, clamp(sp.g * 1.4 - 0.2 + (hr - 0.45) * 1.0 + (fine - 0.5) * 0.35, 0.0, 1.0));
-          float wm = smoothstep(0.0, 1.0, clamp(sp.b * 1.6 - 0.3 + (0.5 - hd) * 1.2 + (vn(wp * 0.7) - 0.5) * 0.6, 0.0, 1.0));
-          vec3 col = dirt;
-          col = mix(col, dirt * vec3(1.12, 1.08, 1.0), sp.a);            // trampled paths
-          col = mix(col, grass, wg * (1.0 - sp.a * 0.8));
-          col = mix(col, rub, wr);
-          col = mix(col, dirt * vec3(0.5, 0.46, 0.42), wm * 0.85);       // wet mud / scorched
-          col *= 0.86 + 0.28 * (vn(wp * 0.015) * 0.6 + vn(wp * 0.06) * 0.4); // macro variation
-          #ifdef TERRAIN_MESH
-            float tdep = smoothstep(0.05, 0.55, -vWPos.y);
-            col = mix(col, dirt * vec3(0.5, 0.45, 0.4) * (0.85 + 0.3 * vn(wp * 2.3)), tdep);
-          #endif
-          ${warGroundGLSL(true)}
-          diffuseColor.rgb *= col;`);
-      sh.fragmentShader = warGroundHooks(sh.fragmentShader);
-    };
-    return m;
+  groundMat(terrain) {   // ground look v6: src/world/ground.js (height-blended, anti-tiled material sets)
+    return groundMaterial(this, terrain, false, MAP_SIZE);
   }
   // ================================================================ field fortifications (MAP.fortifications -> terrain.js)
   // MAP.fortifications entries (see maps.js): 'sp' (strongpoint header: id, name, front, kind, revet, craters),
