@@ -54,6 +54,6 @@ if tag == 'ba':
         a = b.replace('/before_', '/after_')
         if not os.path.exists(a): continue
         A, B = Image.open(b).convert('RGB'), Image.open(a).convert('RGB'); w, h = B.size
-        im = Image.new('RGB', (w * 2 + 20, h + 50), (20, 20, 18)); im.paste(B, (0, 50)); im.paste(A.resize((w, h)), (w + 20, 50))
+        im = Image.new('RGB', (w * 2 + 20, h + 50), (20, 20, 18)); im.paste(A.resize((w, h)), (0, 50)); im.paste(B, (w + 20, 50))
         d = ImageDraw.Draw(im); d.text((10, 14), 'BEFORE (v5)', fill=(235, 230, 215), font=font); d.text((w + 30, 14), 'AFTER (v6, true to scale)', fill=(235, 230, 215), font=font)
         v = os.path.basename(b)[len(f'before_{side}_'):]; im.save(os.path.join(out, f'ba_{side}_{v}')); print('ba', v)

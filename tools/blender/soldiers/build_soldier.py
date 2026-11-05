@@ -241,9 +241,9 @@ def thicken_uniform(R, log=print):
     variant's uniform is pushed out along its normals by a per-vertex offset field instead of the old uniform 3 mm shell:
       - trunk 8-9 mm (base layer + fleece under the jacket), the jacket bags out above the belt / hem, collar stands up (layered
         fleece collar), a rolled hood bulges at the back of the neck;
-      - sleeves 10-14 mm, fuller at mid upper arm, bunched rings over the last 12 cm before the cuffs (sleeves pushed up / gathered
+      - sleeves 12-17 mm, fuller at mid upper arm, bunched rings over the last 12 cm before the cuffs (sleeves pushed up / gathered
         at the gloves);
-      - trousers 11-16 mm, full in the thigh and seat, cloth bunched above and below the knee pads (straps pinch the leg), blousing
+      - trousers 14-21 mm, full in the thigh and seat, cloth bunched above and below the knee pads (straps pinch the leg), blousing
         puckered over the boot tops; long drape folds down the legs, stacked creases behind the knees;
       - thigh cargo pockets / sleeve pockets bulge (filled);
       - reduced where cloth meets cloth (inner thighs at the crotch, armpits) so the shells do not cross; faded to 0 at the boot
@@ -292,7 +292,7 @@ def thicken_uniform(R, log=print):
         Lu, Lf = np.linalg.norm(el - sh), np.linalg.norm(wr - el)
         on_up = s1 < Lu
         s = np.where(on_up, s1, Lu + s2); th = np.where(on_up, th1, th2)
-        ds = 0.0105 + 0.0040 * g(s - 0.5 * Lu, 0.09) * (0.6 + 0.4 * np.cos(th))       # fuller at mid upper arm, outer side
+        ds = 0.0125 + 0.0045 * g(s - 0.5 * Lu, 0.09) * (0.6 + 0.4 * np.cos(th))       # fuller at mid upper arm, outer side
         ds *= 1 - 0.45 * g(s1, 0.07) * (np.cos(th) < 0)                                   # inner side at the armpit
         de = s - (Lu + Lf)                                                                # 0 at the wrist
         bunch = np.exp(-((de + 0.065) / 0.05) ** 2)                                     # gathered over the last ~12 cm
@@ -318,7 +318,7 @@ def thicken_uniform(R, log=print):
         fw = np.pi / 2 * sx
         front = 0.5 + 0.5 * np.cos(th - fw)
         dk = s - Lu                                                                       # 0 at the knee joint, + down
-        dl = 0.0115 + 0.0050 * g(s - 0.20, 0.13) * (0.55 + 0.45 * np.cos(th))             # full thigh (outer side more)
+        dl = 0.0140 + 0.0065 * g(s - 0.20, 0.13) * (0.55 + 0.45 * np.cos(th))             # full thigh (outer side more)
         dl += 0.0045 * g(s - 0.08, 0.10) * (1 - front)                                     # seat
         dl *= 1 - 0.55 * g(s1, 0.12) * np.clip(-np.cos(th) * 1.5, 0, 1) * on_up            # inner thigh at the crotch
         # bunching above / below the knee pad (strap lines), stacked creases behind the knee
@@ -329,7 +329,7 @@ def thicken_uniform(R, log=print):
         dl += 0.0022 * crease(th * 4 / (2 * np.pi) + 0.5 * nz + s * 0.6, 0.9) * (1 - g(dk, 0.07))
         # blousing over the boot tops: puckered bulge, nothing inside the shaft
         y = PA[:, 1]
-        dl += (0.0120 + 0.0045 * np.sin(th * 7 + 2 * nz)) * g(y - 0.295, 0.045) * (y > 0.25)
+        dl += (0.0140 + 0.0050 * np.sin(th * 7 + 2 * nz)) * g(y - 0.295, 0.045) * (y > 0.25)
         # cargo pocket on the outer thigh (filled) + flap
         thp = th - 0.35 * sx
         sd = UT.rect_sdf(thp * 0.085, s, 0, 0.30, 0.085, 0.10, 0.015)

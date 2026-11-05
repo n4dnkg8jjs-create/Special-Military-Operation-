@@ -215,7 +215,7 @@ export class Squad {
       s.shareTok = null;
       const off = THREE.MathUtils.clamp((i - (men.length - 1) / 2) * 1.3, -3.2, 3.2) + (Math.random() - 0.5) * 0.5;
       const p = P && this.offsetPath(s, P, off);
-      if (p) { s.path = p; s.pathI = 0; s.pathReq = null; this.stats.shared = (this.stats.shared || 0) + 1; }
+      if (p) { s.path = p; s.pathI = 0; s.pathReq = null; this.navN = (this.navN || 0) + 1; }
       else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, opts);
     });
   }
@@ -961,7 +961,7 @@ export class Squad {
       if (s.wdT > 2.5) { const moved = s.wdP ? Math.hypot(s.pos.x - s.wdP[0], s.pos.z - s.wdP[1]) : 9; s.wdP = [s.pos.x, s.pos.z]; s.wdT = 0;
         // v6 stuck recovery, escalating: replan; replan giving obstacles a wider berth (0.6 m); walk out to the nearest open
         // cell (1 m clear, away from the corner / fence / wreck he is caught on) and replan from there; give up the goal
-        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0; this.stats.stuck = (this.stats.stuck || 0) + 1;
+        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0; this.stuckN = (this.stuckN || 0) + 1;
           if (s.stuckN > 5) { s.goal = null; s.stuckN = 0; }
           else if (s.stuckN >= 3) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 1.0, 5); if (Math.hypot(fx - s.pos.x, fz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, fx, fz, 0.3)) { s.path = [[fx, fz]]; s.pathI = 0; s.resumeGoal = true; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.4, false, this.pathOpts()); }
           else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], s.stuckN === 2 ? 0.6 : 0.45, false, this.pathOpts()); }

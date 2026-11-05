@@ -134,6 +134,10 @@ def blades(cv, r, count, length, width, colfn, hfn, dens=None, angle=None, droop
         cv.line(p, width * (0.7 + 0.6 * r.random()), colfn(t, x, y), hfn(t, x, y))
 
 
+# brightness match: the grade was tuned on the old sets' final ground colours (old ground shader output)
+GAIN = {'dirt': 1.15, 'grass': 1.45, 'fallow': 1.35, 'stubble': 1.12, 'rubble': 1.3, 'plowed': 1.0, 'mud': 1.0}
+
+
 def finish(name, alb, h, rough, nstr, ao_amt=0.35, n_out=512):
     """normals from height (wrapped central differences), cavity AO into the albedo, write the pair"""
     os.makedirs(OUT, exist_ok=True)
@@ -141,6 +145,7 @@ def finish(name, alb, h, rough, nstr, ao_amt=0.35, n_out=512):
     # cavity: darker in the crevices between clods / blades
     cav = np.clip((smooth(h, 6) - h) * 4.0, 0, 1)
     alb = alb * (1 - ao_amt * cav)[..., None] * (1 - 0.12 * ao_amt * (1 - smooth(h, 20)))[..., None]
+    alb = alb * GAIN.get(name, 1.0)
     Image.fromarray((np.clip(alb, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGB').save(os.path.join(OUT, name + '_c.jpg'), quality=90)
     hs = smooth(h, 0.7)
     dx = (np.roll(hs, -1, 1) - np.roll(hs, 1, 1)) * 0.5   # +u (columns)
@@ -220,9 +225,9 @@ def mud():
     h = h - 0.16 * smooth(dent, 5)
     h = stretch(h)
     wet = np.clip((0.42 - h) / 0.2, 0, 1)                  # water films in the lows
-    alb = lerp(col([0.13, 0.11, 0.09]), col([0.27, 0.235, 0.19]), np.clip(h * 0.9 + 0.2 * hi - 0.05, 0, 1)[..., None])
+    alb = lerp(col([0.16, 0.135, 0.11]), col([0.28, 0.245, 0.2]), np.clip(h * 0.7 + 0.2 * hi + 0.05, 0, 1)[..., None])
     alb = mixc(alb, [0.3, 0.27, 0.22], np.clip((h - 0.75) * 3, 0, 1) * 0.6 * lo)   # drying crust on the tops
-    alb = mixc(alb, alb * 0.7, wet)
+    alb = mixc(alb, alb * 0.82, wet)
     rough = 0.82 - 0.38 * wet - 0.12 * (1 - h)
     finish('mud', alb, h, rough, 7.0, ao_amt=0.25)
 

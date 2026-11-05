@@ -54,7 +54,9 @@ function mats() {
   });
   // sandbag weave
   const sack = canvasTex(64, (g, s) => { g.fillStyle = '#9a8c66'; g.fillRect(0, 0, s, s); g.strokeStyle = 'rgba(60,50,30,.35)'; g.lineWidth = 1; for (let i = 0; i < s; i += 3) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke(); g.beginPath(); g.moveTo(0, i + 1); g.lineTo(s, i + 1); g.stroke(); } for (let i = 0; i < 25; i++) { g.fillStyle = `rgba(70,55,35,${Math.random() * 0.25})`; g.fillRect(Math.random() * s, Math.random() * s, 6, 4); } });
-  const screen = (map, color) => M(color, 0.65, 0.55, { side: THREE.DoubleSide, ...(map ? { map, alphaTest: 0.4, alphaToCoverage: true } : { transparent: true, opacity: 0.6, depthWrite: false }) });
+  // the game renders without MSAA (src/engine/renderer.js): alpha-blended so the wire mesh is crisp up close and fades to
+  // a light veil in the distant mip levels (an alpha-tested mesh would vanish or turn into a solid sheet)
+  const screen = (map, color) => M(color, 0.65, 0.55, { side: THREE.DoubleSide, transparent: true, depthWrite: false, ...(map ? { map, alphaTest: 0.04 } : { opacity: 0.6 }) });
   MATS = {
     steel: M(0x4a4636, 0.7, 0.45), weld: M(0x2e2c24, 0.8, 0.4), chain: screen(chain, 0xb4b0a0), weldmesh: screen(weld, 0xa8a490),
     era: M(0xffffff, 0.72, 0.25, { vertexColors: true }), bag: M(0xffffff, 1, 0, { vertexColors: true, ...(sack ? { map: sack } : {}) }),
