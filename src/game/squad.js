@@ -81,7 +81,9 @@ export class Squad {
     const slots = this.formationSlots(x, z, facing, 16);
     this.soldiers.forEach((s, i) => { s.pos.set(slots[i][0], 0, slots[i][1]); s.heading = facing; s.sync(); });
   }
-  formationSlots(x, z, facing, width) {
+  // cover = { thr: [x, z] | null } (move orders): the men are given real cover positions near their slots against the known
+  // enemy (else the order's facing) -- see coverAssign. Without it: the old per-slot snap (deployment, rout, dismount).
+  formationSlots(x, z, facing, width, cover = null) {
     const nav = this.game.nav, n = this.effective.length || 8;
     const right = [Math.cos(facing), -Math.sin(facing)], fwd = [Math.sin(facing), Math.cos(facing)];
     const perRank = width < 10 ? Math.ceil(n / 2) : n;
@@ -102,16 +104,23 @@ export class Squad {
       const lim = W.half + 1 - (per - 1) * gap / 2, c0 = lim > 0 ? THREE.MathUtils.clamp(W.a0, -lim, lim) : 0;
       wallSlot = i => { const rank = Math.floor(i / per), k = i % per; return W.at(c0 + (k - (per - 1) / 2) * gap + (Math.random() - .5) * 0.5, 0.75 + rank * 1.5 + Math.random() * 0.35); };
     }
+    const rnd = cover?.noJitter ? (() => { let q = 11; return () => ((q = (q * 16807) % 2147483647) / 2147483647); })() : Math.random;
+    const nominal = [];
     for (let i = 0; i < this.soldiers.length; i++) {
       let px, pz;
       if (wallSlot) [px, pz] = wallSlot(i);
       else {
         // loose, staggered line: alternate men sit forward/back, irregular spacing — never a parade-ground rank
-        const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp + (Math.random() - .5) * sp * 0.45;
-        const depth = rank * 3.2 + (k % 2 ? 1.6 : -0.4) + (Math.random() - .5) * 1.8;
+        const rank = Math.floor(i / perRank), k = i % perRank, off = (k - (perRank - 1) / 2) * sp + (rnd() - .5) * sp * 0.45;
+        const depth = rank * 3.2 + (k % 2 ? 1.6 : -0.4) + (rnd() - .5) * 1.8;
         px = x + right[0] * off - fwd[0] * depth; pz = z + right[1] * off - fwd[1] * depth;
       }
       if (!sameSide(px, pz)) [px, pz] = pullBack(px, pz);
+      nominal.push([px, pz]);
+    }
+    if (cover) { const k = Math.min(nominal.length, n), sl = this.coverAssign(nominal.slice(0, k), ax, az, W, fwd, cover), cv = sl.cov; sl.push(...nominal.slice(k)); sl.cov = cv; return sl; }
+    for (let i = 0; i < this.soldiers.length; i++) {
+      const [px, pz] = nominal[i];
       // snap to a nearby cell offering cover toward the facing direction
       let best = null, bestS = -1;
       // next to a wall: line up against it (CQB) rather than standing a metre or two off it
@@ -128,6 +137,119 @@ export class Squad {
       if (!best) best = [px, pz];
       out.push(best);
     }
+    return out;
+  }
+  // v6: men take real cover near their slots. Every cell within a few metres of each nominal slot (on the ordered side of
+  // any wall) is scored by the cover it gives against the threat -- the nearest known enemy, and/or the order's facing --
+  // (nav.coverFrom: a wall, wreck, tree trunk, rubble heap, sandbags, fence, crater lip, trench), low cover a bit better
+  // (he can fire over it), minus how far it is from the slot; then (slot, cell) pairs are taken best-first, at least
+  // 1.4 m apart, so the best spots go to the men whose slots are nearest them instead of the first man in the list.
+  // Returns the slots; out.cov[i] = cover value (0..1) of slot i (formation preview).
+  coverAssign(nominal, ax, az, W, fwd, cover) {
+    const nav = this.game.nav, thr = cover.thr, n = nominal.length;
+    const T = []; if (thr) T.push([thr[0], thr[1], 1]);
+    T.push([ax + fwd[0] * 60, az + fwd[1] * 60, thr ? 0.35 : 1]);
+    const wsum = T.reduce((a, t) => a + t[2], 0);
+    const covAt = (cx, cz) => { let c = 0; for (const t of T) c += nav.coverFrom(cx, cz, t[0], t[1]) * t[2]; return c / wsum; };
+    const reach = new Map(), ok = k => { let v = reach.get(k); if (v === undefined) { const cx = nav.cx(k), cz = nav.cz(k); v = nav.passable(k, 0.4) && nav.lineFree(ax, az, cx, cz, 0.4) && (!W || W.on(cx, cz)); reach.set(k, v); } return v; };
+    const pairs = [];
+    for (let i = 0; i < n; i++) {
+      const [px, pz] = nominal[i], ci = nav.idx(px, pz), nearWall = ci >= 0 && nav.clear[ci] < 6, R = W ? 2.6 : nearWall ? 5 : 4.2;
+      for (let dz = -R; dz <= R; dz += 1) for (let dx = -R; dx <= R; dx += 1) {
+        const r = Math.hypot(dx, dz); if (r > R + 0.01) continue;
+        const k = nav.idx(px + dx, pz + dz); if (k < 0 || !ok(k)) continue;
+        const cx = nav.cx(k), cz = nav.cz(k), d = Math.hypot(cx - px, cz - pz), c = covAt(cx, cz);
+        const sc = c * 3 + (c > 0.5 && nav.low[k] ? 0.3 : 0) - d * 0.3 + (W && nav.clear[k] < 1.4 ? 0.9 : 0) + (!W && nearWall && c > 0.5 && nav.clear[k] < 1.4 ? 0.3 : 0);
+        pairs.push(sc, i, cx, cz, c);
+      }
+    }
+    const idx = []; for (let p = 0; p < pairs.length; p += 5) idx.push(p); idx.sort((a, b) => pairs[b] - pairs[a]);
+    const out = new Array(n).fill(null), cov = new Array(n).fill(0); let left = n;
+    for (const p of idx) {
+      if (!left) break;
+      const i = pairs[p + 1]; if (out[i]) continue;
+      const cx = pairs[p + 2], cz = pairs[p + 3]; if (out.some(o => o && Math.hypot(o[0] - cx, o[1] - cz) < 1.4)) continue;
+      out[i] = [cx, cz]; cov[i] = pairs[p + 4]; left--;
+    }
+    for (let i = 0; i < n; i++) if (!out[i]) out[i] = nominal[i];
+    out.cov = cov;
+    return out;
+  }
+  pathOpts() { const t = this.threatPoint(); return t ? { threat: t } : null; }
+  // nearest enemy unit this side has seen in the last ~25 s (within 400 m): [x, z] or null (cached for 1 s)
+  threatPoint() {
+    const g = this.game; if (this._thrT != null && g.time - this._thrT < 1) return this._thrP;
+    this._thrT = g.time; const c = this.center(); let best = null, bd = 400;
+    for (const u of g.enemiesOf(this.side)) {
+      const seen = u.seenBy?.[this.side]; if (seen == null || g.time - seen > 25) continue;
+      const p = u.type === 'vehicle' ? u.pos : u.center(); const d = Math.hypot(p.x - c.x, p.z - c.z);
+      if (d < bd) { bd = d; best = [p.x, p.z]; }
+    }
+    return (this._thrP = best);
+  }
+  // formation preview (input.js right-drag): the positions the men would take, flagged when in cover -> [[x, z, inCover]]
+  previewSlots(x, z, facing, width) {
+    const sl = this.formationSlots(x, z, facing, width, { thr: this.threatPoint(), noJitter: true });
+    return sl.slice(0, Math.max(1, this.effective.length)).map((p, i) => [p[0], p[1], sl.cov[i] >= 0.5]);
+  }
+  // ---- v6 movement: one shared route for the squad, each man following it at his own lateral offset (a loose double file
+  // that narrows to single file through gaps and doors) and then peeling off to his own slot. One A* per order instead of
+  // one per man, no men threading eight separate routes through each other, and the route itself is threat-aware.
+  planMove(men, thr) {
+    const g = this.game; if (!men.length) return;
+    const c = new THREE.Vector3(); for (const s of men) c.add(s.pos); c.multiplyScalar(1 / men.length);
+    const O = this.order, [ax, az] = O && O.type === 'move' ? this.orderAnchor(O.x, O.z) : men[0].goal;
+    const tok = { thr }; const E = { pathReq: null, path: null, tok, men, goals: new Map(men.map(s => [s, s.goal])) };
+    for (const s of men) s.shareTok = tok;
+    this.shareEnt = E;
+    g.requestPath(E, c.x, c.z, ax, az, 0.45, false, thr ? { threat: thr } : null);
+  }
+  applyShared() {
+    const E = this.shareEnt, g = this.game, nav = g.nav; this.shareEnt = null;
+    const P = E.path && E.path.length ? E.path : null, opts = E.tok.thr ? { threat: E.tok.thr } : null;
+    const men = E.men.filter(s => s.shareTok === E.tok && s.effective && s.goal && s.goal === E.goals.get(s) && !s.pathReq && !s.dragging && !s.inside && !s.cqb && !s.slotRef);
+    // lateral rank of each man across the start of the route
+    let dx = 0, dz = 1; if (P && P.length > 1) { const a = P[0], b = P[Math.min(2, P.length - 1)]; const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; dx = (b[0] - a[0]) / L; dz = (b[1] - a[1]) / L; }
+    men.sort((a, b) => (a.pos.z * dx - a.pos.x * dz) - (b.pos.z * dx - b.pos.x * dz));   // right to left = the offset's sign (left normal)
+    men.forEach((s, i) => {
+      s.shareTok = null;
+      const off = THREE.MathUtils.clamp((i - (men.length - 1) / 2) * 1.3, -3.2, 3.2) + (Math.random() - 0.5) * 0.5;
+      const p = P && this.offsetPath(s, P, off);
+      if (p) { s.path = p; s.pathI = 0; s.pathReq = null; this.stats.shared = (this.stats.shared || 0) + 1; }
+      else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, opts);
+    });
+  }
+  // the shared route P shifted sideways by off metres (less where the way is narrow), joined from where he stands and ending
+  // at his own slot; null if he can't join it in a straight line (he then gets a route of his own)
+  offsetPath(s, P, off) {
+    const nav = this.game.nav, goal = s.goal, n = P.length;
+    if (Math.hypot(s.pos.x - P[0][0], s.pos.z - P[0][1]) > 16) return null;
+    const out = []; let px = s.pos.x, pz = s.pos.z;
+    for (let j = 1; j < n - 1; j++) {
+      const a = P[j - 1], b = P[j], c = P[j + 1];
+      let ux = b[0] - a[0], uz = b[1] - a[1], ul = Math.hypot(ux, uz) || 1, vx = c[0] - b[0], vz = c[1] - b[1], vl = Math.hypot(vx, vz) || 1;
+      let nx = -(uz / ul + vz / vl), nz = ux / ul + vx / vl; const nl = Math.hypot(nx, nz);
+      if (nl < 0.2) { nx = -uz / ul; nz = ux / ul; } else { nx /= nl; nz /= nl; }
+      const cosHalf = Math.max(0.5, nx * (-uz / ul) + nz * (ux / ul));   // keep the leg parallel through the bend
+      let q = null;
+      for (const f of [1, 0.5, 0]) {
+        const o = off * f / cosHalf, qx = b[0] + nx * o, qz = b[1] + nz * o, k = nav.idx(qx, qz);
+        if (f && (!nav.passable(k, 0.45) || nav.clear[k] < 0.9)) continue;
+        if (!nav.lineFree(px, pz, qx, qz, 0.4)) continue;
+        q = [qx, qz]; break;
+      }
+      if (!q) return null;
+      out.push(q); px = q[0]; pz = q[1];
+      // his slot is nearer than the next bend of the route and in plain view: he leaves the route here
+      const dg = Math.hypot(goal[0] - px, goal[1] - pz);
+      if (dg < 8 && dg < Math.hypot(c[0] - px, c[1] - pz) && nav.lineFree(px, pz, goal[0], goal[1], 0.4)) break;
+    }
+    if (!nav.lineFree(px, pz, goal[0], goal[1], 0.4)) {
+      const e = P[n - 1];
+      if (!nav.lineFree(px, pz, e[0], e[1], 0.4) || !nav.lineFree(e[0], e[1], goal[0], goal[1], 0.4)) return null;
+      out.push([e[0], e[1]]);
+    }
+    out.push([goal[0], goal[1]]);
     return out;
   }
   // the building facade a point stands in front of (within 5 m of it, not past its corners): its outward normal and length,
@@ -164,21 +286,26 @@ export class Squad {
     this.order = { type: 'move', x, z, facing, width, run };
     this.run = run; this.facing = facing;
     if (this.pinned && this.side === 'player') this.game.hud?.alert(`${this.name} is pinned down — will move when the fire slackens`, 'bad');
-    const slots = this.formationSlots(x, z, facing, width);
+    const thr = this.threatPoint();
+    const slots = this.formationSlots(x, z, facing, width, { thr });
     // assign slots by lateral order to avoid crossing
     const right = [Math.cos(facing), -Math.sin(facing)];
     const men = this.alive.filter(s => s.effective && !s.dragging);
     const lat = p => p[0] * right[0] + p[1] * right[1];
     const ms = [...men].sort((a, b) => lat([a.pos.x, a.pos.z]) - lat([b.pos.x, b.pos.z]));
     const ss = slots.slice(0, ms.length).sort((a, b) => lat(a) - lat(b));
+    const go = [];
     ms.forEach((s, i) => {
-      s.goal = ss[i]; s.goalHeading = facing; s.path = null;
+      // a re-issued order to about the same place (the AI re-orders): keep walking the old route until the new one is ready
+      const keep = s.path && s.pathI < s.path.length && s.goal && Math.hypot(s.goal[0] - ss[i][0], s.goal[1] - ss[i][1]) < 20;
+      s.goal = ss[i]; s.goalHeading = facing; if (!keep) s.path = null; s.pathReq = null; s.resumeGoal = false;
       // individual pace and reaction time so the squad doesn't move in lockstep
-      s.speedMul = 0.86 + Math.random() * 0.24; s.startDelay = s.role.leader ? 0 : 0.15 + Math.random() * 0.9;
+      s.speedMul = 0.86 + Math.random() * 0.24; s.startDelay = keep ? 0 : s.role.leader ? 0 : 0.15 + Math.random() * 0.9;
       // fire-team bounding: team B (odd) covers and waits until team A has reached its positions
       if (bound && i % 2 === 1 && ms.length > 3) { s.waitTeam = true; s.waitT = 9; }
-      else { s.waitTeam = false; this.game.requestPath(s, s.pos.x, s.pos.z, ss[i][0], ss[i][1], 0.45); }
+      else { s.waitTeam = false; go.push(s); }
     });
+    this.planMove(go, thr);
   }
   orderGarrison(b) {
     if (this.routing) return;
@@ -511,6 +638,7 @@ export class Squad {
     if (this.dmHold) this.dmHoldTick();
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.5; this.think(); }
+    if (this.shareEnt && !this.shareEnt.pathReq) this.applyShared();   // the squad's shared route has been computed
     if (this.order?.type === 'clear') this.clearTick(dt);
     if (this.order?.type === 'storm') this.game.cqb?.tick(this, dt);   // room-by-room clearing (cqb.js)
     else if (this.order?.type !== 'garrison' && this.soldiers.some(s => s.cqb && s.effective)) this.game.cqb?.exitAll(this);   // order changed mid-clearing: out by the door
@@ -764,8 +892,23 @@ export class Squad {
       const ci = g.nav.idx(s.pos.x, s.pos.z); if (ci >= 0 && g.nav.cost[ci] > 2 && g.nav.cost[ci] < 255) base *= 0.7;
       // cohesion: don't outrun the squad too much
       speed = base;
-      if (d < 0.4) { s.pathI++; if (s.pathI >= s.path.length) { s.path = null; s.crawl = false; } }
-      else { V.set(dx / d, 0, dz / d); s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6)); }
+      if (d < 0.4) { s.pathI++; if (s.pathI >= s.path.length) { s.path = null; s.crawl = false; if (s.resumeGoal) { s.resumeGoal = false; if (s.goal) g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, this.pathOpts()); } } }
+      else {
+        V.set(dx / d, 0, dz / d);
+        // v6 local avoidance: a mate standing / walking slower just ahead on his line -> sidestep round him (on the side
+        // he is not on) instead of walking into him and being shoved back by the separation push
+        let side = 0;
+        for (const o of this.soldiers) {
+          if (o === s || !o.alive || o.inside || o.jumpT > 0) continue;
+          const rx = o.pos.x - s.pos.x, rz = o.pos.z - s.pos.z, r2 = rx * rx + rz * rz; if (r2 > 4 || r2 < 1e-4) continue;
+          const ahead = rx * V.x + rz * V.z; if (ahead < 0.15 || ahead > d + 0.6) continue;
+          const lat = rx * V.z - rz * V.x; if (Math.abs(lat) > 0.95) continue;
+          if (o.vel.x * V.x + o.vel.z * V.z > speed * 0.8) continue;   // he's walking away at about our pace
+          side += (lat >= 0 ? -1 : 1) * (1 - Math.sqrt(r2) / 2) * 1.4;
+        }
+        if (side) { const sx = V.x + V.z * side, sz = V.z - V.x * side, sl = Math.hypot(sx, sz) || 1; V.set(sx / sl, 0, sz / sl); }
+        s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6));
+      }
     } else s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
     // separation from squadmates & vehicles (never shoves anyone into a wall)
     const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
@@ -816,9 +959,12 @@ export class Squad {
     if (moving) {
       s.wdT = (s.wdT || 0) + dt;
       if (s.wdT > 2.5) { const moved = s.wdP ? Math.hypot(s.pos.x - s.wdP[0], s.pos.z - s.wdP[1]) : 9; s.wdP = [s.pos.x, s.pos.z]; s.wdT = 0;
-        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0;
-          if (s.stuckN > 2) { const [fx, fz] = nav.nearestFree(s.pos.x + (Math.random() - .5) * 3, s.pos.z + (Math.random() - .5) * 3, 0.6, 8); s.pos.x = fx; s.pos.z = fz; }
-          if (s.stuckN > 5) { s.goal = null; s.stuckN = 0; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); }
+        // v6 stuck recovery, escalating: replan; replan giving obstacles a wider berth (0.6 m); walk out to the nearest open
+        // cell (1 m clear, away from the corner / fence / wreck he is caught on) and replan from there; give up the goal
+        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0; this.stats.stuck = (this.stats.stuck || 0) + 1;
+          if (s.stuckN > 5) { s.goal = null; s.stuckN = 0; }
+          else if (s.stuckN >= 3) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 1.0, 5); if (Math.hypot(fx - s.pos.x, fz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, fx, fz, 0.3)) { s.path = [[fx, fz]]; s.pathI = 0; s.resumeGoal = true; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.4, false, this.pathOpts()); }
+          else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], s.stuckN === 2 ? 0.6 : 0.45, false, this.pathOpts()); }
         else if (moved >= 0.6) s.stuckN = 0; }
     } else { s.wdT = 0; s.wdP = null; }
     // footsteps (close to camera only)

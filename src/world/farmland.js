@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, mulberry, catenary, rectMinus, roadPieces } from './city.js';
 import { BLOCK } from './nav.js';
-import { instance, trs } from './instancer.js';
+import { instance, trs, farLod } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 
@@ -584,7 +584,7 @@ export class Farmland extends City {
       const [cx, cz] = along ? [v.from - 6, v.z1 + 4] : [v.x1 + 4, v.to + 6]; this.put('cross_roadside', cx, cz, along ? Math.PI : -Math.PI / 2, { circle: 0.4 });
       const [bx, bz] = along ? [(v.from + v.to) / 2 + 40, v.z0 - 4] : [v.x0 - 4, (v.from + v.to) / 2 - 30]; this.put('bus_stop_village', bx, bz, along ? 0 : Math.PI / 2, { roadPad: 0 });
     }
-    { const by = new Map(); for (const [t, M] of this._houseRubble || []) { (by.get(t) || by.set(t, []).get(t)).push(M); this.terrain.stamp(t, M); } for (const [t, l] of by) instance(this.scene, t, l); }
+    { const by = new Map(); for (const [t, M] of this._houseRubble || []) { (by.get(t) || by.set(t, []).get(t)).push(M); this.terrain.stamp(t, M); } for (const [t, l] of by) instance(this.scene, t, l, this.rubbleInst?.(t, l) || farLod(t)); }   // (heaps: simplified copy beyond ~80 m, world/instancer.js)
     // a church at the west end of Novomykolaivka, cars in the yards
     this.put('church_small', -300, 98, Math.PI, { occ: true });
     for (const [hx, hz, d] of this.houseSpots) if (!d && R() < 0.22) this.put(R() < 0.6 ? 'car_parked_lada' : 'car_vaz2107_burnt', hx + (R() - .5) * 10, hz + (R() < .5 ? 7 : -7), R() * 6, { cost: BLOCK });

@@ -7,7 +7,7 @@ import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
 import { City, OBJECTIVES, SPAWNS, BOUNDS, DEPLOY_ZONES, MAP, setMap, mulberry } from '../world/city.js';
 import { Farmland } from '../world/farmland.js';
-import { updateLods } from '../world/instancer.js';
+import { updateLods, simplifierReady } from '../world/instancer.js';
 import { FX } from '../fx/particles.js';
 import { Audio } from '../audio/sfx.js';
 import { Squad } from './squad.js';
@@ -49,7 +49,7 @@ export class Game {
     this.audio = new Audio();
     await this.audio.init(f => progress(0.68 + f * 0.12, 'Loading sound library'));
     progress(0.82, `Building ${MAP.name}`);
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 20)); await simplifierReady;   // (distance LODs for heavy templates: world/instancer.js)
     // world generation is fully seeded so a map looks identical on every load
     const rnd = Math.random; Math.random = mulberry(MAP.sizeM * 31 + (MAP.kind === 'rural' ? 7 : 3));
     this.city = new (MAP.kind === 'rural' ? Farmland : City)(this.scene, this.assets, this.opts.quality);
@@ -180,16 +180,16 @@ export class Game {
   sfx(key, pos = null, opts) { if (this.audio?.ok) return this.audio.play(key, pos, opts); }
   hitSoldier(...a) { return this.combat.hitSoldier(...a); }
   // ---------------------------------------------------------------- pathing (time-sliced)
-  requestPath(ent, sx, sz, tx, tz, clearance, vehicle = false) {
-    ent.pathReq = { sx, sz, tx, tz, clearance, vehicle };
+  requestPath(ent, sx, sz, tx, tz, clearance, vehicle = false, opts = null) {
+    ent.pathReq = { sx, sz, tx, tz, clearance, vehicle, opts };   // opts (infantry): { threat: [x, z] } -> nav.findPath
     if (!this.pathQueue.includes(ent)) this.pathQueue.push(ent);
   }
   servicePaths(budgetMs) {
     const t0 = performance.now();
     while (this.pathQueue.length && performance.now() - t0 < budgetMs) {
       const e = this.pathQueue.shift(), r = e.pathReq; if (!r) continue; e.pathReq = null;
-      let p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, r.clearance, r.vehicle);
-      if (!p || !p.length) p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, Math.max(0.4, r.clearance * 0.75), r.vehicle);
+      let p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, r.clearance, r.vehicle, undefined, r.opts);
+      if (!p || !p.length) p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, Math.max(0.4, r.clearance * 0.75), r.vehicle, undefined, r.opts);
       // no route: never walk a straight line through walls — only go direct if that line is actually clear
       if (!p || !p.length) p = this.nav.lineFree(r.sx, r.sz, r.tx, r.tz, Math.min(0.45, r.clearance)) ? [[r.tx, r.tz]] : null;
       e.path = p; e.pathI = p && p.length > 1 ? 1 : 0; e.pathFail = !p;
@@ -481,6 +481,7 @@ export class Game {
     }
   }
   frame(dt) {
+    const f0 = performance.now();
     this.supT = (this.supT || 0) - dt; if (this.supT <= 0) { this.supT = 0.5; this.supportEmitters(); }
     this.update(dt);
     this.cam.update(Math.min(dt, 0.05));
@@ -492,7 +493,7 @@ export class Game {
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }
     this.netTick?.(dt);
     this.hud?.update(dt);
-    if (!this.noRender) this.renderer.render(dt, this.time);
+    if (!this.noRender) { this.renderer.dynFrame(performance.now() - f0); this.renderer.render(dt, this.time); }
   }
   mortarMarker(x, z) {
     const m = new THREE.Mesh(new THREE.RingGeometry(15, 16, 48), new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.6, depthWrite: false }));

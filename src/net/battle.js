@@ -17,8 +17,15 @@ const flip = s => (s === 'player' ? 'enemy' : 'player');
 export function hostBattle(game, peer) {
   const ev = [];
   game.netEvents = ev;
-  // record effects as they happen
-  for (const m of FX_EVENTS) { const f = game.fx[m].bind(game.fx); game.fx[m] = (...a) => { ev.push(['fx', m, enc(a)]); return f(...a); }; }
+  // record effects as they happen: top-level calls only. An effect's own sub-effects (muzzleBlastTank -> muzzle,
+  // explosion / muzzle -> light) and fx.update's emitter lights are replayed by the joiner's own FX code: recording
+  // them too doubled those particles / lights on the joiner
+  let depth = 0;
+  const nest = f => (...a) => { depth++; try { return f(...a); } finally { depth--; } };
+  for (const m of FX_EVENTS) { const f = nest(game.fx[m].bind(game.fx)); game.fx[m] = (...a) => { if (!depth) ev.push(['fx', m, enc(a)]); return f(...a); }; }
+  game.fx.update = nest(game.fx.update.bind(game.fx));
+  // the rest of Game.init (map smoke columns, burning flats) runs right after this, identically seeded on the joiner: not events
+  Promise.resolve().then(() => { ev.length = 0; });
   const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };
   const C = game.city;
   C.buildings.forEach((b, bi) => {
@@ -38,11 +45,11 @@ export function hostBattle(game, peer) {
   game.startBattle = () => { if (game.phase !== 'deploy') return; game.hostReady = true; if (game.guestReady) sb(); else game.hud?.alert('Ready — waiting for the opponent to finish deploying', 'good'); };
   peer.on('ready', () => { game.guestReady = true; game.hud?.alert('Opponent is ready', 'good'); if (game.hostReady) sb(); });
   // snapshots + events
-  let acc = 0;
+  let acc = 0, nSnap = 0;
   game.netTick = dt => {
     acc += dt; if (acc < 0.1) return; acc = 0;
     if (ev.length) { peer.send('ev', ev.splice(0, ev.length)); }
-    const sn = snapshot(game); window.__lastSnapSize = JSON.stringify(sn).length; peer.sendSnap('snap', sn);
+    const sn = snapshot(game); if (!(nSnap++ % 20)) window.__lastSnapSize = JSON.stringify(sn).length; peer.sendSnap('snap', sn);   // (size for the tests every 2 s: not a second full stringify per snapshot)
   };
 }
 
@@ -118,7 +125,7 @@ function rolesFor(sm) { const pool = { assault: ASSAULT_ROLES, crew: CREW_ROLES,
 function replay(g, list) {
   for (const e of list) {
     try {
-      if (e[0] === 'fx') g.fx[e[1]]?.(...dec(e[2]));
+      if (e[0] === 'fx') g.fx[e[1]]?.(...dec(e[2]).map(x => (x === null ? undefined : x)));   // (JSON turns undefined / Infinity into null: the defaults apply again, e.g. an endless fire's life)
       else if (e[0] === 'sfx') g.sfx(e[1], dec(e[2]), dec(e[3]) || undefined);
       else if (e[0] === 'bs') { const b = g.city.buildings[e[1]], p = b?.panels[e[2]]; if (p) b.setState(p, e[3]); }
       else if (e[0] === 'bg') { const b = g.city.buildings[e[1]], p = b?.panels[e[2]]; if (p) b.setGone(p); }
@@ -129,56 +136,74 @@ function replay(g, list) {
   }
 }
 
-// per frame on the joiner: apply the latest snapshot smoothly, animate, run local cosmetics
+// per frame on the joiner: apply the latest snapshot smoothly, animate, run local cosmetics. A snapshot's discrete state
+// (stances, flags, clips, kit, objectives, support props...) is applied once when it arrives (10 Hz, 5 Hz over the relay);
+// every frame only eases positions / headings toward it, animates and syncs.
 export function clientFrame(g, dt) {
   const s = g.lastSnap; if (!s) return;
+  if (s === g._appliedSnap) return clientSmooth(g, dt);
+  g._appliedSnap = s;
   g.time = s.t; globalThis.__gameTime = g.time; g.stats = s.st;
   if (s.ph !== 'deploy' && g.phase === 'deploy') { g.phase = s.ph; for (const m of g.zoneMeshes || []) m.visible = false; g.hud?.battleStarted?.(); }
   g.phase = s.ph;
   if (s.tk) { g.tickets = { player: s.tk[1], enemy: s.tk[0], max: s.tk[2] }; g.ticketDrain = { player: s.tk[4], enemy: s.tk[3] }; }   // host tickets, seen from the joiner's side
   s.o.forEach(([own, ctl, con], i) => { const o = g.objectives[i]; if (!o) return; o.owner = own === 'neutral' ? own : flip(own); o.control = -ctl; o.contested = !!con; o.ring?.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8); });
-  const k = Math.min(1, dt * 10);
+  const live = g._netSq = [];
   for (const [id, morale, mounted, vis, men] of s.sq) {
-    const sq = g.netMap.get(id); if (!sq) continue; sq.morale = morale; sq.mounted = !!mounted; sq.spotted = sq.side === 'player' || !!vis;
-    men.forEach((m, i) => {
-      const so = sq.soldiers[i]; if (!so) return;
+    const sq = g.netMap.get(id); if (!sq) continue; sq.morale = morale; sq.mounted = !!mounted; sq.spotted = sq.side === 'player' || !!vis; live.push(sq);
+    for (let i = 0; i < men.length; i++) {
+      const so = sq.soldiers[i], m = men[i]; if (!so) continue;
       const [x, y, z, h, vx, vz, st, stt, f, ins, wk, tp, clip, seat] = m;
-      if (so.pos.distanceTo(so._np ||= new THREE.Vector3()) > 6 || so.pos.lengthSq() === 0) so.pos.set(x, y, z);
-      so._np.set(x, y, z); so.pos.lerp(so._np, k); so.heading += Math.atan2(Math.sin(h - so.heading), Math.cos(h - so.heading)) * k; so.vel.set(vx, 0, vz);
-      so.stance = STANCE[st] || 'stand'; so.firingT = f & 1 ? 0.2 : 0; so.groundAim = !!(f & 4); so.ducking = !!(f & 8); so.reloadT = f & 16 ? 0.5 : 0; so.throwT = f & 32 ? 0.5 : 0; so.legWound = !!(f & 128); so.hitT = f & 512 ? 0.3 : 0;
-      so.target = f & 2 && tp ? { pos: new THREE.Vector3(tp[0], 0, tp[1]), type: 'squad' } : null;
+      if (!so._np || so.pos.distanceTo(so._np.set(x, y, z)) > 6 || so.pos.lengthSq() === 0) so.pos.set(x, y, z);
+      (so._np ||= new THREE.Vector3()).set(x, y, z); so._nh = h; so.vel.set(vx, 0, vz);
+      // (timers outlast one snapshot interval, 0.2 s over the relay; the clip itself comes from netClip)
+      so.stance = STANCE[st] || 'stand'; so.firingT = f & 1 ? 0.25 : 0; so.groundAim = !!(f & 4); so.ducking = !!(f & 8); so.reloadT = f & 16 ? 0.5 : 0; so.throwT = f & 32 ? 0.5 : 0; so.legWound = !!(f & 128); so.hitT = f & 512 ? 0.3 : 0;
+      if (f & 2 && tp) { const t = so._nt ||= { pos: new THREE.Vector3(), type: 'squad' }; t.pos.set(tp[0], 0, tp[1]); so.target = t; } else so.target = null;
       so.inside = ins === 1 ? 'ride' : ins === 2 ? 'btr' : ins === 3 ? (so.inside && typeof so.inside === 'object' ? so.inside : { panel: { floor: 0 } }) : null; so.seatType = seat || so.seatType;
       if (wk && so.weaponKey !== wk && so.setWeapon) try { so.setWeapon(wk); } catch {}
       if (Array.isArray(clip)) { if (clip[0] === 'h') { so.hatchClip = clip[1]; so.hatchT = clip[2]; } else { so.jumpClip = clip[1]; so.jumpT = clip[2]; } }
       const nc = m[14], kit = m[15];
       if (Array.isArray(nc)) { so.netClip = nc[0]; so.netClipT = nc[1]; so.netTs = nc[2]; } else so.netClip = null;
-      if (kit && so.kitObjs) for (let ki = 0; ki < so.kitObjs.length; ki++) so.kitObjs[ki].visible = kit[ki] === '1';
+      if (kit && so.kitObjs && kit !== so._kit) { so._kit = kit; for (let ki = 0; ki < so.kitObjs.length; ki++) so.kitObjs[ki].visible = kit[ki] === '1'; }
       const state = STATE[stt] || 'ok';
       if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
       so.visible = sq.side === 'player' || !!vis || state === 'dead';
-    });
-    for (const so of sq.soldiers) { so.animate(dt, g.camDist(so.pos)); so.sync(); }
+    }
   }
   for (const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis] of s.v) {
     const v = g.netMap.get(id); if (!v) continue;
-    v._np ||= new THREE.Vector3(x, y, z); v._np.set(x, y, z); if (v.pos.distanceTo(v._np) > 10) v.pos.copy(v._np); else v.pos.lerp(v._np, k);
-    v.heading += Math.atan2(Math.sin(h - v.heading), Math.cos(h - v.heading)) * k; v.pitch = p; v.roll = r; v.turretYaw = ty; v.gunPitch = gp; v.hp = hp; v.speed = sp; v.dist = (v.dist || 0) + sp * dt;
+    v._np ||= new THREE.Vector3(x, y, z); v._np.set(x, y, z); if (v.pos.distanceTo(v._np) > 10) v.pos.copy(v._np);
+    v._nh = h; v.pitch = p; v.roll = r; v.turretYaw = ty; v.gunPitch = gp; v.hp = hp; v.speed = sp;
     v.spotted = v.side === 'player' || !!vis;
-    if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); g.fx.explosion(v.pos.clone().setY(1.2), 1.2); v.fire = g.fx.emitter(v.pos.clone().setY(1.6), 'fire', 1.2, 180); }
+    // knocked out: the wreck model; the explosion and the fire come with the host's event stream (no second set here)
+    if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); }
     v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : v.burning; v.abandoned = !!(fl & 4); v.doorK = dk;
-    v.sync(); if (!v.destroyed) v.fx?.(dt);
   }
   // support teams: status text and launcher props as the host has them
   if (g._mo == null || s.mo !== g._mo) { g._mo = s.mo; g.mortars = s.mo; }
   for (const [id, status, hasL, nodes] of s.sp || []) {
     const sq = g.netMap.get(id), S = sq?.support; if (!S) continue;
-    sq.netStatus = status; sq.status = () => sq.netStatus;
+    sq.netStatus = status; if (!sq._netSt) { sq._netSt = true; sq.status = () => sq.netStatus; }
     if (hasL && !S.launcher) { const s0 = sq.soldiers.find(x => x.alive) || sq.soldiers[0]; try { S.placeLauncher(s0); } catch (e) { console.warn(e); } }
-    if (!hasL && S.launcher) S.removeLauncher();
-    if (nodes && S.launcher) for (const [k, vis, x, y, z, qx, qy, qz, qw] of nodes) { const n = S.nodes[k]; if (!n) continue; if (n.o.parent !== g.scene) g.scene.attach(n.o); n.o.visible = !!vis; n.o.position.set(x, y, z); n.o.quaternion.set(qx, qy, qz, qw); }
+    if (!hasL && S.launcher) { for (const o of S._netProps || []) o.removeFromParent(); S._netProps = null; S.removeLauncher(); }   // (the props were moved into the scene below: they go with it)
+    if (nodes && S.launcher) for (const [k, vis, x, y, z, qx, qy, qz, qw] of nodes) { const n = S.nodes[k]; if (!n) continue; if (n.o.parent !== g.scene) { g.scene.attach(n.o); (S._netProps ||= []).push(n.o); } n.o.visible = !!vis; n.o.position.set(x, y, z); n.o.quaternion.set(qx, qy, qz, qw); }
   }
   // rockets and drones (pooled meshes)
   g._rk ||= []; s.pr.forEach((q, i) => { const m = g._rk[i] ||= (() => { const mm = g.combat.rocketMesh(); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.lookAt(q[3], q[4], q[5]); }); for (let i = s.pr.length; i < g._rk.length; i++) g._rk[i].visible = false;
   g._dr ||= []; s.dr.forEach((q, i) => { const m = g._dr[i] ||= (() => { const t = g.assets.gltf.fpv_drone?.scene; const mm = t ? t.clone(true) : new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.4)); mm.scale.setScalar(1.3); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.quaternion.set(q[3], q[4], q[5], q[6]); }); for (let i = s.dr.length; i < g._dr.length; i++) g._dr[i].visible = false;
   if (s.over && !g.over) { g.over = true; const r = s.over; g.result = { ...r, win: !r.win, title: r.win ? 'DEFEAT' : 'VICTORY', why: r.why }; g.hud?.showEnd(g.result); }
+  clientSmooth(g, dt);
+}
+// every frame: ease toward the last snapshot, animate, sync, local cosmetics (exhaust, engine sound)
+function clientSmooth(g, dt) {
+  const k = Math.min(1, dt * 10);
+  for (const sq of g._netSq || []) for (const so of sq.soldiers) {
+    if (so._np) { so.pos.lerp(so._np, k); so.heading += Math.atan2(Math.sin(so._nh - so.heading), Math.cos(so._nh - so.heading)) * k; }
+    so.animate(dt, g.camDist(so.pos)); so.sync();
+  }
+  for (const v of g.vehicles) {
+    if (!v._np) continue;
+    v.pos.lerp(v._np, k); v.heading += Math.atan2(Math.sin(v._nh - v.heading), Math.cos(v._nh - v.heading)) * k; v.dist = (v.dist || 0) + (v.speed || 0) * dt;
+    v.sync(); if (!v.destroyed) v.fx?.(dt);
+  }
 }

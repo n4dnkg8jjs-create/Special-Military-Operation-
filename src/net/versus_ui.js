@@ -234,11 +234,32 @@ function linkState(peer, code, onMsg, onDrop) {
     S.bp = { handlers: {}, last: {}, open: true, on(t, f) { (this.handlers[t] ||= []).push(f); if (t === 'manifest' && this.last.manifest) f(this.last.manifest); return this; }, off() { }, send: (t, d) => { if (t === 'manifest') S.manifest = d; S.send(t, d); }, sendSnap: (t, d) => { if (S.peer && S.connected) S.peer.sendSnap(t, d); } };
     window.__vs = { peer: S.bp, opts, done, fail };
     const f = h('iframe', { src: `${location.pathname}?vsbattle=1`, class: 'vs-frame', allow: 'autoplay; fullscreen' });
-    document.body.appendChild(f); S.frame = f; return f;
+    document.body.appendChild(f); S.frame = f; holdPage(true); return f;
   };
-  S.closeFrame = () => { S.frame?.remove(); S.frame = null; S.bp = null; S.manifest = null; window.__vs = null; };
+  S.closeFrame = () => { S.frame?.remove(); S.frame = null; S.bp = null; S.manifest = null; window.__vs = null; holdPage(false); };
   if (peer) S.bind(peer);
   return S;
+}
+// While a battle iframe is open it covers the whole page, but the iframe (same origin) shares this page's main thread
+// and GPU: the sector map's own WebGL renderer (campaign/v2/map3d.js, MSAA at up to 2x DPR), its label / tween loops and
+// the UI's CSS animations kept running underneath and took frame time from the battle. Hold every requestAnimationFrame
+// callback of THIS page (the iframe has its own window and its own rAF) and hide the page under the frame; on close the
+// held callbacks run again, so every loop resumes where it was.
+let held = null;
+function holdPage(on) {
+  if (on && !held) {
+    const raf = window.requestAnimationFrame, caf = window.cancelAnimationFrame, q = new Map(); let id = 1e9;
+    held = { raf, caf, q };
+    window.requestAnimationFrame = f => { q.set(++id, f); return id; };
+    window.cancelAnimationFrame = i => { if (!q.delete(i)) caf.call(window, i); };
+    document.body.classList.add('vs-battle-open');
+  } else if (!on && held) {
+    const { raf, caf, q } = held; held = null;
+    window.requestAnimationFrame = raf; window.cancelAnimationFrame = caf;
+    document.body.classList.remove('vs-battle-open');
+    // (a loop that cancels its own frame by the old id afterwards only misses one frame: map3d / ui loops re-arm each frame)
+    for (const f of q.values()) raf.call(window, f);
+  }
 }
 function banner(text, kind = '') {
   let b = document.querySelector('.c2-banner');
@@ -448,5 +469,6 @@ function lobbyCss() {
 .vs-lobby textarea{width:100%;box-sizing:border-box;height:4.2rem;background:var(--s-3);color:var(--t-1);border:1px solid var(--line-2);border-radius:var(--r-1);font-family:ui-monospace,monospace;font-size:var(--fs-xs)}
 .vs-resume{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3);border:1px solid rgba(233,169,59,.45);background:var(--accent-bg);border-radius:var(--r-2)}.vs-resume-t{font-size:var(--fs-m);color:var(--t-1)}.vs-resume-t small{color:var(--t-2)}.vs-rejoin{display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
 .vs-l{font-size:var(--fs-s);color:var(--t-2)}.vs-lobby .cp-back{margin-left:0}.hidden{display:none!important}
-.vs-frame{position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:200;background:#000}` }));
+.vs-frame{position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:200;background:#000}
+body.vs-battle-open>:not(.vs-frame){visibility:hidden!important}body.vs-battle-open *{animation-play-state:paused!important}` }));
 }

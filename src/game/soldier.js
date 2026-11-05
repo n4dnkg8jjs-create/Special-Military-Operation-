@@ -3,6 +3,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import * as Fallback from '../engine/fallback.js';
 import { WEAPONS, TUNING, ARMOR } from '../config.js';
 import { Ragdoll, samplePose, ragdollSlot } from './ragdoll.js';
+import { DamageSkin, damageTick } from './soldierDamage.js';
 
 export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22', pm: 'pm' };
 // a crewman with a pistol uses the pistol clips when they exist, otherwise the rifle ones
@@ -94,6 +95,7 @@ export class Soldier {
         if (o.userData.lod !== -1) this.lods.push(o);
       }
       if (!this.lods.length) this.lods = null;
+      this.dmg = new DamageSkin(meshes.filter(o => o.userData.variantOn), this.faction.id);   // v6: wounds / blood / mud / bandages (soldierDamage.js)
       // rifle sling for this preset (rifle on the back hangs from sling_socket; sling_node shown while it is there)
       const pr = combo ? m.getObjectByName(combo)?.userData?.preset : null;
       this.slingSock = (pr?.sling_socket && m.getObjectByName(pr.sling_socket)) || m.getObjectByName('weapon_socket_sling') || null;
@@ -237,6 +239,7 @@ export class Soldier {
     else if (!out && this.mag.parent !== this.magHome.parent) { this.magHome.parent.add(this.mag); this.mag.position.copy(this.magHome.pos); this.mag.quaternion.copy(this.magHome.quat); }
   }
   animate(dt, camDist) {
+    damageTick(this, dt);
     if (this.state === 'dead' && this.deathTick(dt, camDist)) return;
     const sp = this.vel.length();
     const st = this.stance;
@@ -312,7 +315,8 @@ export class Soldier {
       if (this.netClip && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
-      const every = this.inView === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
+      // (not drawn - off screen, or an enemy nobody has spotted / a man in a cellar - is the same as off screen)
+      const every = this.inView === false || this.visible === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
       if (this.animAcc >= every) { const adv = this.animAcc; this.mixer.update(adv); this.animAcc = 0; if (camDist < 60) this.magTick(); if (this.state === 'dead') this.deathSample(adv); }
       // recoil kick (procedural additive on spine)
       if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }

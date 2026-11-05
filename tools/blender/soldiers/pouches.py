@@ -82,10 +82,10 @@ def local_part(geom, M, mat, kind='fabric'):
 
 
 # ------------------------------------------------------------------ pouch assemblies
-def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.085, h=0.155, d=0.062, mag_col='mag'):
+def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.087, h=0.155, d=0.068, mag_col='mag'):
     out = []
     hb = h * (0.78 if open_top else 1.0)
-    out.append(local_part(rbox(w, hb, d, 0.009, 2), M @ T(0, hb / 2, d / 2), mats['fabric']))
+    out.append(local_part(rbox(w, hb, d, 0.013, 2), M @ T(0, hb / 2, d / 2), mats['fabric']))   # v6: fuller, softer corners
     # MOLLE strap at back, side seams = slight geometry: bottom drain grommet skipped
     if open_top:
         # mag bottoms (base plates) sticking out, slightly curved forward (AK mags are inserted upside down)
@@ -109,8 +109,8 @@ def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.085, h=0.155, d=0.062, mag_
     return out
 
 
-def grenade_pouch(mats, M, w=0.072, h=0.1, d=0.062):
-    out = [local_part(rbox(w, h, d, 0.012, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
+def grenade_pouch(mats, M, w=0.074, h=0.1, d=0.068):
+    out = [local_part(rbox(w, h, d, 0.016, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(w + 0.004, 0.008, d + 0.006, 0.003, 2), M @ T(0, h + 0.004, d / 2 + 0.002), mats['fabric']))
     out.append(local_part(rbox(w + 0.004, 0.04, 0.008, 0.003, 2), M @ T(0, h - 0.016, d + 0.006), mats['fabric']))
     out.append(local_part(rbox(0.03, 0.012, 0.006, 0.002, 1), M @ T(0, h - 0.04, d + 0.01), mats['hardware'], 'hard'))
@@ -129,8 +129,8 @@ def radio_pouch(mats, M, w=0.072, h=0.13, d=0.042, antenna=0.17):
     return out
 
 
-def ifak(mats, M, w=0.16, h=0.11, d=0.07, cross=True):
-    out = [local_part(rbox(w, h, d, 0.018, 3), M @ T(0, h / 2, d / 2), mats['fabric'])]
+def ifak(mats, M, w=0.165, h=0.115, d=0.082, cross=True):
+    out = [local_part(rbox(w, h, d, 0.026, 3), M @ T(0, h / 2, d / 2), mats['fabric'])]
     # zipper line around (thin dark strip) and pull tabs
     out.append(local_part(rbox(w * 0.98, 0.006, d * 0.96 + 0.002, 0.002, 1), M @ T(0, h * 0.62, d / 2), mats['hardware'], 'hard'))
     out.append(local_part(rbox(0.012, 0.03, 0.004, 0.001, 1), M @ T(w * 0.35, h * 0.62 - 0.02, d + 0.002), mats['hardware'], 'hard'))
@@ -148,8 +148,8 @@ def tourniquet(mats, M):
     return out
 
 
-def admin_pouch(mats, M, w=0.22, h=0.12, d=0.03, patch=None):
-    out = [local_part(rbox(w, h, d, 0.01, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
+def admin_pouch(mats, M, w=0.22, h=0.12, d=0.036, patch=None):
+    out = [local_part(rbox(w, h, d, 0.012, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(w * 0.98, 0.005, d + 0.002, 0.002, 1), M @ T(0, h - 0.01, d / 2), mats['hardware'], 'hard'))
     if patch is not None:
         out.append(local_part(rbox(0.08, 0.05, 0.003, 0.002, 1), M @ T(0, h * 0.45, d + 0.0012), mats[patch], 'hard'))

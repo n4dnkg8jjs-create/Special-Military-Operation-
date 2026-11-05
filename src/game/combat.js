@@ -99,9 +99,10 @@ export class Combat {
       if (s.launcherT <= 0) { s.discardLauncher(); s.launcherTarget = null; }
       return;
     }
-    const t = s.target;
+    let t = s.target;
     s.groundAim = false;
-    if (!t) { if (sq.fireAt && !sq.holdFire) this.fireAtGround(s, dt); return; }
+    if (t && s.fireGuard && s.fireGuard(t)) { s.target = t = null; }   // v6: a mark too near own men (trench clearing: the fire group)
+    if (!t) { if ((sq.fireAt || s.fireAt) && !sq.holdFire) this.fireAtGround(s, dt); return; }
     if (s.noRifle || s.supportClip) return;                          // busy on the launcher / drone controls
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
@@ -135,6 +136,7 @@ export class Combat {
   shotClear(s, t) { return this.canSee(s, t) || (s.tgtFoliage && (this.canSee(s, t, 'veg') || (this.roughFix(t) && this.canSee(s, t, true)))); }   // (a few segment tests per round: cheap)
   // ---- fire at ground (suppressive / recon-by-fire on a point the player clicked, without a spotted target)
   groundPoint(u, s) {
+    if (s?.fireAt) { if (this.g.time > s.fireAt.until) s.fireAt = null; else return s.fireAt.p; }   // v6: his own mark (trench clearing)
     const fa = u.fireAt; if (!fa) return null;
     if (this.g.time > fa.until) { u.fireAt = null; return null; }
     const k = s ? s.idx * 2.399 : 0, r = s ? 2.5 + (s.idx % 3) * 1.4 : 0;            // each man takes his own bit of the area
@@ -335,7 +337,9 @@ export class Combat {
         else dmg = rf(W.dmg[0], W.dmg[1]) * 1.1;
       } else { dmg = rf(W.dmg[0] * 0.6, W.dmg[1] * 0.8) * (t.armor?.plateCoverage > 0.5 && r < 0.7 ? 0.5 : 1); if (r > 0.78) t.legWound = true; }
       if (W.type === 'hmg' || W.type === 'autocannon') dmg *= 2.5;
+      t.lastHit = { region: r < 0.06 ? (head ? 'head' : 'helmet') : r < 0.55 ? (dmg < 15 ? 'plate' : 'torso') : r > 0.78 ? 'leg' : 'limb', from: fromPos };   // soldierDamage.js: where the wound shows
     }
+    if (blast || W.type === 'blast') t.lastHit = { region: 'blast', from: fromPos };
     t.hp -= dmg;
     const sq = t.squad;
     if (g.camDist(t.pos) < 120) g.fx.blood(this.targetPoint(t, C));

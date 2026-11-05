@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{console.error(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{console.error(String(e.reason));window.__done=true});</script>
+<script type="module">
+// soldiers_v6 line-up preview: several soldiers (same glb) side by side, each with its own preset, pose and damage state
+// (src/game/soldierDamage.js, the game's own code).
+//  glb=  anims=  sol=<preset>|<clip>|<t 0..1>|<damage>[;...]   damage: comma list of  w:<region>[@<deg from front>]  treat / tq
+//        mud:<0..1> back:<0..1> soot:<0..1> rips:<0..1> bleed:<seconds>
+//  az= list of azimuths (views) r= cy= cx= el= fov= cols= W= H= dx= (spacing)  zoom=i (camera on soldier i only)
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { DamageSkin } from '/src/game/soldierDamage.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('W') || 1400), H = +(q.get('H') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(6, 10, 5); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+sun.shadow.camera.left = sun.shadow.camera.bottom = -5; sun.shadow.camera.right = sun.shadow.camera.top = 5;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader();
+const g = await loader.loadAsync(q.get('glb'));
+const clips = q.get('anims') ? (await loader.loadAsync(q.get('anims'))).animations : g.animations;
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const specs = (q.get('sol') || 'combo_1|idle_rifle|0.3|').split(';');
+const dx = +(q.get('dx') || 1.15), x0 = -(specs.length - 1) * dx / 2;
+const roots = [], info = { soldiers: [] };
+for (let i = 0; i < specs.length; i++) {
+  const [preset, anim, t, dmg] = specs[i].split('|');
+  const m = SkeletonUtils.clone(g.scene); scene.add(m); m.position.x = x0 + i * dx; roots.push(m);
+  const meshes = [];
+  m.traverse(o => { if (o.isMesh) { meshes.push(o); o.castShadow = o.receiveShadow = true; o.frustumCulled = false;
+    let n = o; while (n.parent && n.parent !== m && !/^(body|helmet|hands|gloves|boots|vest|pouches|backpack|kneepads|armband|legband|combo_|assault_combo_|crew_combo_)/.test(n.name)) n = n.parent;
+    const nm = n.name; o.visible = nm === preset || nm === preset + '_tape' || (preset === 'parts' && o.parent?.userData?.default_visible !== false && o.userData?.default_visible !== false && !/combo|_LOD1/.test(nm));
+    for (const mt of (Array.isArray(o.material) ? o.material : [o.material])) if (/^tape/i.test(mt.name)) mt.color.set(/_ru/.test(q.get('glb')) ? 0xd8d8d0 : 0x2f6fd6);
+  } });
+  const D = new DamageSkin(meshes.filter(o => o.visible), /_ru/.test(q.get('glb')) ? 'RU' : 'UA', rnd);
+  for (const tok of (dmg || '').split(',').filter(Boolean)) {
+    const [k, v] = tok.split(':');
+    if (k === 'w') { const [reg, deg] = v.split('@'); const a = (+deg || 0) * Math.PI / 180; D.addWound(reg, deg != null ? new THREE.Vector3(Math.sin(a), 0, Math.cos(a)) : null, { dead: /death/.test(anim) }); }
+    else if (k === 'treat') D.treat(false); else if (k === 'tq') D.treat(true);
+    else if (k === 'bleed') D.bleed(+v); else if (k === 'mud') D.mud = +v; else if (k === 'back') D.backMud = +v; else if (k === 'soot') D.soot = +v; else if (k === 'rips') D.rips = +v;
+  }
+  D.flush();
+  info.soldiers.push({ preset, anim, active: D.active, wounds: D.wounds.length });
+  const c = clips.find(a => a.name === anim);
+  if (c) { const mx = new THREE.AnimationMixer(m); mx.clipAction(c).play(); mx.setTime(c.duration * (+t || 0)); }
+}
+scene.updateMatrixWorld(true);
+const zi = q.get('zoom'), cx = q.get('cx') != null ? +q.get('cx') : zi != null ? x0 + (+zi) * dx : 0;
+const cy = +(q.get('cy') || 0.95), cz = +(q.get('cz') || 0), r = +(q.get('r') || 3.2 + specs.length * 0.9), el = +(q.get('el') || 10);
+const azs = (q.get('az') || '0').split(',').map(Number);
+const views = azs.length, cols = Math.min(views, +(q.get('cols') || 4)), rows = Math.ceil(views / cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 30), (W / cols) / (H / rows), 0.01, 200);
+renderer.setScissorTest(true); renderer.autoClear = false; renderer.clear();
+for (let i = 0; i < views; i++) {
+  const a = azs[i] * Math.PI / 180, e = el * Math.PI / 180;
+  cam.position.set(cx + r * Math.cos(e) * Math.sin(a), cy + r * Math.sin(e), cz + r * Math.cos(e) * Math.cos(a)); cam.lookAt(cx, cy, cz);
+  const x = (i % cols) * W / cols, y = (rows - 1 - Math.floor(i / cols)) * H / rows;
+  renderer.setViewport(x, y, W / cols, H / rows); renderer.setScissor(x, y, W / cols, H / rows); renderer.render(scene, cam);
+}
+info.calls = renderer.info.render.calls; info.programs = renderer.info.programs.length;
+window.__info = info; window.__done = true;
+</script></body></html>

@@ -7,7 +7,7 @@ import { hasClip } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 import { SpgMixin } from './artillery.js';
-import { applyVehicleKits } from './vehicleKit.js';
+import { applyVehicleKits, fieldCage } from './vehicleKit.js';
 
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
@@ -109,33 +109,8 @@ export class Vehicle {
     this.game.scene.add(root);
   }
   addCage() {
-    // fit to the turret's actual roof: robust extents from the turret vertices (ignoring antennas / the gun), posts welded to the roof
-    const t = this.turret, gun = this.gun, v = new THREE.Vector3(), xs = [], ys = [], zs = [];
-    this.root.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
-    t.traverse(o => {
-      if (!o.isMesh || /_LOD1$|_wreck$|antenna|aerial/i.test(o.name)) return; let p = o; while (p && p !== t) { if (p === gun) return; p = p.parent; }
-      const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 1500));
-      for (let i = 0; i < pos.count; i += step) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv); xs.push(v.x); ys.push(v.y); zs.push(v.z); }
-    });
-    if (xs.length < 20) return;
-    const q = (a, f) => { const s_ = [...a].sort((p, r) => p - r); return s_[Math.floor(f * (s_.length - 1))]; };
-    const roof = q(ys, 0.9), x0 = q(xs, 0.03) - 0.18, x1 = q(xs, 0.97) + 0.18, z0 = q(zs, 0.03) - 0.25, z1 = q(zs, 0.97) + 0.2;
-    const top = roof + 0.42, base = roof - 0.02, geos = [];
-    const bar = (ax, ay, az, bx, by, bz, r = 0.02) => {
-      const a = new THREE.Vector3(ax, ay, az), c = new THREE.Vector3(bx, by, bz), L = a.distanceTo(c);
-      const g = new THREE.BoxGeometry(r * 2, r * 2, L); g.lookAt(new THREE.Vector3().subVectors(c, a)); g.translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2); geos.push(g);
-    };
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ix = (x1 - x0) * 0.32, iz = (z1 - z0) * 0.32;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) bar(cx + sx * ix, base, cz + sz * iz, cx + sx * (x1 - x0) / 2, top, cz + sz * (z1 - z0) / 2, 0.026);   // splayed posts from the roof
-    for (const z of [z0, z1]) bar(x0, top, z, x1, top, z, 0.025);
-    for (const x of [x0, x1]) bar(x, top, z0, x, top, z1, 0.025);
-    const nx = Math.round((x1 - x0) / 0.3), nz = Math.round((z1 - z0) / 0.42);
-    for (let i = 1; i < nx; i++) { const x = x0 + (x1 - x0) * i / nx; bar(x, top, z0, x, top, z1, 0.015); }
-    for (let i = 1; i < nz; i++) { const z = z0 + (z1 - z0) * i / nz; bar(x0, top, z, x1, top, z, 0.013); }
-    const m = new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x3e4130, roughness: 0.85, metalness: 0.3 }));
-    m.name = 'drone_cage'; m.castShadow = true;
-    this.root.add(m); t.attach(m); this.cage = 0.4; this.cageMesh = m;
+    // a field-welded anti-drone cage: the same kit mesh as the campaign 'cage' upgrade (vehicleKit.js), posts welded to the turret roof
+    const m = fieldCage(this); if (m) { this.cage = 0.4; this.cageMesh = m; }
   }
   // desant seats: model empties ride_seat_N (+Z = facing, extras.seat_type) or a fallback layout
   seats() {

@@ -4,6 +4,9 @@
 //        node src/campaign/v2/tools/osm_compact.mjs UA --ext /tmp/osmv2/UAX   -> src/campaign/v2/data/osm_<side>_ext.json
 //        (campaign v5 grid extension: the OSM API map tiles of the extension; features inside the main file's
 //        sector patches are skipped so nothing is drawn twice)
+//        --tiles /tmp/osmv2/UA   (campaign v6) also every building footprint of the grid's OSM API map tiles (the sector
+//        patches only cover parts of the grid); --skipbox latS,lonW,latN,lonE: no buildings centred inside (the main grid,
+//        for the extension file). Everything but the buildings is drawn from the aor geo (geo_v6.py).
 // Data © OpenStreetMap contributors (ODbL).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +21,8 @@ const out = path.join(here, '../data', extDir ? `osm_${side}_ext.json` : `osm_${
 const skip = extDir ? JSON.parse(fs.readFileSync(path.join(here, '../data', `osm_${side}.json`), 'utf8')).patches : [];
 const inSkip = p => p && skip.some(([a, b, c, d]) => p[0] >= a && p[0] <= c && p[1] >= b && p[1] <= d);
 const relSeen = new Set();
+const tilesDir = process.argv.includes('--tiles') ? process.argv[process.argv.indexOf('--tiles') + 1] : null;
+const skipBox = process.argv.includes('--skipbox') ? process.argv[process.argv.indexOf('--skipbox') + 1].split(',').map(Number) : null;
 
 const nodes = new Map(), ways = new Map(), rels = [];
 const patches = [];
@@ -29,6 +34,15 @@ for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
     if (e.type === 'node') nodes.set(e.id, [e.lat, e.lon]);
     else if (e.type === 'way') ways.set(e.id, e);
     else if (e.type === 'relation') { if (!relSeen.has(e.id)) { relSeen.add(e.id); rels.push(e); } }
+  }
+}
+// v6: building footprints of the whole grid from the map tiles (deduplicated by way id with the sector patches)
+const tileB = new Set();
+if (tilesDir) for (const f of fs.readdirSync(tilesDir).filter(f => f.endsWith('.json'))) {
+  let d; try { d = JSON.parse(fs.readFileSync(path.join(tilesDir, f), 'utf8')); } catch { continue; }
+  for (const e of d.elements || []) {
+    if (e.type === 'node') { if (!nodes.has(e.id)) nodes.set(e.id, [e.lat, e.lon]); }
+    else if (e.type === 'way' && e.tags?.building && !ways.has(e.id)) { ways.set(e.id, e); tileB.add(e.id); }
   }
 }
 const lat0 = [...nodes.values()].reduce((a, n) => a + n[0], 0) / Math.max(1, nodes.size);
@@ -81,7 +95,8 @@ for (const w of ways.values()) {
   const t = w.tags || {}; if (usedInRoute.has(w.id)) continue;
   const p = pts(w); if (p.length < 2) continue;
   if (extDir && (t.building || (t.highway && STREET[t.highway] != null)) && inSkip(p[0])) continue;
-  if (t.building) { const b = obb(p, t); if (b) res.buildings.push(b); continue; }
+  if (t.building) { const b = obb(p, t); if (b && !(skipBox && b[0] >= skipBox[0] && b[0] <= skipBox[2] && b[1] >= skipBox[1] && b[1] <= skipBox[3])) res.buildings.push(b); continue; }
+  if (tileB.has(w.id)) continue;
   if (t.highway && STREET[t.highway] != null) { const q = simplify(p, 3); res.streets.push({ k: STREET[t.highway], p: q.map(v => v.map(r5)) }); continue; }
   if (t.railway === 'rail') { res.rail.push(simplify(p, 5).map(v => v.map(r5))); continue; }
   if (t.waterway) { res.rivers.push({ name: t['name:en'] || t.name || '', p: simplify(p, 6).map(v => v.map(r5)), small: t.waterway !== 'river' }); continue; }

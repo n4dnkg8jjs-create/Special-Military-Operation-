@@ -23,7 +23,7 @@ export class KitPool {
         const m = new THREE.InstancedMesh(p.geometry, p.material, cap);
         m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = true; m.visible = false;
         m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        m.name = piece; this.scene.add(m); return m;
+        m.name = piece; m.matrixAutoUpdate = false; this.scene.add(m); return m;   // (static object transform: instances carry the placement)
       });
       this.groups.set(k, { meshes, owners: [], cap });
     }

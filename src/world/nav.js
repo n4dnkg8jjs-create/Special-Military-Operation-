@@ -10,6 +10,10 @@ export const VEH_COST = {
   wheeled: { paved: 0.3, dirt: 0.5 }, tracked: { paved: 0.6, dirt: 0.72 },
   laneW: 4.5, trackW: 1.8, edge: 0.45, heur: { wheeled: 0.55, tracked: 0.75 }, longM: 200,
 };
+// Infantry route costs (per metre, on top of the cell cost; open ground = 1): scrape = right against a wall (clear < 0.9 m),
+// wallBand = along a wall / fence (0.9-2.6 m off it: a slight pull towards facades), threat = a cell a known enemy can
+// see into (findPath opts.threat), heur = A* heuristic weight.
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.6, heur: 1.0 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -189,44 +193,92 @@ export class NavGrid {
   // A* with octile heuristic. clearance in metres (infantry 0.45, BTR 1.9, tank 2.1). Returns [[x,z],...]
   // vehicle: false (infantry) | true | 'wheeled' | 'tracked'. true = tracked when clearance >= 1.95 (tanks ask for 2.0+),
   // else wheeled. Wheeled vehicles never enter trench cells; tracked ones cross trenches at a high cost.
-  findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = this.maxIter || 120000) {
+  // opts (infantry only): { threat: [x, z] } -- a known enemy: cells it can see into (no wall / rubble / wreck / trench
+  // between, see exposed()) cost INF_COST.threat more per metre, so a squad under threat takes the covered way when it
+  // is not much longer.
+  findPath(sx, sz, tx, tz, clearance = 0.45, vehicle = false, maxIter = this.maxIter || 120000, opts = null) {
     if (vehicle) return this.findPathV(sx, sz, tx, tz, clearance, vehicle === 'tracked' || (vehicle === true && clearance >= 1.95));
-    const tracked = vehicle === 'tracked' || (vehicle === true && clearance >= 1.95), vrest = !!vehicle && !!this.clearV;
-    if (vrest) { [sx, sz] = this.nearestFreeV(sx, sz, clearance, tracked, 8); [tx, tz] = this.nearestFreeV(tx, tz, clearance, tracked, 40); }
-    else { [sx, sz] = this.nearestFree(sx, sz, clearance, 6); [tx, tz] = this.nearestFree(tx, tz, clearance, 40); }
+    return this.findPathInf(sx, sz, tx, tz, clearance, maxIter, opts);
+  }
+  // ---------------------------------------------------------------- infantry routing (v6)
+  // per-metre cost of an infantry cell: terrain cost, keeping a little off walls (clear < 0.9) and a mild preference for
+  // the band along walls / fences (moving along facades rather than across open ground), plus the threat term
+  infCost(k) {
+    const cl = this.clear[k];
+    let c = this.cost[k] + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
+    if (this._thr) c += this.exposed(k) * INF_COST.threat;
+    return c;
+  }
+  // can the threat (this._thr = [x, z]) see into cell k? Marches from the cell towards the threat (1 m steps to 8 m, then
+  // 2 m to 32 m): a wall / building / wreck / rubble heap / sandbags (cost >= 6) on the way, or a trench floor, hides it.
+  // Cached per query (stamped with the A* generation).
+  exposed(k) {
+    const N = this.n * this.n;
+    if (!this._exS || this._exS.length !== N) { this._exS = new Uint32Array(N); this._exV = new Uint8Array(N); }
+    if (this._exS[k] === this._thrGen) return this._exV[k];
+    this._exS[k] = this._thrGen;
+    const [qx, qz] = this._thr, x = this.cx(k), z = this.cz(k), dx = qx - x, dz = qz - z, d = Math.hypot(dx, dz);
+    let v = 1;
+    if (d > 520 || (this.trench && this.trench[k] >= 9)) v = 0;
+    else { const ux = dx / d, uz = dz / d; for (let r = 1; r < Math.min(d - 2, 32); r += r < 8 ? 1 : 2) { const i = this.idx(x + ux * r, z + uz * r); if (i >= 0 && this.cost[i] >= 6) { v = 0; break; } } }
+    return (this._exV[k] = v);
+  }
+  findPathInf(sx, sz, tx, tz, clearance, maxIter, opts) {
+    [sx, sz] = this.nearestFree(sx, sz, clearance, 6); [tx, tz] = this.nearestFree(tx, tz, clearance, 40);
     const s = this.idx(sx, sz), t = this.idx(tx, tz); if (s < 0 || t < 0) return null;
     if (s === t) return [[tx, tz]];
     const n = this.n, gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed;
-    const ti = t % n, tj = (t / n) | 0;
-    const h = k => { const dx = Math.abs(k % n - ti), dz = Math.abs(((k / n) | 0) - tj); return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)); };
-    const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1; heap.push(h(s), s);
-    const D = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1], DX = [1, -1, 0, 0, 1, -1, 1, -1], DZ = [0, 0, 1, -1, 1, 1, -1, -1], C =[1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
-    let it = 0, best = s, bestH = h(s);
-    while (heap.size && it++ < maxIter) {
-      const k = heap.pop(); if (cl[k] === gen) continue; cl[k] = gen;
-      if (k === t) { best = k; break; }
-      const hk = h(k); if (hk < bestH) { bestH = hk; best = k; }
-      const ki = k % n;
-      for (let q = 0; q < 8; q++) {
-        const kk = k + D[q]; if (kk < 0 || kk >= n * n) continue;
-        const kki = kk % n; if (Math.abs(kki - ki) > 1) continue;
-        if (vrest ? !this.passableV(kk, clearance, tracked) : !this.passable(kk, clearance)) continue;
-        if (q >= 4 && (vrest ? (!this.passableV(k + DX[q], clearance, tracked) || !this.passableV(k + DZ[q] * n, clearance, tracked)) : (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance)))) continue;
-        let c = this.cost[kk]; if (vehicle && c > 1) c = c * 2.5; // rubble slows armour more
-        if (vrest && this.veh[kk] === 1) c += 12; // a tank crossing a trench: only when it saves a long detour
-        if (vehicle) c *= this.road[kk] === 2 ? 0.8 : this.road[kk] === 1 ? 0.9 : 1.15; // prefer roads when they're roughly on the way
-        // stay off walls: prefer cells with more clearance
-        // vehicles keep off walls; infantry hug them (move along facades and fences, not across open ground)
-        const cl = this.clear[kk];
-        const wall = vehicle ? (cl < clearance + 1.2 ? 0.6 : 0) : (cl < 0.9 ? 0.35 : cl < 2.6 ? -0.32 : 0);
-        const ng = g[k] + C[q] * (c + wall);
-        if (st[kk] !== gen || ng < g[kk]) { st[kk] = gen; g[kk] = ng; from[kk] = k; heap.push(ng + h(kk) * 1.02, kk); }
+    this._thr = opts?.threat || null; this._thrGen = gen;
+    try {
+      const ti = t % n, tj = (t / n) | 0, HW = INF_COST.heur;
+      const h = k => { const dx = Math.abs(k % n - ti), dz = Math.abs(((k / n) | 0) - tj); return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)) * HW; };
+      const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1; heap.push(h(s), s);
+      const D = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1], DX = [1, -1, 0, 0, 1, -1, 1, -1], DZ = [0, 0, 1, -1, 1, 1, -1, -1], C = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
+      let it = 0, best = s, bestH = h(s);
+      while (heap.size && it++ < maxIter) {
+        const k = heap.pop(); if (cl[k] === gen) continue; cl[k] = gen;
+        if (k === t) { best = k; break; }
+        const hk = h(k); if (hk < bestH) { bestH = hk; best = k; }
+        const ki = k % n;
+        for (let q = 0; q < 8; q++) {
+          const kk = k + D[q]; if (kk < 0 || kk >= n * n) continue;
+          const kki = kk % n; if (Math.abs(kki - ki) > 1) continue;
+          if (!this.passable(kk, clearance)) continue;
+          if (q >= 4 && (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance))) continue;
+          const ng = g[k] + C[q] * this.infCost(kk);
+          if (st[kk] !== gen || ng < g[kk]) { st[kk] = gen; g[kk] = ng; from[kk] = k; heap.push(ng + h(kk), kk); }
+        }
       }
+      this.lastIter = it;
+      const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
+      return this.smoothInf(raw, clearance, best === t ? [tx, tz] : null);
+    } finally { this._thr = null; }
+  }
+  // cost of walking the straight segment a->b (0.5 m samples of infCost)
+  segCostInf(ax, az, bx, bz) {
+    const d = Math.hypot(bx - ax, bz - az), m = Math.max(1, Math.ceil(d / 0.5)), stp = d / m; let c = 0;
+    for (let i = 0; i < m; i++) { const f = (i + 0.5) / m, k = this.idx(ax + (bx - ax) * f, az + (bz - az) * f); c += k < 0 ? 99 : this.infCost(k) * stp; }
+    return c;
+  }
+  // string-pulling with a cost check (as smoothV): a shortcut is taken when the line is clear AND no dearer than the stretch
+  // of lattice route it replaces -- straight legs lose the 45-degree zig-zags of the 8-neighbour grid, while a route that
+  // follows a wall / a covered way keeps doing so (the old version capped shortcuts near walls at 6 cells instead: a
+  // saw-tooth of short legs along every facade)
+  smoothInf(raw, clearance, end) {
+    const p = raw.map(k => [this.cx(k), this.cz(k)]);
+    if (p.length < 3) { if (end) p[p.length - 1] = end; return p; }
+    const cum = [0]; for (let i = 1; i < raw.length; i++) cum[i] = cum[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1]) * this.infCost(raw[i]);
+    const out = [p[0]]; let a = 0; const LOOK = 90;
+    while (a < p.length - 1) {
+      let b = Math.min(p.length - 1, a + LOOK);
+      for (; b > a + 1; b--) {
+        if (!this.lineFree(p[a][0], p[a][1], p[b][0], p[b][1], clearance)) continue;
+        if (this.segCostInf(p[a][0], p[a][1], p[b][0], p[b][1]) <= (cum[b] - cum[a]) * 1.03 + 0.3) break;
+      }
+      out.push(p[b]); a = b;
     }
-    const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
-    this._pv = vrest ? tracked : null;
-    const out = this.smooth(raw.map(k => [this.cx(k), this.cz(k)]), clearance, best === t ? [tx, tz] : null, !vehicle);
-    this._pv = null; return out;
+    if (end) out[out.length - 1] = end;
+    return out;
   }
   nearestFreeV(x, z, clearance, tracked, maxR = 30) {
     let i = this.idx(x, z); if (this.passableV(i, clearance, tracked)) return [x, z];

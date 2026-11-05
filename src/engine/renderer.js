@@ -176,6 +176,24 @@ export class Renderer {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     this.r.setSize(innerWidth, innerHeight); this.composer.setSize(innerWidth, innerHeight); this.sizeGrade();
   }
+  // ---- adaptive resolution: full resolution whenever the GPU keeps up; when the frame rate stays below ~45 fps and the
+  // time is NOT going into the simulation (frame interval much longer than the JS work before render: the GPU / fill
+  // rate is the limit), the internal render resolution steps down (x0.85, at most to 0.6 of the preset's pixel ratio);
+  // it steps back up as soon as there is headroom again. The canvas keeps its size (CSS scales it). Off: ?dynres=0 or
+  // localStorage smo_dynres=0; off by default under automation (headless screenshot tools), ?dynres=1 forces it on.
+  dynFrame(simMs) {
+    if (this.dynOff ??= (() => { try { const q = new URLSearchParams(location.search).get('dynres'); return q != null ? q === '0' : navigator.webdriver || localStorage.getItem('smo_dynres') === '0'; } catch { return false; } })()) return;
+    const now = performance.now(), D = this.dyn ||= { last: now, n: 0, int: 0, sim: 0, t0: now, scale: 1, base: this.r.getPixelRatio(), upBlockUntil: 0 };
+    const gap = now - D.last; D.last = now;
+    if (gap > 1000 || document.hidden) { D.n = 0; D.int = 0; D.sim = 0; D.t0 = now; return; }   // tab switch, load hitch: start over
+    D.n++; D.int += gap; D.sim += simMs;
+    if (now - D.t0 < 1500 || D.n < 8) return;
+    const avg = D.int / D.n, sim = D.sim / D.n; D.n = 0; D.int = 0; D.sim = 0; D.t0 = now;
+    let s = D.scale;
+    if (avg > 22 && avg - sim > 12 && s > 0.62) { s = Math.max(0.6, s * 0.85); if (now - (D.upAt || -1e9) < 5000) D.upBlockUntil = now + 20000; }   // (the last step up was one too many: wait before trying again)
+    else if (avg < 18.5 && s < 1 && now > D.upBlockUntil) { s = Math.min(1, s / 0.85); D.upAt = now; }
+    if (s !== D.scale) { D.scale = s; this.r.setPixelRatio(D.base * s); this.r.setSize(innerWidth, innerHeight); this.composer.setPixelRatio(D.base * s); this.sizeGrade(); }
+  }
   sizeGrade() { const r = this.grade?.uniforms.res; if (r) r.value.set(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio()); }
   // Keep the shadow frustum centred on what the camera looks at.
   followShadow(focus) {

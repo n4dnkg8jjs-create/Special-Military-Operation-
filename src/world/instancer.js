@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MeshoptSimplifier } from '../../vendor/meshopt/meshopt_simplifier.module.js';
 
 // Turns N placements of an Object3D template into one InstancedMesh per sub-mesh.
 const CELL = 90;
@@ -69,6 +70,7 @@ function instanceOne(scene, template, matrices, { shadows = true, colors = null 
     matrices.forEach((M, i) => { m.multiplyMatrices(M, rel); im.setMatrixAt(i, m); if (colors) im.setColorAt(i, colors[i]); });
     im.castShadow = shadows && !mats.some(mm => mm.transparent); im.receiveShadow = true;
     im.computeBoundingSphere(); im.name = o.name;
+    im.matrixAutoUpdate = false;   // static: the per-instance matrices carry the placement (no per-frame matrix recompose)
     scene.add(im); out.push(im);
   });
   return out;
@@ -77,3 +79,39 @@ function instanceOne(scene, template, matrices, { shadows = true, colors = null 
 export function trs(x, y, z, ry = 0, s = 1, rx = 0, rz = 0) {
   return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')), new THREE.Vector3(s, s, s));
 }
+
+// ---- distance LOD for heavy templates that ship without one (the scanned rubble heaps: 10-30k triangles each).
+// simplified(t) = a clone of the template whose meshes share the original vertex buffers (positions, normals, UVs:
+// exact at every kept vertex) with a simplified index buffer (meshoptimizer, attribute seams kept, max error 1.5 % of
+// the mesh size: ~10 cm on a heap). Used for instances beyond ~90 m (5-6 cm per pixel there at 1080p). Await
+// simplifierReady before building a world (WASM start-up); without WebAssembly the full mesh is used everywhere.
+let simpOk = false;
+export const simplifierReady = (MeshoptSimplifier.supported ? MeshoptSimplifier.ready.then(() => { simpOk = true; }) : Promise.resolve()).catch(() => {});
+const simpGeo = new WeakMap(), simpTpl = new WeakMap();
+function simplifyGeometry(geo, ratio, error) {
+  const key = ratio + '|' + error; let byK = simpGeo.get(geo); if (byK?.has(key)) return byK.get(key);
+  let out = geo;
+  const pos = geo.attributes.position, idx = geo.index;
+  if (pos && pos.itemSize === 3 && pos.count > 600) {
+    // (positions packed: the GLBs store interleaved position / normal / uv)
+    const P = new Float32Array(pos.count * 3); for (let i = 0; i < pos.count; i++) { P[i * 3] = pos.getX(i); P[i * 3 + 1] = pos.getY(i); P[i * 3 + 2] = pos.getZ(i); }
+    const I = idx ? new Uint32Array(idx.array) : new Uint32Array(pos.count).map((_, i) => i);
+    const target = Math.max(3, Math.floor(I.length * ratio / 3) * 3);
+    const [res, err] = MeshoptSimplifier.simplify(I, P, 3, target, error, []);
+    if (res.length < I.length * 0.8 && err <= error * 1.5) { out = geo.clone(); out.setIndex(new THREE.BufferAttribute(pos.count > 65535 ? res : new Uint16Array(res), 1)); out.userData.simplified = true; }
+  }
+  (byK ||= new Map()).set(key, out); simpGeo.set(geo, byK);
+  return out;
+}
+export function simplified(template, ratio = 0.25, error = 0.015) {
+  if (!simpOk) return null;
+  let c = simpTpl.get(template); if (c !== undefined) return c;
+  c = template.clone(true); let any = false;
+  c.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) { const g = simplifyGeometry(o.geometry, ratio, error); if (g !== o.geometry) { o.geometry = g; any = true; } } });
+  if (!any) c = null; simpTpl.set(template, c);
+  return c;
+}
+// instance() options for such a template: full detail near the camera, the simplified copy further out; 120 m cells
+// (rubble is scattered thinly: the 90 m default made ~15 cells x 12 heap types = 180 InstancedMeshes, each drawn in
+// the main and the shadow pass, most holding 2-4 heaps)
+export function farLod(template, lodDist = 90, cell = 120) { const lod = simplified(template); return lod ? { lod, lodDist, cell } : { cell }; }

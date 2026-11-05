@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#2a2c28;overflow:hidden;font:bold 14px sans-serif;color:#fff}.l{position:fixed;text-shadow:0 0 3px #000,0 0 2px #000}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+// Kit contact sheet (driven by vcheck.mjs): ?v=<manifest name>&cfg=none,cage,era,...,all  [&angs=az,el;az,el] [&tw=340&th=230]
+// [&rot=turret:y:90;gun_pivot:x:-10] [&open=1] [&kitsrc=/src/game/vehicleKit.js]  one column per config, one row per view.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const man = await (await fetch('/assets/vehicles/manifest.json')).json();
+const vn = q.get('v'), V = man.vehicles[vn];
+const KK = { btr: 'cage,sandbags,sight,ew,smoke', ifv: 'era,cage,ew,sandbags', tank: 'cage,roof,era,sandbags,sight,ew,smoke', spg: 'cage' };
+const kind = V.kind === 'btr' ? 'btr' : V.kind === 'tank' ? 'tank' : V.kind === 'ifv' ? 'ifv' : 'spg';
+const cfgs = (q.get('cfg') || ('none,' + KK[kind] + ',all')).split(',');
+const angs = (q.get('angs') || '35,28;210,40').split(';').map(a => a.split(',').map(Number));
+const TW = +(q.get('tw') || 340), TH = +(q.get('th') || 230);
+const W = TW * cfgs.length, H = TH * angs.length + 22;
+const { attachKits } = await import(q.get('kitsrc') || '/src/game/vehicleKit.js');
+const gltf = await new GLTFLoader().loadAsync('/' + V.file);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(6, 10, 5); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -8; sun.shadow.camera.right = sun.shadow.camera.top = 8; scene.add(sun); scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+renderer.setScissorTest(true); renderer.autoClear = false; renderer.setClearColor(0x2a2c28); renderer.clear();
+const label = (x, y, t) => { const d = document.createElement('div'); d.className = 'l'; d.style.left = x + 'px'; d.style.top = y + 'px'; d.textContent = t; document.body.appendChild(d); };
+const info = {};
+for (let ci = 0; ci < cfgs.length; ci++) {
+  const c = cfgs[ci];
+  const root = gltf.scene.clone(true);
+  root.traverse(o => { if (o.userData?.hidden || /_LOD1$|_wreck$/i.test(o.name)) o.visible = false; if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+  if (q.get('open')) for (const [n, L] of Object.entries({ ...(V.hatch_lids || {}), ...(V.doors || {}) })) { const o = root.getObjectByName(n); if (o) o.rotation[L.axis || 'x'] = L.open; }
+  scene.add(root); root.updateMatrixWorld(true);
+  const box = new THREE.Box3(); root.traverse(o => { let vis = true; for (let p = o; p; p = p.parent) if (!p.visible) vis = false; if (o.isMesh && vis) box.expandByObject(o); });
+  const ks = c === 'none' ? [] : c === 'all' ? KK[kind].split(',') : c.split('+');
+  const t0 = performance.now();
+  const made = ks.length ? attachKits(root, ks, { wheeled: !!V.wheeled || V.kind === 'btr', kind }) : [];
+  info[c] = { meshes: made.map(m => m.name), ms: Math.round(performance.now() - t0), tris: made.reduce((s, m) => s + (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3, 0) };
+  if (q.get('rot')) for (const r of q.get('rot').split(';')) { const [n, ax, deg] = r.split(':'); const o = root.getObjectByName(n); if (o) o.rotation[ax] += (+deg) * Math.PI / 180; }
+  root.updateMatrixWorld(true);
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  if (q.get('target')) ctr.fromArray(q.get('target').split(',').map(Number));
+  const r = size.length() * 0.78 * (+(q.get('dist') || 1));
+  const cam = new THREE.PerspectiveCamera(35, TW / TH, 0.05, 500);
+  for (let vi = 0; vi < angs.length; vi++) {
+    const [az, el] = angs[vi], a = az * Math.PI / 180, e = el * Math.PI / 180;
+    cam.position.set(ctr.x + r * Math.cos(e) * Math.sin(a), ctr.y + r * Math.sin(e), ctr.z + r * Math.cos(e) * Math.cos(a)); cam.lookAt(ctr);
+    const x = ci * TW, y = H - 22 - (vi + 1) * TH;
+    renderer.setViewport(x + 1, y + 1, TW - 2, TH - 2); renderer.setScissor(x + 1, y + 1, TW - 2, TH - 2); renderer.render(scene, cam);
+  }
+  label(ci * TW + 6, 2, `${vn}: ${c}` + (made.length ? ` (${Math.round(info[c].tris / 100) / 10}k tris)` : ''));
+  scene.remove(root);
+}
+window.__info = info; window.__done = true;
+</script></body></html>

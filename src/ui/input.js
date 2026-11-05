@@ -129,7 +129,9 @@ export class Input {
     return sel.map((u, i) => {
       const t = (i + 0.5) * seg; const x = a.x + dir[0] * t, z = a.z + dir[1] * t;
       const width = Math.max(6, seg * 0.9); const preview = [];
-      if (u.type === 'squad') { const k = Math.max(1, u.effective.length); for (let j = 0; j < k; j++) { const o = (j - (k - 1) / 2) * Math.min(4.2, width / Math.max(1, k - 1)); preview.push([x + dir[0] * o, z + dir[1] * o]); } }
+      // squads: where the men will actually go (cover-aware slots, pale blue = in cover); fall back to the plain line
+      if (u.type === 'squad' && u.previewSlots && !u.mounted) { try { preview.push(...u.previewSlots(x, z, facing, width)); } catch { } }
+      if (u.type === 'squad' && !preview.length) { const k = Math.max(1, u.effective.length); for (let j = 0; j < k; j++) { const o = (j - (k - 1) / 2) * Math.min(4.2, width / Math.max(1, k - 1)); preview.push([x + dir[0] * o, z + dir[1] * o]); } }
       else preview.push([x, z]);
       return { unit: u, x, z, facing, width, preview };
     });

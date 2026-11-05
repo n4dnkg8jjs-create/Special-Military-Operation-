@@ -83,7 +83,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     shade *= 1 - 0.18 * np.exp(-((dist_in - 0.002) / 0.0015) ** 2)
     # ---- folds / drape (low-frequency noise stretched along limbs) and joint creases
     drape = TX.noise3(P * [3.0, 0.6, 3.0], 1.0, seed + 11, 3)
-    H += drape * 0.0016
+    H += drape * 0.0022
     for side, sx in (('Left', 1), ('Right', -1)):
         sh, el, wr = J(side + 'Arm'), J(side + 'ForeArm'), J(side + 'Hand')
         m = labmask('sleeve_' + side[0]) | labmask('cuff_' + side[0])
@@ -98,7 +98,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         front = 0.5 + 0.5 * np.cos(th - (-np.pi / 2 * sx))
         crook = 0.5 + 0.5 * np.cos(th - np.pi / 2 * sx)      # crook of the elbow (faces +Z in the bind pose)
         cr_ = crease(de / 0.019 + 0.45 * np.sin(th * 1.3) + TX.noise3(P, 0.08, seed + 3, 1) * 0.5) * np.exp(-(de / 0.075) ** 2)
-        H += m * cr_ * 0.0021 * (0.25 + 0.75 * crook ** 1.5) * (0.7 + 0.3 * TX.noise3(P, 0.05, seed + 31, 2))
+        H += m * cr_ * 0.0028 * (0.25 + 0.75 * crook ** 1.5) * (0.7 + 0.3 * TX.noise3(P, 0.05, seed + 31, 2))
         FOLD[...] += m * cr_ * (0.25 + 0.75 * crook ** 1.5)
         # inner-elbow fan: diagonal folds converging on the crook of the arm
         ie = el + (np.array([0, 0, 1.0]) * 0.035)
@@ -106,7 +106,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         H += m * rf * 0.0016 * crook; FOLD[...] += m * rf * crook
         # sleeve drape: long soft folds running down the upper arm and forearm, twisting slightly
         dr = crease(th * 5 / (2 * np.pi) + s * 1.5 + TX.noise3(P, 0.15, seed + 50 + sx, 2) * 0.6, 0.9)
-        H += m * dr * 0.0009 * (1 - np.exp(-(de / 0.05) ** 2)); FOLD[...] += m * dr * 0.4
+        H += m * dr * 0.0014 * (1 - np.exp(-(de / 0.05) ** 2)); FOLD[...] += m * dr * 0.4
         # sleeve gather near cuff
         dc = s - (Lu + np.linalg.norm(wr - el) - 0.04)
         H += m * np.sin(th * 7 + s * 40) * np.exp(-(dc / 0.05) ** 2) * 0.0012
@@ -151,12 +151,12 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         frontk = 0.5 + 0.5 * np.cos(th - fw); backk = 1 - frontk
         # back of the knee: stacked horizontal folds (the cloth compresses when the knee bends); front: two broad bagging folds
         kb = crease(dk / 0.021 + 0.35 * np.sin(th * 2) + TX.noise3(P, 0.06, seed + 5, 2) * 0.6) * np.exp(-(dk / 0.075) ** 2)
-        H += m * kb * 0.0022 * backk ** 1.3; FOLD[...] += m * kb * backk ** 1.3
+        H += m * kb * 0.0030 * backk ** 1.3; FOLD[...] += m * kb * backk ** 1.3
         kf = crease(dk / 0.045 + TX.noise3(P, 0.08, seed + 6, 2) * 0.5, 1.0) * np.exp(-((dk + 0.02) / 0.09) ** 2)
         H += m * (kf * 0.0012 + 0.0012 * np.exp(-((dk + 0.01) / 0.05) ** 2)) * frontk; FOLD[...] += m * kf * frontk * 0.7
         # trouser drape: long vertical folds down the leg, a little twisted
         ld = crease(th * 4 / (2 * np.pi) + TX.noise3(P, 0.2, seed + 60 + sx, 2) * 0.5 + s * 0.6, 0.9)
-        H += m * ld * 0.0010 * (1 - np.exp(-(dk / 0.06) ** 2)); FOLD[...] += m * ld * 0.4
+        H += m * ld * 0.0016 * (1 - np.exp(-(dk / 0.06) ** 2)); FOLD[...] += m * ld * 0.4
         # blousing above boots
         db = P[..., 1] - 0.24
         H += m * np.sin(th * 9 + P[..., 1] * 90) * np.exp(-(db / 0.05) ** 2) * 0.0035 * (db > -0.03)
@@ -226,17 +226,35 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     cav *= np.clip(1 + (H - blur2) * 210, 0.68, 1.12)
     FOLD = ndimage.gaussian_filter(TX.dilate(FOLD, mask, 6), 1.0)
     cav *= np.clip(1 + 0.30 * FOLD, 0.70, 1.16)
-    # ---- dirt / wear masks (in 3D)
+    # ---- dirt / wear masks (in 3D).  v6 (photos 2023-24): caked mud on the lowest 30 cm and the knees (kneeling / crawling), shins and
+    # seat scuffed, elbows / forearms rubbed, grime (sweat / grease, darker not browner) at collar and cuffs; sun-bleached / worn
+    # lighter on top surfaces and raised edges (pocket flaps, seams)
     y = P[..., 1]
-    dirt = np.clip((0.55 - y) / 0.4, 0, 1) ** 1.5 * 0.55
+    n_d = TX.noise3(P, 0.12, seed + 9, 3)
+    n_s = TX.noise3(P, 0.035, seed + 19, 2)                        # splatter scale
+    wetm = np.clip((0.42 - y) / 0.18, 0, 1) ** 1.2                # wet, dark mud right above the boots
+    dirt = np.clip((0.62 - y) / 0.40, 0, 1) ** 1.4 * 0.62
+    grime = np.zeros_like(y)
     for side in ('Left', 'Right'):
         k = J(side + 'Leg')
-        dirt += 0.6 * np.exp(-np.sum((P - k - [0, 0, 0.06]) ** 2, -1) / 0.07 ** 2)
+        kd = np.sum(((P - k - [0, -0.01, 0.07]) * [1.0, 0.8, 1.0]) ** 2, -1)
+        dirt += 0.85 * np.exp(-kd / 0.085 ** 2)                    # knees (front)
+        dirt += 0.30 * np.exp(-np.sum(((P - k - [0, -0.18, 0.06]) * [1, 0.45, 1]) ** 2, -1) / 0.07 ** 2)   # shin fronts
         e = J(side + 'ForeArm')
-        dirt += 0.25 * np.exp(-np.sum((P - e) ** 2, -1) / 0.06 ** 2)
-    dirt *= np.clip(0.6 + 0.8 * TX.noise3(P, 0.12, seed + 9, 3), 0, 1.3)
+        dirt += 0.45 * np.exp(-np.sum((P - e - [0, 0, -0.03]) ** 2, -1) / 0.065 ** 2)   # back of the elbows
+        dirt += 0.20 * np.exp(-np.sum((P - (e + J(side + 'Hand')) / 2) ** 2, -1) / 0.08 ** 2)   # forearms
+        h = J(side + 'Hand')
+        grime += 0.55 * np.exp(-np.sum((P - h) ** 2, -1) / 0.07 ** 2)                    # cuffs
+        th_ = J(side + 'UpLeg')
+        dirt += 0.18 * np.exp(-np.sum(((P - th_ - [0, -0.18, 0.08]) * [1, 0.6, 1]) ** 2, -1) / 0.06 ** 2) * (n_s > 0.2)   # wiped hands
+    dirt += 0.32 * np.exp(-np.sum(((P - J('Hips') - [0, -0.10, -0.11]) * [0.7, 1, 1]) ** 2, -1) / 0.09 ** 2)   # seat
+    grime += 0.55 * np.exp(-np.sum(((P - J('Neck') - [0, -0.03, 0]) * [0.8, 1.6, 1.0]) ** 2, -1) / 0.08 ** 2)   # collar
+    dirt *= np.clip(0.55 + 0.75 * n_d, 0, 1.4)
+    dirt += np.clip(n_s - 0.55, 0, 1) * 1.6 * np.clip((0.9 - y) / 0.5, 0, 1)            # splatter going up the legs
     dirt = np.clip(dirt, 0, 1)
+    grime = np.clip(grime * (0.6 + 0.6 * n_d), 0, 0.8)
     fade = TX.noise3(P, 0.35, seed + 21, 2) * 0.06
+    fade += 0.07 * np.clip(N[..., 1], 0, 1) ** 1.5                 # sun-bleached on top surfaces (shoulders, upper back)
     # ---- albedo at res_a
     pxm = uv_per_m * res_a
     if faction == 'ru':
@@ -251,9 +269,15 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
     up = lambda a, o=1: ndimage.zoom(a, res_a / res_n, order=o) if res_a != res_n else a
     sh = up(shade * cav * (1 + fade))
     dt = up(dirt)
-    mud = TX.hexc('#5d5040')
+    mud_dry = TX.hexc('#7d705a'); mud_wet = TX.hexc('#3b3229')
+    wm = up(wetm)[..., None]
+    mud = mud_dry * (1 - wm) + mud_wet * wm
     alb = base * sh[..., None]
-    alb = alb * (1 - dt[..., None] * 0.55) + mud * dt[..., None] * 0.55
+    # worn / abraded raised edges a little lighter (cavity > 1 = ridge)
+    alb = alb * (1 + up(np.clip(cav - 1.0, 0, 0.12))[..., None] * 0.8)
+    a_d = dt[..., None] * (0.55 + 0.3 * wm)
+    alb = alb * (1 - a_d) + mud * a_d
+    alb = alb * (1 - up(grime)[..., None] * 0.35)
     pa = up(patch[..., 3])
     pc = np.stack([up(patch[..., c], 0) for c in range(3)], -1)
     alb = alb * (1 - pa[..., None]) + pc * sh[..., None] * pa[..., None]

@@ -62,26 +62,39 @@ export class HUD {
     this.vRing = new THREE.InstancedMesh(vg, this.ringMesh.material, 20); this.vRing.frustumCulled = false; g.scene.add(this.vRing);
     const lineMat = new THREE.LineDashedMaterial({ color: 0xd8b25a, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.7 });
     this.orderLines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat); this.orderLines.frustumCulled = false; g.scene.add(this.orderLines);
-    this.preview = new THREE.InstancedMesh(new THREE.CircleGeometry(0.35, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x8fb069, transparent: true, opacity: 0.8, depthWrite: false }), 80);
+    // v6: fire marks of men on individual fire tasks (trench clearing: the fire group's rounds ahead of the assault group)
+    this.fireLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xd8483a, dashSize: 0.6, gapSize: 0.9, transparent: true, opacity: 0.75 })); this.fireLines.frustumCulled = false; g.scene.add(this.fireLines);
+    this.preview = new THREE.InstancedMesh(new THREE.CircleGeometry(0.35, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false }), 80);
     this.preview.count = 0; this.preview.frustumCulled = false; g.scene.add(this.preview);
   }
   updateRings() {
-    const m = new THREE.Matrix4(); let n = 0, vn = 0; const pts = [];
+    const m = new THREE.Matrix4(); let n = 0, vn = 0; const pts = [], fpts = [];
     for (const u of this.selected) {
       if (u.type === 'squad') {
         if (u.mounted) continue;
         for (const s of u.soldiers) if (s.alive && s.inside !== 'btr' && n < 200) { m.makeTranslation(s.pos.x, s.pos.y + 0.08, s.pos.z); this.ringMesh.setMatrixAt(n++, m); }
         const c = u.center(); for (const s of u.effective) if (s.goal && s.path) { pts.push(s.pos.x, 0.2, s.pos.z, s.goal[0], 0.2, s.goal[1]); }
+        for (const s of u.effective) if (s.fireAt) fpts.push(s.pos.x, s.pos.y + 1.1, s.pos.z, s.fireAt.p.x, 0.5, s.fireAt.p.z);
       } else if (!u.destroyed && vn < 20) {
         m.makeRotationY(u.heading).setPosition(u.pos.x, 0.1, u.pos.z); this.vRing.setMatrixAt(vn++, m);
         if (u.path) { let px = u.pos.x, pz = u.pos.z; for (let i = u.pathI; i < u.path.length; i++) { pts.push(px, 0.25, pz, u.path[i][0], 0.25, u.path[i][1]); [px, pz] = u.path[i]; } }
       }
     }
-    this.ringMesh.count = n; this.ringMesh.instanceMatrix.needsUpdate = true; this.vRing.count = vn; this.vRing.instanceMatrix.needsUpdate = true;
+    if (n || this._rn) { this.ringMesh.count = n; this.ringMesh.instanceMatrix.needsUpdate = true; } this._rn = n;
+    if (vn || this._vn) { this.vRing.count = vn; this.vRing.instanceMatrix.needsUpdate = true; } this._vn = vn;
+    if (fpts.length || this._fn) { const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(fpts, 3)); this.fireLines.geometry.dispose(); this.fireLines.geometry = fg; this.fireLines.computeLineDistances(); } this._fn = fpts.length;
+    // order lines: a new geometry (GPU buffer) only when they changed - not every frame for an idle / empty selection
+    const L = this._lp; if (L && L.length === pts.length && pts.every((x, i) => x === L[i])) return;
+    this._lp = pts;
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     this.orderLines.geometry.dispose(); this.orderLines.geometry = geo; this.orderLines.computeLineDistances();
   }
-  showPreview(points) { const m = new THREE.Matrix4(); this.preview.count = Math.min(80, points.length); points.slice(0, 80).forEach((p, i) => { m.makeTranslation(p[0], 0.15, p[1]); this.preview.setMatrixAt(i, m); }); this.preview.instanceMatrix.needsUpdate = true; }
+  // formation preview dots: green, or pale blue where the man will be in cover (p[2], squad.previewSlots)
+  showPreview(points) {
+    const m = new THREE.Matrix4(), c = this._pc ||= [new THREE.Color(0x8fb069), new THREE.Color(0x7fd0ff)]; this.preview.count = Math.min(80, points.length);
+    points.slice(0, 80).forEach((p, i) => { m.makeTranslation(p[0], 0.15, p[1]); this.preview.setMatrixAt(i, m); this.preview.setColorAt(i, c[p[2] ? 1 : 0]); });
+    this.preview.instanceMatrix.needsUpdate = true; if (this.preview.instanceColor) this.preview.instanceColor.needsUpdate = true;
+  }
   // area-fire marker: a red ring on the ground for the duration of the fire order
   groundMarker(p) {
     const g = this.g; if (this._gm) { g.scene.remove(this._gm); clearTimeout(this._gmT); }

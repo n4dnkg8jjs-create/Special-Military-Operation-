@@ -15,6 +15,7 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { atDate } from './state.js';
+import { MAPS } from '../../world/maps.js';
 
 export const COL = { own: '#4f8fe0', enemy: '#e0503f', contested: '#e0a33a', accent: '#d8b25a', front: '#f2e6c4', water: '#41606e' };
 const KY = 110.57, KX = lat => 111.32 * Math.cos(lat * Math.PI / 180);
@@ -23,16 +24,22 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const hash = s => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
-const VEX = 2.6, HEX = 1.6;   // building height / footprint exaggeration so towns read on the strategic map
+// v6: true to scale. Footprints at their real size (HEX 1: OSM outlines / 9-12 m village houses), heights x1.5 (VEX) so
+// the one-storey villages still stand off the ground at strategic zoom; trees are real-sized crowns (7-10 m) at the
+// same vertical exaggeration. Road / river / ditch widths are their real widths with a minimum on-screen width (see
+// paintGroundV6). (Before v6: footprints x1.6, heights x2.6, 13-29 m wide / 27-59 m tall trees, 100 m wide roads.)
+const VEX = 1.5, HEX = 1.0;
+// ground texture resolution: ~8 m per pixel, at most 4096 px a side (the grown UA grid: ~10 m / px)
+const GROUND_MPX = 8, GROUND_MAX = 4096;
 
 // season palettes for the fields (Feb 2023 is late winter; the counteroffensive runs through high summer)
 function season(date) {
   const m = +String(date).slice(5, 7);
-  if (m === 12 || m <= 2) return { base: '#77786c', fields: ['#86887b', '#7a7c6f', '#919285', '#6f7064', '#8d8a7c'], tree: '#3c4033', wood: '#363b2f', name: 'winter' };
-  if (m <= 4) return { base: '#5d5a42', fields: ['#655f45', '#56583d', '#6e6648', '#4d5236', '#5f6a3e'], tree: '#33402a', wood: '#2e3a26', name: 'spring' };
-  if (m <= 6) return { base: '#56643a', fields: ['#5d6c3c', '#6a733f', '#4f6034', '#7a7845', '#617043'], tree: '#2c4024', wood: '#273a21', name: 'summer' };
-  if (m <= 8) return { base: '#857a4a', fields: ['#9a8c52', '#8a7f4a', '#a4945a', '#6f6e40', '#958653'], tree: '#33432a', wood: '#2c3d25', name: 'harvest' };
-  return { base: '#675c41', fields: ['#6f6244', '#5f5a3e', '#7a6a48', '#58553b', '#6a5f40'], tree: '#3d3e2c', wood: '#363727', name: 'autumn' };
+  if (m === 12 || m <= 2) return { base: '#77786c', fields: ['#86887b', '#7a7c6f', '#919285', '#6f7064', '#8d8a7c'], tree: '#3c4033', wood: '#363b2f', grass: '#7c7f70', yard: '#5e5f50', name: 'winter' };
+  if (m <= 4) return { base: '#5d5a42', fields: ['#655f45', '#56583d', '#6e6648', '#4d5236', '#5f6a3e'], tree: '#33402a', wood: '#2e3a26', grass: '#58613a', yard: '#454c31', name: 'spring' };
+  if (m <= 6) return { base: '#56643a', fields: ['#5d6c3c', '#6a733f', '#4f6034', '#7a7845', '#617043'], tree: '#2c4024', wood: '#273a21', grass: '#5a6b36', yard: '#3f4f2b', name: 'summer' };
+  if (m <= 8) return { base: '#857a4a', fields: ['#9a8c52', '#8a7f4a', '#a4945a', '#6f6e40', '#958653'], tree: '#33432a', wood: '#2c3d25', grass: '#7d7a48', yard: '#525a32', name: 'harvest' };
+  return { base: '#675c41', fields: ['#6f6244', '#5f5a3e', '#7a6a48', '#58553b', '#6a5f40'], tree: '#3d3e2c', wood: '#363727', grass: '#666040', yard: '#4a4932', name: 'autumn' };
 }
 
 export class StrategicMap {
@@ -57,7 +64,9 @@ export class StrategicMap {
     this.scene.add(new THREE.HemisphereLight('#dfe6f0', '#3a3a30', 1.6));
     const sun = new THREE.DirectionalLight('#fff2dc', 1.9); sun.position.set(-0.6, 1, 0.4); this.scene.add(sun);
     this.lineMats = [];
+    const tb0 = performance.now();
     this.buildTheatre(); this.buildAor(); this.buildBuildings(); this.buildOverlay(); this.buildDynamic();
+    this.buildMs = Math.round(performance.now() - tb0);
     // camera state (target on the ground, distance in km, yaw, pitch = elevation angle)
     const c = this.aorCenter();
     this.cam = { x: c.x, z: c.z, dist: 26, yaw: 0.18, pitch: 0.92 };
@@ -144,7 +153,9 @@ export class StrategicMap {
   }
   // ------------------------------------------------------------------ AOR ground (canvas texture, redrawn per season)
   buildAor() {
-    const W = 2048, H = Math.round(W * (this.z1 - this.z0) / (this.x1 - this.x0));
+    const wk = this.x1 - this.x0, hk = this.z1 - this.z0, v6 = !!this.geo?.ways;
+    let W = v6 ? Math.round(wk * 1000 / GROUND_MPX) : 2048, H = Math.round(W * hk / wk);
+    if (Math.max(W, H) > GROUND_MAX) { const k = GROUND_MAX / Math.max(W, H); W = Math.round(W * k); H = Math.round(H * k); }
     this.gW = W; this.gH = H;
     this.groundCv = document.createElement('canvas'); this.groundCv.width = W; this.groundCv.height = H;
     this.groundTex = new THREE.CanvasTexture(this.groundCv); this.groundTex.colorSpace = THREE.SRGBColorSpace; this.groundTex.anisotropy = 8;
@@ -154,10 +165,17 @@ export class StrategicMap {
     const rim = new THREE.Mesh(new THREE.PlaneGeometry(this.x1 - this.x0 + 8, this.z1 - this.z0 + 8), new THREE.MeshBasicMaterial({ map: rimTexture(), transparent: true, depthWrite: false }));
     rim.rotation.x = -Math.PI / 2; rim.position.set((this.x0 + this.x1) / 2, -0.02, (this.z0 + this.z1) / 2); this.scene.add(rim);
     this.windbreaks = []; this.paintGround();
+    // DEM hillshade (geo_v6.py: relief_*.jpg), blended over the land cover once loaded
+    this.reliefImgs = [];
+    for (const r of this.geo?.reliefs || (this.geo?.relief ? [this.geo.relief] : [])) {
+      const img = new Image(); img.onload = () => { if (this.dead) return; this.reliefImgs.push({ img, bbox: r.bbox }); this.season = null; this.paintGround(); this.dirty = true; };
+      img.src = new URL(r.url, document.baseURI).href;
+    }
   }
   gP(lat, lon) { return [(this.X(lon) - this.x0) / (this.x1 - this.x0) * this.gW, (this.Z(lat) - this.z0) / (this.z1 - this.z0) * this.gH]; }
   paintGround() {
     const sea = season(this.C.date); if (this.season === sea.name) return; this.season = sea.name;
+    if (this.geo?.ways) { this.paintGroundV6(sea); this.groundTex.needsUpdate = true; return; }
     const g = this.groundCv.getContext('2d'), W = this.gW, H = this.gH, kmPx = W / (this.x1 - this.x0), R = rng(17);
     const G = this.geo, keepBreaks = !this.windbreaks.length && !G?.woods?.length, drawBreaks = !G?.woods?.length;
     g.fillStyle = sea.base; g.fillRect(0, 0, W, H);
@@ -222,14 +240,91 @@ export class StrategicMap {
     }
     this.groundTex.needsUpdate = true;
   }
+  // v6: the ground as it is (geo_v6.py): real field parcels with their furrow direction, woods and the shelter belts at
+  // their real width, meadows, orchards, yards and garden plots, water, DEM hillshade, then the road and rail network
+  // by class, rivers / streams and the mapped fortifications. Widths in metres, with a minimum on-screen width.
+  paintGroundV6(sea) {
+    const g = this.groundCv.getContext('2d'), W = this.gW, H = this.gH, G = this.geo, kmPx = W / (this.x1 - this.x0), mPx = kmPx / 1000;
+    const ring = r => { r.forEach((p, i) => { const [a, b] = this.gP(p[0], p[1]); i ? g.lineTo(a, b) : g.moveTo(a, b); }); g.closePath(); };
+    const poly = e => { g.beginPath(); for (const r of (e.r || [e])) ring(r); };
+    const line = pts => { g.beginPath(); pts.forEach((p, i) => { const [a, b] = this.gP(p[0], p[1]); i ? g.lineTo(a, b) : g.moveTo(a, b); }); };
+    const px = (m, min) => Math.max(min, m * mPx);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.setLineDash([]);
+    // ground OSM has no land use for (fallow, steppe, the inside of villages): the base colour, broken up softly
+    g.fillStyle = sea.base; g.fillRect(0, 0, W, H);
+    const R = rng(17);
+    for (let i = 0; i < 260; i++) { g.globalAlpha = 0.18; g.fillStyle = sea.fields[Math.floor(R() * sea.fields.length)]; g.beginPath(); g.ellipse(R() * W, R() * H, (0.3 + R() * 0.9) * kmPx, (0.2 + R() * 0.5) * kmPx, R() * 3, 0, 7); g.fill(); }
+    g.globalAlpha = 1;
+    // fields: one colour per parcel (crop / stubble / fallow), furrows along the parcel's long side
+    const fur = document.createElement('canvas'); fur.width = fur.height = 4; const fg = fur.getContext('2d'); fg.fillStyle = 'rgba(0,0,0,0.07)'; fg.fillRect(0, 0, 4, 1); fg.fillStyle = 'rgba(255,250,230,0.03)'; fg.fillRect(0, 2, 4, 1);
+    const pat = g.createPattern(fur, 'repeat');
+    (G.fields || []).forEach((e, i) => {
+      const h = hash('f' + i), r = e.r ? e.r[0] : e; poly(e);
+      g.fillStyle = sea.fields[h % sea.fields.length]; g.fill('evenodd');
+      let best = 0, ang = 0; for (let k = 1; k < r.length; k++) { const [a, b] = this.gP(r[k - 1][0], r[k - 1][1]), [c, d] = this.gP(r[k][0], r[k][1]), L = Math.hypot(c - a, d - b); if (L > best) { best = L; ang = Math.atan2(d - b, c - a); } }
+      pat.setTransform(new DOMMatrix().rotateSelf(0, 0, ang * 180 / Math.PI)); g.fillStyle = pat; g.globalAlpha = 0.55 + ((h >>> 8) & 3) * 0.15; g.fill('evenodd'); g.globalAlpha = 1;
+      g.strokeStyle = 'rgba(38,34,24,0.32)'; g.lineWidth = 0.8; g.stroke();
+    });
+    g.fillStyle = sea.grass; for (const e of G.grass || []) { poly(e); g.fill('evenodd'); }
+    g.fillStyle = '#4f5a3a'; g.globalAlpha = 0.85; for (const e of G.wet || []) { poly(e); g.fill('evenodd'); } g.globalAlpha = 1;
+    // orchards / vineyards / allotments: rows of small crowns
+    for (const e of G.orchards || []) { poly(e); g.fillStyle = sea.grass; g.fill('evenodd'); g.save(); g.clip('evenodd'); g.fillStyle = sea.tree; const r = e.r ? e.r[0] : e, xs = [], ys = []; for (const p of r) { const [a, b] = this.gP(p[0], p[1]); xs.push(a); ys.push(b); } const st = Math.max(1.6, 6 * mPx); for (let x = Math.min(...xs); x < Math.max(...xs); x += st) for (let y = Math.min(...ys); y < Math.max(...ys); y += st) g.fillRect(x, y, st * 0.55, st * 0.55); g.restore(); }
+    // built-up land use, then the village garden plots behind every house (inferred plots: the strip away from the street)
+    const BU = { res: 'rgba(118,114,98,0.62)', ind: 'rgba(122,119,110,0.85)', farm: 'rgba(118,108,88,0.75)', cem: 'rgba(70,80,62,0.8)' };
+    for (const e of G.built || []) { const p = e.p || e; poly(p); g.fillStyle = BU[e.k] || BU.res; g.fill('evenodd'); }
+    g.fillStyle = sea.yard; g.globalAlpha = 0.75;
+    for (const q of G.plots || []) {
+      const [la, lo, w, , a, sd = 1] = q, [cx, cy] = this.gP(la, lo), nx = -Math.sin(a) * sd, ny = -Math.cos(a) * sd;   // canvas y = south
+      const fw = Math.max(w + 18, 26) * mPx, dd = 70 * mPx, ox = cx + nx * dd * 0.42, oy = cy + ny * dd * 0.42;
+      g.setTransform(Math.cos(-a), Math.sin(-a), -Math.sin(-a), Math.cos(-a), ox, oy); g.fillRect(-fw / 2, -dd / 2, fw, dd); g.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    g.globalAlpha = 0.5; g.fillStyle = sea.yard;
+    for (const b of this.osm?.buildings || []) if (b[6] === 0) { const [a, c] = this.gP(b[0], b[1]); g.beginPath(); g.arc(a, c, 22 * mPx, 0, 7); g.fill(); }
+    g.globalAlpha = 1;
+    // woods and shelter belts, scrub, water
+    g.fillStyle = sea.wood; for (const e of G.woods || []) { poly(e); g.fill('evenodd'); }
+    g.fillStyle = sea.tree; g.globalAlpha = 0.7; for (const e of G.scrub || []) { poly(e); g.fill('evenodd'); } g.globalAlpha = 1;
+    g.strokeStyle = sea.wood; g.lineCap = g.lineJoin = 'round'; g.lineWidth = px(9, 1.2); for (const t of G.treeRows || []) { line(t); g.stroke(); }
+    g.fillStyle = COL.water; for (const e of G.water || []) { poly(e); g.fill('evenodd'); }
+    // relief: DEM hillshade (128 = flat) blended over the land cover
+    if (this.reliefImgs?.length) {
+      g.globalCompositeOperation = 'overlay'; g.globalAlpha = 0.6;
+      for (const { img, bbox: [s0, w0, n0, e0] } of this.reliefImgs) { const [a, b] = this.gP(n0, w0), [c, d] = this.gP(s0, e0); g.drawImage(img, a, b, c - a, d - b); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    }
+    // water lines
+    g.lineCap = g.lineJoin = 'round'; g.strokeStyle = COL.water;
+    for (const r of G.streams || []) { g.globalAlpha = r.w === 'stream' || r.w === 'canal' ? 0.95 : 0.55; g.lineWidth = r.w === 'canal' ? px(8, 1.2) : r.w === 'stream' ? px(4, 1) : px(2, 0.7); line(r.pts); g.stroke(); }
+    g.globalAlpha = 1; g.lineWidth = px(18, 2.2); for (const r of G.rivers || []) { line(r.pts); g.stroke(); }
+    // roads by class: real carriageway + verge width, with a minimum on-screen width (main roads ~1.6x at 8 m / px)
+    const RC = { track: [3, 0.8, 'rgba(150,136,104,0.5)', 0], service: [3.5, 0.8, 'rgba(172,162,136,0.75)', 0], residential: [6, 1, 'rgba(176,166,138,0.9)', 0], unclassified: [6, 1.2, '#b8ad90', 0], tertiary: [8, 1.7, '#c4b99a', 1], secondary: [11, 2.2, '#d2c8a8', 1], primary: [14, 2.8, '#ddd2b4', 1] };
+    const order = ['track', 'service', 'residential', 'unclassified', 'tertiary', 'secondary', 'primary'], ways = G.ways || [];
+    for (const pass of [0, 1]) for (const c of order) {
+      const [wm, mn, col, casing] = RC[c]; if (!pass && !casing) continue;
+      g.strokeStyle = pass ? col : 'rgba(30,28,22,0.6)'; g.lineWidth = px(wm, mn) + (pass ? 0 : 1.2);
+      for (const w of ways) if (w.c === c) { line(w.pts); g.stroke(); }
+    }
+    // rail (disused lines lighter), ties dashed
+    for (const r of G.rail || []) { if (r.state === 'abandoned') continue; const dim = r.state === 'disused'; line(r.pts); g.strokeStyle = dim ? 'rgba(70,64,52,0.55)' : 'rgba(52,47,38,0.95)'; g.lineWidth = px(6, 1.6); g.stroke(); g.strokeStyle = 'rgba(190,180,160,0.5)'; g.lineWidth = 0.7; g.setLineDash([2, 2]); g.stroke(); g.setLineDash([]); }
+    // fortifications as mapped: anti-tank ditches (~6 m) with the spoil berm, trenches, dragon's teeth; bunkers
+    for (const f of G.forts || []) {
+      line(f.pts);
+      if (f.kind === 'teeth') { g.strokeStyle = 'rgba(225,220,205,0.85)'; g.lineWidth = px(3, 1.2); g.setLineDash([1.2, 1.4]); g.stroke(); g.setLineDash([]); continue; }
+      g.strokeStyle = 'rgba(26,20,13,0.92)'; g.lineWidth = f.kind === 'trench' ? px(2, 1.1) : px(6, 1.6); g.stroke();
+      g.strokeStyle = 'rgba(205,185,145,0.38)'; g.lineWidth = 0.6; g.stroke();
+    }
+    g.fillStyle = 'rgba(26,20,13,0.95)'; const bs = px(6, 2.4); for (const b of G.bunkers || []) { const [a, c] = this.gP(b[0], b[1]); g.fillRect(a - bs / 2, c - bs / 2, bs, bs); }
+  }
   // ------------------------------------------------------------------ 3D settlements and trees
   buildBuildings() {
     const A = this.def.aor, [latS, lonW, latN, lonE] = A.bbox, inAor = (la, lo) => la >= latS && la <= latN && lo >= lonW && lo <= lonE;
     const list = [];   // [x, z, w(km), d(km), angle, h(km), kind, cellId]
     // water mask (reservoirs, ponds): no procedural houses or trees standing in the water
-    const wet = [...(this.osm?.water || []), ...(this.geo?.water || [])].map(w => { const pts = w.map(p => [this.X(p[1]), this.Z(p[0])]), xs = pts.map(p => p[0]), zs = pts.map(p => p[1]); return { pts, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; });
+    const wet = [...(this.osm?.water || []), ...(this.geo?.water || [])].map(w => { const pts = (w.r ? w.r[0] : w).map(p => [this.X(p[1]), this.Z(p[0])]), xs = pts.map(p => p[0]), zs = pts.map(p => p[1]); return { pts, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; });
     const inWater = (x, z) => wet.some(w => x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1 && pip([x, z], w.pts));
     for (const b of this.osm?.buildings || []) if (inAor(b[0], b[1])) list.push([this.X(b[1]), this.Z(b[0]), b[2] / 1000, b[3] / 1000, b[4], b[5] / 1000, b[6]]);
+    // v6: houses on the village streets OSM has no footprints for (geo_v6.py plots: one-storey, 5 m to the ridge)
+    for (const q of this.geo?.plots || []) if (inAor(q[0], q[1])) list.push([this.X(q[1]), this.Z(q[0]), q[2] / 1000, q[3] / 1000, q[4], 0.005, 0]);
     // procedural towns where the OSM extracts have no footprints
     // procedural fill where the OSM footprints are missing or sparse (the extracts cover patches only)
     const osmN = list.length, grid = new Map(), key = (x, z) => `${Math.floor(x / 0.05)},${Math.floor(z / 0.05)}`;
@@ -260,18 +355,31 @@ export class StrategicMap {
     });
     IR.count = ir; this.scene.add(IB, IR); this.bMesh = IB;
     // trees: OSM tree rows and woods, procedural windbreaks and forest cells
-    const trees = [], RT = rng(9), add = (x, z) => { if (trees.length < 18000 && !inWater(x, z)) trees.push([x, z, 0.6 + RT() * 0.7]); };
-    const along = (ax, az, bx, bz, step) => { const L = Math.hypot(bx - ax, bz - az), n = Math.floor(L / step); for (let i = 0; i <= n; i++) add(lerp(ax, bx, i / Math.max(1, n)) + (RT() - 0.5) * 0.01, lerp(az, bz, i / Math.max(1, n)) + (RT() - 0.5) * 0.01); };
+    const v6 = !!this.geo?.ways, TMAX = v6 ? 90000 : 18000;
     const inside = (x, z) => x > this.x0 && x < this.x1 && z > this.z0 && z < this.z1;
+    const trees = [], RT = rng(9), add = (x, z) => { if (trees.length < TMAX && (!v6 || inside(x, z)) && !inWater(x, z)) trees.push([x, z, 0.75 + RT() * 0.4]); };
+    const along = (ax, az, bx, bz, step) => { const L = Math.hypot(bx - ax, bz - az), n = Math.floor(L / step); for (let i = 0; i <= n; i++) add(lerp(ax, bx, i / Math.max(1, n)) + (RT() - 0.5) * (v6 ? 0.003 : 0.01), lerp(az, bz, i / Math.max(1, n)) + (RT() - 0.5) * (v6 ? 0.003 : 0.01)); };
+    if (v6) {
+      // v6: every wood and shelter belt filled with real-sized crowns on a jittered grid: belts (< 60 m wide) at ~11 m,
+      // woods at ~24 m (their dark ground carries the rest); spacing grows evenly if the total would pass TMAX
+      const W6 = (this.geo.woods || []).map(e => { const r = (e.r ? e.r[0] : e).map(p => [this.X(p[1]), this.Z(p[0])]); let A = 0, P = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { A += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]); P += Math.hypot(r[i][0] - r[j][0], r[i][1] - r[j][1]); } A = Math.abs(A) / 2; const sp = 2 * A / (P || 1) < 0.06 ? 0.011 : 0.024; return { r, A, sp }; })
+        .filter(w => w.r.some(([x, z]) => inside(x, z)));
+      const rowsL = (this.geo.treeRows || []).reduce((a, t) => a + t.length, 0);
+      const est = W6.reduce((a, w) => a + w.A / (w.sp * w.sp), 0) + rowsL * 20, k = Math.sqrt(Math.max(1, est / (TMAX * 0.95)));
+      for (const w of W6) { const xs = w.r.map(p => p[0]), zs = w.r.map(p => p[1]), sp = w.sp * k; for (let x = Math.min(...xs) + sp / 2; x < Math.max(...xs); x += sp) for (let z = Math.min(...zs) + sp / 2; z < Math.max(...zs); z += sp) { const jx = x + (RT() - 0.5) * sp * 0.7, jz = z + (RT() - 0.5) * sp * 0.7; if (pip([jx, jz], w.r)) add(jx, jz); } }
+      for (const t of this.geo.treeRows || []) for (let i = 1; i < t.length; i++) along(this.X(t[i - 1][1]), this.Z(t[i - 1][0]), this.X(t[i][1]), this.Z(t[i][0]), 0.009 * k);
+    } else {
     for (const t of this.osm?.treeRows || []) for (let i = 1; i < t.length; i++) along(this.X(t[i - 1][1]), this.Z(t[i - 1][0]), this.X(t[i][1]), this.Z(t[i][0]), 0.03);
     for (const w of this.osm?.woods || []) { const pts = w.map(p => [this.X(p[1]), this.Z(p[0])]); const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]); const bx0 = Math.min(...xs), bx1 = Math.max(...xs), bz0 = Math.min(...zs), bz1 = Math.max(...zs); const n = Math.min(400, Math.ceil((bx1 - bx0) * (bz1 - bz0) / 0.0016)); for (let i = 0; i < n; i++) { const x = lerp(bx0, bx1, RT()), z = lerp(bz0, bz1, RT()); if (pip([x, z], pts)) add(x, z); } }
     // woods and tree belts of the AOR extract (sampled, densest first: belts are thin and long)
     for (const w of this.geo?.woods || []) { if (trees.length >= 18000) break; const pts = w.map(p => [this.X(p[1]), this.Z(p[0])]); const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]); const bx0 = Math.min(...xs), bx1 = Math.max(...xs), bz0 = Math.min(...zs), bz1 = Math.max(...zs); const area = (bx1 - bx0) * (bz1 - bz0), n = Math.min(260, Math.ceil(area / 0.0012)); let got = 0; for (let i = 0; i < n * 3 && got < n; i++) { const x = lerp(bx0, bx1, RT()), z = lerp(bz0, bz1, RT()); if (pip([x, z], pts)) { add(x, z); got++; } } }
     for (const [ax, az, bx, bz] of this.windbreaks) { if (!inside(ax, az) && !inside(bx, bz)) continue; along(ax, az, bx, bz, 0.038); }
     for (const c of A.cells) if (c.terrain === 'forest' || c.terrain === 'balka') { const cc = this.cellCenter(c.id), r = rng(hash(c.id)); for (let i = 0; i < 160; i++) add(cc.x + (r() - 0.5) * this.cw * 0.8, cc.z + (r() - 0.5) * this.ch * (c.terrain === 'balka' ? 0.3 : 0.8)); }
-    const tg = new THREE.OctahedronGeometry(0.011, 0); tg.scale(1, 1.3, 1); tg.translate(0, 0.012, 0);
+    }
+    // crown: 9 m across, 17 m tall at k = 1 (x VEX); pre-v6 a 22 m wide / 29 m tall crown without VEX
+    const tg = v6 ? new THREE.OctahedronGeometry(0.0045, 0) : new THREE.OctahedronGeometry(0.011, 0); if (v6) { tg.scale(1, 1.9, 1); tg.translate(0, 0.0045 * 1.9 * 0.85, 0); } else { tg.scale(1, 1.3, 1); tg.translate(0, 0.012, 0); }
     const IT = new THREE.InstancedMesh(tg, new THREE.MeshLambertMaterial({ color: '#ffffff' }), Math.max(1, trees.length));
-    trees.forEach(([x, z, k], i) => { if (!inside(x, z)) { m.makeScale(0, 0, 0); IT.setMatrixAt(i, m); return; } p.set(x, 0, z); s.set(k, k * 1.6, k); q.identity(); m.compose(p, q, s); IT.setMatrixAt(i, m); IT.setColorAt(i, col.set(this.treeColor(RT()))); });
+    trees.forEach(([x, z, k], i) => { if (!inside(x, z)) { m.makeScale(0, 0, 0); IT.setMatrixAt(i, m); return; } p.set(x, 0, z); s.set(k, k * (v6 ? VEX : 1.6), k); q.identity(); m.compose(p, q, s); IT.setMatrixAt(i, m); IT.setColorAt(i, col.set(this.treeColor(RT()))); });
     this.trees = IT; this.scene.add(IT);
   }
   treeColor(r) { const sea = season(this.C.date).name; const pal = sea === 'winter' ? ['#4a4d40', '#555848', '#3f4236'] : sea === 'autumn' ? ['#6a5a32', '#5a5030', '#4a5030'] : sea === 'harvest' ? ['#3d5230', '#4a5a34', '#34482a'] : ['#355a2a', '#3e6630', '#2f4f26']; return pal[Math.floor(r * pal.length)]; }
@@ -574,7 +682,29 @@ export class StrategicMap {
     this.labels.appendChild(e); this.pathLbl = { e, pos: pts[pts.length - 1].clone().setY(0.02) }; this.badges.push(this.pathLbl);
   }
   setSelection(tfId, reach = null) { this.sel = tfId; this.reachSet = reach; this.refresh(); }
-  setSelectedCell(id) { this.selCell = id; this.paintHighlight(); }
+  setSelectedCell(id) { this.selCell = id; this.paintHighlight(); this.showBattleArea(id); }
+  // v6: the ground a battle on this square is fought over. The RTS battle maps are 1.28-1.4 km squares (a company's
+  // attack sector) inside the 2 km grid square: drawn at their real place on the square whose real ground they are
+  // (Robotyne / Avdiivka: >= 25% of the frame on the square), otherwise centred on the square (stand-in ground).
+  battleFrame(id) {
+    const c = id && this.C.cell(id), M = c && MAPS[c.battleMap]; if (!M) return null;
+    const size = (M.sizeM || 1400) / 1000, cc = this.cellCenter(id); let x = cc.x, z = cc.z, real = false;
+    if (M.geo) {
+      const rx = this.X(M.geo.lon), rz = this.Z(M.geo.lat), ov = (a, b) => Math.max(0, Math.min(a + size / 2, b + this.cw / 2) - Math.max(a - size / 2, b - this.cw / 2));
+      if (ov(rx, cc.x) * ov(rz, cc.z) >= 0.25 * size * size) { x = rx; z = rz; real = true; }
+    }
+    return { x, z, size, real, name: M.name, id: M.id, cellKm: Math.round(this.cw * 10) / 10 };
+  }
+  showBattleArea(id) {
+    if (this.baLine) { this.scene.remove(this.baLine); this.baLine.geometry.dispose(); this.baLine = null; }
+    if (this.baItem) { this.baItem.e.remove(); this.baItem = null; }
+    const f = this.battleFrame(id); if (!f) { this.dirty = true; return; }
+    const h = f.size / 2, g = new LineGeometry(); g.setPositions([[-h, -h], [h, -h], [h, h], [-h, h], [-h, -h]].flatMap(([a, b]) => [f.x + a, 0.024, f.z + b]));
+    this.baMat ||= this.lineMat('#f2e6c4', 1.8, 0.85, true); this.baMat.dashSize = 0.08; this.baMat.gapSize = 0.06; this.baMat.color.set(f.real ? '#bfe6a0' : '#f2e6c4');
+    const l = new Line2(g, this.baMat); l.computeLineDistances(); l.renderOrder = 6; this.scene.add(l); this.baLine = l;
+    this.baItem = this.label(new THREE.Vector3(f.x - h, 0.03, f.z - h), `battle area ${fmt(f.size)} km${f.real ? ' · real ground' : ` · ${esc(f.name)} stand-in`}`, 'c2-barea', { ax: 0, ay: 1.1 });
+    this.dirty = true;
+  }
   setHover(id) { if (this.hover === id) return; this.hover = id; this.paintHighlight(); }
   // a pulse on the theatre map for a real event (news)
   flashEvent(latlon, text) {
@@ -698,6 +828,7 @@ export class StrategicMap {
     };
     for (const t of this.tokens) put(t, d < 160, 'obstacle');
     for (const b of this.badges) if (b.foe) put(b, d < 160, 'obstacle');
+    if (this.baItem) put(this.baItem, d < 30);
     for (const l of this.cellLabels) put(l, d < 14 + l.size * 9, true);
     for (const l of this.tLabels) put(l, l.kind === 'oblast' ? d > 120 : l.kind === 'river' ? d > 50 : d > 32, true);
     for (const b of this.badges) { if (b.foe) continue; if (b.until && now > b.until) { b.e.remove(); this.badges.splice(this.badges.indexOf(b), 1); continue; } put(b, b.until ? true : b.enemy ? d < 70 : d < 160); }

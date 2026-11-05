@@ -47,6 +47,8 @@ async function start(root, C, onLaunch, opts) {
   const join = (a, b) => { if (!a || !b) return a || b; const o = { ...a }; for (const [k, v] of Object.entries(b)) if (Array.isArray(v) && Array.isArray(a[k])) o[k] = [...a[k], ...v]; return o; };
   if (osm && osmX) Object.assign(osm, join(osm, { ...osmX, patches: [] }));
   if (geo && geoX) geo.geo = join(geo.geo, geoX.geo);
+  // v6: the DEM hillshade of the main grid and of the extension (one image each)
+  if (geo?.geo) geo.geo.reliefs = [geo.geo.relief, geoX?.geo?.relief].filter(Boolean);
   const ui = new CampaignScreen(root, C, onLaunch, osm, opts, geo); window.__c2 = ui;
   return ui;
 }
@@ -111,6 +113,11 @@ export class CampaignScreen {
   }
   // v5: the grid has grown past the original AOR (growth.js): the 3D map is rebuilt over the larger extent, the camera
   // keeps its place and then glides to the new squares
+  // v6: which ground the battle for a square is fought on (map3d.battleFrame): the real place, or a stand-in map
+  battleText(c) {
+    const f = this.map?.battleFrame?.(c.id); if (!f) return c.battleMap || '';
+    return `${f.name}, ${f.size.toFixed(1)} km of the ${f.cellKm.toFixed(0)} km square${f.real ? ' (its real ground)' : ' (stand-in ground)'}`;
+  }
   regrid() {
     const old = this.map, cam = { ...old.tcam }, vo = old.viewOffset, on = old.on, sup = old.showSupply, tgt = old.targeting;
     old.dispose();
@@ -294,7 +301,7 @@ export class CampaignScreen {
       ${(() => { const sp = (C.spottedEnemy?.() || []).filter(f => f.cell === id); return sp.length ? `<div class="c2-kv"><span>Spotted</span><b class="bad">${sp.map(f => `${esc(f.name)} (~${f.n} coy)`).join(', ')}</b></div>` : ''; })()}
       ${c.ext ? '<div class="c2-kv"><span>Map</span><b class="warn">past the original area of responsibility</b></div>' : ''}
       <div class="c2-kv"><span>Value</span><b>${c.vp || 0} VP · +${c.lp || 0} LP/wk</b></div>
-      <div class="c2-kv"><span>Battle map</span><b>${esc(c.battleMap || '')}</b></div>${c.notes ? `<div class="c2-desc">${esc(c.notes)}</div>` : ''}`);
+      <div class="c2-kv"><span>Battle map</span><b>${esc(this.battleText(c))}</b></div>${c.notes ? `<div class="c2-desc">${esc(c.notes)}</div>` : ''}`);
     if (C.depotAllowed(id)) card.appendChild(h('button', { class: 'c2-btn', title: 'A forward supply depot extends the supply network from this square', onclick: () => { const e = this.act('buildDepot', id); this.toast(e || 'Forward depot established', !e); this.render(); this.map.refresh(); } }, 'Establish forward depot (30 LP)'));
     const tf = this.sel && C.tf(this.sel);
     if (tf && o !== 'player') { const p = C.plan(tf.id, id); card.appendChild(h('button', { class: 'c2-btn pri', disabled: !p.ok, title: p.why || '', onclick: () => this.order(id) }, p.ok ? `Attack with ${esc(tf.name)}` : esc(p.why || 'Cannot attack'))); }
@@ -350,7 +357,7 @@ export class CampaignScreen {
     const C = this.C, c = C.cell(cellId), est = this.estimate(tf, cellId), known = C.known(cellId);
     const m = this.modal(`<div class="c2-k">ATTACK ORDER · ${esc(dateLabel(C.date))}</div><h2>${esc(tf.name)} → ${esc(cellRef(C, cellId))}</h2>
       <div class="c2-two"><div><div class="c2-sub">Own force (${est.units.length} of ${tf.units.length} units deploy, max ${MAX_BATTLE})</div>${est.units.map(u => `<div class="c2-li"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${u.menMax ? `${u.men}/${u.menMax}` : ''}${u.veh ? ` · ${u.veh.lost ? 'no veh.' : Math.round(u.veh.hp * 100) + '%'}` : ''} · ${XP_NAMES[xpLevel(u.xp)]}</small></div>`).join('')}${(tf.supply ?? 1) < 0.5 ? '<div class="c2-li bad">Out of supply: less ammunition, fewer drones, lower morale</div>' : ''}</div>
-      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${this.vs && (C.foes || []).some(f => f.cell === cellId) ? `${(C.foes || []).filter(f => f.cell === cellId).reduce((a, f) => a + f.n, 0)} units of the other player` : this.vs ? `line battalions${known ? ` (${STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))]})` : ''}` : known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(c.battleMap || '')}</b></div>
+      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${this.vs && (C.foes || []).some(f => f.cell === cellId) ? `${(C.foes || []).filter(f => f.cell === cellId).reduce((a, f) => a + f.n, 0)} units of the other player` : this.vs ? `line battalions${known ? ` (${STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))]})` : ''}` : known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(this.battleText(c))}</b></div>
       <div class="c2-odds ${est.cls}">${known ? `Staff estimate: <b>${est.label}</b>` : 'Staff estimate: <b>no reliable intelligence</b>'}</div></div></div>
       <div class="c2-note">${this.vs ? `The task force moves to ${esc(C.cellName(plan.stage))} now and attacks when both commanders have ended the week. Against the other player's task forces it becomes a real battle for both of you (unless you leave it to the staff); squares held only by line battalions are staff-resolved.` : `The task force moves to ${esc(C.cellName(plan.stage))} and attacks. Fight the battle yourself on the RTS map, or let the staff auto-resolve it (less LP, rougher losses). Win and the square is yours; the task force moves in.`}</div>`,
       this.vs ? [['PLAN ATTACK', 'pri', () => this.planAttack(tf, cellId, false)], ['Plan — staff-resolved', '', () => this.planAttack(tf, cellId, true)], ['Cancel', 'cancel', () => {}]]
@@ -666,7 +673,7 @@ export class CampaignScreen {
     for (const n of el.querySelectorAll('.c2-tn2, .c2-tv')) n.classList.toggle('sel', id ? n.dataset.id === id : n.dataset.id === (L?.tech || `line:${L?.id}`));
     // 3D preview: the line's vehicle with its delivered kits, plus the selected kit (shown as a preview)
     const have = L ? kitsOwned(C, L.vk) : [], extra = t?.kit && !have.includes(t.kit) ? t.kit : null;
-    if (L) this.ttPreview?.show(L.asset, extra ? [...have, extra] : have, { wheeled: L.vk === 'btr' || L.asset === 'bohdana', label: `${L.name}${have.length ? ' · ' + have.map(k => KITS[k].short).join(', ') : ''}${extra ? ` · preview: + ${KITS[extra].short}` : ''}`, focus: extra });
+    if (L) this.ttPreview?.show(L.asset, extra ? [...have, extra] : have, { wheeled: L.vk === 'btr' || L.asset === 'bohdana', kind: L.vk, label: `${L.name}${have.length ? ' · ' + have.map(k => KITS[k].short).join(', ') : ''}${extra ? ` · preview: + ${KITS[extra].short}` : ''}`, focus: extra });
     const info = el.querySelector('.c2-tt-info'); info.innerHTML = '';
     if (!t) {
       const ups = C.def.tech.filter(x => x.line === L?.id && x.kit);
@@ -749,7 +756,7 @@ class TechPreview {
     const m = g.scene.clone(true);
     m.traverse(o => { if (o.userData?.hidden || /_LOD1$|_wreck$/i.test(o.name)) o.visible = false; });
     this.pivot.add(m); m.updateMatrixWorld(true);
-    attachKits(m, kits, { wheeled: !!opts.wheeled });
+    attachKits(m, kits, { wheeled: !!opts.wheeled, kind: opts.kind });
     if (opts.focus) m.traverse(o => { if (o.userData?.kitId === opts.focus && o.material) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0xb88a2a); o.material.emissiveIntensity = 0.55; this.glow = o.material; } });
     else this.glow = null;
     const box = new THREE.Box3(); m.traverse(o => { if (o.isMesh && o.visible) { let p = o, vis = true; while (p) { if (!p.visible) vis = false; p = p.parent; } if (vis) box.expandByObject(o); } });
@@ -909,6 +916,7 @@ export function injectCss() {
 .c2-goalm{translate:-50% -50%;display:flex;align-items:center;gap:2px;background:rgba(20,18,10,.85);border:1px solid var(--acc);padding:0 5px;font-size:12px;font-weight:800;color:var(--acc)}.c2-goalm.held{border-color:#8fb069;color:#b5d69a}.c2-goalm i{font-style:normal}
 .c2-bat{translate:-50% -50%;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}.c2-bat.used{opacity:.55}.c2-bat.down{opacity:.3}.c2-bat.sel{filter:drop-shadow(0 0 5px #ffb35a)}
 .c2-hub{translate:-50% -50%;display:flex;align-items:center;gap:4px;font-size:11.5px;white-space:nowrap;background:rgba(14,22,12,.85);border:1px solid #8fb069;color:#d6ecc4;padding:0 6px 0 3px}.c2-hub i{font-style:normal;color:#a9d48a}.c2-hub.half{border-color:#e8b85a;color:#f2dcae}.c2-hub.cut{border-color:var(--en);color:#ffc4b8}
+.c2-barea{font-size:10.5px;color:#f2e6c4;background:rgba(14,15,12,.7);padding:0 5px;white-space:nowrap;pointer-events:none;letter-spacing:.02em}
 .c2-intd{translate:-50% 60%;font-size:11px;font-weight:700;color:#ffb8ab;background:rgba(60,12,8,.8);padding:0 5px;white-space:nowrap}
 .c2-left .c2-tabs button{font-size:13px;letter-spacing:.05em;padding:9px 2px;line-height:1.15}
 `;

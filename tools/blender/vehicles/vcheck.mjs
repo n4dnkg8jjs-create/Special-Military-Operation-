@@ -21,11 +21,11 @@ if (process.argv[2].endsWith('.json')) jobs = JSON.parse(fs.readFileSync(process
 else { const o = process.argv[3]; jobs = [{ q: process.argv[2], [o.endsWith('.glb') ? 'glb' : 'png']: o }]; }
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 for (const j of jobs) {
-  const page = await browser.newPage({ viewport: { width: j.w || 1400, height: j.h || 800 } });
+  const page = await browser.newPage({ viewport: { width: j.w || 1400, height: j.h || 800 } });  // j.page: another page under the repo root
   page.on('pageerror', e => console.log('[pageerror]', j.q, e.message));
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') { if (!/404|GPU stall|GroupMarker/.test(m.text())) console.log('[page]', m.text()); } });
   const q = j.q + (j.glb ? '&export=1&views=1&w=64&h=64' : '') + (j.w ? `&w=${j.w}&h=${j.h}` : '');
-  await page.goto(`http://localhost:${port}/tools/blender/vehicles/vcheck.html?${q}`);
+  await page.goto(`http://localhost:${port}/${j.page || 'tools/blender/vehicles/vcheck.html'}?${q}`);
   try { await page.waitForFunction('window.__done === true', null, { timeout: 600000 }); } catch (e) { console.log('timeout', j.q); await page.close(); continue; }
   if (j.glb) { const b = await page.evaluate('window.__glb'); fs.writeFileSync(j.glb, Buffer.from(b, 'base64')); }
   if (j.png) await page.screenshot({ path: j.png, timeout: 600000 });

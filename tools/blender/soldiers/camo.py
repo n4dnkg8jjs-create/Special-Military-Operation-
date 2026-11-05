@@ -27,10 +27,18 @@ def _quant(field, fracs):
     return np.quantile(field, 1 - np.asarray(fracs))
 
 
-def up(pal, idx, cell, res):
+def up(pal, idx, cell, res, jitter=0.035, bleed=0.45, seed=5):
+    """pixel map -> image.  v6: every printed pixel varies a little in tone (dye / print density, +-jitter) and the pixel edges
+    bleed slightly (sigma `bleed` texels): printed ripstop, not a vector graphic"""
     r = np.minimum((np.arange(res) / cell).astype(int), idx.shape[0] - 1)
     c = np.minimum((np.arange(res) / cell).astype(int), idx.shape[1] - 1)
-    return pal[idx[r][:, c]]
+    img = pal[idx[r][:, c]]
+    if jitter:
+        j = 1 + jitter * np.random.default_rng(seed).standard_normal(idx.shape).astype(np.float32)
+        img = img * j[r][:, c][..., None]
+    if bleed:
+        img = ndimage.gaussian_filter(img, (bleed, bleed, 0), mode='wrap')
+    return img
 
 
 def _z(f):
@@ -77,12 +85,13 @@ def mm14(res, px_per_m, seed=2):
     rng = np.random.default_rng(seed)
     cell = max(MM14_PIXEL_M * px_per_m, 1.0)
     g = int(np.ceil(res / cell)) + 1
-    blob = 0.13 * px_per_m / cell
+    blob = 0.11 * px_per_m / cell
     # MM-14 shapes are elongated horizontally-ish, layered
     def fld(s, sx=1.0):
         a = value_noise((g, int(g * sx) + 2), s, rng, 3, 0.55)
         a = ndimage.zoom(a, (1, 1 / sx), order=1)[:g, :g]
-        return a + 0.12 * rng.standard_normal((g, g))
+        a = (a - a.mean()) / (a.std() + 1e-9)
+        return a + 0.42 * rng.standard_normal((g, g))          # v6: ragged, stepped pixel edges, stray pixels
     idx = np.zeros((g, g), np.uint8)  # 0 = light green base
     f = fld(blob, 1.6); idx[f > np.quantile(f, 1 - 0.20)] = 1   # beige
     f = fld(blob, 1.4); idx[f > np.quantile(f, 1 - 0.24)] = 2   # swamp green
@@ -155,7 +164,7 @@ def mm14_tile(res=1024, tile_m=0.5, seed=12):
     blob = 0.13 / MM14_PIXEL_M / 2.2
     def fld(s, frac):
         f = ndimage.zoom(pnoise((n, n // 2 * 2), s, rng, 3), 1, order=1)
-        f = f + 0.12 * rng.standard_normal((n, n))
+        f = (f - f.mean()) / (f.std() + 1e-9) + 0.42 * rng.standard_normal((n, n))
         return f > np.quantile(f, 1 - frac)
     idx = np.zeros((n, n), np.uint8)
     idx[fld(blob, 0.2)] = 1; idx[fld(blob, 0.24)] = 2; idx[fld(blob * 0.8, 0.16)] = 3

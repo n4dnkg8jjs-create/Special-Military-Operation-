@@ -306,6 +306,8 @@ export const MAPS = {
   // player's (south, +Z) edge: Robotyne is turned 180 deg (real north = +Z), Avdiivka is not (real south = +Z).
   robotyne: {
     id: 'robotyne', name: 'Robotyne', real: 'robotyne', kind: 'rural', size: 'Large', sizeM: 1400, bounds: 680, seed: 4723,
+    // the battle frame's real centre (src/world/real/robotyne_osm.js): the campaign map draws it on the grid square it covers
+    geo: { lat: 47.4437, lon: 35.8316 },
     blurb: 'The real village of Robotyne on the T-04-08 Orikhiv - Tokmak road (Zaporizhzhia oblast, summer 2023): long streets of ruined farmhouses and garden strips, the school, the kolkhoz yard, tree belts and balkas, the dug-in line west of the highway. The attack comes from the north (Mala Tokmachka side). Map data © OpenStreetMap contributors (ODbL).',
     sub: 'Real place · village, fields · OSM layout', credit: 'Map data © OpenStreetMap contributors (ODbL)', north: [0, 1],
     roads: [], buildings: [], pancakes: [],
@@ -384,6 +386,7 @@ export const MAPS = {
   },
   avdiivka: {
     id: 'avdiivka', name: 'Avdiivka', real: 'avdiivka', kind: 'urban', size: 'Large', sizeM: 1280, bounds: 620, seed: 8831, assets: ['farmland'],
+    geo: { lat: 48.1294, lon: 37.7479 },
     blurb: 'The real south-east of Avdiivka (Donetsk oblast, winter 2023-24): the five- and nine-storey microdistrict between vul. Vorobyova, Molodizhna and Hrushevskoho with schools No. 2 and 5, the Khimik stadium, the garage cooperatives on the disused Yasynuvata railway and the private sector on Soborna street; the city centre to the north. The attack comes across the open field south of vul. Vorobyova. Map data © OpenStreetMap contributors (ODbL).',
     sub: 'Real place · panel blocks, private sector, railway · OSM layout', credit: 'Map data © OpenStreetMap contributors (ODbL)', north: [0, -1],
     roads: [], buildings: [], pancakes: [],

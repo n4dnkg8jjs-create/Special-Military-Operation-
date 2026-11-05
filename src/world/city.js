@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
 import { Building, KitPool, setKitCell } from './buildings.js';
-import { instance, trs, LODS } from './instancer.js';
+import { instance, trs, LODS, farLod } from './instancer.js';
 import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -877,7 +877,7 @@ export class City {
       const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
       add(w.x, w.z, s, this.rng() * 6.28, b, 'street');
     }
-    for (const [t, l] of place) instance(this.scene, t, l, this.rubbleInst?.(t, l) || {});   // (real-place maps: far LOD / bigger cells)
+    for (const [t, l] of place) instance(this.scene, t, l, this.rubbleInst?.(t, l) || farLod(t));   // (real-place maps: far LOD / bigger cells; otherwise the heaps' simplified copy beyond ~80 m)
     this.rubbleInstances = [...place.values()];
   }
   // Dynamic rubble when panels are destroyed during play.

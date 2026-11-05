@@ -24,7 +24,11 @@ SPINE_BONES = ('Hips', 'LowerBack', 'Spine', 'Spine1', 'Neck', 'LeftShoulder', '
 
 
 def load():
-    return pickle.load(open(f'{BUILD}/body.pkl', 'rb'))
+    R = pickle.load(open(f'{BUILD}/body.pkl', 'rb'))
+    # soldiers_v6: uniform textures re-baked by rebake_v6.py (kept outside the 460 MB body.pkl)
+    if os.path.exists(f'{BUILD}/uniform_tex_v6.pkl'):
+        R['tex'].update(pickle.load(open(f'{BUILD}/uniform_tex_v6.pkl', 'rb')))
+    return R
 
 
 def vertex_ao(parts, extra_tris, n_rays=12, dist=0.08, seed=0):
@@ -233,11 +237,21 @@ STD_HELMET_OF_PRESET = {'ru': ['A', 'B', 'C', 'A', 'B', 'D'], 'ua': ['A', 'B', '
 
 
 def thicken_uniform(R, log=print):
-    """2026-11: the uniform reads thicker: every variant's uniform is pushed out along its normals (3 mm cloth + air gap), collar and
-    cuffs a further 2-2.5 mm, the thigh cargo pockets and sleeve pockets bulge out (filled pockets / flaps).  Same placement as the
-    texture details in uniform_tex (limb coordinates in the bind pose of variant A); faded out at the boot tops so the blousing stays
-    inside the boots.  Topology / UVs / weights unchanged (positions + normals only)."""
+    """v6 (2026-11): baggier, layered field uniform (photos of UA / RU infantry 2023-24, previews/soldiers_v6/REFERENCES.md): every
+    variant's uniform is pushed out along its normals by a per-vertex offset field instead of the old uniform 3 mm shell:
+      - trunk 8-9 mm (base layer + fleece under the jacket), the jacket bags out above the belt / hem, collar stands up (layered
+        fleece collar), a rolled hood bulges at the back of the neck;
+      - sleeves 10-14 mm, fuller at mid upper arm, bunched rings over the last 12 cm before the cuffs (sleeves pushed up / gathered
+        at the gloves);
+      - trousers 11-16 mm, full in the thigh and seat, cloth bunched above and below the knee pads (straps pinch the leg), blousing
+        puckered over the boot tops; long drape folds down the legs, stacked creases behind the knees;
+      - thigh cargo pockets / sleeve pockets bulge (filled);
+      - reduced where cloth meets cloth (inner thighs at the crotch, armpits) so the shells do not cross; faded to 0 at the boot
+        tops (bloused trousers inside the shafts); low-frequency noise so it never reads as an inflated even shell.
+    Placement in limb coordinates of the bind pose of variant A (as the texture details in uniform_tex).  Topology / UVs / weights
+    unchanged (positions + normals only), so every clip / the ragdoll / LODs keep working."""
     import uniform_tex as UT
+    import tex as TX
     if R.get('_thick'):
         return
     U = R['uniform']; sk = R['skel']; J = lambda n: sk.head[sk.idx[n]]
@@ -252,25 +266,85 @@ def thicken_uniform(R, log=print):
             tm |= np.char.startswith(lab, pf)
         np.add.at(m, T[tm].ravel(), 1.0); np.add.at(c, T.ravel(), 1.0)
         return m / np.maximum(c, 1)
-    d = np.full(nv, 0.0030)
-    d += 0.0022 * vmask(['collar']) + 0.0020 * vmask(['cuff'])
+    crease = UT.crease
+    g = lambda x, s: np.exp(-(x / s) ** 2)
+    tor = vmask(['torso']); col = vmask(['collar']); cuf = vmask(['cuff'])
+    nz = TX.noise3(PA, 0.11, 61, 2)                   # low-frequency irregularity (+-1)
+    d = np.zeros(nv)
+    # ---- trunk
+    hipy = J('Hips')[1]; hem = hipy - 0.065; neck = J('Neck')
+    dt_ = 0.0085 + 0.0065 * g(PA[:, 1] - (hem + 0.075), 0.05)          # jacket bagging above the belt
+    dt_ += 0.0030 * g(PA[:, 1] - 1.22, 0.10)                            # chest / back (layers)
+    # armpits: the trunk under the arms stays close (sleeves fill the space)
     for side, sx in (('Left', 1), ('Right', -1)):
-        # thigh cargo pocket (same rectangle as uniform_tex): bulge 6 mm, flap edge
-        hp, kn = J(side + 'UpLeg'), J(side + 'Leg')
-        s, th, _ = UT.limb_coords(PA, hp, kn, np.array([sx, 0.0, 0]))
+        ap = J(side + 'Arm') + np.array([-sx * 0.04, -0.08, 0.0])
+        dt_ *= 1 - 0.55 * g(np.linalg.norm(PA - ap, axis=1), 0.07)
+    # rolled hood / fleece collar at the back of the neck
+    hood = g(np.linalg.norm((PA - (neck + np.array([0, -0.035, -0.075]))) * [0.75, 1.3, 1.0], axis=1), 0.065)
+    d += tor * (dt_ + 0.012 * hood) + col * (0.0125 + 0.006 * hood)
+    # ---- sleeves
+    for side, sx in (('Left', 1), ('Right', -1)):
+        sh, el, wr = J(side + 'Arm'), J(side + 'ForeArm'), J(side + 'Hand')
+        m = vmask(['sleeve_' + side[0]])
+        ref = np.array([sx, 0.0, 0])
+        s1, th1, _ = UT.limb_coords(PA, sh, el, ref)
+        s2, th2, _ = UT.limb_coords(PA, el, wr, ref)
+        Lu, Lf = np.linalg.norm(el - sh), np.linalg.norm(wr - el)
+        on_up = s1 < Lu
+        s = np.where(on_up, s1, Lu + s2); th = np.where(on_up, th1, th2)
+        ds = 0.0105 + 0.0040 * g(s - 0.5 * Lu, 0.09) * (0.6 + 0.4 * np.cos(th))       # fuller at mid upper arm, outer side
+        ds *= 1 - 0.45 * g(s1, 0.07) * (np.cos(th) < 0)                                   # inner side at the armpit
+        de = s - (Lu + Lf)                                                                # 0 at the wrist
+        bunch = np.exp(-((de + 0.065) / 0.05) ** 2)                                     # gathered over the last ~12 cm
+        ds += bunch * (0.0045 + 0.0030 * crease(s / 0.042 + 0.35 * np.sin(th * 2 + sx), 0.8))
+        ds += 0.0016 * crease(th * 4 / (2 * np.pi) + s * 1.3 + 0.4 * nz, 0.9) * (1 - bunch)   # sleeve drape
+        # elbow: creases on the inside, cloth bags at the back
+        dk = s - Lu
+        ds += 0.0020 * crease(dk / 0.03 + 0.4 * np.sin(th * 1.5)) * g(dk, 0.06)
+        # sleeve pocket on the upper arm (filled)
+        sd2 = UT.rect_sdf(th1 * 0.055, s1, 0, 0.14, 0.065, 0.075, 0.012)
+        ds += 0.0060 * np.clip(-sd2 / 0.02, 0, 1) ** 0.7 * on_up
+        d += m * ds + vmask(['cuff_' + side[0]]) * 0.0105
+    # ---- trousers
+    for side, sx in (('Left', 1), ('Right', -1)):
+        hp, kn, an = J(side + 'UpLeg'), J(side + 'Leg'), J(side + 'Foot')
+        m = vmask(['leg_' + side[0]])
+        ref = np.array([sx, 0.0, 0])
+        s1, th1, _ = UT.limb_coords(PA, hp, kn, ref)
+        s2, th2, _ = UT.limb_coords(PA, kn, an, ref)
+        Lu = np.linalg.norm(kn - hp)
+        on_up = s1 < Lu
+        s = np.where(on_up, s1, Lu + s2); th = np.where(on_up, th1, th2)
+        fw = np.pi / 2 * sx
+        front = 0.5 + 0.5 * np.cos(th - fw)
+        dk = s - Lu                                                                       # 0 at the knee joint, + down
+        dl = 0.0115 + 0.0050 * g(s - 0.20, 0.13) * (0.55 + 0.45 * np.cos(th))             # full thigh (outer side more)
+        dl += 0.0045 * g(s - 0.08, 0.10) * (1 - front)                                     # seat
+        dl *= 1 - 0.55 * g(s1, 0.12) * np.clip(-np.cos(th) * 1.5, 0, 1) * on_up            # inner thigh at the crotch
+        # bunching above / below the knee pad (strap lines), stacked creases behind the knee
+        for c0, w0, a0 in ((-0.065, 0.035, 0.0055), (0.115, 0.035, 0.0050)):
+            dl += a0 * g(dk - c0, w0) * (0.75 + 0.25 * crease(th * 3 / (2 * np.pi) + 0.3 * nz, 0.8))
+        dl += 0.0022 * crease(dk / 0.028 + 0.3 * np.sin(th * 2)) * g(dk, 0.07) * (1 - front) ** 1.2
+        # long drape folds (twisting a little), not over the knee
+        dl += 0.0022 * crease(th * 4 / (2 * np.pi) + 0.5 * nz + s * 0.6, 0.9) * (1 - g(dk, 0.07))
+        # blousing over the boot tops: puckered bulge, nothing inside the shaft
+        y = PA[:, 1]
+        dl += (0.0120 + 0.0045 * np.sin(th * 7 + 2 * nz)) * g(y - 0.295, 0.045) * (y > 0.25)
+        # cargo pocket on the outer thigh (filled) + flap
         thp = th - 0.35 * sx
         sd = UT.rect_sdf(thp * 0.085, s, 0, 0.30, 0.085, 0.10, 0.015)
-        leg = vmask(['leg_' + side[0]])
-        d += leg * 0.0060 * np.clip(-sd / 0.03, 0, 1) ** 0.7
+        dl += on_up * 0.0095 * np.clip(-sd / 0.03, 0, 1) ** 0.7
         fsd = UT.rect_sdf(thp * 0.085, s, 0, 0.215, 0.088, 0.028, 0.01)
-        d += leg * 0.0025 * np.clip(-fsd / 0.012, 0, 1)
-        # sleeve pocket on the upper arm
-        sh, el = J(side + 'Arm'), J(side + 'ForeArm')
-        s2, th2, _ = UT.limb_coords(PA, sh, el, np.array([sx, 0.0, 0]))
-        sd2 = UT.rect_sdf(th2 * 0.055, s2, 0, 0.14, 0.065, 0.075, 0.012)
-        sl = vmask(['sleeve_' + side[0]])
-        d += sl * 0.0035 * np.clip(-sd2 / 0.02, 0, 1) ** 0.7
-    d *= np.clip((PA[:, 1] - 0.27) / 0.10, 0, 1)            # boot tops: no offset (trousers bloused inside the boots)
+        dl += on_up * 0.0030 * np.clip(-fsd / 0.012, 0, 1)
+        d += m * dl
+    d *= 1 + 0.18 * nz                                                                     # irregular, not an even shell
+    d *= np.clip((PA[:, 1] - 0.238) / 0.022, 0, 1)                                         # boot tops: no offset inside the shafts
+    # smooth the field over the mesh (1-ring averaging), keeps the folds but removes single-vertex spikes
+    E = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]); E = np.concatenate([E, E[:, ::-1]])
+    deg = np.bincount(E[:, 0], minlength=nv)
+    for _ in range(2):
+        d = 0.5 * d + 0.5 * np.bincount(E[:, 0], d[E[:, 1]], minlength=nv) / np.maximum(deg, 1)
+    d *= np.clip((PA[:, 1] - 0.238) / 0.022, 0, 1)
     # UV-seam duplicates (same position, different panel label) must move identically or the seams crack
     _, inv = np.unique(np.round(PA, 5), axis=0, return_inverse=True)
     inv = inv.reshape(-1)
@@ -280,7 +354,8 @@ def thicken_uniform(R, log=print):
         v['uniform_pos'] = v['uniform_pos'] + v['uniform_nrm'] * d[:, None]
         v['uniform_nrm'] = MU.weld_normals(v['uniform_pos'], MU.vertex_normals(v['uniform_pos'], T), 1e-5)
     R['_thick'] = True
-    log(f'uniform thickened: offset {d.min() * 1000:.1f}..{d.max() * 1000:.1f} mm (median {np.median(d) * 1000:.1f})')
+    R['_thick_d'] = d
+    log(f'uniform thickened (v6 baggy): offset {d.min() * 1000:.1f}..{d.max() * 1000:.1f} mm (median {np.median(d) * 1000:.1f})')
 
 
 # ---------------------------------------------------------------- rifle sling (rifle slung on the back)

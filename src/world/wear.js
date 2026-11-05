@@ -22,7 +22,8 @@ export const WAR_NOISE = `
 // ground: call after the host shader has its final `col` (vec3), `dirt` (soil texel) and `wp` (world xz).
 // Needs uniforms tWar, splatSize and `float gWet, gPud;` declared (WAR_GROUND_DECL).
 export const WAR_GROUND_DECL = `uniform sampler2D tWar; float gWet = 0.0, gPud = 0.0;` + WAR_NOISE;
-export const warGroundGLSL = (urban) => `
+// opt.mudTex: the host blends a real mud texture from war A / B itself (ground.js), skip the flat mud tint here
+export const warGroundGLSL = (urban, opt = {}) => `
   {
     vec2 wuv = clamp((wp + vec2(wn1(wp * 0.37) - 0.5, wn1(wp * 0.37 + 17.0) - 0.5) * 1.6) / splatSize + 0.5, 0.001, 0.999);
     vec4 war = texture2D(tWar, wuv);
@@ -42,7 +43,7 @@ export const warGroundGLSL = (urban) => `
     float du = smoothstep(0.3, 0.9, war.a + (nB - 0.5) * 0.55 + (nA - 0.5) * 0.3);
     vec3 dust = mix(vec3(0.23, 0.22, 0.205), vec3(0.26, 0.2, 0.16), step(0.72, wn1(wp * 4.0))) * (0.8 + 0.35 * nC);
     col = mix(col, dust, du * 0.35);
-    col = mix(col, vec3(0.12, 0.115, 0.11), du * step(0.85, wh1(floor(wp * 6.0))) * 0.6);` : `
+    col = mix(col, vec3(0.12, 0.115, 0.11), du * step(0.85, wh1(floor(wp * 6.0))) * 0.6);` : opt.mudTex ? '' : `
     // vehicle mud: dark compacted soil, lug prints
     float md = smoothstep(0.15, 0.75, war.a + (nB - 0.5) * 0.45 + (nA - 0.5) * 0.25);
     vec3 mud = dirt * vec3(0.5, 0.45, 0.39) * (0.8 + 0.4 * wn1(wp * vec2(4.0, 1.3)));

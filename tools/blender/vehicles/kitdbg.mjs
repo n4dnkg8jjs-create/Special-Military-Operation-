@@ -1,0 +1,10 @@
+import path from 'node:path'; import fs from 'node:fs'; 
+import { loadGlb, pose } from '/home/claude/special-military-operation-/tools/blender/vehicles/kitnode.mjs';
+const K = await import('/home/claude/special-military-operation-/src/game/vehicleKit.js');
+const man = JSON.parse(fs.readFileSync('/home/claude/special-military-operation-/assets/vehicles/manifest.json','utf8')).vehicles;
+const vn = process.argv[2]; const V = man[vn]; const sc = loadGlb('/home/claude/special-military-operation-/' + V.file); pose(sc, V, {});
+const M = K.measure(sc);
+console.log('T q', ['x','y','z'].map(a=>[0.01,0.5,0.99].map(f=>M.T?.q(a,f).toFixed(2)).join('/')).join('  '));
+console.log('H q', ['x','y','z'].map(a=>[0.01,0.5,0.99].map(f=>M.H.q(a,f).toFixed(2)).join('/')).join('  '));
+console.log('hatchT', JSON.stringify(M.hatchT.map(h=>[h.role,+h.x.toFixed(2),+h.z.toFixed(2),+h.r.toFixed(2)])), 'hatchH', JSON.stringify(M.hatchH.map(h=>[h.role,+h.x.toFixed(2),+h.z.toFixed(2)])));
+const sv = K._survey(M, M.TS); console.log('yEdge', sv.yEdge.toFixed(2), 'yMax', sv.yMax.toFixed(2), 'outline', sv.outline.length, 'gun', JSON.stringify(sv.gun));

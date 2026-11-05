@@ -37,6 +37,9 @@ export class CommanderV2 extends CommanderV1 {
     super(game);
     this._plan = this.plan; delete this.plan;   // v1's wave table shadows the planner method
     this.intel = new Intel(game, 'enemy');
+    // campaign battles: the player attacks -> we fight a positional defence from the sector's trench lines / strongpoints;
+    // the player defends -> we attack (small assault groups with fire support)
+    this.defensive = game.campaign?.mode === 'attack'; this.offensive = game.campaign?.mode === 'defend';
     this.ops = []; this.opN = 0; this.laneFail = {}; this.objFail = {}; this.lastLane = {}; this.lostT = {};
     this.planT = 0; this.fireT = 0; this.opCool = 0;
     this.stats = { ops: [], recon: 0, prepFires: 0, fires: 0, smokeAssault: 0, reserveCommits: [], withdrawals: 0, vehRetreats: 0, laneSwitch: 0, counterOps: 0, atgmMoves: 0 };
@@ -141,15 +144,21 @@ export class CommanderV2 extends CommanderV1 {
     for (const o of g.objectives) {
       if ((o.owner === 'enemy' && !o.contested) || this.ops.some(op => op.obj === o.id && (op.type === 'counter' || op.type === 'attack'))) continue;
       const contested = o.owner === 'enemy' && o.contested;
-      if (!(this.lostT[o.id] && now - this.lostT[o.id] < 240) && !contested) continue;
-      const cand = live.filter(b => this.isInf(b) && (b.role === 'reserve' || (!b.op && b.role !== 'garrison' && b.state !== 'regroup')) && D(this.upos(b), [o.x, o.z]) < 500);
+      // in a positional defence every point the attacker holds is ground to win back (how the line was held: local
+      // counterattacks by the reserve and the neighbouring strongpoints' spare squads)
+      const wantBack = this.defensive ? o.owner === 'player' && now - (this.counterT?.[o.id] ?? -999) > 60 : this.lostT[o.id] && now - this.lostT[o.id] < 240;
+      if (!wantBack && !contested) continue;
+      const quietGar = b => this.defensive && b.role === 'garrison' && b.obj !== o.id && !b.op && b.sq.effective.length >= 4 && !this.intel.near(...this.oxz(b.obj), 250, 40).length && live.filter(q => q.role === 'garrison' && q.obj === b.obj).length > 1;
+      const cand = live.filter(b => this.isInf(b) && (b.role === 'reserve' || quietGar(b) || (!b.op && b.role !== 'garrison' && b.state !== 'regroup')) && D(this.upos(b), [o.x, o.z]) < (this.defensive ? 700 : 500));
       const pw = cand.reduce((a, b) => a + this.power(b), 0);
-      if (cand.length && pw >= pic[o.id].known * 1.1 && pw >= 4) {
+      if (cand.length && pw >= pic[o.id].known * (this.defensive ? 0.8 : 1.1) && pw >= 4) {
+        (this.counterT ??= {})[o.id] = now;
         const op = this.newOp('counter', o.id, cand);
         if (cand.some(b => b.role === 'reserve')) { this.reserveUsed = true; this.stats.reserveCommits.push({ t: Math.round(now), obj: o.id, why: 'counterattack', dt: Math.round(now - (this.lostT[o.id] || now)) }); }
         this.stats.counterOps++; this.note(`COUNTERATTACK on ${o.id} with ${cand.map(b => b.sq.name).join(', ')} (ours ${pw.toFixed(1)} vs known ${pic[o.id].known.toFixed(1)})`);
       }
     }
+    if (this.defensive) { this.planDefence(live, pic, free); return this.planSupport(live); }
     // ---- occupy: objectives with nobody known on them (and nobody of ours going). Ticket parity first: while the player
     // holds more points than we do, an empty point is worth a squad taken out of an attack that has not gone in yet
     const held = s => g.objectives.filter(o => o.owner === s).length, behind = held('player') > held('enemy');
@@ -157,6 +166,9 @@ export class CommanderV2 extends CommanderV1 {
     for (const o of g.objectives.slice().sort((a, c) => ourHalf(a) - ourHalf(c))) {
       if (o.owner === 'enemy' || this.ops.some(op => op.obj === o.id)) continue;
       if (pic[o.id].known > 0.5 || o.owner === 'player') continue;
+      // attacking a prepared defence: one concentrated assault group, not a squad per point (empty points are taken
+      // once the main effort has found where the defenders are)
+      if (this.offensive && (now < 120 || this.ops.some(op => op.type === 'attack' && op.phase !== 'consolidate') && free().length < 2)) continue;
       let c = free().sort((a, b) => D(this.upos(a), [o.x, o.z]) - D(this.upos(b), [o.x, o.z]));
       if (!c.length && behind) {
         const att = this.ops.find(op => op.type === 'attack' && op.phase !== 'assault' && op.units.size >= 2);
@@ -202,11 +214,43 @@ export class CommanderV2 extends CommanderV1 {
         if (t && pic[t.id].known <= this.power(b) * 1.2 + 2) { this.newOp('counter', t.id, [b]); this.note(`${b.sq.name}: hasty attack on ${t.id}`); }
       }
     }
-    // ---- armour, ATGM and drones
+    this.planSupport(live);
+  }
+  planSupport(live) {
     for (const b of live) {
       if (b.kind === 'tank') this.planTank(b);
       else if (b.kind === 'atgm') this.planAtgm(b);
       else if (b.kind === 'fpv') this.planFpv(b);
+    }
+  }
+  // ---------------------------------------------------------------- positional defence (campaign: the player attacks)
+  // The sector's prepared positions (trench systems whose fire step faces the player, strongpoints at the objectives) are
+  // manned front first: every objective gets a garrison in its trench system (or a building with a field of fire), the
+  // front ones (nearest the player) a second squad when there are enough; one mounted squad stays back as the reserve for
+  // counterattacks (plan(): counter ops); nobody leaves a trench to attack.
+  defTrench(o, sq) {
+    const g = this.g, [px, pz] = this.playerSide;
+    let best = null, bs = 1e9;
+    for (const T of g.city.trenchSystems || []) {
+      const d = Math.hypot(T.center[0] - o.x, T.center[1] - o.z); if (d > T.radius + 160) continue;
+      if (trenchMen(g, T, 'player').length) continue;
+      const free = T.slots.filter(sl => !sl.occupant || !sl.occupant.effective).length; if (free < Math.min(3, sq.effective.length)) continue;
+      const tx = px - T.center[0], tz = pz - T.center[1], tl = Math.hypot(tx, tz) || 1, face = T.front ? (T.front[0] * tx + T.front[1] * tz) / tl : 0;
+      const sc = d - face * 60 - Math.min(free, 8) * 2; if (sc < bs) { bs = sc; best = T; }
+    }
+    return best;
+  }
+  planDefence(live, pic, free) {
+    const g = this.g, front = g.objectives.slice().sort((a, b) => D([a.x, a.z], this.playerSide) - D([b.x, b.z], this.playerSide));
+    const gar = id => live.filter(b => b.role === 'garrison' && b.obj === id).length;
+    const want = (o, i) => (o.owner === 'player' ? 0 : i < 2 ? 2 : 1);
+    // the reserve first: a mounted squad (vehicle intact) stays back, out of sight, for counterattacks
+    if (!this.reserveUsed && !live.some(b => b.role === 'reserve')) { const r = free().find(b => b.v && !b.v.destroyed && !b.op); if (r) { this.setTask(r, 'reserve', this.reservePos(), 'company reserve (counterattack force)'); this.note(`${r.sq.name}: company reserve`); } }
+    for (let pass = 0; pass < 2; pass++) for (const [i, o] of front.entries()) {
+      if (gar(o.id) >= Math.min(want(o, i), pass + 1)) continue;
+      const c = free().filter(b => !b.op).sort((a, b) => D(this.upos(a), [o.x, o.z]) - D(this.upos(b), [o.x, o.z]))[0]; if (!c) break;
+      c.obj = o.id; c.defT = this.defTrench(o, c.sq); this.setTask(c, 'garrison', c.defT ? [c.defT.center[0], c.defT.center[1]] : [o.x, o.z], `hold ${o.id}${c.defT ? ' from its trench line' : ''}`);
+      this.note(`${c.sq.name}: defend ${o.id}${c.defT ? ' (trench system)' : ''}`);
     }
   }
   reservePos() {
@@ -314,7 +358,7 @@ export class CommanderV2 extends CommanderV1 {
       this.note(`${op.obj} TAKEN — consolidating`);
       return;
     }
-    if (broken || now - op.t0 > (op.type === 'counter' ? 200 : 330)) {
+    if (broken || (op.phase === 'assault' ? now - op.pt > 240 : now - op.t0 > (op.type === 'counter' ? 200 : 330))) {
       this.laneFail[op.obj] ??= {}; this.laneFail[op.obj][op.lane] = (this.laneFail[op.obj][op.lane] || 0) + 1;
       this.objFail[op.obj] = (this.objFail[op.obj] || 0) + 1;
       for (const b of units) if (this.isInf(b) && b.state !== 'regroup') this.regroup(b, `attack on ${op.obj} failed — fall back`, op.aa);
@@ -713,9 +757,17 @@ export class CommanderV2 extends CommanderV1 {
   // hold an objective: trench first, else a building with windows onto the enemy's side, else cover facing them
   holdObjective(b, id) {
     const g = this.g, sq = b.sq, [ox, oz] = this.oxz(id || b.obj || g.objectives[0].id), c = sq.center();
-    if (sq.building || sq.trench || sq.order?.type === 'garrison') return;
+    const ob0 = this.objOf(id || b.obj), capNeeded = ob0.owner !== 'enemy' && this.defensive && b.role === 'garrison';
+    if ((sq.building || sq.trench || sq.order?.type === 'garrison') && !capNeeded) return;
     if (g.time - (b.holdTry || 0) < 6) return; b.holdTry = g.time;
-    const T = this.freeTrench(ox, oz, 60, sq); if (T && Math.random() < 0.8) { sq.orderTrench(T); return; }
+    // a point is only ours once men have stood on it: take it first (inside the capture ring), then go to the trench line
+    const ob = this.objOf(id || b.obj), R = (ob.r ?? TUNING.captureRadius) - 6;
+    if (ob.owner !== 'enemy' && !this.intel.near(ox, oz, 60, 20).length) {
+      if (Math.hypot(c.x - ox, c.z - oz) > R) { if (sq.trench || sq.building) sq.leaveBuilding(); sq.orderMove(ox, oz, Math.atan2(...this.toThem(id || b.obj)), 12, true); b.holdTry = g.time + 8; }
+      return;
+    }
+    if (b.defT && !trenchMen(g, b.defT, 'player').length && b.defT.slots.some(sl => !sl.occupant || !sl.occupant.effective)) { sq.orderTrench(b.defT); return; }
+    const T = this.defensive ? this.defTrench(this.objOf(id || b.obj), sq) : this.freeTrench(ox, oz, 60, sq); if (T && Math.random() < 0.85) { sq.orderTrench(T); return; }
     const bld = this.fieldOfFireBuilding(ox, oz, 34, sq, this.toThem(id || b.obj)); if (bld && Math.random() < 0.8) { sq.orderGarrison(bld); return; }
     if (Math.hypot(c.x - ox, c.z - oz) > 14 || !b.dugIn) {
       b.dugIn = true; const t = this.toThem(id || b.obj), thr = V3(ox + t[0] * 120, oz + t[1] * 120);

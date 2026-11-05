@@ -74,9 +74,12 @@ const FRAG_ADD = `
   uniform sampler2D map; varying vec2 vUv; varying vec4 vCol; varying float vDepth;
   void main(){ vec4 t = texture2D(map, vUv); gl_FragColor = vec4(vCol.rgb * t.rgb * vCol.a * t.a, 1.0); }`;
 
+const byDepth = (a, b) => b.d2 - a.d2;
+const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+class Particle { constructor() { this.x = 0; this.y = 0; this.z = 0; this.vx = 0; this.vy = 0; this.vz = 0; this.life = 0; this.t = 0; this.size0 = 0; this.size1 = 0; this.r = 0; this.g = 0; this.b = 0; this.a0 = 0; this.a1 = 0; this.drag = 0; this.grav = 0; this.rot = 0; this.rotv = 0; this.frame = 0; this.stretch = 0; this.wind = null; this.fadeIn = 0; this.cool = 0; this.r1 = 0; this.g1 = 0; this.b1 = 0; this.d2 = 0; } }
 class System {
   constructor(scene, max, additive, tex, sunDir, atlas = !additive) {
-    this.max = max; this.n = 0; this.p = [];
+    this.max = max; this.n = 0; this.p = []; this.free = [];
     const g = new THREE.InstancedBufferGeometry();
     const q = new THREE.PlaneGeometry(1, 1); g.index = q.index; g.attributes.position = q.attributes.position; g.attributes.uv = q.attributes.uv;
     this.aPos = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3).setUsage(THREE.DynamicDrawUsage);
@@ -93,41 +96,57 @@ class System {
     this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = additive ? 11 : 10; scene.add(this.mesh);
     this.geo = g;
   }
-  // o: {x,y,z, vx,vy,vz, life, size0, size1, r,g,b, a0,a1, drag, grav, rot, rotv, frame, stretch, buoy}
+  // o: {x,y,z, vx,vy,vz, life, size0, size1, r,g,b, a0,a1, drag, grav, rot, rotv, frame, stretch, wind, fadeIn, cool, r1,g1,b1}
+  // The spawn sites pass object literals of many different shapes; the update loops over thousands of them every frame
+  // then ran on megamorphic property access. Each particle is copied into one fixed-shape object (recycled from a free
+  // list, no garbage per spawn) - same values, same defaults.
   spawn(o) {
-    if (this.p.length >= this.max) this.p.shift();
-    o.t = 0; o.rot ??= Math.random() * 6.28; o.rotv ??= (Math.random() - .5) * 0.6; o.frame ??= Math.floor(Math.random() * 4);
-    o.vx ??= 0; o.vy ??= 0; o.vz ??= 0; o.drag ??= 0.5; o.grav ??= 0; o.a1 ??= 0; o.size1 ??= o.size0; o.stretch ??= 0;
-    this.p.push(o);
+    // full: the oldest-sorted (= farthest, after the back-to-front sort) particles make room. Dropped in one splice in
+    // update() instead of an O(n) shift() per spawn (a busy fight spawns hundreds per frame into a full system)
+    if (this.p.length >= this.max) this.over = (this.over || 0) + 1;
+    const q = this.free.pop() || new Particle();
+    q.x = o.x; q.y = o.y; q.z = o.z; q.vx = o.vx ?? 0; q.vy = o.vy ?? 0; q.vz = o.vz ?? 0;
+    q.life = o.life; q.t = 0; q.size0 = o.size0; q.size1 = o.size1 ?? o.size0;
+    q.r = o.r; q.g = o.g; q.b = o.b; q.a0 = o.a0; q.a1 = o.a1 ?? 0;
+    q.drag = o.drag ?? 0.5; q.grav = o.grav ?? 0; q.rot = o.rot ?? Math.random() * 6.28; q.rotv = o.rotv ?? (Math.random() - .5) * 0.6;
+    q.frame = o.frame ?? Math.floor(Math.random() * 4); q.stretch = o.stretch ?? 0; q.wind = o.wind || null; q.fadeIn = o.fadeIn || 0;
+    q.cool = o.cool || 0; q.r1 = o.r1 ?? o.r; q.g1 = o.g1 ?? o.g; q.b1 = o.b1 ?? o.b; q.d2 = 0;
+    this.p.push(q);
   }
   update(dt, camPos) {
     const P = this.p; let w = 0;
+    if (this.over) { const gone = P.splice(0, Math.min(this.over, P.length - this.max)); this.over = 0; if (this.free.length < this.max) this.free.push(...gone); }
+    // (drag: exp() once per distinct drag value and frame, not per particle; Math.hypot is slow in V8: plain sqrt)
+    let lastDrag = NaN, k = 1;
+    const sort = camPos && !this.additive && (this.frameN = (this.frameN || 0) + 1) % 2 === 0, cx = camPos?.x, cy = camPos?.y, cz = camPos?.z;
     for (let i = 0; i < P.length; i++) {
-      const o = P[i]; o.t += dt; if (o.t >= o.life) continue;
-      const k = Math.exp(-o.drag * dt); o.vx *= k; o.vy = o.vy * k - o.grav * dt; o.vz *= k;
+      const o = P[i]; o.t += dt; if (o.t >= o.life) { if (this.free.length < this.max) this.free.push(o); continue; }
+      if (o.drag !== lastDrag) { lastDrag = o.drag; k = Math.exp(-lastDrag * dt); }
+      o.vx *= k; o.vy = o.vy * k - o.grav * dt; o.vz *= k;
       if (o.wind) { o.vx += o.wind[0] * dt; o.vz += o.wind[1] * dt; }
       o.x += o.vx * dt; o.y += o.vy * dt; o.z += o.vz * dt; o.rot += o.rotv * dt;
       if (o.y < 0.05 && o.grav > 0) { o.y = 0.05; o.vy *= -0.25; o.vx *= 0.5; o.vz *= 0.5; }
+      if (sort) { const dx = o.x - cx, dy = o.y - cy, dz = o.z - cz; o.d2 = dx * dx + dy * dy + dz * dz; }
       P[w++] = o;
     }
     P.length = w;
-    // sort back-to-front for alpha systems
-    this.frameN = (this.frameN || 0) + 1;
-    if (camPos && !this.additive && this.frameN % 2 === 0) P.sort((a, b) => ((b.x - camPos.x) ** 2 + (b.y - camPos.y) ** 2 + (b.z - camPos.z) ** 2) - ((a.x - camPos.x) ** 2 + (a.y - camPos.y) ** 2 + (a.z - camPos.z) ** 2));
+    // sort back-to-front for alpha systems (key computed once per particle above, not twice per comparison)
+    if (sort) P.sort(byDepth);
     const pos = this.aPos.array, col = this.aCol.array, misc = this.aMisc.array, vel = this.aVel.array;
     for (let i = 0; i < P.length; i++) {
-      const o = P[i], f = o.t / o.life, ease = 1 - (1 - f) * (1 - f);
-      pos[i * 3] = o.x; pos[i * 3 + 1] = o.y; pos[i * 3 + 2] = o.z;
+      const o = P[i], f = o.t / o.life, ease = 1 - (1 - f) * (1 - f), i3 = i * 3, i4 = i * 4;
+      pos[i3] = o.x; pos[i3 + 1] = o.y; pos[i3 + 2] = o.z;
       const fadeIn = o.fadeIn ? Math.min(1, o.t / o.fadeIn) : 1;
-      const cf = o.cool ? Math.min(1, f / o.cool) : 0;
-      col[i * 4] = o.r + ((o.r1 ?? o.r) - o.r) * cf; col[i * 4 + 1] = o.g + ((o.g1 ?? o.g) - o.g) * cf; col[i * 4 + 2] = o.b + ((o.b1 ?? o.b) - o.b) * cf;
-      col[i * 4 + 3] = (o.a0 + (o.a1 - o.a0) * f) * fadeIn;
-      misc[i * 4] = o.size0 + (o.size1 - o.size0) * ease; misc[i * 4 + 1] = o.rot; misc[i * 4 + 2] = o.frame; misc[i * 4 + 3] = o.stretch;
-      const sp = Math.hypot(o.vx, o.vy, o.vz) || 1, L = o.stretch ? 1 : 0;
-      vel[i * 3] = o.vx / sp * L; vel[i * 3 + 1] = o.vy / sp * L; vel[i * 3 + 2] = o.vz / sp * L;
+      if (o.cool) { const cf = Math.min(1, f / o.cool); col[i4] = o.r + (o.r1 - o.r) * cf; col[i4 + 1] = o.g + (o.g1 - o.g) * cf; col[i4 + 2] = o.b + (o.b1 - o.b) * cf; }
+      else { col[i4] = o.r; col[i4 + 1] = o.g; col[i4 + 2] = o.b; }
+      col[i4 + 3] = (o.a0 + (o.a1 - o.a0) * f) * fadeIn;
+      misc[i4] = o.size0 + (o.size1 - o.size0) * ease; misc[i4 + 1] = o.rot; misc[i4 + 2] = o.frame; misc[i4 + 3] = o.stretch;
+      if (o.stretch) { const sp = Math.sqrt(o.vx * o.vx + o.vy * o.vy + o.vz * o.vz) || 1; vel[i3] = o.vx / sp; vel[i3 + 1] = o.vy / sp; vel[i3 + 2] = o.vz / sp; }
+      else { vel[i3] = 0; vel[i3 + 1] = 0; vel[i3 + 2] = 0; }
     }
     this.geo.instanceCount = P.length;
-    this.aPos.needsUpdate = this.aCol.needsUpdate = this.aMisc.needsUpdate = this.aVel.needsUpdate = true;
+    // upload only the live part of the instance buffers (they are sized for the cap: 3500 x 14 floats for smoke)
+    for (const a of [this.aPos, this.aCol, this.aMisc, this.aVel]) { a.clearUpdateRanges(); a.addUpdateRange(0, Math.max(1, P.length) * a.itemSize); a.needsUpdate = true; }
   }
 }
 
@@ -154,22 +173,27 @@ class Tracers {
     speed = Math.min(speed, 560); this.list.push({ a: a.clone(), dir: d.divideScalar(L), L, speed, t: 0, color, len: Math.min(5.5, 1.5 + speed * 0.006) });
   }
   update(dt, cam) {
-    const tmp = new THREE.Vector3(), head = new THREE.Vector3(), tail = new THREE.Vector3(), side = new THREE.Vector3();
-    this.list = this.list.filter(t => (t.t += dt) * t.speed < t.L + t.len);
-    let n = 0;
-    for (const t of this.list) {
+    const tmp = this._t ||= new THREE.Vector3(), head = this._h ||= new THREE.Vector3(), tail = this._l ||= new THREE.Vector3(), side = this._s ||= new THREE.Vector3();
+    const L = this.list; let w = 0;
+    for (let i = 0; i < L.length; i++) { const t = L[i]; if ((t.t += dt) * t.speed < t.L + t.len) L[w++] = t; }
+    L.length = w;
+    let n = 0; const P = this.pos, C = this.col;
+    for (const t of L) {
       const hd = Math.min(t.L, t.t * t.speed), tl = Math.max(0, t.t * t.speed - t.len);
       if (hd - tl < 0.05) continue;
       head.copy(t.a).addScaledVector(t.dir, hd); tail.copy(t.a).addScaledVector(t.dir, Math.min(tl, hd));
       tmp.addVectors(head, tail).multiplyScalar(0.5);
-      const dist = tmp.distanceTo(cam), w = Math.max(0.022, dist * 0.0011);
-      side.subVectors(cam, tmp).cross(t.dir).normalize().multiplyScalar(w);
+      const dist = tmp.distanceTo(cam), wd = Math.max(0.022, dist * 0.0011);
+      side.subVectors(cam, tmp).cross(t.dir).normalize().multiplyScalar(wd);
       const o = n * 12;
-      this.pos.set([tail.x - side.x, tail.y - side.y, tail.z - side.z, tail.x + side.x, tail.y + side.y, tail.z + side.z, head.x - side.x, head.y - side.y, head.z - side.z, head.x + side.x, head.y + side.y, head.z + side.z], o);
-      const k = 1.7, c = t.color; for (let v = 0; v < 4; v++) this.col.set([c[0] * k, c[1] * k, c[2] * k], o + v * 3);
+      P[o] = tail.x - side.x; P[o + 1] = tail.y - side.y; P[o + 2] = tail.z - side.z; P[o + 3] = tail.x + side.x; P[o + 4] = tail.y + side.y; P[o + 5] = tail.z + side.z;
+      P[o + 6] = head.x - side.x; P[o + 7] = head.y - side.y; P[o + 8] = head.z - side.z; P[o + 9] = head.x + side.x; P[o + 10] = head.y + side.y; P[o + 11] = head.z + side.z;
+      const k = 1.7, c = t.color; for (let v = 0; v < 4; v++) { C[o + v * 3] = c[0] * k; C[o + v * 3 + 1] = c[1] * k; C[o + v * 3 + 2] = c[2] * k; }
       if (++n >= this.max) break;
     }
-    const g = this.mesh.geometry; g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true; g.setDrawRange(0, n * 6);
+    const g = this.mesh.geometry, pa = g.attributes.position, ca = g.attributes.color;
+    if (n || this._n) { for (const a of [pa, ca]) { a.clearUpdateRanges(); a.addUpdateRange(0, Math.max(1, n) * 12); a.needsUpdate = true; } }
+    this._n = n; g.setDrawRange(0, n * 6);
   }
 }
 
@@ -193,9 +217,22 @@ export class FX {
     this.lights = [];
     for (let i = 0; i < (quality === 'low' ? 2 : quality === 'medium' ? 3 : 4); i++) { const l = new THREE.PointLight(0xffb060, 0, 30, 2); l.castShadow = false; scene.add(l); this.lights.push({ l, t: 0, life: 0.1, i0: 0 }); }
     this.emitters = []; this.wind = [0.9, 0.35];
-    this.debris = []; this.debrisMat = new THREE.MeshStandardMaterial({ color: 0x77716a, roughness: 1 });
-    this.debrisGeo = new THREE.BoxGeometry(1, 1, 1);
-    this.debrisMesh = new THREE.InstancedMesh(this.debrisGeo, this.debrisMat, 600); this.debrisMesh.count = 0; this.debrisMesh.castShadow = true; this.debrisMesh.frustumCulled = false; scene.add(this.debrisMesh);
+    // thrown fragments, by kind (one InstancedMesh each, irregular low-poly shapes instead of the old unit cubes):
+    // shard = steel splinters from the casing (a few cm, elongated, dark metal), clod = earth thrown up by a ground burst,
+    // chunk = concrete / brick lumps from a collapsing section
+    const lump = (detail, k, seed) => { const g = new THREE.IcosahedronGeometry(1, detail), p = g.attributes.position, r = mulberry(seed);
+      const m = new Map(); for (let i = 0; i < p.count; i++) { const key = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`; if (!m.has(key)) m.set(key, 1 - k + r() * k * 2); const f = m.get(key); p.setXYZ(i, p.getX(i) * f, p.getY(i) * f, p.getZ(i) * f); }
+      g.computeVertexNormals(); return g; };
+    const shardGeo = (() => { const g = new THREE.OctahedronGeometry(1, 0), p = g.attributes.position, r = mulberry(5), m = new Map();
+      for (let i = 0; i < p.count; i++) { const key = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`; if (!m.has(key)) m.set(key, [(r() - .5) * 0.5, (r() - .5) * 0.5]); const [a, b] = m.get(key); p.setXYZ(i, p.getX(i) * 0.5 + a * 0.2, p.getY(i) * 0.16 + b * 0.06, p.getZ(i) * 0.09 + a * 0.04); }
+      g.computeVertexNormals(); return g; })();   // a thin twisted splinter, 1 m long at scale 1
+    const kind = (geo, mat, cap, shadow) => { const mesh = new THREE.InstancedMesh(geo, mat, cap); mesh.count = 0; mesh.castShadow = shadow; mesh.receiveShadow = shadow; mesh.frustumCulled = false; scene.add(mesh); return { mesh, cap, list: [] }; };
+    this.frag = {
+      shard: kind(shardGeo, new THREE.MeshStandardMaterial({ color: 0x2c2a27, roughness: 0.45, metalness: 0.7, flatShading: true }), 500, false),
+      clod: kind(lump(0, 0.35, 9), new THREE.MeshStandardMaterial({ color: 0x4a3f32, roughness: 1, flatShading: true }), 500, false),
+      chunk: kind(lump(1, 0.3, 13), new THREE.MeshStandardMaterial({ color: 0x77716a, roughness: 1, flatShading: true }), 300, true),
+    };
+    this.debris = this.frag.chunk.list;   // (legacy name)
   }
   light(pos, color, intensity, dist, life) {
     let best = this.lights[0]; for (const L of this.lights) if (L.l.intensity / (L.i0 || 1) < best.l.intensity / (best.i0 || 1)) best = L;
@@ -238,15 +275,18 @@ export class FX {
     for (let i = 0; i < 6 * p; i++) this.smoke.spawn({ x: pos.x + (R() - .5) * p, y: pos.y + 0.6 + R() * 1.5 * p, z: pos.z + (R() - .5) * p, vx: (R() - .5) * 2, vy: 3 + R() * 4 * Math.sqrt(p), vz: (R() - .5) * 2, life: 3.5 + R() * 3, size0: 1.2 * p, size1: 5 * p, r: 0.13, g: 0.12, b: 0.11, a0: 0.75, a1: 0, drag: 1.1, wind: this.wind, fadeIn: 0.12 });
     // shockwave ring on the ground
     if (pos.y < 2) { const m = new THREE.Mesh(this.ringGeo, this.ringMat.clone()); m.position.set(pos.x, 0.25, pos.z); m.renderOrder = 4; this.scene.add(m); this.rings.push({ m, t: 0, life: 0.45, r: 9 * p }); }
-    // chunks
-    for (let i = 0; i < Math.round(8 * p); i++) this.debris.push({ x: pos.x, y: pos.y + 0.4, z: pos.z, vx: (R() - .5) * 18 * p, vy: 6 + R() * 14 * p, vz: (R() - .5) * 18 * p, s: 0.08 + R() * 0.25 * p, r: [R() * 6, R() * 6, R() * 6], w: [(R() - .5) * 15, (R() - .5) * 15], t: 0, rest: false });
+    // fragments, scaled by the charge: casing splinters (2-8 cm, fast, mostly low and flat out), earth clods from a ground
+    // burst (3-12 cm), short bright streaks for the hot ones (the glow sparks above)
+    const sp = Math.sqrt(p), ground = pos.y < 2;
+    for (let i = 0; i < Math.round(10 * p); i++) { const a = R() * 6.28, v = (12 + R() * 22) * sp; this.fragment('shard', pos.x, pos.y + 0.3, pos.z, Math.cos(a) * v, 2 + R() * 9 * sp, Math.sin(a) * v, (0.02 + R() * 0.06) * Math.min(1.6, sp)); }
+    if (ground) for (let i = 0; i < Math.round(9 * p); i++) { const a = R() * 6.28, v = (2 + R() * 7) * sp; this.fragment('clod', pos.x + (R() - .5) * p, pos.y + 0.3, pos.z + (R() - .5) * p, Math.cos(a) * v, (5 + R() * 9) * sp, Math.sin(a) * v, (0.03 + R() * 0.09) * Math.min(1.5, sp)); }
     this.light(new THREE.Vector3(pos.x, pos.y + 2, pos.z), 0xff9a4a, 70 * p, 26 * p, 0.3);
   }
   collapseDust(pos, w, d, h) {
     const R = Math.random;
     for (let i = 0; i < 70; i++) this.smoke.spawn({ x: pos.x + (R() - .5) * w, y: R() * h, z: pos.z + (R() - .5) * d, vx: (R() - .5) * 6, vy: -1 + R() * 2.5, vz: (R() - .5) * 6, life: 9 + R() * 8, size0: 4, size1: 16 + R() * 10, r: 0.7, g: 0.67, b: 0.62, a0: 0.65, a1: 0, drag: 0.5, wind: this.wind, fadeIn: 0.4 });
     for (let i = 0; i < 40; i++) { const a = R() * 6.28, sp = 8 + R() * 10; this.smoke.spawn({ x: pos.x, y: 1, z: pos.z, vx: Math.cos(a) * sp, vy: 0.5, vz: Math.sin(a) * sp, life: 7 + R() * 5, size0: 4, size1: 14, r: 0.68, g: 0.65, b: 0.6, a0: 0.55, a1: 0, drag: 0.9, wind: this.wind }); }
-    for (let i = 0; i < 40; i++) this.debris.push({ x: pos.x + (R() - .5) * w, y: R() * h, z: pos.z + (R() - .5) * d, vx: (R() - .5) * 8, vy: R() * 4, vz: (R() - .5) * 8, s: 0.3 + R() * 0.8, r: [R() * 6, R() * 6, R() * 6], w: [(R() - .5) * 6, (R() - .5) * 6], t: 0, rest: false });
+    for (let i = 0; i < 40; i++) this.fragment('chunk', pos.x + (R() - .5) * w, R() * h, pos.z + (R() - .5) * d, (R() - .5) * 8, R() * 4, (R() - .5) * 8, 0.18 + R() * 0.5);
   }
   muzzleBlastTank(pos, dir) {
     this.muzzle(pos, dir, 3.2);
@@ -276,6 +316,12 @@ export class FX {
     if (Math.random() > 0.35 + load * 0.5) return;
     this.smoke.spawn({ x: pos.x, y: pos.y, z: pos.z, vy: 0.8, life: 1.6 + load, size0: 0.25, size1: 1.6 + load * 1.5, r: 0.22, g: 0.22, b: 0.22, a0: 0.25 + load * 0.3, a1: 0, drag: 1.5, wind: this.wind });
   }
+  // one thrown fragment (kind: shard | clod | chunk; s = size in m)
+  fragment(kind, x, y, z, vx, vy, vz, s) {
+    const K = this.frag[kind], L = K.list, R = Math.random; if (L.length >= K.cap) L.shift();
+    L.push({ x, y, z, vx, vy, vz, s, ax: kind === 'shard' ? 1 : 0.8 + R() * 0.5, az: kind === 'shard' ? 1 : 0.7 + R() * 0.5, drag: kind === 'shard' ? 0.25 : 0.1,
+      r0: R() * 6.28, r1: R() * 6.28, r2: R() * 6.28, w0: (R() - .5) * (kind === 'shard' ? 40 : 14), w1: (R() - .5) * (kind === 'shard' ? 40 : 14), t: 0, rest: false });
+  }
   update(dt, camPos) {
     for (const e of this.emitters) {
       e.t += dt; if (e.t > e.life) { e.dead = true; continue; }
@@ -299,18 +345,20 @@ export class FX {
     }
     this.emitters = this.emitters.filter(e => !e.dead);
     for (const L of this.lights) { if (L.l.intensity <= 0) continue; L.t += dt; L.l.intensity = L.t > L.life ? 0 : L.i0 * (1 - L.t / L.life); }
-    // debris chunks
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
-    let w = 0;
-    for (const d of this.debris) {
-      d.t += dt; if (d.t > 25) continue;
-      if (!d.rest) { d.vy -= 9.8 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt; d.r[0] += d.w[0] * dt; d.r[1] += d.w[1] * dt;
-        if (d.y < d.s * 0.5) { d.y = d.s * 0.5; d.vy *= -0.3; d.vx *= 0.5; d.vz *= 0.5; d.w[0] *= 0.5; d.w[1] *= 0.5; if (Math.abs(d.vy) < 1) d.rest = true; } }
-      m.compose(v.set(d.x, d.y, d.z), q.setFromEuler(e.set(d.r[0], d.r[1], d.r[2])), sc.set(d.s * 1.4, d.s * 0.6, d.s));
-      if (w < 600) this.debrisMesh.setMatrixAt(w, m);
-      this.debris[w++] = d;
+    // fragments: fly, tumble, bounce, lie for a while (20 s), then go
+    const m = this._fm ||= new THREE.Matrix4(), q = this._fq ||= new THREE.Quaternion(), e = this._fe ||= new THREE.Euler(), v = this._fv ||= new THREE.Vector3(), sc = this._fs ||= new THREE.Vector3();
+    for (const K of Object.values(this.frag)) {
+      const L = K.list; let w = 0;
+      for (let i = 0; i < L.length; i++) {
+        const d = L[i]; d.t += dt; if (d.t > 20) continue;
+        if (!d.rest) { d.vy -= 9.8 * dt; const k = Math.exp(-d.drag * dt); d.vx *= k; d.vz *= k; d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt; d.r0 += d.w0 * dt; d.r1 += d.w1 * dt;
+          const fl = d.s * 0.3; if (d.y < fl) { d.y = fl; d.vy *= -0.3; d.vx *= 0.45; d.vz *= 0.45; d.w0 *= 0.4; d.w1 *= 0.4; if (Math.abs(d.vy) < 0.8) { d.rest = true; d.r0 = Math.round(d.r0 / Math.PI) * Math.PI; } } }   // (comes to rest lying flat)
+        if (w < K.cap) { m.compose(v.set(d.x, d.y, d.z), q.setFromEuler(e.set(d.r0, d.r1, d.r2)), sc.set(d.s * d.ax, d.s, d.s * d.az)); K.mesh.setMatrixAt(w, m); }
+        L[w++] = d;
+      }
+      L.length = Math.min(w, K.cap);
+      if (L.length || K.mesh.count) { K.mesh.count = L.length; K.mesh.instanceMatrix.clearUpdateRanges(); K.mesh.instanceMatrix.addUpdateRange(0, Math.max(1, L.length) * 16); K.mesh.instanceMatrix.needsUpdate = true; }
     }
-    this.debris.length = Math.min(w, 600); this.debrisMesh.count = this.debris.length; this.debrisMesh.instanceMatrix.needsUpdate = true;
     for (const r of this.rings) { r.t += dt; const f = r.t / r.life; r.m.scale.setScalar(0.5 + f * r.r); r.m.material.opacity = 0.35 * (1 - f); if (f >= 1) { this.scene.remove(r.m); r.m.material.dispose(); r.dead = true; } }
     this.rings = this.rings.filter(r => !r.dead);
     this.time += dt; this.flames.update(dt, this.time); if (camPos) this.tracers.update(dt, camPos);
