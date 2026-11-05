@@ -46,6 +46,7 @@ export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', 
 const I = d => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const ORDER_ICONS = {
   run: I('<path d="M5 6l6 6-6 6M12 6l6 6-6 6"/>'),
+  reverse: I('<rect x="10" y="7" width="10" height="10" rx="1.5"/><path d="M13 12h4"/><path d="M8 12H2.5M5.5 9l-3 3 3 3"/>'),
   holdfire: I('<circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5 19L19 5"/>'),
   garrison: I('<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5.5h5V20M2.5 20h19"/>'),
   mount: I('<path d="M3 15.5h18l-2-5H7.5L6 8H3z"/><circle cx="7" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/><path d="M14 3v5M11.5 5.5L14 8l2.5-2.5"/>'),

@@ -183,7 +183,7 @@ export class HUD {
     const g = this.g, B = this.orderBtns, inp = g.input, deploy = g.phase === 'deploy';
     const sq = sel.filter(u => u.type === 'squad');
     const en = {
-      run: true, holdfire: sel.length > 0, halt: sel.length > 0,
+      run: true, reverse: sel.some(u => u.type !== 'squad' && !u.immobile), holdfire: sel.length > 0, halt: sel.length > 0,
       garrison: sq.some(u => !u.mounted), smoke: sq.some(u => !u.mounted),
       mount: sel.some(u => u.type === 'squad' ? (u.mounted || (u.carrier && !u.carrier.destroyed)) : !!u.passengers || (deploy && (u.kind === 'btr' || u.kind === 'ifv'))),
       resupply: sq.some(u => u.carrier && !u.carrier.destroyed && !u.mounted),
@@ -191,7 +191,7 @@ export class HUD {
     };
     for (const k in B) set(B[k], 'disabled', !en[k]);
     tog(B.holdfire, 'on', sel.length > 0 && sel.every(u => u.holdFire));
-    tog(B.run, 'on', !!inp?.runMode);
+    tog(B.run, 'on', !!inp?.runMode); tog(B.reverse, 'on', !!inp?.reverseMode);
     tog(B.fireground, 'on', inp?.mode === 'fireground'); tog(B.mortar, 'on', inp?.mode === 'mortar');
     set(this.mortarEl, 'textContent', String(g.mortars));
   }

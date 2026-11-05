@@ -179,13 +179,13 @@ export class Vehicle {
     const w = this.def.width / 2 + (outside ? 1.4 + (i >> 1) * 0.6 : 0.8);
     return this.pos.clone().addScaledVector(r, side * w).addScaledVector(f, this.kind === 'btr' ? -0.6 - (i >> 1) * 0.7 : -3);
   }
-  orderMove(x, z, facing = null, fast = false) {
+  orderMove(x, z, facing = null, fast = false, rev = false) {
     if (this.destroyed || this.immobile) return;
-    this.order = { type: 'move', x, z, facing }; this.fast = fast;
+    this.order = { type: 'move', x, z, facing }; this.fast = fast; this.revDrive = !!rev;   // rev: back up along the route, front armour kept toward the enemy
     this.goal = [x, z]; this.game.requestPath(this, this.pos.x, this.pos.z, x, z, this.kind === 'btr' ? 1.8 : 2.0, this.def.wheeled ? 'wheeled' : 'tracked');
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
-  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.fireAt = null; if (this.spg) this.spg.mission = null; }
+  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.revDrive = false; this.fireAt = null; if (this.spg) this.spg.mission = null; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     this.animLids(dt);
@@ -234,19 +234,21 @@ export class Vehicle {
       let rem = 3.5 + Math.abs(this.speed) * 0.55, cx = qx, cz = qz, j = this.pathI;
       for (let fx = qx, fz = qz; j < P.length; j++) { const d = Math.hypot(P[j][0] - fx, P[j][1] - fz); if (d >= rem) { cx = fx + (P[j][0] - fx) * rem / d; cz = fz + (P[j][1] - fz) * rem / d; break; } rem -= d; fx = cx = P[j][0]; fz = cz = P[j][1]; }
       const off = Math.hypot(px - qx, pz - qz); if (off > 8) { cx = bx; cz = bz; }   // knocked well off the line: head for the next waypoint
-      const want = Math.atan2(cx - px, cz - pz), err = angDiff(want, this.heading);
+      // reversing: steer the tail at the look-ahead point instead of the nose
+      const rv = this.revDrive, want = Math.atan2(cx - px, cz - pz) + (rv ? Math.PI : 0), err = angDiff(want, this.heading);
       turn = THREE.MathUtils.clamp(err * 2.2, -1, 1);
       const cornering = Math.abs(err) > 0.6 ? (def.wheeled ? 0.35 : 0) : Math.abs(err) > 0.3 ? 0.7 : 1;
       // brake ahead of a sharp bend at the next waypoint (and for the end of the route)
       let bend = 1;
       if (!last) { const n = P[this.pathI + 1], a1 = Math.atan2(bx - ax, bz - az), a2 = Math.atan2(n[0] - bx, n[1] - bz), ang = Math.abs(angDiff(a2, a1)), dB = Math.hypot(bx - px, bz - pz); if (ang > 0.35) { const vc = def.speed * Math.max(0.3, 1 - ang / 2.2); const vmax = Math.sqrt(vc * vc + 2 * def.accel * 1.6 * Math.max(0, dB - 3)); bend = Math.min(1, vmax / def.speed); } }
       targetSpeed = def.speed * (this.fast ? 1 : 0.7) * cornering * Math.min(bend, Math.min(1, dEnd / 10 + 0.15));
+      if (rv) targetSpeed *= -(def.revSpeed ?? (def.wheeled ? 0.4 : 0.32));   // reverse gear: a fraction of forward speed, more caution
       // rubble slows; roads are fast, open fields slower (wheels more than tracks)
       const nav = this.game.nav, ci = nav.idx(px, pz), c = nav.cost[ci] || 1; if (c > 2) targetSpeed *= 0.55;
       if (this.slope > 0.06) targetSpeed *= Math.max(0.3, 1 - this.slope * 2.2);   // grinding up a rubble heap
       const rd = nav.roadAt(px, pz); targetSpeed *= rd === 2 ? (def.wheeled ? 1.3 : 1.15) : rd === 1 ? (def.wheeled ? 1.1 : 1.05) : def.wheeled ? 0.78 : 0.9;
       // friendly vehicles: wait behind one that is moving; go round one that is parked (or stuck) in the way
-      const sh = Math.sin(this.heading), ch = Math.cos(this.heading);
+      const sh = Math.sin(this.heading) * (rv ? -1 : 1), ch = Math.cos(this.heading) * (rv ? -1 : 1);
       for (const o of this.game.vehicles) if (o !== this && !o.destroyed) {
         const ox = o.pos.x - px, oz = o.pos.z - pz, od = Math.hypot(ox, oz), ahead = ox * sh + oz * ch;
         if (od > def.radius + o.def.radius + 3 || ahead <= 0) continue;
@@ -270,7 +272,7 @@ export class Vehicle {
       targetSpeed = Math.max(targetSpeed, def.speed * (def.wheeled ? 0.9 : 0.85));
     } else if (this.evadeT) { this.evadeT = 0; this.evadeSw = 0; }
     // stuck recovery: back up with opposite lock for a moment, then replan
-    if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = -def.speed * 0.25; turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, this.def.wheeled ? 'wheeled' : 'tracked'); }
+    if (this.reverseT > 0) { this.reverseT -= dt; targetSpeed = def.speed * 0.25 * (this.revDrive ? 1 : -1); turn = -(this.revTurn || 1); if (this.reverseT <= 0 && this.goal) this.game.requestPath(this, this.pos.x, this.pos.z, this.goal[0], this.goal[1], this.kind === 'tank' ? 2.0 : 1.8, this.def.wheeled ? 'wheeled' : 'tracked'); }
     else if (this.path && !this.immobile && !this.spgHold) {
       this.wdT = (this.wdT || 0) + dt;
       if (this.wdT > 3) { const moved = this.wdP ? Math.hypot(this.pos.x - this.wdP[0], this.pos.z - this.wdP[1]) : 9; this.wdP = [this.pos.x, this.pos.z]; this.wdT = 0; if (moved < 1.2) { this.reverseT = 1.6; this.revTurn = Math.sign(turn || 1); } }
@@ -286,7 +288,7 @@ export class Vehicle {
     const nav = this.game.nav, tracked = !def.wheeled, free = nav.vehPassable ? (x, z) => nav.vehPassable(x, z, tracked) : (x, z) => { const k = nav.idx(x, z); return k >= 0 && nav.cost[k] !== 255; };
     const lead = (this.speed >= 0 ? 1 : -1) * def.length * 0.45, fx = nx + Math.sin(this.heading) * lead, fz = nz + Math.cos(this.heading) * lead;
     if (free(nx, nz) && free(fx, fz)) { this.pos.x = nx; this.pos.z = nz; }
-    else { this.speed *= 0.3; if (this.path && !(this.reverseT > 0) && this.speed >= 0) { this.blockT = (this.blockT || 0) + dt; if (this.blockT > 0.8) { this.blockT = 0; this.reverseT = 1.4; this.revTurn = Math.sign(turn || 1); } } }
+    else { this.speed *= 0.3; if (this.path && !(this.reverseT > 0) && this.speed * (this.revDrive ? -1 : 1) >= 0) { this.blockT = (this.blockT || 0) + dt; if (this.blockT > 0.8) { this.blockT = 0; this.reverseT = 1.4; this.revTurn = Math.sign(turn || 1); } } }
     if (!free(this.pos.x, this.pos.z)) { const [ex, ez] = nav.nearestFree(this.pos.x, this.pos.z, this.kind === 'tank' ? 2.0 : 1.8, 12); this.pos.x = ex; this.pos.z = ez; }
     this.dist = (this.dist || 0) + this.speed * dt;
     if (Math.abs(this.speed) > 0.4) this.game.city.crushCheck(this, this.game);
