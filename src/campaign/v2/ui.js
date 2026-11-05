@@ -49,6 +49,8 @@ async function start(root, C, onLaunch, opts) {
   if (geo && geoX) geo.geo = join(geo.geo, geoX.geo);
   // v6: the DEM hillshade of the main grid and of the extension (one image each)
   if (geo?.geo) geo.geo.reliefs = [geo.geo.relief, geoX?.geo?.relief].filter(Boolean);
+  // ... decoded up front (the map paints its ground once, instead of once more per image arriving later)
+  if (geo?.geo?.reliefs?.length) geo.geo.reliefImgs = (await Promise.all(geo.geo.reliefs.map(r => new Promise(res => { const img = new Image(); img.onload = () => res({ img, bbox: r.bbox }); img.onerror = () => res(null); img.src = new URL(r.url, document.baseURI).href; })))).filter(Boolean);
   const ui = new CampaignScreen(root, C, onLaunch, osm, opts, geo); window.__c2 = ui;
   return ui;
 }

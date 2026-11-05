@@ -164,10 +164,11 @@ export class StrategicMap {
     // soft dark rim so the AOR reads as the lit, detailed area of the map
     const rim = new THREE.Mesh(new THREE.PlaneGeometry(this.x1 - this.x0 + 8, this.z1 - this.z0 + 8), new THREE.MeshBasicMaterial({ map: rimTexture(), transparent: true, depthWrite: false }));
     rim.rotation.x = -Math.PI / 2; rim.position.set((this.x0 + this.x1) / 2, -0.02, (this.z0 + this.z1) / 2); this.scene.add(rim);
+    // DEM hillshade (geo_v6.py: relief_*.jpg), blended over the land cover: decoded by ui.js before the map is built
+    // (geo.reliefImgs), else loaded here and the ground repainted when it arrives
+    this.reliefImgs = [...(this.geo?.reliefImgs || [])];
     this.windbreaks = []; this.paintGround();
-    // DEM hillshade (geo_v6.py: relief_*.jpg), blended over the land cover once loaded
-    this.reliefImgs = [];
-    for (const r of this.geo?.reliefs || (this.geo?.relief ? [this.geo.relief] : [])) {
+    if (!this.geo?.reliefImgs) for (const r of this.geo?.reliefs || (this.geo?.relief ? [this.geo.relief] : [])) {
       const img = new Image(); img.onload = () => { if (this.dead) return; this.reliefImgs.push({ img, bbox: r.bbox }); this.season = null; this.paintGround(); this.dirty = true; };
       img.src = new URL(r.url, document.baseURI).href;
     }
@@ -355,7 +356,7 @@ export class StrategicMap {
     });
     IR.count = ir; this.scene.add(IB, IR); this.bMesh = IB;
     // trees: OSM tree rows and woods, procedural windbreaks and forest cells
-    const v6 = !!this.geo?.ways, TMAX = v6 ? 90000 : 18000;
+    const v6 = !!this.geo?.ways, TMAX = v6 ? 50000 : 18000;
     const inside = (x, z) => x > this.x0 && x < this.x1 && z > this.z0 && z < this.z1;
     const trees = [], RT = rng(9), add = (x, z) => { if (trees.length < TMAX && (!v6 || inside(x, z)) && !inWater(x, z)) trees.push([x, z, 0.75 + RT() * 0.4]); };
     const along = (ax, az, bx, bz, step) => { const L = Math.hypot(bx - ax, bz - az), n = Math.floor(L / step); for (let i = 0; i <= n; i++) add(lerp(ax, bx, i / Math.max(1, n)) + (RT() - 0.5) * (v6 ? 0.003 : 0.01), lerp(az, bz, i / Math.max(1, n)) + (RT() - 0.5) * (v6 ? 0.003 : 0.01)); };
@@ -797,7 +798,9 @@ export class StrategicMap {
     // render on demand: camera moved, state changed, animations, or a slow tick for the pulsing markers
     const sig = `${this.cam.x.toFixed(4)},${this.cam.z.toFixed(4)},${this.cam.dist.toFixed(4)},${this.cam.yaw.toFixed(4)},${this.cam.pitch.toFixed(4)},${this.W},${this.H}`;
     const flying = this.animUavs(now);
-    if (sig === this.lastSig && !this.dirty && !flying && !this.anims.length && now - (this.lastRender || 0) < 140) return;
+    // v6: the slow re-render tick only while something pulses (the denser true-scale map is ~1M triangles: no idle redraws)
+    const pulsing = this.dyn.children.some(o => o.userData.pulse) || this.badges.some(b => b.until);
+    if (sig === this.lastSig && !this.dirty && !flying && !this.anims.length && (!pulsing || now - (this.lastRender || 0) < 140)) return;
     this.lastSig = sig; this.dirty = false; this.lastRender = now;
     this.updateCamera();
     // pulses

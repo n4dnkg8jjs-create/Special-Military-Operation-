@@ -22,7 +22,9 @@ const st = await page.evaluate(() => {
   if (v) { r.sample = { state: v.state, wounds: v.dmg.wounds.map(w => ({ type: w.type, r: +w.r.toFixed(3), seg: w.seg })), mud: +v.dmg.mud.toFixed(2), back: +v.dmg.backMud.toFixed(2) }; g.cam.lookAt(v.pos.x, v.pos.z); g.cam.tDist = 7; window.__v = v; }
   g.noRender = false; return r;
 });
-await page.waitForTimeout(4000);
-await page.screenshot({ path: out });
 console.log(JSON.stringify(st)); console.log('errors', errs.length, JSON.stringify(errs.slice(0, 5)));
+await page.waitForTimeout(6000);
+await page.evaluate(() => { window.game.noRender = true; });
+await page.screenshot({ path: out, timeout: 600000 });
+console.log('errors after render', errs.length, JSON.stringify(errs.slice(0, 5)));
 await browser.close(); server.close();

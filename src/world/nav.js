@@ -12,11 +12,11 @@ export const VEH_COST = {
 };
 // Infantry route costs (per metre, on top of the cell cost; open ground = 1): scrape = right against a wall (clear < 0.9 m),
 // wallBand = along a wall / fence (0.9-2.6 m off it: a slight pull towards facades), threat = a cell a known enemy can
-// see into (findPath opts.threat), heur / heurThr = A* heuristic weight without / with a threat (navbench.mjs: threat 1.25 +
-// heurThr 1.8 cut the exposed share of routes from 52 % to 42 % for 2 % more length, ~1.5 ms a query). thrIter: a threat
+// see into (findPath opts.threat), heur / heurThr = A* heuristic weight without / with a threat (navbench.mjs: threat 0.9 +
+// heurThr 1.6 cut the exposed share of routes from 52 % to 45 % for 1 % more length, ~1.6 ms a query). thrIter: a threat
 // query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
 // exposed, the search would flood the map).
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 1.25, heur: 1.0, heurThr: 1.8, thrIter: 40000 };
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {

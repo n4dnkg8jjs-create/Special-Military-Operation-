@@ -307,7 +307,21 @@ function plan(M, kits, info) {
   const clear = (x, z, rad) => hs.every(h => Math.hypot(h.x - x, h.z - z) > h.r + rad) && (!sv.gun || Math.abs(x - sv.gun.x) > sv.gun.hw + rad || z < sv.gun.zBack - rad);
   const pick = (cands, rad) => { for (const [x, z] of cands) if (inPoly(sv.outline, x, z) && clear(x, z, rad) && flat(x, z, rad)) return { x, z }; for (const [x, z] of cands) if (inPoly(sv.outline, x, z) && clear(x, z, rad * 0.6)) return { x, z }; return null; };
   const { xr, zr } = sv, W = xr[1] - xr[0], L = zr[1] - zr[0], gx = sv.gun ? sv.gun.x : sv.cx;
-  if (kits.includes('ew')) { const c = []; for (const fz of [0.22, 0.3, 0.15, 0.38, 0.45]) for (const fx of [0.5, 0.3, 0.7, 0.2, 0.8]) c.push([xr[0] + W * fx, zr[0] + L * fz]); pl.spots.ew = pick(c, 0.3); }
+  if (kits.includes('ew')) { const c = []; for (const fz of [0.22, 0.3, 0.15, 0.38, 0.45]) for (const fx of [0.5, 0.3, 0.7, 0.2, 0.8]) c.push([xr[0] + W * fx, zr[0] + L * fz]); pl.spots.ew = pick(c, 0.3);
+    // the stand's four legs must all find the roof (else the jammer goes on the hull roof, below)
+    const e = pl.spots.ew; if (e) { const hs = [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]].map(([dx, dz]) => down(S, e.x + dx, e.z + dz, sv.yMax + 1)); if (hs.some(h => !h || h.n.y < 0.3) || Math.max(...hs.map(h => h.p.y)) - Math.min(...hs.map(h => h.p.y)) > 0.3) pl.spots.ew = null; } }
+  if (kits.includes('ew') && !pl.spots.ew) {
+    // no room on the turret roof (small BTR turret, Bradley hatches): on the hull roof behind the turret sweep instead
+    const H = M.H, HS = { node: M.hull, meshes: M.hullMeshes, P: H }, top = H.q('y', 0.999) + 1;
+    let tcx = 0, tcz = 0, sweep = 0; if (M.turret && M.T?.n > 20) { const tp = new THREE.Vector3().setFromMatrixPosition(M.turret.matrixWorld).applyMatrix4(new THREE.Matrix4().copy(M.hull.matrixWorld).invert()); tcx = tp.x; tcz = tp.z; for (let i = 0; i < M.T.n; i += 3) sweep = Math.max(sweep, Math.hypot(M.T.xs[i], M.T.zs[i])); }
+    const W = H.q('x', 0.95) - H.q('x', 0.05);
+    for (const fz of [0.3, 0.22, 0.38, 0.15, 0.45]) { if (pl.spots.ew) break; for (const fx of [0, 0.25, -0.25]) {
+      const x = fx * W, z = H.q('z', fz); if (Math.hypot(x - tcx, z - tcz) < sweep + 0.45 || !hullFree(M, V3(x, 0, z), 0.3)) continue;
+      const hs = [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]].map(([dx, dz]) => down(HS, x + dx, z + dz, top));
+      if (hs.some(h => !h || h.n.y < 0.8) || Math.max(...hs.map(h => h.p.y)) - Math.min(...hs.map(h => h.p.y)) > 0.1) continue;
+      pl.spots.ew = { x, z, S: HS, top }; break;
+    } }
+  }
   if (kits.includes('sight')) { const c = []; for (const fz of [0.72, 0.65, 0.8, 0.58]) for (const dx of [0.5, 0.42, 0.6, 0.35, 0.7]) c.push([gx + dx, zr[0] + L * fz]); for (const fz of [0.72, 0.6]) for (const dx of [-0.5, -0.6]) c.push([gx + dx, zr[0] + L * fz]); pl.spots.sight = pick(c.filter(([x]) => x < xr[1] - 0.15), 0.24); }
   return pl;
 }
@@ -324,7 +338,7 @@ function buildCage(M, out, info, pl) {
   // openings: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
   const holes = [];
   for (const h of pl.hatches) { const q = h.rect || { x0: h.x - h.r - 0.06, x1: h.x + h.r + 0.06, z0: h.z - h.r - 0.06, z1: h.z + h.r + 0.06 }; holes.push({ x0: snap(q.x0, Math.floor), x1: snap(q.x1, Math.ceil), z0: snap(q.z0, Math.floor), z1: snap(q.z1, Math.ceil) }); }
-  if (pl.spots.ew) { const e = pl.spots.ew; holes.push({ x0: snap(e.x - 0.32, Math.floor), x1: snap(e.x + 0.32, Math.ceil), z0: snap(e.z - 0.26, Math.floor), z1: snap(e.z + 0.26, Math.ceil) }); }
+  if (pl.spots.ew && !pl.spots.ew.S) { const e = pl.spots.ew; holes.push({ x0: snap(e.x - 0.32, Math.floor), x1: snap(e.x + 0.32, Math.ceil), z0: snap(e.z - 0.26, Math.floor), z1: snap(e.z + 0.26, Math.ceil) }); }
   const zMax = Math.max(...outer.map(p => p[1])) + 1;
   if (sv.gun && info.kind !== 'tank') {
     const g = sv.gun, zMin = Math.min(...outer.map(p => p[1])) - 1, band = { x0: snap(g.x - g.hw - 0.07, Math.floor), x1: snap(g.x + g.hw + 0.07, Math.ceil) };
@@ -571,7 +585,7 @@ const BUILD = {
       // tanks: a carpet of Kontakt-1 on the turret roof against top-attack drones (2023-24 field practice), laid flat
       // in rows in front of and beside the hatches, clear of the gun, the sight / jammer and the cage feet
       if (tank) {
-        const pl = info._pl, keep = [...(pl?.hatches || M.hatchT).map(h => ({ x: h.x, z: h.z, r: h.r + 0.03 })), ...['sight', 'ew'].filter(k => pl?.spots[k]).map(k => ({ ...pl.spots[k], r: 0.38 })), ...(pl?.cage?.feet || []).map(f => ({ x: f.x, z: f.z, r: 0.12 }))];
+        const pl = info._pl, keep = [...(pl?.hatches || M.hatchT).map(h => ({ x: h.x, z: h.z, r: h.r + 0.03 })), ...['sight', 'ew'].filter(k => pl?.spots[k] && !pl.spots[k].S).map(k => ({ ...pl.spots[k], r: 0.38 })), ...(pl?.cage?.feet || []).map(f => ({ x: f.x, z: f.z, r: 0.12 }))];
         const free = (x, z) => keep.every(k => Math.hypot(k.x - x, k.z - z) > k.r + BW * 0.4) && !(Math.abs(x - gx) < ghw - 0.04 + BW / 2 && z > (sv.gun ? sv.gun.z - 0.15 : 9));
         const zTop = Math.max(...sv.roof.map(r => r.z)) - 0.15, zLo = (M.hatchT.length ? Math.min(...M.hatchT.map(h => h.z)) - 0.5 : sv.cz);
         for (let z = zTop; z > zLo; z -= BD + GAP + 0.02) for (let x = sv.xr[0] + 0.2; x < sv.xr[1] - 0.2; x += BW + GAP + 0.01) {
@@ -670,9 +684,9 @@ const BUILD = {
   },
   ew(M, out, info, pl) {
     const sp = pl.spots.ew; if (!sp) return;
-    const S = pl.S, col = [], blk = [], st = [];
+    const S = sp.S || pl.S, yStart = sp.top || pl.sv.yMax + 1, col = [], blk = [], st = [];
     // tube stand: 4 legs welded to the roof (each leg its own ray), a deck plate, the jammer box, a ring of whips
-    const legs = [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]].map(([dx, dz]) => ({ dx, dz, h: down(S, sp.x + dx, sp.z + dz, pl.sv.yMax + 1) }));
+    const legs = [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]].map(([dx, dz]) => ({ dx, dz, h: down(S, sp.x + dx, sp.z + dz, yStart) }));
     if (legs.filter(l => l.h && l.h.n.y > 0.3).length < 4) return;
     const deck = Math.max(...legs.map(l => l.h.p.y)) + 0.14;
     for (const l of legs) { tube(st, l.h.p.clone().add(V3(0, -0.01, 0)), V3(sp.x + l.dx, deck, sp.z + l.dz), 0.016, 6); weldPlate(st, l.h.p, l.h.n, 0.07); }

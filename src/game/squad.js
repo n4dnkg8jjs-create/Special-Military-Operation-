@@ -213,7 +213,7 @@ export class Squad {
     men.sort((a, b) => (a.pos.z * dx - a.pos.x * dz) - (b.pos.z * dx - b.pos.x * dz));   // right to left = the offset's sign (left normal)
     men.forEach((s, i) => {
       s.shareTok = null;
-      const off = THREE.MathUtils.clamp((i - (men.length - 1) / 2) * 1.3, -3.2, 3.2) + (Math.random() - 0.5) * 0.5;
+      const off = THREE.MathUtils.clamp((i - (men.length - 1) / 2) * 1.2, -2.4, 2.4) + (Math.random() - 0.5) * 0.4;
       const p = P && this.offsetPath(s, P, off);
       if (p) { s.path = p; s.pathI = 0; s.pathReq = null; this.navN = (this.navN || 0) + 1; }
       else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, opts);
@@ -230,7 +230,7 @@ export class Squad {
       let ux = b[0] - a[0], uz = b[1] - a[1], ul = Math.hypot(ux, uz) || 1, vx = c[0] - b[0], vz = c[1] - b[1], vl = Math.hypot(vx, vz) || 1;
       let nx = -(uz / ul + vz / vl), nz = ux / ul + vx / vl; const nl = Math.hypot(nx, nz);
       if (nl < 0.2) { nx = -uz / ul; nz = ux / ul; } else { nx /= nl; nz /= nl; }
-      const cosHalf = Math.max(0.5, nx * (-uz / ul) + nz * (ux / ul));   // keep the leg parallel through the bend
+      const cosHalf = Math.max(0.7, nx * (-uz / ul) + nz * (ux / ul));   // keep the leg parallel through the bend
       let q = null;
       for (const f of [1, 0.5, 0]) {
         const o = off * f / cosHalf, qx = b[0] + nx * o, qz = b[1] + nz * o, k = nav.idx(qx, qz);
@@ -250,7 +250,11 @@ export class Squad {
       out.push([e[0], e[1]]);
     }
     out.push([goal[0], goal[1]]);
-    return out;
+    // not much longer than the shared route itself from where he stands (else his own A* is better)
+    let L = 0, Ls = Math.hypot(P[0][0] - s.pos.x, P[0][1] - s.pos.z) + Math.hypot(goal[0] - P[n - 1][0], goal[1] - P[n - 1][1]);
+    for (let j = 1; j < n; j++) Ls += Math.hypot(P[j][0] - P[j - 1][0], P[j][1] - P[j - 1][1]);
+    for (let j = 0; j < out.length; j++) L += Math.hypot(out[j][0] - (j ? out[j - 1][0] : s.pos.x), out[j][1] - (j ? out[j - 1][1] : s.pos.z));
+    return L > Ls * 1.08 + 2 ? null : out;
   }
   // the building facade a point stands in front of (within 5 m of it, not past its corners): its outward normal and length,
   // at(along, out) -> world point, on(x, z) -> is that point in front of the same facade (between its corners + 1.5 m, 0.3-7 m out)

@@ -135,7 +135,7 @@ def blades(cv, r, count, length, width, colfn, hfn, dens=None, angle=None, droop
 
 
 # brightness match: the grade was tuned on the old sets' final ground colours (old ground shader output)
-GAIN = {'dirt': 1.15, 'grass': 1.45, 'fallow': 1.35, 'stubble': 1.12, 'rubble': 1.3, 'plowed': 1.0, 'mud': 1.0}
+GAIN = {'dirt': 1.15, 'grass': 1.32, 'fallow': 1.25, 'stubble': 1.12, 'rubble': 1.3, 'plowed': 1.0, 'mud': 1.0}
 
 
 def finish(name, alb, h, rough, nstr, ao_amt=0.35, n_out=512):
@@ -244,7 +244,7 @@ def grass():
         straw = lerp(col([0.44, 0.4, 0.28]), col([0.6, 0.55, 0.4]), t)
         olive = lerp(col([0.27, 0.29, 0.18]), col([0.42, 0.43, 0.28]), t)
         grey = lerp(col([0.4, 0.41, 0.35]), col([0.55, 0.56, 0.49]), t)
-        c = lerp(straw, olive, 0.25 + 0.5 * p) if r.random() > 0.2 else grey
+        c = lerp(straw, olive, 0.4 + 0.5 * p) if r.random() > 0.2 else grey
         return c * (0.75 + 0.35 * t)
     # dead thatch mat underneath (dark grey-brown, matted)
     blades(cv, r, 30000, 14, 1.6, lambda t, x, y: lerp(col([0.2, 0.18, 0.13]), col([0.34, 0.31, 0.23]), t), lambda t, x, y: 0.25 + 0.2 * t, dens=np.clip(dens + 0.3, 0, 1), droop=0.4)
