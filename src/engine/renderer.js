@@ -28,7 +28,7 @@ const WarGradeShader = {
     sat: { value: 0.74 }, satHi: { value: 0.64 }, contrast: { value: 0.28 }, black: { value: 0.022 }, gamma: { value: 1.0 },
     shadowTint: { value: new THREE.Vector3(0.9, 0.99, 1.02) }, highTint: { value: new THREE.Vector3(1.05, 1.0, 0.9) },
     veil: { value: new THREE.Vector3(0.62, 0.6, 0.55) }, veilAmt: { value: 0.045 },
-    vig: { value: 0.36 }, grain: { value: 0.045 },
+    vig: { value: 0.36 }, grain: { value: 0.02 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform float time, flash, sat, satHi, contrast, black, gamma, veilAmt, vig, grain;
@@ -159,8 +159,8 @@ export class Renderer {
       this.grade = new ShaderPass(WarGradeShader);
       const u = this.grade.uniforms;
       // low: same curve, lighter grain / vignette (it is one cheap full-screen pass either way)
-      if (lo) { u.grain.value = 0.03; u.vig.value = 0.36; }
-      if (hi) u.grain.value = 0.05;
+      if (lo) { u.grain.value = 0.014; u.vig.value = 0.36; }
+      if (hi) u.grain.value = 0.022;
       comp.addPass(this.grade);
     } else {
       this.grade = new ShaderPass(GradeShader);
@@ -176,9 +176,9 @@ export class Renderer {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     this.r.setSize(innerWidth, innerHeight); this.composer.setSize(innerWidth, innerHeight); this.sizeGrade();
   }
-  // ---- adaptive resolution: full resolution whenever the GPU keeps up; when the frame rate stays below ~45 fps and the
+  // ---- adaptive resolution: full resolution whenever the GPU keeps up; when the frame rate stays below ~30 fps and the
   // time is NOT going into the simulation (frame interval much longer than the JS work before render: the GPU / fill
-  // rate is the limit), the internal render resolution steps down (x0.85, at most to 0.6 of the preset's pixel ratio);
+  // rate is the limit), the internal render resolution steps down (x0.9, at most to 0.8 of the preset's pixel ratio; only below ~30 fps);
   // it steps back up as soon as there is headroom again. The canvas keeps its size (CSS scales it). Off: ?dynres=0 or
   // localStorage smo_dynres=0; off by default under automation (headless screenshot tools), ?dynres=1 forces it on.
   dynFrame(simMs) {
@@ -190,8 +190,8 @@ export class Renderer {
     if (now - D.t0 < 1500 || D.n < 8) return;
     const avg = D.int / D.n, sim = D.sim / D.n; D.n = 0; D.int = 0; D.sim = 0; D.t0 = now;
     let s = D.scale;
-    if (avg > 22 && avg - sim > 12 && s > 0.62) { s = Math.max(0.6, s * 0.85); if (now - (D.upAt || -1e9) < 5000) D.upBlockUntil = now + 20000; }   // (the last step up was one too many: wait before trying again)
-    else if (avg < 18.5 && s < 1 && now > D.upBlockUntil) { s = Math.min(1, s / 0.85); D.upAt = now; }
+    if (avg > 33 && avg - sim > 18 && s > 0.81) { s = Math.max(0.8, s * 0.9); if (now - (D.upAt || -1e9) < 5000) D.upBlockUntil = now + 20000; }   // (the last step up was one too many: wait before trying again)
+    else if (avg < 26 && s < 1 && now > D.upBlockUntil) { s = Math.min(1, s / 0.9); D.upAt = now; }
     if (s !== D.scale) { D.scale = s; this.r.setPixelRatio(D.base * s); this.r.setSize(innerWidth, innerHeight); this.composer.setPixelRatio(D.base * s); this.sizeGrade(); }
   }
   sizeGrade() { const r = this.grade?.uniforms.res; if (r) r.value.set(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio()); }
