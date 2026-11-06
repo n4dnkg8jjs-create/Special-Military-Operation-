@@ -29,6 +29,26 @@ const NSTR = { dirt: 0.8, grass: 0.7, mud: 0.8, rubble: 0.9, fallow: 0.8, plowed
 const one = (r, g, b, a, srgb) => { const t = new THREE.DataTexture(new Uint8Array([r, g, b, a]), 1, 1, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t; };
 const black = () => one(0, 0, 0, 255);
 
+// the 7 ground sets packed into two DataArrayTextures: albedo (sRGB, 1024^2) and NHR (linear, 512^2); a missing set
+// gets its stand-in's colour
+function groundArrays(T) {
+  const aniso = Math.max(1, ...GROUND_SETS.map(s => T.ground?.[s]?.c?.anisotropy || 1));
+  const mk = (k, S, srgb) => {
+    const N = GROUND_SETS.length, data = new Uint8Array(S * S * 4 * N), cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const x = cv.getContext('2d', { willReadFrequently: true });
+    GROUND_SETS.forEach((s, i) => {
+      const im = setTex(T, s)[k].image, o = i * S * S * 4;
+      if (im && !im.data && (im.width || im.naturalWidth)) { x.clearRect(0, 0, S, S); x.drawImage(im, 0, 0, S, S); data.set(x.getImageData(0, 0, S, S).data, o); }
+      else { const d = im?.data || [128, 128, 128, 255]; for (let p = 0; p < S * S * 4; p += 4) { data[o + p] = d[0]; data[o + p + 1] = d[1]; data[o + p + 2] = d[2]; data[o + p + 3] = d[3]; } }
+    });
+    const a = new THREE.DataArrayTexture(data, S, S, N);
+    a.wrapS = a.wrapT = THREE.RepeatWrapping; a.magFilter = THREE.LinearFilter; a.minFilter = THREE.LinearMipmapLinearFilter;
+    a.generateMipmaps = true; a.anisotropy = aniso; if (srgb) a.colorSpace = THREE.SRGBColorSpace; a.needsUpdate = true;
+    return a;
+  };
+  return { c: mk(0, 1024, true), n: mk(1, 512, false) };
+}
+
 // [colour, nhr] textures of a set, with stand-ins (old texture set's albedo, flat NHR) if the files are missing
 function setTex(T, name) {
   const g = T.ground?.[name];
@@ -45,24 +65,24 @@ const HEAD = `
   vec2 gDX, gDY;                         // world derivatives of wp (taken in uniform control flow)
   vec2 gSlope = vec2(0.0); float gRough = 1.0;
   // anti-tiled sample of one set: c = albedo + height, n = slope xy, height, roughness
-  void gSample(sampler2D tc, sampler2D tn, vec2 uv, vec2 dx, vec2 dy, float seed, float rows, out vec4 c, out vec4 n) {
+  void gSample(float L, vec2 uv, vec2 dx, vec2 dy, float seed, float rows, out vec4 c, out vec4 n) {
     float k = vn(uv * 0.21 + seed) * 5.0 + vn(uv * 0.67 - seed) * 2.0;
     float ia = floor(k), f = fract(k);
     vec2 oa = sin(vec2(3.0, 7.0) * (ia + seed)), ob = sin(vec2(3.0, 7.0) * (ia + 1.0 + seed));
     oa.x *= 1.0 - rows; ob.x *= 1.0 - rows;      // row crops: shift only along the rows
-    vec4 na = textureGrad(tn, uv + oa, dx, dy), nb = textureGrad(tn, uv + ob, dx, dy);
+    vec4 na = textureGrad(tGN, vec3(uv + oa, L), dx, dy), nb = textureGrad(tGN, vec3(uv + ob, L), dx, dy);
     float b = smoothstep(0.2, 0.8, f + (nb.b - na.b) * 0.7);
-    vec3 ca = textureGrad(tc, uv + oa, dx, dy).rgb, cb = textureGrad(tc, uv + ob, dx, dy).rgb;
+    vec3 ca = textureGrad(tGC, vec3(uv + oa, L), dx, dy).rgb, cb = textureGrad(tGC, vec3(uv + ob, L), dx, dy).rgb;
     n = mix(na, nb, b); c = vec4(mix(ca, cb, b), n.b);
   }`;
 
 // one material: sample when weight > 0 (or always), into c<ID> / n<ID>
 function sampleGLSL(id, set, w, { uv = 'wp', swap = false, rows = false, always = false } = {}) {
-  const t = TILE[set], tex = { dirt: 'tDirt', grass: 'tGrass', mud: 'tMud', rubble: 'tRubble', fallow: 'tFallow', plowed: 'tPlow', stubble: 'tStub' }[set];
+  const t = TILE[set], L = GROUND_SETS.indexOf(set).toFixed(1);
   const dx = swap ? `(${swap} > 0.5 ? gDX.yx : gDX)` : 'gDX', dy = swap ? `(${swap} > 0.5 ? gDY.yx : gDY)` : 'gDY', seed = (GROUND_SETS.indexOf(set) * 1.37 + 0.4).toFixed(2);
   return `
           vec4 c${id} = vec4(0.3, 0.27, 0.22, 0.5), n${id} = vec4(0.5, 0.5, 0.5, 0.95);
-          ${always ? '' : `if (${w} > 0.003)`} gSample(${tex}, ${tex}N, ${uv} / ${t.toFixed(2)}, ${dx} / ${t.toFixed(2)}, ${dy} / ${t.toFixed(2)}, ${seed}, ${rows ? '1.0' : '0.0'}, c${id}, n${id});
+          ${always ? '' : `if (${w} > 0.003)`} gSample(${L}, ${uv} / ${t.toFixed(2)}, ${dx} / ${t.toFixed(2)}, ${dy} / ${t.toFixed(2)}, ${seed}, ${rows ? '1.0' : '0.0'}, c${id}, n${id});
           ${swap ? `if (${swap} > 0.5) n${id}.xy = n${id}.yx;` : ''}
           n${id}.xy = (n${id}.xy * 2.0 - 1.0) * ${NSTR[set].toFixed(2)};`;
 }
@@ -98,18 +118,20 @@ export function groundMaterial(host, terrain, rural, MAPSZ) {
   m.defines = terrain ? { TERRAIN_MESH: '' } : { GROUND_HOLE: '' };
   const key = (rural ? 'farm_' : 'city_') + (terrain ? 'terrain' : 'ground') + '_v7';
   m.customProgramCacheKey = () => key;
-  const tx = {}; for (const s of GROUND_SETS) [tx[s], tx[s + 'N']] = setTex(T, s);
   const U = host.groundUniforms ||= { tSplat: { value: null }, tRows: { value: null }, splatSize: { value: MAPSZ }, tHole: { value: black() }, tWar: { value: black() } };
-  const names = { dirt: 'tDirt', grass: 'tGrass', mud: 'tMud', rubble: 'tRubble', fallow: 'tFallow', plowed: 'tPlow', stubble: 'tStub' };
-  for (const s of GROUND_SETS) { U[names[s]] ||= { value: tx[s] }; U[names[s] + 'N'] ||= { value: tx[s + 'N'] }; }
+  // all 7 sets in two texture arrays (albedo / NHR): 2 samplers instead of 14. With 14 the shader needed 21-22
+  // samplers (+ splat, hole, rows, war, env, dfg, shadow, real.js tSoft) - over the 16 that most GPUs allow under
+  // WebGL (ANGLE / D3D11, many Macs): the ground program failed to link there and the ground was invisible
+  if (!U.tGC) { const A = groundArrays(T); U.tGC = { value: A.c }; U.tGN = { value: A.n }; }
+  U.tDirt ||= { value: black() };   // (declared, unused: the anchor real.js patches 'uniform sampler2D tDirt,' on)
   U.tRows ||= { value: null }; if (!U.tRows.value) U.tRows.value = black();
   if (!U.tSplat.value) U.tSplat.value = black();
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        varying vec3 vWPos; uniform sampler2D tDirt, tGrass, tRubble, tMud, tFallow, tPlow, tStub, tSplat, tHole, tRows;
-        uniform sampler2D tDirtN, tGrassN, tRubbleN, tMudN, tFallowN, tPlowN, tStubN; uniform float splatSize;
+        varying vec3 vWPos; uniform sampler2D tDirt, tSplat, tHole, tRows;
+        uniform highp sampler2DArray tGC, tGN; uniform float splatSize;
         ${WAR_GROUND_DECL}
         ${HEAD}`)
       .replace('#include <map_fragment>', `
