@@ -66,6 +66,17 @@ export function gradeEnabled() {
   try { const q = new URLSearchParams(location.search).get('grade'); if (q != null) return q !== '0'; return localStorage.getItem('smo_grade') !== '0'; } catch { return true; }
 }
 
+// context capabilities other modules pick their draw path by (world/buildings.js: BatchedMesh kit when multi-draw exists)
+export const CAPS = { multiDraw: false };
+// ---- static shadow cache.  Opaque world geometry that never moves (panel-block kit, interiors, instanced props / rubble /
+// curbs / trunks: markStatic) is drawn into a cached depth target with the sun's shadow camera only when that camera
+// moved (the focus crossed a 2 m snap step) or a static changed (instances added / removed / moved, LOD visibility:
+// checked by a per-frame signature); every frame the cached depth is blitted into the shadow map right after three
+// clears it and only the other casters (units, vehicles, wrecks, foliage cards, fx) are drawn on top.  The shadow map is
+// the same texture as without the cache.  ?shadowcache=0 / localStorage smo_shadowcache=0: off.
+export const STATIC_SHADOW = new Set();
+export function markStatic(o) { if (o && !STATIC_SHADOW.has(o)) { STATIC_SHADOW.add(o); o.layers.enable(3); } }
+function shadowCacheOn() { try { const q = new URLSearchParams(location.search).get('shadowcache'); if (q != null) return q !== '0'; return localStorage.getItem('smo_shadowcache') !== '0'; } catch { return true; } }
 export class Renderer {
   constructor(canvas, quality) {
     this.quality = quality;
@@ -78,6 +89,7 @@ export class Renderer {
     this.r.toneMapping = THREE.NeutralToneMapping;
     this.r.toneMappingExposure = 1.0;
     this.r.outputColorSpace = THREE.SRGBColorSpace;
+    CAPS.multiDraw = this.r.extensions.has('WEBGL_multi_draw');
 
     const scene = this.scene = new THREE.Scene();
     const graded = this.graded = gradeEnabled();
@@ -169,8 +181,42 @@ export class Renderer {
       if (!lo) comp.addPass(new SMAAPass());
     }
     this.sizeGrade();
+    if (!lo && shadowCacheOn()) this.installShadowCache();
 
     addEventListener('resize', () => this.resize());
+  }
+  installShadowCache() {
+    const r = this.r, gl = r.getContext(), sm = r.shadowMap, sun = this.sun, base = sm.render;
+    const camC = new THREE.OrthographicCamera(), depthMat = new THREE.MeshDepthMaterial({ side: THREE.BackSide });   // (three draws FrontSide casters' back faces into shadow maps)
+    const pv = new THREE.Matrix4(), lastPV = new THREE.Matrix4(); let rt = null, sig0 = NaN, cacheOk = false;
+    const C = this.shadowCache = { renders: 0, frames: 0 };
+    const blit = map => {
+      const src = r.properties.get(rt).__webglFramebuffer, dst = r.properties.get(map).__webglFramebuffer; if (!src || !dst) return;
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst);
+      gl.blitFramebuffer(0, 0, rt.width, rt.height, 0, 0, rt.width, rt.height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst);   // (three's state cache has dst bound to FRAMEBUFFER = read + draw)
+    };
+    sm.render = function (lights, scene, camera) {
+      const sh = sun.shadow;
+      if (!STATIC_SHADOW.size || !lights.includes(sun) || !sm.enabled || !sun.castShadow || !sh.map || (sm.autoUpdate === false && sm.needsUpdate === false)) return base.call(this, lights, scene, camera);
+      sh.updateMatrices(sun, camera); pv.multiplyMatrices(sh.camera.projectionMatrix, sh.camera.matrixWorldInverse);
+      // signature of the static set: visibility, instance counts / matrix versions, kit batch versions
+      let sig = 0;
+      for (const o of STATIC_SHADOW) { let vis = o.visible, root = o; for (let p = o.parent; p; p = p.parent) { vis &&= p.visible; root = p; } if (root !== scene) { STATIC_SHADOW.delete(o); continue; } sig = (sig * 31 + (vis ? 1 + (o.count ?? 0) + (o.instanceMatrix?.version ?? 0) * 7 + (o.kv ?? 0) * 13 : 0)) | 0; }
+      const w = sh.map.width, h = sh.map.height;
+      if (!rt || rt.width !== w || rt.height !== h) { rt?.dispose(); rt = new THREE.WebGLRenderTarget(w, h, { depthTexture: new THREE.DepthTexture(w, h, THREE.UnsignedIntType) }); cacheOk = false; }
+      if (!cacheOk || sig !== sig0 || !pv.equals(lastPV)) {
+        const prev = r.getRenderTarget(), ov = scene.overrideMaterial, ar = r.info.autoReset, au = sm.autoUpdate;
+        camC.copy(sh.camera); camC.layers.set(3); sm.autoUpdate = false; r.info.autoReset = false; scene.overrideMaterial = depthMat;
+        const off = []; for (const o of STATIC_SHADOW) if (!o.castShadow && o.visible) { o.visible = false; off.push(o); }   // (statics that do not cast)
+        try { r.setRenderTarget(rt); r.clear(); r.render(scene, camC); } finally { for (const o of off) o.visible = true; scene.overrideMaterial = ov; sm.autoUpdate = au; r.info.autoReset = ar; r.setRenderTarget(prev); }
+        sig0 = sig; lastPV.copy(pv); cacheOk = true; C.renders++;
+      }
+      C.frames++;
+      for (const o of STATIC_SHADOW) { o.userData.cs0 = o.castShadow; o.castShadow = false; }
+      const clr = r.clear; r.clear = function (...a) { clr.apply(this, a); if (r.getRenderTarget() === sh.map) blit(sh.map); };
+      try { base.call(this, lights, scene, camera); } finally { r.clear = clr; for (const o of STATIC_SHADOW) o.castShadow = o.userData.cs0; }
+    };
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();

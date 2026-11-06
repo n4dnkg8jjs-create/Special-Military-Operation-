@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
-import { Building, KitPool, setKitCell } from './buildings.js';
-import { instance, trs, LODS, farLod } from './instancer.js';
+import { Building, KitPool, setKitCell, makeKitPool } from './buildings.js';
+import { instance, trs, LODS, farLod, treeLod } from './instancer.js';
 import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { MAPS } from './maps.js';
+import { markStatic } from '../engine/renderer.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 
@@ -673,7 +674,7 @@ export class City {
   // ---------------------------------------------------------------- buildings
   placeBuildings() {
     const kit = this.assets.kit;
-    this.pool = new KitPool(this.scene, kit);
+    this.pool = makeKitPool(this.scene, kit);
     const signNames = Object.keys(kit.pieces).filter(k => /^sign_.*_intact$/.test(k));
     for (const [x, z, rot, modules, floors, depthModules, sections, kind, dmg, extra] of this.buildingRows || BUILDINGS) {
       const b = new Building({ x, z, rot, modules, floors, depthModules, sections, kind, ...(extra || {}), signNames }, kit);
@@ -705,6 +706,7 @@ export class City {
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x3b3934, roughness: 0.9 });
     const roofs = new THREE.InstancedMesh(box, roofMat, Math.max(1, counters.roofs.length)); counters.roofs.forEach((m, i) => roofs.setMatrixAt(i, m));
     roofs.castShadow = roofs.receiveShadow = true; this.scene.add(roofs); this.roofMesh = roofs; this.falling = [];
+    for (const m of [slab, dark, roofs]) { m.matrixAutoUpdate = false; markStatic(m); }   // (cached static shadow: engine/renderer.js)
     // nav + occluders (one per contiguous standing part; pancaked gap leaves a passage)
     for (const b of this.buildings) {
       const { W } = kit;
@@ -886,7 +888,7 @@ export class City {
   flushTrees() {
     for (const v of Object.values(this._treesBy || {})) {
       const m = v.m.filter(M => { const u = M.userData; if (!u || !this.solidHit(u[0], u[1], u[2], u[2], 0, 0, k => !ROOFED.test(k))) return true; this.nav.circle(u[0], u[1], 0.5, 1); return false; });
-      if (m.length) instance(this.scene, v.t, m);
+      if (m.length) instance(this.scene, v.t, m, treeLod(v.t));
     }
     this._treesBy = null;
   }
@@ -1374,12 +1376,12 @@ export class City {
   }
   updateFalling(dt) {
     if (!this.falling.length) return;
-    const pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), e = new THREE.Euler();
+    const T = this._fallTmp ||= { pos: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), sc: new THREE.Vector3(), e: new THREE.Euler() }, { pos, q, sc, e } = T;
     for (const f of this.falling) {
       f.t += dt; if (f.t < 0) continue;
       f.v += 9.8 * dt;
       f.m.decompose(pos, q, sc); pos.y -= f.v * dt; pos.addScaledVector(f.out, dt * 0.8);
-      e.set(f.rx * dt, 0, f.rz * dt); q.multiply(new THREE.Quaternion().setFromEuler(e));
+      e.set(f.rx * dt, 0, f.rz * dt); q.multiply(T.q2.setFromEuler(e));
       f.m.compose(pos, q, sc); this.pool.setMatrix(f.p, f.m);
       if (pos.y < -3.5) { f.b.setGone(f.p); f.done = true; }
     }

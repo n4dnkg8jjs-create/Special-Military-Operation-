@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary } from './city.js';
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
-import { instance, trs, LODS } from './instancer.js';
+import { instance, trs, LODS, treeLod } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv } from './wear.js';
@@ -670,7 +670,7 @@ const Real = {
     for (const [n, mats] of by) {
       const t = this.tpl(n); if (!t) continue;
       const lod = lodOf(n) ? this.tpl(lodOf(n)) : null, mid = this.hasTpl(n + '_mid') ? this.tpl(n + '_mid') : null;
-      instance(this.scene, t, mats, lod ? { lod, mid: mid || lod, nearDist: 14, lodDist: mid ? 175 : 80, cullDist: 1500, coarse: 3, cell: 180, midShadows: !/bush/.test(n), lodShadows: false } : { cell: 180, cullDist: 700 });
+      instance(this.scene, t, mats, lod ? { lod, mid: mid || lod, nearDist: 14, lodDist: mid ? 175 : 80, cullDist: 1500, coarse: 3, cell: 180, midShadows: !/bush/.test(n), lodShadows: false } : { cell: 180, cullDist: 700, ...treeLod(t, 100, 220) });
     }
   },
   // ---------------------------------------------------------------- rail: ballast, sleepers, rails, platforms

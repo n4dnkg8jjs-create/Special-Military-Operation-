@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { simplifier } from './instancer.js';
+import { CAPS, markStatic } from '../engine/renderer.js';
 
 // Soviet large-panel apartment blocks assembled from kit panels drawn with InstancedMesh.
 // Each panel has a damage state (0 intact, 1 damaged, 2 holed, 3 destroyed) that shells can raise at runtime.
@@ -54,6 +56,167 @@ export class KitPool {
   }
   // recompute bounding spheres of groups that changed (call once per frame / after edits)
   finish() { for (const g of this.dirty) for (const m of g.meshes) if (m.count) { m.computeBoundingSphere(); m.boundingSphere.radius += 3; } this.dirty.clear(); }
+}
+
+// ---- KitBatch: same API as KitPool, drawn with BatchedMesh (WEBGL_multi_draw): ONE draw call per (cell, material)
+// for every kit piece / damage state / variant in the cell, instead of one per (piece, state, variant, part, cell)
+// (the city drew ~60 InstancedMeshes per cell, x2 with the shadow pass).  All cells share one vertex / index buffer per
+// material (every piece geometry stored once, like instancing).  Per instance: cached world bounding sphere for culling
+// against the camera / shadow frustum, and a distance LOD: damaged / holed / destroyed pieces (800-1700 triangles of
+// rubble edges, rebar, crumbs) switch to a meshopt-simplified copy (absolute error FAR_ERR) beyond FAR_D (~0.15 px
+// there), and the shadow pass draws the SHADOW_ERR copy (sub-texel: the shadow map has ~6-11 cm texels and a ~17 cm
+// depth bias).  Intact pieces (~150 triangles, nothing to simplify) keep their mesh.  Same materials, same per-instance
+// colour: the image is the same as with instancing.  Without WEBGL_multi_draw (three would issue one draw per instance)
+// the KitPool path is used.
+let FAR_D = 130, FAR_ERR = 0.02, SHADOW_ERR = 0.03;
+const WHITE = new THREE.Color(1, 1, 1), _bs = new THREE.Sphere();
+class KitBM extends THREE.BatchedMesh {
+  constructor(cap, src, material) {
+    super(cap, 1, 2, material);
+    this.geometry.dispose(); this.geometry = src.geometry;   // share the master's packed geometry (never initialised here)
+    this._geometryInfo = src._geometryInfo; this._geometryCount = src._geometryCount; this._geometryInitialized = true;
+    this._maxVertexCount = src._maxVertexCount; this._maxIndexCount = src._maxIndexCount; this._nextVertexStart = src._nextVertexStart; this._nextIndexStart = src._nextIndexStart;
+    this.src = src; this.kv = 0; this.sph = new Float32Array(cap * 4); this.perObjectFrustumCulled = true; this.sortObjects = false;
+    this.matrixAutoUpdate = false; this.castShadow = this.receiveShadow = true; this.visible = false;
+  }
+  grow(n) { this.setInstanceCount(n); const s = new Float32Array(n * 4); s.set(this.sph.subarray(0, Math.min(this.sph.length, s.length))); this.sph = s; }
+  place(id, m, gid) {   // matrix + cached world-space bounding sphere of the instance
+    this.setMatrixAt(id, m); this.kv++; const s = this.src.spheres[gid]; _bs.copy(s).applyMatrix4(m);
+    const o = id * 4; this.sph[o] = _bs.center.x; this.sph[o + 1] = _bs.center.y; this.sph[o + 2] = _bs.center.z; this.sph[o + 3] = _bs.radius;
+  }
+  // replaces BatchedMesh's per-pass draw list (r187 internals: _instanceInfo, _geometryInfo, _multiDraw*, _indirectTexture):
+  // cached spheres instead of matrix decode per instance, no sort, LOD / shadow geometry per instance
+  _updateDrawParameters(camera, geometry) {
+    const shadow = !!camera.isOrthographicCamera, info = this._instanceInfo, gi = this._geometryInfo, src = this.src, lod = shadow ? src.shadowOf : src.farOf;
+    const starts = this._multiDrawStarts, counts = this._multiDrawCounts, ind = this._indirectTexture.image.data, sph = this.sph;
+    const bpe = geometry.getIndex().array.BYTES_PER_ELEMENT;
+    _frustum.setFromProjectionMatrix(_pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse), camera.coordinateSystem, camera.reversedDepth);
+    const pl = _frustum.planes, cx = camera.matrixWorld.elements[12], cy = camera.matrixWorld.elements[13], cz = camera.matrixWorld.elements[14], far2 = FAR_D * FAR_D;
+    let n = 0;
+    for (let i = 0, l = info.length; i < l; i++) {
+      const it = info[i]; if (!it.active || !it.visible) continue;
+      const o = i * 4, x = sph[o], y = sph[o + 1], z = sph[o + 2], r = -sph[o + 3];
+      if (pl[0].normal.x * x + pl[0].normal.y * y + pl[0].normal.z * z + pl[0].constant < r || pl[1].normal.x * x + pl[1].normal.y * y + pl[1].normal.z * z + pl[1].constant < r
+        || pl[2].normal.x * x + pl[2].normal.y * y + pl[2].normal.z * z + pl[2].constant < r || pl[3].normal.x * x + pl[3].normal.y * y + pl[3].normal.z * z + pl[3].constant < r
+        || pl[4].normal.x * x + pl[4].normal.y * y + pl[4].normal.z * z + pl[4].constant < r || pl[5].normal.x * x + pl[5].normal.y * y + pl[5].normal.z * z + pl[5].constant < r) continue;
+      let g = it.geometryIndex;
+      if (shadow) g = lod[g]; else if ((x - cx) * (x - cx) + (y - cy) * (y - cy) + (z - cz) * (z - cz) > far2) g = lod[g];
+      const G = gi[g]; starts[n] = G.start * bpe; counts[n] = G.count; ind[n] = i; n++;
+    }
+    this._indirectTexture.needsUpdate = true; this._multiDrawCount = n; this._multiDrawBytesPerElement = bpe; this._visibilityChanged = false;
+  }
+}
+const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4();
+// float, non-interleaved, indexed position / normal / uv copy (BatchedMesh needs identical attribute layouts)
+function plainGeo(src) {
+  const g = new THREE.BufferGeometry(), n = src.attributes.position.count;
+  for (const [k, s] of [['position', 3], ['normal', 3], ['uv', 2]]) {
+    const a = src.attributes[k], d = new Float32Array(n * s);
+    if (a) for (let i = 0; i < n; i++) for (let c = 0; c < s; c++) d[i * s + c] = a.getComponent(i, c);
+    g.setAttribute(k, new THREE.BufferAttribute(d, s));
+  }
+  if (!src.attributes.normal) g.computeVertexNormals();
+  g.setIndex(src.index ? Array.from(src.index.array) : [...Array(n).keys()]);
+  return g;
+}
+function simplifyIndex(g, err) {
+  const S = simplifier(); if (!S || g.index.count < 600) return null;   // (intact pieces: ~150 triangles, nothing to gain)
+  const [res] = S.simplify(new Uint32Array(g.index.array), g.attributes.position.array, 3, 0, err, ['ErrorAbsolute']);
+  if (res.length > g.index.count * 0.9) return null;
+  const c = new THREE.BufferGeometry(); for (const k of ['position', 'normal', 'uv']) c.setAttribute(k, g.attributes[k]); c.setIndex(Array.from(res)); return c;
+}
+// the weathering shader (wear.js) derives world position / normal from instanceMatrix only: add the batching matrix
+function batchAware(m) {
+  if (m.userData.batchAware) return; m.userData.batchAware = true;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
+    if (/varying vec3 vWxP/.test(sh.vertexShader) && /varying vec3 vWxN/.test(sh.vertexShader)) sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#ifdef USE_BATCHING
+      { vec4 bwp = batchingMatrix * vec4(transformed, 1.0); vWxP = (modelMatrix * bwp).xyz; vWxN = normalize(mat3(modelMatrix) * (mat3(batchingMatrix) * objectNormal)); }
+      #endif
+      #include <project_vertex>`);
+  };
+  m.needsUpdate = true;
+}
+export class KitBatch {
+  constructor(scene, kit) { this.scene = scene; this.kit = kit; this.req = new Map(); this.masters = new Map(); this.cells = new Map(); this.dirty = new Set(); this.batched = true; }
+  static cellOf(x, z) { return KitPool.cellOf(x, z); }
+  request(piece, n = 1, cell = '0,0') { const k = piece + '|' + cell; this.req.set(k, (this.req.get(k) || 0) + n); }
+  build() {
+    // geometry per material: every part of every requested piece (+ its far / shadow LOD copies)
+    const pieces = new Set(), capBy = new Map();
+    for (const [k, n] of this.req) {
+      const [piece, cell] = k.split('|'); const parts = this.kit.pieces[piece]; if (!parts) { console.warn('kit piece missing', piece); continue; }
+      pieces.add(piece); for (const p of parts) { const ck = cell + '|' + p.material.uuid; capBy.set(ck, (capBy.get(ck) || 0) + n); }
+    }
+    const geos = new Map();   // material -> [[part geometry, plain, far, shadow]]
+    for (const piece of pieces) for (const p of this.kit.pieces[piece]) {
+      if (p.geometry.userData.kbG) continue;
+      const g = plainGeo(p.geometry), far = simplifyIndex(g, FAR_ERR), sh = simplifyIndex(g, SHADOW_ERR);
+      p.geometry.userData.kbG = true; (geos.get(p.material) || geos.set(p.material, []).get(p.material)).push([p.geometry, g, far, sh]);
+    }
+    for (const [mat, list] of geos) {
+      let nv = 0, ni = 0; for (const [, g, f, s] of list) { nv += g.attributes.position.count; ni += g.index.count + (f ? f.index.count : 0) + (s ? s.index.count : 0); }
+      const M = new THREE.BatchedMesh(1, nv, ni, mat); M.ids = new Map(); M.farOf = []; M.shadowOf = []; M.spheres = [];
+      for (const [orig, g, f, s] of list) {
+        g.computeBoundingSphere(); const id = M.addGeometry(g); M.ids.set(orig, id);
+        // LOD copies share the vertex range: reserve no vertices, only the simplified index list (addGeometry would copy
+        // the vertices again; setGeometryAt-free path: write the indices behind the main ones)
+        const lods = [f, s].map(x => x ? this.addIndexOnly(M, id, x) : id);
+        for (const q of [id, ...lods]) M.spheres[q] = g.boundingSphere;
+        M.farOf[id] = lods[0]; M.shadowOf[id] = lods[1]; M.farOf[lods[0]] = lods[0]; M.shadowOf[lods[1]] = lods[1];
+      }
+      for (const a of [...Object.values(M.geometry.attributes), M.geometry.index]) { a.clearUpdateRanges(); a.needsUpdate = true; }   // (first upload: whole buffers)
+      this.masters.set(mat, M); batchAware(mat);
+    }
+    this.capBy = capBy;
+  }
+  // an extra "geometry" entry that indexes an existing geometry's vertices with another (simplified) index list
+  addIndexOnly(M, base, g) {
+    const info = M._geometryInfo[base], idx = M.geometry.getIndex(), start = M._nextIndexStart, src = g.index.array;
+    for (let i = 0; i < src.length; i++) idx.array[start + i] = src[i] + info.vertexStart;
+    idx.needsUpdate = true; M._nextIndexStart += src.length;
+    const id = M._geometryInfo.length;
+    M._geometryInfo.push({ ...info, indexStart: start, indexCount: src.length, reservedIndexCount: src.length, start, count: src.length, boundingBox: null, boundingSphere: null });
+    M._geometryCount++;
+    return id;
+  }
+  bm(cell, mat) {
+    const k = cell + '|' + mat.uuid; let b = this.cells.get(k); if (b) return b;
+    const M = this.masters.get(mat); if (!M) return null;
+    b = new KitBM(Math.max(8, this.capBy.get(k) || 64), M, mat); b.name = 'kit|' + cell + '|' + (mat.name || ''); this.scene.add(b); this.cells.set(k, b); markStatic(b);
+    return b;
+  }
+  add(piece, matrix, owner, color) {
+    const parts = this.kit.pieces[piece]; if (!parts) return -1;
+    const ids = [];
+    for (const p of parts) {
+      const b = this.bm(owner.cell || '0,0', p.material); if (!b) continue; const gid = b.src.ids.get(p.geometry); if (gid == null) continue;
+      if (b.instanceCount >= b.maxInstanceCount) b.grow(Math.ceil(b.maxInstanceCount * 1.5) + 8);
+      const id = b.addInstance(gid); b.place(id, matrix, gid); b.setColorAt(id, color || WHITE); ids.push(b, id); this.dirty.add(b);
+    }
+    owner.ids = ids; owner.slot = ids.length ? 0 : -1; owner.poolKey = piece;
+    return owner.slot;
+  }
+  remove(piece, owner) {
+    const ids = owner.ids; if (!ids || owner.slot < 0) return;
+    for (let i = 0; i < ids.length; i += 2) { ids[i].deleteInstance(ids[i + 1]); ids[i].kv++; this.dirty.add(ids[i]); }
+    owner.ids = null; owner.slot = -1;
+  }
+  setMatrix(owner, matrix) {
+    const ids = owner.ids; if (!ids || owner.slot < 0) return;
+    for (let i = 0; i < ids.length; i += 2) { const b = ids[i], id = ids[i + 1]; b.place(id, matrix, b.getGeometryIdAt(id)); this.dirty.add(b); }
+  }
+  finish() {
+    for (const b of this.dirty) { b.visible = b.instanceCount > 0; if (b.visible) { b.computeBoundingSphere(); b.boundingSphere.radius += 3; } }
+    this.dirty.clear();
+  }
+}
+// choose the pool: BatchedMesh path when the context has WEBGL_multi_draw (?kitbatch=0 / localStorage smo_kitbatch=0: off)
+export function makeKitPool(scene, kit) {
+  let on = CAPS.multiDraw;
+  try { const q = new URLSearchParams(location.search).get('kitbatch'); if (q != null) on = on && q !== '0'; else if (localStorage.getItem('smo_kitbatch') === '0') on = false; } catch {}
+  return on ? new KitBatch(scene, kit) : new KitPool(scene, kit);
 }
 
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
