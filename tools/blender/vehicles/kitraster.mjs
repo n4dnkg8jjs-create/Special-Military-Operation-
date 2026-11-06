@@ -18,7 +18,7 @@ export function png(file, W, H, rgb) {
   const ih = Buffer.alloc(13); ih.writeUInt32BE(W, 0); ih.writeUInt32BE(H, 4); ih[8] = 8; ih[9] = 2;
   fs.writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]));
 }
-const COL = { kit_steel: [0.42, 0.40, 0.31], kit_weld: [0.25, 0.24, 0.2], kit_chain: [0.62, 0.6, 0.53], kit_weldmesh: [0.55, 0.53, 0.45], kit_era: null, kit_bag: null, kit_link: [0.3, 0.29, 0.26], kit_box: [0.34, 0.37, 0.25], kit_glass: [0.05, 0.06, 0.08], kit_black: [0.08, 0.08, 0.08], kit_cable: [0.1, 0.1, 0.1] };
+const COL = { kit_steel: [0.42, 0.40, 0.31], kit_weld: [0.25, 0.24, 0.2], kit_chain: [0.62, 0.6, 0.53], kit_weldmesh: [0.5, 0.42, 0.34], kit_net: [0.16, 0.2, 0.14], kit_era: null, kit_bag: null, kit_link: [0.3, 0.29, 0.26], kit_box: [0.34, 0.37, 0.25], kit_glass: [0.05, 0.06, 0.08], kit_black: [0.08, 0.08, 0.08], kit_cable: [0.1, 0.1, 0.1] };
 // draw meshes into a tile; views: [[az, el]], target centre c, radius r
 export function render(scene, W, H, views, opt = {}) {
   const SS = 2, w = W * SS, h = H * SS, cols = opt.cols || (views.length > 1 ? 2 : 1), rows = Math.ceil(views.length / cols), tw = Math.floor(w / cols), th = Math.floor(h / rows);
@@ -31,7 +31,7 @@ export function render(scene, W, H, views, opt = {}) {
     let p = o; while (p) { if (/_LOD1$|_wreck$/.test(p.name)) return; p = p.parent; }
     const mn = o.material?.name || '', kit = !!o.userData.kit;
     const g = o.geometry, pa = g.attributes.position, ix = g.index, uv = g.attributes.uv, cl = g.attributes.color;
-    items.push({ o, kit, mn, pa, ix, uv, cl, alpha: /chain|weldmesh/.test(mn) ? mn : null, hl: opt.hl && kit && opt.hl.test(o.userData.kitId || '') });
+    items.push({ o, kit, mn, pa, ix, uv, cl, alpha: /chain|weldmesh|net/.test(mn) ? mn : null, hl: opt.hl && kit && opt.hl.test(o.userData.kitId || '') });
   });
   const box = new THREE.Box3(); for (const it of items) if (!it.kit) box.expandByObject(it.o);
   const c = opt.target || box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() * 0.62 * (opt.dist || 1);
@@ -55,7 +55,7 @@ export function render(scene, W, H, views, opt = {}) {
         const N = new THREE.Vector3(e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]).normalize();
         const toCam = new THREE.Vector3(cam.position.x - Wp[A * 3], cam.position.y - Wp[A * 3 + 1], cam.position.z - Wp[A * 3 + 2]); if (N.dot(toCam) < 0) N.negate();
         const sh = 0.35 + 0.65 * Math.max(0, N.dot(L)) + 0.18 * Math.max(0, N.dot(L2));
-        let col = base; if (it.cl && it.kit && (it.mn === 'kit_era' || it.mn === 'kit_bag')) col = [it.cl.getX(A) * (it.mn === 'kit_bag' ? 0.62 : 1), it.cl.getY(A) * (it.mn === 'kit_bag' ? 0.56 : 1), it.cl.getZ(A) * (it.mn === 'kit_bag' ? 0.4 : 1)];
+        let col = base; if (it.cl && it.kit && (it.mn === 'kit_era' || it.mn === 'kit_bag')) col = [it.cl.getX(A), it.cl.getY(A), it.cl.getZ(A)];
         const x0 = S[A * 3], y0 = S[A * 3 + 1], x1 = S[B * 3], y1 = S[B * 3 + 1], x2 = S[C * 3], y2 = S[C * 3 + 1];
         const area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0); if (Math.abs(area) < 1e-9) continue;
         const minx = Math.max(ox, Math.floor(Math.min(x0, x1, x2))), maxx = Math.min(ox + tw - 1, Math.ceil(Math.max(x0, x1, x2))), miny = Math.max(oy, Math.floor(Math.min(y0, y1, y2))), maxy = Math.min(oy + th - 1, Math.ceil(Math.max(y0, y1, y2)));
@@ -64,7 +64,7 @@ export function render(scene, W, H, views, opt = {}) {
           const w0 = ((x1 - sx) * (y2 - sy) - (x2 - sx) * (y1 - sy)) / area, w1 = ((x2 - sx) * (y0 - sy) - (x0 - sx) * (y2 - sy)) / area, w2 = 1 - w0 - w1;
           if (w0 < 0 || w1 < 0 || w2 < 0) continue;
           const z = w0 * S[A * 3 + 2] + w1 * S[B * 3 + 2] + w2 * S[C * 3 + 2], k = py * w + px; if (z >= zb[k]) continue;
-          if (it.alpha && it.uv) { const u = w0 * it.uv.getX(A) + w1 * it.uv.getX(B) + w2 * it.uv.getX(C), vv = w0 * it.uv.getY(A) + w1 * it.uv.getY(B) + w2 * it.uv.getY(C); let f; if (it.alpha === 'kit_chain') { const p = (u + vv) * 2, q = (u - vv) * 2; f = Math.min(Math.abs(p - Math.round(p)), Math.abs(q - Math.round(q))) < 0.05; } else { const p = u * 4, q = vv * 4; f = Math.min(Math.abs(p - Math.round(p)), Math.abs(q - Math.round(q))) < 0.05; } if (!f) continue; }
+          if (it.alpha && it.uv) { const u = w0 * it.uv.getX(A) + w1 * it.uv.getX(B) + w2 * it.uv.getX(C), vv = w0 * it.uv.getY(A) + w1 * it.uv.getY(B) + w2 * it.uv.getY(C); let f; if (it.alpha === 'kit_chain' || it.alpha === 'kit_net') { const p = (u + vv) * 2, q = (u - vv) * 2; f = Math.min(Math.abs(p - Math.round(p)), Math.abs(q - Math.round(q))) < 0.05; } else { const p = u * 4, q = vv * 4; f = Math.min(Math.abs(p - Math.round(p)), Math.abs(q - Math.round(q))) < 0.05; } if (!f) continue; }
           zb[k] = z; img[k * 3] = col[0] * sh; img[k * 3 + 1] = col[1] * sh; img[k * 3 + 2] = col[2] * sh;
         }
       }

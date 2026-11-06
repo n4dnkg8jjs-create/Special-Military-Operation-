@@ -1,19 +1,26 @@
 // Vehicle upgrade kits: visible field modifications on the battle vehicles (and in the campaign tech tree's 3D
-// preview) for the upgrades the player's brigade has received (src/campaign/v2/tech.js KITS):
-//   cage     welded anti-drone screen over the turret: tube posts welded (weld plates) to the real turret roof / side
-//            found by ray casts, a top frame that follows the turret outline, a sagging chain-link screen with framed
-//            openings over the hatches (and the jammer), a slot over the gun on high-elevation guns (BTR / IFV / SPG),
-//            chain-link curtains on the sides and rear. On hulls that already carry a cage in the model (T-72B3,
-//            BMP-3, Msta-S) chain-link curtains are hung from that cage's own top rim instead.
-//   roof     full-length screen over the engine deck (tanks): posts welded to the fenders outside the turret sweep
-//   era      Kontakt-1 style bricks (tanks) / Kaktus-BRAT style tiles (IFVs) in rows on the glacis plane and in rows
-//            round the turret cheeks on wedge brackets
-//   sandbags sandbags on the hull sides behind a welded rail (wheeled) / spare track links on the glacis and the turret
-//            sides (tracked)
+// preview) for the upgrades the player's brigade has received (src/campaign/v2/tech.js KITS). Modelled on 2023-25 photos
+// of Ukrainian and Russian field mods (turret / deck screens, turtle-tank sheds, BTR-3 mesh kits, Kontakt-1, vehicle jammers):
+//   cage     welded anti-drone screen over the turret: 40 mm square-tube posts on weld plates (roof feet found by ray
+//            casts, else a stand-off bracket + strut on the side wall), front posts slid outboard clear of the mantlet,
+//            knee braces, a 50 mm angle-iron rim (35 mm cross members) with a sagging chain-link ("rabitz") top, framed
+//            openings over the hatches / jammer / high-elevation guns, curtains hanging inside the rim on the sides and
+//            rear: chain-link on tanks / SPGs, knotted fishing net (folds, sagging edge rope) on BTRs / IFVs. Hulls that
+//            already carry a cage in the model (T-72B3, BMP-3, Msta-S) get chain-link laid over its top bars + curtains.
+//   roof     engine-deck screen (tanks): square-tube posts welded to the fenders outside the turret sweep, side braces,
+//            angle-iron frame, rebar stringers, welded reinforcing mesh, chain-link curtains
+//   era      Kontakt-1 containers (tanks, ~0.26 x 0.14 x 0.07 m) / Kaktus-BRAT style tiles (IFVs): welded mounting frame,
+//            pressed box with chamfered lid, stamped panel, two lid bolts; rows on the glacis plane (up to 6), the hull
+//            sides, round the turret cheeks on wedge brackets and a roof carpet on tanks
+//   sandbags polypropylene sandbags (white / sand / olive / green mix, every bag its own size, lumps, tied end) in two
+//            bonded courses on the hull sides behind a welded rail (wheeled) / spare track links (tracked)
 //   sight    armoured thermal-sight head on a plinth on the gunner's side of the turret roof
-//   ew       jammer box on a welded tube stand with a ring of whip antennas
-//   smoke    902-type launcher clusters on brackets welded to the turret sides
+//   ew       jammer (Piranha / Lima / Volnorez class): finned box with lid, handles, connector panel on a square-tube
+//            stand; eight antennas (whips on spring bases + sleeve dipoles) on N connectors; cable down to the roof
+//   smoke    902-type launcher clusters on brackets welded to the turret sides (only where the model has none)
 //   crew     (no visual)
+// Materials: procedural canvas textures (rusty raw steel, chipped paint, woven PP sack, chain-link, knotted net, welded
+// mesh) on box-projected world-scale uvs; one merged mesh per kit part and material.
 // Geometry is procedural, sized per vehicle from the model's own meshes by ray casts (every foot is placed on the hit
 // surface and sunk 1 cm into it, so nothing floats), and built in the local space of the `hull` / `turret` EMPTIES:
 // turret kits traverse with the turret, everything hides with the intact hull for the wreck, and the LOD lists and
@@ -34,36 +41,79 @@ function canvasTex(size, draw, repeat = true) {
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'); draw(g, size);
   const t = new THREE.CanvasTexture(c); if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+// blotchy wear layers (seeded: the same textures every run)
+function blots(g, s, R, n, r0, r1, col) { for (let i = 0; i < n; i++) { g.fillStyle = col(R()); g.beginPath(); const x = R() * s, y = R() * s, r = r0 + R() * (r1 - r0); g.ellipse(x, y, r, r * (0.4 + R() * 0.8), R() * 3, 0, 7); g.fill(); for (const dx of [-s, s]) { g.beginPath(); g.ellipse(x + dx, y, r, r * 0.6, 0, 0, 7); g.fill(); } } }
 function mats() {
   if (MATS) return MATS;
   const M = (color, rough = 0.85, metal = 0.25, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
-  // chain-link: diamond wire mesh, 1 texture tile = 2 x 2 diamonds; alpha-tested, galvanised wire with rust
+  const R = rng(0x5EED);
+  // chain-link ("rabitz"): woven diamond wire mesh, 1 texture tile = 2 x 2 diamonds; galvanised wire gone dull grey with
+  // rust at the knuckles where the wires hook round each other
   const chain = canvasTex(128, (g, s) => {
     g.clearRect(0, 0, s, s); g.lineCap = 'round';
-    for (const [w, col] of [[7, 'rgba(70,62,48,1)'], [4, 'rgba(150,146,132,1)']]) {
+    for (const [w, col] of [[7, 'rgba(58,52,42,1)'], [4, 'rgba(146,142,128,1)'], [1.5, 'rgba(196,192,178,1)']]) {
       g.strokeStyle = col; g.lineWidth = w;
       for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(k * s / 2, 0); g.lineTo(k * s / 2 + s, s); g.stroke(); g.beginPath(); g.moveTo(k * s / 2 + s, 0); g.lineTo(k * s / 2, s); g.stroke(); }
     }
-    g.fillStyle = 'rgba(120,70,35,0.55)'; for (let i = 0; i < 40; i++) { g.beginPath(); g.arc(Math.random() * s, Math.random() * s, 2 + Math.random() * 3, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(118,64,30,0.7)'; for (const [x, y] of [[0, s / 2], [s / 2, 0], [s / 2, s], [s, s / 2], [0, 0], [s, 0], [0, s], [s, s]]) { g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); }
+    blots(g, s, R, 26, 2, 5, r => `rgba(${110 + r * 30 | 0},62,30,0.55)`);
   });
-  // welded square mesh (roof screens): 4 x 4 cells per tile
+  // welded reinforcing mesh (engine-deck screens): 4 x 4 cells per tile, rusty bars with weld beads at the crossings
   const weld = canvasTex(128, (g, s) => {
-    g.clearRect(0, 0, s, s); g.strokeStyle = 'rgba(92,88,74,1)'; g.lineWidth = 5;
-    for (let i = 0; i <= 4; i++) { const p = i * s / 4; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, s); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(s, p); g.stroke(); }
-    g.fillStyle = 'rgba(115,68,36,0.6)'; for (let i = 0; i < 30; i++) { g.beginPath(); g.arc(Math.random() * s, Math.random() * s, 2 + Math.random() * 3, 0, 7); g.fill(); }
+    g.clearRect(0, 0, s, s);
+    for (const [w, col] of [[6, 'rgba(70,52,36,1)'], [3, 'rgba(118,96,72,1)']]) { g.strokeStyle = col; g.lineWidth = w; for (let i = 0; i <= 4; i++) { const p = i * s / 4; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, s); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(s, p); g.stroke(); } }
+    g.fillStyle = 'rgba(52,40,30,1)'; for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) { g.beginPath(); g.arc(i * s / 4, j * s / 4, 4.5, 0, 7); g.fill(); }
   });
-  // sandbag weave
-  const sack = canvasTex(64, (g, s) => { g.fillStyle = '#9a8c66'; g.fillRect(0, 0, s, s); g.strokeStyle = 'rgba(60,50,30,.35)'; g.lineWidth = 1; for (let i = 0; i < s; i += 3) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, s); g.stroke(); g.beginPath(); g.moveTo(0, i + 1); g.lineTo(s, i + 1); g.stroke(); } for (let i = 0; i < 25; i++) { g.fillStyle = `rgba(70,55,35,${Math.random() * 0.25})`; g.fillRect(Math.random() * s, Math.random() * s, 6, 4); } });
+  // knotted fishing net (side curtains on BTRs / IFVs): dark green nylon twine, diamond meshes with knots, 2 x 2 per tile
+  const net = canvasTex(128, (g, s) => {
+    g.clearRect(0, 0, s, s); g.lineCap = 'round';
+    for (const [w, col] of [[4, 'rgba(22,28,20,1)'], [2, 'rgba(58,72,50,1)']]) { g.strokeStyle = col; g.lineWidth = w; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(k * s / 2, 0); g.lineTo(k * s / 2 + s, s); g.stroke(); g.beginPath(); g.moveTo(k * s / 2 + s, 0); g.lineTo(k * s / 2, s); g.stroke(); } }
+    g.fillStyle = 'rgba(30,36,26,1)'; for (const [x, y] of [[0, s / 2], [s / 2, 0], [s / 2, s], [s, s / 2], [0, 0], [s, 0], [0, s], [s, s]]) { g.beginPath(); g.ellipse(x, y, 5, 4, 0.6, 0, 7); g.fill(); }
+  });
+  // field-welded raw steel (angle iron, square tube, rebar): mill scale gone to rust, grinder marks, a dusting of mud
+  const rust = canvasTex(256, (g, s) => {
+    g.fillStyle = '#4b443b'; g.fillRect(0, 0, s, s);
+    blots(g, s, R, 90, 6, 26, r => r < 0.4 ? `rgba(${104 + r * 40 | 0},${64 + r * 16 | 0},40,0.28)` : r < 0.75 ? 'rgba(40,38,34,0.3)' : 'rgba(110,106,96,0.22)');
+    blots(g, s, R, 260, 1, 3, r => r < 0.45 ? 'rgba(122,72,38,0.45)' : 'rgba(32,30,26,0.45)');
+    for (let i = 0; i < 40; i++) { g.strokeStyle = `rgba(${R() < 0.5 ? '112,66,36' : '36,32,28'},0.22)`; g.lineWidth = 1 + R() * 2; const x = R() * s, y = R() * s; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (R() - 0.5) * 6, y + 10 + R() * 30); g.stroke(); }
+  });
+  // painted steel (jammer / sight boxes, ERA lids): factory olive or field green with chipped edges, rust spots and dust;
+  // near white so vertex colours / material colour set the paint
+  const paint = canvasTex(256, (g, s) => {
+    g.fillStyle = '#d6d6d0'; g.fillRect(0, 0, s, s);
+    blots(g, s, R, 70, 8, 30, r => r < 0.5 ? `rgba(${170 + r * 40 | 0},${168 + r * 30 | 0},150,0.25)` : 'rgba(235,232,220,0.2)');
+    blots(g, s, R, 120, 1, 4, r => r < 0.55 ? 'rgba(70,60,48,0.75)' : r < 0.8 ? 'rgba(120,70,40,0.6)' : 'rgba(200,190,160,0.5)');
+    const gr = g.createLinearGradient(0, 0, 0, s); gr.addColorStop(0, 'rgba(160,140,100,0)'); gr.addColorStop(1, 'rgba(160,140,100,0.25)'); g.fillStyle = gr; g.fillRect(0, 0, s, s);
+  });
+  // woven polypropylene sack (the common field sandbag): near-white weave, colour from vertex colours, mud
+  const sack = canvasTex(128, (g, s) => {
+    g.fillStyle = '#e4e0d6'; g.fillRect(0, 0, s, s); g.lineWidth = 1;
+    for (let i = 0; i < s; i += 2) { g.strokeStyle = 'rgba(90,84,70,.22)'; g.beginPath(); g.moveTo(i + 0.5, 0); g.lineTo(i + 0.5, s); g.stroke(); g.strokeStyle = 'rgba(255,255,250,.18)'; g.beginPath(); g.moveTo(0, i + 1.5); g.lineTo(s, i + 1.5); g.stroke(); }
+    blots(g, s, R, 14, 6, 20, r => `rgba(${120 + r * 30 | 0},${104 + r * 20 | 0},76,${0.06 + r * 0.1})`);
+  });
   // the game renders without MSAA (src/engine/renderer.js): alpha-blended so the wire mesh is crisp up close and fades to
   // a light veil in the distant mip levels (an alpha-tested mesh would vanish or turn into a solid sheet)
-  const screen = (map, color) => M(color, 0.65, 0.55, { side: THREE.DoubleSide, transparent: true, depthWrite: false, ...(map ? { map, alphaTest: 0.04 } : { opacity: 0.6 }) });
+  const screen = (map, color, rough = 0.65, metal = 0.55) => M(color, rough, metal, { side: THREE.DoubleSide, transparent: true, depthWrite: false, ...(map ? { map, alphaTest: 0.04 } : { opacity: 0.6 }) });
+  const tex = t => (t ? { map: t } : {});
   MATS = {
-    steel: M(0x4a4636, 0.7, 0.45), weld: M(0x2e2c24, 0.8, 0.4), chain: screen(chain, 0xb4b0a0), weldmesh: screen(weld, 0xa8a490),
-    era: M(0xffffff, 0.72, 0.25, { vertexColors: true }), bag: M(0xffffff, 1, 0, { vertexColors: true, ...(sack ? { map: sack } : {}) }),
-    link: M(0x3a3832, 0.6, 0.65), box: M(0x434833, 0.7, 0.3), glass: M(0x0b0d10, 0.12, 0.7), black: M(0x161616, 0.6, 0.2), cable: M(0x1d1d1a, 0.9, 0),
+    steel: M(0xffffff, 0.82, 0.35, tex(rust)), weld: M(0x2e2c24, 0.8, 0.4), chain: screen(chain, 0xbcb8a8), weldmesh: screen(weld, 0xc8c0b0, 0.8, 0.4), net: screen(net, 0xffffff, 0.95, 0),
+    era: M(0xffffff, 0.72, 0.25, { vertexColors: true, ...tex(paint) }), bag: M(0xffffff, 1, 0, { vertexColors: true, ...tex(sack) }),
+    link: M(0x9a968c, 0.6, 0.6, tex(rust)), box: M(0x5a6044, 0.68, 0.3, tex(paint)), glass: M(0x0b0d10, 0.12, 0.7), black: M(0x161616, 0.6, 0.2), cable: M(0x1d1d1a, 0.9, 0),
   };
   for (const k of Object.keys(MATS)) MATS[k].name = 'kit_' + k;
   return MATS;
+}
+// solid kit parts get box-projected uvs (per triangle, from its dominant normal axis) at `scale` metres per texture tile,
+// so the wear textures have the same density on a 2 cm rod and a 40 cm box
+const WORLD_UV = { kit_steel: 0.6, kit_era: 0.5, kit_bag: 0.35, kit_link: 0.5, kit_box: 0.5 };
+function worldUV(g, scale) {
+  const p = g.attributes.position, uv = g.attributes.uv, n = p.count, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let i = 0; i + 2 < n; i += 3) {
+    a.fromBufferAttribute(p, i); b.fromBufferAttribute(p, i + 1); c.fromBufferAttribute(p, i + 2);
+    const nn = b.clone().sub(a).cross(c.clone().sub(a)), ax = Math.abs(nn.x), ay = Math.abs(nn.y), az = Math.abs(nn.z);
+    for (let k = 0; k < 3; k++) { const q = k === 0 ? a : k === 1 ? b : c; const [u, v] = ax >= ay && ax >= az ? [q.z, q.y] : ay >= az ? [q.x, q.z] : [q.x, q.y]; uv.setXY(i + k, u / scale, v / scale); }
+  }
+  uv.needsUpdate = true;
 }
 
 // ---------------------------------------------------------------- measuring the model
@@ -166,9 +216,9 @@ function prep(g, col = 1) {
   const c = new Float32Array(n * 3), cc = Array.isArray(col) ? col : [col, col, col]; for (let i = 0; i < n; i++) c.set(cc, i * 3);
   g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g;
 }
-function tube(geos, a, b, r = 0.02, seg = 6) {
+function tube(geos, a, b, r = 0.02, seg = 6, open = false) {
   const d = new THREE.Vector3().subVectors(b, a), L = d.length(); if (L < 1e-3) return;
-  const g = new THREE.CylinderGeometry(r, r, L, seg, 1, false); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()));
+  const g = new THREE.CylinderGeometry(r, r, L + (open ? r : 0), seg, 1, open); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()));
   g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2); geos.push(prep(g));
 }
 // a box (w along `u`, t along the normal `n`, d along n x u) sitting on surface point p, sunk `sink` into it
@@ -178,7 +228,23 @@ function slab(geos, p, n, u, w, t, d, sink = 0.004, col = 1) {
   g.applyMatrix4(m); geos.push(prep(g, col)); return { u: uu, n: nn, v: vv };
 }
 function weldPlate(geos, p, n, s = 0.09) { slab(geos, p, n, Math.abs(n.y) > 0.9 ? V3(1, 0, 0) : V3(0, 1, 0), s, 0.012, s, 0.006); }
-function mesh(geos, mat, name) { const gs = geos.filter(Boolean); if (!gs.length) return null; const m = new THREE.Mesh(mergeGeometries(gs), mat); m.name = name; m.castShadow = true; m.receiveShadow = true; m.userData.kit = true; return m; }
+// a straight bar a -> b of rectangular section: w across (side = along x up), h along `up`; centre shifted ox / oy
+function bar(geos, a, b, w, h, up = UP, ox = 0, oy = 0, col = 1) {
+  const t = b.clone().sub(a), L = t.length(); if (L < 1e-3) return; t.divideScalar(L);
+  let u = up.clone().sub(t.clone().multiplyScalar(up.dot(t))); if (u.lengthSq() < 1e-4) { u = Math.abs(t.x) < 0.9 ? V3(1, 0, 0) : V3(0, 0, 1); u.sub(t.clone().multiplyScalar(u.dot(t))); } u.normalize();
+  const s = new THREE.Vector3().crossVectors(t, u), g = new THREE.BoxGeometry(w, L, h);
+  g.applyMatrix4(new THREE.Matrix4().makeBasis(s, t, u).setPosition(a.clone().add(b).multiplyScalar(0.5).add(s.multiplyScalar(ox)).add(u.multiplyScalar(oy))));
+  geos.push(prep(g, col));
+}
+// equal-leg angle iron (the field welder's stock): top face flush with the a-b line, the vertical leg on the `out` side
+function angleIron(geos, a, b, w = 0.05, th = 0.005, out = null) {
+  const t = b.clone().sub(a).normalize(), s = new THREE.Vector3().crossVectors(t, UP); if (s.lengthSq() < 1e-4) { bar(geos, a, b, w, w); return; }
+  const sg = out && out.dot(s) < 0 ? -1 : 1, e = t.clone().multiplyScalar(w * 0.5), A = a.clone().sub(e), B = b.clone().add(e);   // legs run on past the corner (lapped joints)
+  bar(geos, A, B, w, th, UP, 0, -th / 2); bar(geos, A, B, th, w, UP, sg * (w / 2 - th / 2), -w / 2);
+}
+// square hollow section post / strut (40 x 40 by default)
+const sqTube = (geos, a, b, s = 0.04, side = V3(1, 0, 0)) => bar(geos, a, b, s, s, side);
+function mesh(geos, mat, name) { const gs = geos.filter(Boolean); if (!gs.length) return null; const g = mergeGeometries(gs); if (WORLD_UV[mat.name]) worldUV(g, WORLD_UV[mat.name]); const m = new THREE.Mesh(g, mat); m.name = name; m.castShadow = true; m.receiveShadow = true; m.userData.kit = true; return m; }
 // seeded random so a vehicle type always gets the same "random" variation (cached geometry, stable screenshots)
 function rng(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
@@ -256,17 +322,30 @@ function screenGeo(outer, holes, y, cell, sag, supports, tile = 0.13) {   // til
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
   return prep(g);
 }
-// a hanging chain-link curtain under the edge a -> b (x, z) from height yTop down by h, bellying out by `belly`
-function curtainGeo(a, b, yTop, h, outN, belly = 0.03, tile = 0.13) {
+// a hanging curtain under the edge a -> b (x, z) from height yTop down by h, bellying out by `belly`. Chain-link hangs
+// fairly flat (stiff wire, the hem a twisted selvage); a knotted net bellies, falls in soft vertical folds and its
+// edge rope sags between the ends. uv in metres / tile.
+function curtainGeo(a, b, yTop, h, outN, belly = 0.03, tile = 0.13, net = false, seed = 1) {
   const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.15) return null;
-  const nu = Math.max(2, Math.ceil(L / 0.2)), nv = 3, pos = [], uv = [];
-  const P = (u, v) => { const w = Math.sin(Math.PI * u) * Math.sin(Math.PI * v * 0.8) * belly; const x = a[0] + (b[0] - a[0]) * u + outN[0] * w, z = a[1] + (b[1] - a[1]) * u + outN[1] * w; const yy = yTop - v * h * (1 - 0.06 * Math.sin(Math.PI * u)); return [x, yy, z, u * L / tile, (yTop - yy) / tile]; };
+  const nu = Math.max(2, Math.ceil(L / (net ? 0.07 : 0.2))), nv = net ? 4 : 3, pos = [], uv = [], ph = seed * 1.7, k = 2 * Math.PI / 0.3;
+  const P = (u, v) => {
+    const fold = net ? Math.sin(u * L * k + ph) * 0.018 * v : 0;
+    const w = Math.sin(Math.PI * u) * Math.sin(Math.PI * v * 0.8) * belly + fold;
+    const x = a[0] + (b[0] - a[0]) * u + outN[0] * w, z = a[1] + (b[1] - a[1]) * u + outN[1] * w;
+    const yy = yTop - v * h * (1 - (net ? 0.1 : 0.06) * Math.sin(Math.PI * u)) + (net ? Math.abs(Math.sin(u * L * k / 2 + ph)) * 0.012 * v : 0);
+    return [x, yy, z, u * L / tile, (yTop - yy) / tile];
+  };
   for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
     const q = [P(i / nu, j / nv), P((i + 1) / nu, j / nv), P((i + 1) / nu, (j + 1) / nv), P(i / nu, (j + 1) / nv)];
     for (const k of [0, 1, 2, 0, 2, 3]) { pos.push(q[k][0], q[k][1], q[k][2]); uv.push(q[k][3], q[k][4]); }
   }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
-  return { geo: prep(g), hem: Array.from({ length: nu + 1 }, (_, i) => P(i / nu, 1)) };
+  return { geo: prep(g), hem: Array.from({ length: Math.ceil(nu / (net ? 2 : 1)) + 1 }, (_, i) => P(Math.min(1, i * (net ? 2 : 1) / nu), 1)) };
+}
+// hang one curtain: cloth into `cur`, its hem (twisted selvage wire / edge rope) into `hem`
+function hang(cur, hem, A, B, yTop, h, on, net, seed) {
+  const c = curtainGeo(A, B, yTop, h, on, net ? 0.055 : 0.03, net ? 0.1 : 0.13, net, seed); if (!c) return;
+  cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(hem, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), net ? 0.006 : 0.004, 4, true);
 }
 
 // ---------------------------------------------------------------- planning (shared spots, so kits never collide)
@@ -329,13 +408,8 @@ function plan(M, kits, info) {
 // ---------------------------------------------------------------- the kits
 const CELL = 0.1;
 const snap = (v, f) => f(v / CELL) * CELL;
-function buildCage(M, out, info, pl) {
-  const S = pl.S, sv = pl.sv, node = S.node, col = [], scr = [], cur = [];
-  // top height: over everything on the roof (sights, cupola, MG) with a minimum stand-off over the roof edge
-  const top = Math.min(sv.yEdge + 0.8, Math.max(sv.yMax + 0.1, sv.yEdge + 0.42));
-  const outer = simplify(offsetPoly(sv.outline, 0.1), 0.08);
-  const isFront = (x, z) => { const a = Math.atan2(x - sv.cx, z - sv.cz); return Math.abs(a) < 0.55; };
-  // openings: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
+// openings in a top screen over `outer`: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
+function openings(info, pl, sv, outer) {
   const holes = [];
   for (const h of pl.hatches) { const q = h.rect || { x0: h.x - h.r - 0.06, x1: h.x + h.r + 0.06, z0: h.z - h.r - 0.06, z1: h.z + h.r + 0.06 }; holes.push({ x0: snap(q.x0, Math.floor), x1: snap(q.x1, Math.ceil), z0: snap(q.z0, Math.floor), z1: snap(q.z1, Math.ceil) }); }
   if (pl.spots.ew && !pl.spots.ew.S) { const e = pl.spots.ew; holes.push({ x0: snap(e.x - 0.32, Math.floor), x1: snap(e.x + 0.32, Math.ceil), z0: snap(e.z - 0.26, Math.floor), z1: snap(e.z + 0.26, Math.ceil) }); }
@@ -345,6 +419,16 @@ function buildCage(M, out, info, pl) {
     if (inPoly(outer, g.x, Math.min(g.z, g.zBack) + 0.05)) holes.push({ ...band, z0: snap(Math.min(g.z - 0.3, g.zBack), Math.floor), z1: zMax });
     else if (g.z < zMin + 1 && inPoly(outer, g.x, (zMin + zMax) / 2)) holes.push({ ...band, z0: snap(zMin, Math.floor), z1: zMax, full: true });   // barrel laid over the cab
   }
+  return holes;
+}
+function buildCage(M, out, info, pl) {
+  const S = pl.S, sv = pl.sv, node = S.node, col = [], scr = [], cur = [], hem = [];
+  // top height: over everything on the roof (sights, cupola, MG) with a minimum stand-off over the roof edge
+  const top = Math.min(sv.yEdge + 0.8, Math.max(sv.yMax + 0.1, sv.yEdge + 0.42));
+  const outer = simplify(offsetPoly(sv.outline, 0.1), 0.08);
+  const isFront = (x, z) => { const a = Math.atan2(x - sv.cx, z - sv.cz); return Math.abs(a) < 0.55; };
+  // openings: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
+  const holes = openings(info, pl, sv, outer), zMax = Math.max(...outer.map(p => p[1])) + 1;
   // supports: perimeter, cross tubes every 0.5 m (x) / 0.6 m (z) along the grid lines, opening frames
   const supports = [];
   for (let i = 0; i < outer.length; i++) supports.push([outer[i], outer[(i + 1) % outer.length]]);
@@ -373,18 +457,22 @@ function buildCage(M, out, info, pl) {
     }
   }
   supports.push(...cross, ...frame);
-  const R0 = 0.024, R1 = 0.016;
+  // frame: 50 mm angle iron round the rim (vertical leg outside, so the curtains hang inside it), 35 mm angle cross
+  // members and opening frames, top faces flush at `top` with the chain-link laid on them
+  const AW = 0.05, AT = 0.005, sgn = outwardSign(outer);
   const outsideHoles = (a, b) => {   // pieces of a segment not crossing an opening
     const out = []; let p0 = null; const NS = 24, at = t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
     for (let k = 0; k < NS; k++) { const m = at((k + 0.5) / NS), inH = holes.some(h => m[0] > h.x0 - 0.03 && m[0] < h.x1 + 0.03 && m[1] > h.z0 - 0.03 && m[1] < h.z1 + 0.03); if (!inH && p0 == null) p0 = k / NS; if (inH && p0 != null) { out.push([at(p0), at(k / NS)]); p0 = null; } }
     if (p0 != null) out.push([at(p0), b]); return out;
   };
-  for (const [a, b] of supports.slice(0, outer.length)) for (const [A, B] of outsideHoles(a, b)) tube(col, V3(A[0], top, A[1]), V3(B[0], top, B[1]), R0);
-  for (const [a, b] of cross) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), R1);
-  for (const [a, b] of frame) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.018);
-  scr.push(screenGeo(outer, holes, top + R1 + 0.004, CELL, 0.035, supports));
-  // posts: at the outline corners (not in front of the gun), plus mid-edge posts on long edges; feet found by casting
-  // down onto the roof just inside the edge, else welded to the side wall under the edge
+  const edgeOut = (a, b) => { const e = norm2([b[0] - a[0], b[1] - a[1]]); return sgn > 0 ? V3(e[1], 0, -e[0]) : V3(-e[1], 0, e[0]); };
+  for (const [a, b] of supports.slice(0, outer.length)) for (const [A, B] of outsideHoles(a, b)) angleIron(col, V3(A[0], top, A[1]), V3(B[0], top, B[1]), AW, AT, edgeOut(a, b));
+  for (const [a, b] of cross) angleIron(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.035, 0.004);
+  for (const [a, b] of frame) angleIron(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.04, 0.004);
+  scr.push(screenGeo(outer, holes, top + 0.003, CELL, 0.03, supports));
+  // posts (40 mm square tube): at the outline corners and mid-edge on long edges, front corners too where they stand
+  // clear of the gun, the sights and the hatches; feet found by casting down onto the roof just inside the edge, else
+  // welded to the side wall under the edge on a stand-off bracket; a knee brace from each post to the rim
   const corners = [];
   for (let i = 0; i < outer.length; i++) {
     const a = outer[i], b = outer[(i + 1) % outer.length]; corners.push(a);
@@ -392,27 +480,54 @@ function buildCage(M, out, info, pl) {
   }
   const keep = (x, z) => pl.hatches.every(h => h.rect ? !(x > h.rect.x0 - 0.08 && x < h.rect.x1 + 0.08 && z > h.rect.z0 - 0.08 && z < h.rect.z1 + 0.08) : Math.hypot(h.x - x, h.z - z) > h.r + 0.1) && (!sv.gun || Math.abs(x - sv.gun.x) > sv.gun.hw + 0.2 || z < sv.gun.zBack - 0.15);
   let posts = 0;
-  for (const [tx, tz] of corners) {
-    if (isFront(tx, tz)) continue;
+  const yTopPost = top - AT;
+  // a front corner too close to the gun slides along its outboard edge until it stands clear of the mantlet
+  const clearG = sv.gun ? sv.gun.hw + 0.24 : 0;
+  for (let k = 0; k < corners.length; k++) {
+    const [tx, tz] = corners[k]; if (!isFront(tx, tz) || !sv.gun || Math.abs(tx - sv.gun.x) >= clearG) continue;
+    const ci = outer.findIndex(p => p[0] === tx && p[1] === tz); if (ci < 0) { corners[k] = null; continue; }
+    const nb = [outer[(ci + 1) % outer.length], outer[(ci + outer.length - 1) % outer.length]].sort((a, b) => Math.abs(b[0] - sv.gun.x) - Math.abs(a[0] - sv.gun.x))[0];
+    const dx = nb[0] - tx; if (Math.abs(nb[0] - sv.gun.x) < clearG + 0.05 || Math.abs(dx) < 1e-3) { corners[k] = null; continue; }
+    const t = (Math.sign(nb[0] - sv.gun.x) * clearG + sv.gun.x - tx) / dx; if (t <= 0 || t > 0.8) { corners[k] = null; continue; }
+    corners[k] = [tx + dx * t, tz + (nb[1] - tz) * t];
+  }
+  for (const c of corners) {
+    if (!c) continue; const [tx, tz] = c, front = isFront(tx, tz);
     const dx = sv.cx - tx, dz = sv.cz - tz, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
     let foot = null;
     for (const ins of [0.16, 0.22, 0.3, 0.4, 0.5]) {
       const x = tx + ux * ins, z = tz + uz * ins; if (!keep(x, z)) continue;
       const h = down(S, x, z, top - 0.03); if (h && h.n.y > 0.45 && h.p.y > sv.yEdge - 0.4 && h.p.y < top - 0.12) { foot = h; break; }
     }
-    if (!foot) {   // side wall: horizontal ray inward under the roof edge, then a short stand-off bracket
+    if (!foot && !front) {   // side wall: horizontal ray inward under the roof edge, then a short stand-off bracket
       const h = cast(S.meshes, node, V3(tx - ux * 0.3, sv.yEdge - 0.12, tz - uz * 0.3), V3(ux, 0, uz), 1.2);
       if (h && Math.abs(h.n.y) < 0.6 && keep(h.p.x, h.p.z)) { foot = h; }
     }
     if (!foot) continue;
+    // a front post must not stand in a sight's field of view: nothing of the model above the foot within 0.25 m
+    if (front && [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3], [0.2, 0.2], [-0.2, 0.2]].some(([ax, az]) => { const h = down(S, foot.p.x + ax, foot.p.z + az, top - 0.02); return h && h.p.y > foot.p.y + 0.1; })) continue;
+    // the post's own path must be clear: the roof under every point of it (and 3 cm round it) lies below that point
+    if (foot.n.y > 0.45) { let blocked = false; for (let k = 2; k <= 10 && !blocked; k++) { const t = k / 10, q = foot.p.clone().lerp(V3(tx, yTopPost, tz), t); for (const [ax, az] of [[0, 0], [0.03, 0], [-0.03, 0], [0, 0.03], [0, -0.03]]) { const h = down(S, q.x + ax, q.z + az, top + 0.3); if (h && h.p.y > q.y - 0.03) { blocked = true; break; } } } if (blocked) continue; }
     (pl.feet ||= []).push({ x: foot.p.x, z: foot.p.z });
-    const f = foot.p.clone().add(foot.n.clone().multiplyScalar(0.004));
-    if (foot.n.y > 0.45) { tube(col, f, V3(tx, top, tz), R0); weldPlate(col, foot.p, foot.n, 0.1); }
-    else { const s = V3(tx, foot.p.y, tz); tube(col, f, s, R0); tube(col, s.clone().add(V3(0, -0.04, 0)), V3(tx, top, tz), R0); weldPlate(col, foot.p, foot.n, 0.11); tube(col, f.clone().add(V3(0, 0.08, 0)), V3(tx, foot.p.y + 0.22, tz), 0.012); }
+    const f = foot.p.clone().add(foot.n.clone().multiplyScalar(-0.004)), T = V3(tx, yTopPost, tz);
+    if (foot.n.y > 0.45) { sqTube(col, f, T, 0.04, V3(ux, 0, uz)); weldPlate(col, foot.p, foot.n, 0.1); }
+    else {
+      const s = V3(tx, foot.p.y, tz), o = V3(ux, 0, uz);
+      sqTube(col, f, s.clone().sub(o.clone().multiplyScalar(0.02)), 0.04); sqTube(col, s.clone().add(V3(0, -0.02, 0)), T, 0.04, o); weldPlate(col, foot.p, foot.n, 0.11);
+      const w2 = cast(S.meshes, node, V3(tx, foot.p.y - 0.14, tz), o, 1.2); if (w2 && Math.abs(w2.n.y) < 0.6 && w2.dist < 0.6) sqTube(col, w2.p.clone().add(o.clone().multiplyScalar(-0.004)), s.clone().add(V3(0, -0.01, 0)), 0.025);   // diagonal strut
+    }
+    // knee braces (flat bar 30 x 6) from the post 0.25 m down to the rim 0.25 m along each neighbouring edge
+    const ci = outer.findIndex(p => p[0] === tx && p[1] === tz);
+    const nbs = ci >= 0 ? [outer[(ci + 1) % outer.length], outer[(ci + outer.length - 1) % outer.length]] : (() => { const i = outer.findIndex((p, k) => segDist(tx, tz, p, outer[(k + 1) % outer.length]) < 1e-6); return i >= 0 ? [outer[i], outer[(i + 1) % outer.length]] : []; })();
+    if (top - foot.p.y > 0.42) for (const nb of nbs) {
+      const ex = nb[0] - tx, ez = nb[1] - tz, el = Math.hypot(ex, ez); if (el < 0.4 || holes.some(h => tx + ex / el * 0.25 > h.x0 - 0.03 && tx + ex / el * 0.25 < h.x1 + 0.03 && tz + ez / el * 0.25 > h.z0 - 0.03 && tz + ez / el * 0.25 < h.z1 + 0.03)) continue;
+      bar(col, V3(tx, yTopPost - 0.24, tz), V3(tx + ex / el * 0.24, yTopPost - 0.012, tz + ez / el * 0.24), 0.006, 0.03, V3(-ez, 0, ex).normalize());
+    }
     posts++;
   }
-  // side + rear curtains (chain-link hanging from the top frame), not across the front (sights, driver's view)
-  const sgn = outwardSign(outer);
+  // side + rear curtains hanging from the top frame, not across the front (sights, driver's view): chain-link on tanks /
+  // SPGs, knotted fishing net on the lighter BTRs / IFVs (both are field practice)
+  const netCur = info.kind === 'btr' || info.kind === 'ifv';
   for (let i = 0; i < outer.length; i++) {
     const a = outer[i], b = outer[(i + 1) % outer.length]; const e = norm2([b[0] - a[0], b[1] - a[1]]), on = sgn > 0 ? [e[1], -e[0]] : [-e[1], e[0]];
     if (on[1] > 0.5) continue;
@@ -422,40 +537,45 @@ function buildCage(M, out, info, pl) {
     if (p0 != null) pieces.push([p0, 1]);
     for (const [t0, t1] of pieces) {
       const A = [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0], B = [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1];
-      const c = curtainGeo(A, B, top - R0, Math.min(0.38, top - sv.yEdge - 0.12), on); if (!c) continue;
-      cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(col, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), 0.007, 4);
+      hang(cur, hem, A, B, top - AT, Math.min(netCur ? 0.42 : 0.38, top - sv.yEdge - 0.12), on, netCur, i + 1);
     }
   }
-  out.push([node, mesh(col, mats().steel, 'kit_cage')], [node, mesh(scr, mats().chain, 'kit_cage_screen')], [node, mesh(cur, mats().chain, 'kit_cage_curtain')]);
+  out.push([node, mesh(col, mats().steel, 'kit_cage')], [node, mesh(scr, mats().chain, 'kit_cage_screen')], [node, mesh(cur, netCur ? mats().net : mats().chain, 'kit_cage_curtain')], [node, mesh(hem, netCur ? mats().cable : mats().steel, 'kit_cage_hem')]);
   pl.cage = { top, outer, posts, feet: pl.feet || [] };
 }
-// the model has its own cage (T-72B3, BMP-3, Msta-S): hang chain-link curtains from its top rim
-function cageCurtains(M, out) {
+// the model has its own cage (T-72B3, BMP-3, Msta-S): chain-link laid over its top bars (these depot / factory cages
+// mostly reached the front bare and were netted by the crews) and curtains hung from its top rim
+function cageCurtains(M, out, info, pl) {
   const cm = []; M.cageNode.traverse(o => { if (o.isMesh && !/_LOD1$/i.test(o.name)) cm.push(o); });
   const S = M.TS, C = pointsIn(cm, S.node, 4000); if (C.n < 20) return;
   const yTop = C.q('y', 0.995), rim = []; for (let i = 0; i < C.n; i++) if (C.ys[i] > yTop - 0.06) rim.push([C.xs[i], C.zs[i]]);
   const poly = simplify(hull2(rim), 0.04); if (poly.length < 3) return;
-  const sv = survey(M, S), sgn = outwardSign(poly), col = [], cur = [];
+  const sv = survey(M, S), sgn = outwardSign(poly), col = [], cur = [], hem = [], scr = [], net = info.kind === 'btr' || info.kind === 'ifv';
+  // top: the bars of the model's cage (top points of its meshes, rounded to lines) are the screen's supports
+  const inner = offsetPoly(poly, -0.02), holes = openings(info, { hatches: S.isTurret ? M.hatchT : M.hatchH, spots: pl.spots }, sv, inner), sup = [];
+  for (let i = 0; i < inner.length; i++) sup.push([inner[i], inner[(i + 1) % inner.length]]);
+  const tops = []; for (let i = 0; i < C.n; i++) if (C.ys[i] > yTop - 0.03) tops.push([C.xs[i], C.zs[i]]);
+  for (let k = 0; k < tops.length; k += 7) sup.push([tops[k], [tops[k][0] + 0.01, tops[k][1]]]);
+  scr.push(screenGeo(inner, holes, yTop + 0.004, CELL, 0.012, sup));
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length]; const e = norm2([b[0] - a[0], b[1] - a[1]]), on = sgn > 0 ? [e[1], -e[0]] : [-e[1], e[0]];
     if (on[1] > 0.5) continue;
-    // a hanger tube along the rim edge (sits on the cage's own rim), the curtain hangs from it
+    // a hanger rod along the rim edge (wired to the cage's own rim), the curtain hangs from it
     const ya = yTop - 0.02;
     tube(col, V3(a[0], ya, a[1]), V3(b[0], ya, b[1]), 0.012, 5);
-    const c = curtainGeo(a, b, ya - 0.01, Math.max(0.2, Math.min(0.42, ya - sv.yEdge - 0.1)), on); if (!c) continue;
-    cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(col, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), 0.007, 4);
+    hang(cur, hem, a, b, ya - 0.01, Math.max(0.2, Math.min(0.42, ya - sv.yEdge - 0.1)), on, net, i + 1);
   }
-  out.push([S.node, mesh(col, mats().steel, 'kit_cage_rim')], [S.node, mesh(cur, mats().chain, 'kit_cage_curtain')]);
+  out.push([S.node, mesh(col, mats().steel, 'kit_cage_rim')], [S.node, mesh(scr, mats().chain, 'kit_cage_screen')], [S.node, mesh(cur, net ? mats().net : mats().chain, 'kit_cage_curtain')], [S.node, mesh(hem, net ? mats().cable : mats().steel, 'kit_cage_hem')]);
 }
 
 // clear of the hull hatches' lid swing (rects from measure) by `m`
 const hullFree = (M, p, m = 0.12) => M.hatchH.every(h => { const q = h.rect || { x0: h.x - h.r, x1: h.x + h.r, z0: h.z - h.r, z1: h.z + h.r }; return !(p.x > q.x0 - m && p.x < q.x1 + m && p.z > q.z0 - m && p.z < q.z1 + m); });
 const BUILD = {
-  cage(M, out, info, pl) { if (M.hasCage) cageCurtains(M, out); else buildCage(M, out, info, pl); },
+  cage(M, out, info, pl) { if (M.hasCage) cageCurtains(M, out, info, pl); else buildCage(M, out, info, pl); },
   roof(M, out, info, pl) {
     // engine-deck screen: posts welded to the fenders outside the turret sweep, a sagging welded-mesh roof from just
     // behind the turret sweep to the stern, chain-link side curtains
-    const P = M.H, S = { node: M.hull, meshes: M.hullMeshes }, col = [], scr = [], cur = [];
+    const P = M.H, S = { node: M.hull, meshes: M.hullMeshes }, col = [], scr = [], cur = [], hem = [], posts = [];
     const x0 = P.q('x', 0.01), x1 = P.q('x', 0.99), zs = P.q('z', 0.015);
     let tcx = 0, tcz = 0, sweep = 1.5, troof = P.q('y', 0.95) + 0.6;
     if (M.turret && M.T?.n > 20) {
@@ -479,21 +599,21 @@ const BUILD = {
         if (foot) break;
       }
       if (!foot) continue;
-      const knee = V3(foot.p.x, foot.p.y + 0.25, foot.p.z), tp = V3(tx, top, z);
-      tube(col, foot.p.clone().add(V3(0, -0.01, 0)), knee, 0.028); tube(col, knee, tp, 0.028);
-      weldPlate(col, foot.p, foot.n, 0.12); n++;
+      // 40 mm square-tube post: straight up from the fender plate, then cranked out to the frame corner
+      const knee = V3(foot.p.x, foot.p.y + 0.25, foot.p.z), tp = V3(tx, top - 0.005, z);
+      sqTube(col, foot.p.clone().add(V3(0, -0.01, 0)), knee.clone().add(V3(0, 0.02, 0)), 0.04, V3(0, 0, 1)); sqTube(col, knee, tp, 0.04, V3(0, 0, 1));
+      weldPlate(col, foot.p, foot.n, 0.12); posts.push(tp); n++;
     }
     if (n < 4) return;
     const supports = []; for (let i = 0; i < 4; i++) supports.push([outer[i], outer[(i + 1) % 4]]);
-    for (const [a, b] of supports) tube(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.026);
-    for (let z = zs + 0.5; z < ze - 0.25; z += 0.5) { supports.push([[X0, z], [X1, z]]); tube(col, V3(X0, top, z), V3(X1, top, z), 0.018); }
-    for (const x of [X0 + (X1 - X0) / 3, X0 + 2 * (X1 - X0) / 3]) { supports.push([[x, zs], [x, ze]]); tube(col, V3(x, top, zs), V3(x, top, ze), 0.016); }
-    scr.push(screenGeo(outer, [], top + 0.02, CELL, 0.04, supports, 0.3));
-    for (const [a, b, on] of [[[X1, zs], [X1, ze], [1, 0]], [[X0, ze], [X0, zs], [-1, 0]], [[X0, zs], [X1, zs], [0, -1]]]) {
-      const c = curtainGeo(a, b, top - 0.026, 0.4, on, 0.04); if (!c) continue;
-      cur.push(c.geo); for (let k = 0; k < c.hem.length - 1; k++) tube(col, V3(...c.hem[k].slice(0, 3)), V3(...c.hem[k + 1].slice(0, 3)), 0.007, 4);
-    }
-    out.push([M.hull, mesh(col, mats().steel, 'kit_roof')], [M.hull, mesh(scr, mats().weldmesh, 'kit_roof_screen')], [M.hull, mesh(cur, mats().chain, 'kit_roof_curtain')]);
+    for (const [a, b] of supports) { const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2; angleIron(col, V3(a[0], top, a[1]), V3(b[0], top, b[1]), 0.05, 0.005, V3(mx - (X0 + X1) / 2, 0, mz - (zs + ze) / 2)); }
+    for (let z = zs + 0.5; z < ze - 0.25; z += 0.5) { supports.push([[X0, z], [X1, z]]); angleIron(col, V3(X0, top, z), V3(X1, top, z), 0.035, 0.004); }
+    for (const x of [X0 + (X1 - X0) / 3, X0 + 2 * (X1 - X0) / 3]) { supports.push([[x, zs], [x, ze]]); bar(col, V3(x, top - 0.009, zs), V3(x, top - 0.009, ze), 0.016, 0.016); }   // 16 mm rebar under the mesh
+    scr.push(screenGeo(outer, [], top + 0.003, CELL, 0.03, supports, 0.3));
+    // diagonal braces between the posts on each side (the deck screen racks badly without them)
+    for (const sx of [X0, X1]) { const ps = posts.filter(p => Math.abs(p.x - sx) < 1e-3).sort((a, b) => a.z - b.z); for (let i = 0; i + 1 < ps.length; i++) bar(col, ps[i].clone().add(V3(0, -0.3, 0)), ps[i + 1].clone().add(V3(0, -0.02, 0)), 0.006, 0.03, V3(1, 0, 0)); }
+    for (const [a, b, on, i] of [[[X1, zs], [X1, ze], [1, 0], 1], [[X0, ze], [X0, zs], [-1, 0], 2], [[X0, zs], [X1, zs], [0, -1], 3]]) hang(cur, hem, a, b, top - 0.005, 0.4, on, false, i);
+    out.push([M.hull, mesh(col, mats().steel, 'kit_roof')], [M.hull, mesh(scr, mats().weldmesh, 'kit_roof_screen')], [M.hull, mesh(cur, mats().chain, 'kit_roof_curtain')], [M.hull, mesh(hem, mats().steel, 'kit_roof_hem')]);
   },
   era(M, out, info) {
     const R = rng(0xE7A + M.H.n), tank = info.kind === 'tank' || info.kind == null;
@@ -504,11 +624,17 @@ const BUILD = {
       const ax = slab([], p, n, u, 1, 1, 1);   // basis only
       let nn = ax.n, vv = ax.v;
       if (tilt) { const q = new THREE.Quaternion().setFromAxisAngle(ax.u, tilt); nn = nn.clone().applyQuaternion(q); vv = vv.clone().applyQuaternion(q); const lift = Math.sin(Math.abs(tilt)) * BD / 2 + 0.004; const wedge = new THREE.BoxGeometry(BW * 0.9, lift * 2, BD * 0.8); wedge.applyMatrix4(new THREE.Matrix4().makeBasis(ax.u, ax.n, ax.v).setPosition(p.clone().add(ax.n.clone().multiplyScalar(lift - 0.003)))); geos.push(prep(wedge, [0.2, 0.2, 0.16])); p = p.clone().add(ax.n.clone().multiplyScalar(lift * 2 + 0.004)); }
-      const jit = (R() - 0.5) * 0.04, uu = ax.u.clone().applyAxisAngle(nn, jit);
-      const g = new THREE.BoxGeometry(BW, BT, BD, 1, 1, 1); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0) { pa.setX(i, pa.getX(i) * 0.94); pa.setZ(i, pa.getZ(i) * 0.86); }   // chamfered lid
-      const m = new THREE.Matrix4().makeBasis(uu, nn, new THREE.Vector3().crossVectors(uu, nn)); m.setPosition(p.clone().add(nn.clone().multiplyScalar(BT / 2 - 0.004)));
-      g.applyMatrix4(m); geos.push(prep(g, colr));
-      for (const s of [-1, 1]) { const b = new THREE.CylinderGeometry(0.012, 0.012, 0.012, 6); b.applyMatrix4(new THREE.Matrix4().makeBasis(uu, nn, new THREE.Vector3().crossVectors(uu, nn)).setPosition(p.clone().add(nn.clone().multiplyScalar(BT + 0.002)).add(uu.clone().multiplyScalar(s * BW * 0.36)))); geos.push(prep(b, [0.18, 0.18, 0.15])); }
+      const jit = (R() - 0.5) * 0.04, uu = ax.u.clone().applyAxisAngle(nn, jit), vv2 = new THREE.Vector3().crossVectors(uu, nn), B = new THREE.Matrix4().makeBasis(uu, nn, vv2);
+      const at = (g, h) => { g.applyMatrix4(B.clone().setPosition(p.clone().add(nn.clone().multiplyScalar(h)))); return g; };
+      // mounting frame: a thin welded strip frame a little larger than the container (dark, unpainted where it was welded)
+      geos.push(prep(at(new THREE.BoxGeometry(BW + 0.02, 0.008, BD + 0.016), 0), [0.24, 0.24, 0.2]));   // 4 mm sunk, top at +4 mm
+      // the container: pressed-steel box, lid edges chamfered, lid face crowned (a raised panel stamped into it)
+      const g = new THREE.BoxGeometry(BW, BT, BD, 1, 1, 1); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0) { pa.setX(i, pa.getX(i) * (1 - 0.018 / BW * 2)); pa.setZ(i, pa.getZ(i) * (1 - 0.018 / BD * 2)); }
+      geos.push(prep(at(g, 0.003 + BT / 2), colr));   // bottom 1 mm into the frame strip
+      const pan = new THREE.BoxGeometry(BW * 0.62, 0.006, BD * 0.5); for (let i = 0; i < pan.attributes.position.count; i++) if (pan.attributes.position.getY(i) > 0) { pan.attributes.position.setX(i, pan.attributes.position.getX(i) * 0.9); pan.attributes.position.setZ(i, pan.attributes.position.getZ(i) * 0.8); }
+      geos.push(prep(at(pan, 0.003 + BT + 0.002), colr.map(c => c * 1.06)));
+      // two lid bolts (hex heads) at the ends, darker where the paint has worn off
+      for (const sg of [-1, 1]) { const b = new THREE.CylinderGeometry(0.011, 0.012, 0.012, 6); b.translate(sg * BW * 0.38, 0, 0); geos.push(prep(at(b, 0.003 + BT + 0.005), [0.22, 0.21, 0.18])); }
     };
     // glacis: find the front plate by rays from ahead, fit a plane, lay rows of bricks on it (each one ray-checked)
     const P = M.H, S = { node: M.hull, meshes: M.hullMeshes }, geos = [];
@@ -524,7 +650,7 @@ const BUILD = {
       const u = V3(1, 0, 0), v = new THREE.Vector3().crossVectors(u, nrm).normalize().negate();   // v: up the slope
       const us = on.map(h => h.p.clone().sub(c0).dot(u)), vs = on.map(h => h.p.clone().sub(c0).dot(v));
       const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
-      const nu = Math.floor((u1 - u0 - 0.1) / (BW + GAP)), nv = Math.min(tank ? 4 : 2, Math.floor((v1 - v0 - 0.08) / (BD + GAP)));
+      const nu = Math.floor((u1 - u0 - 0.1) / (BW + GAP)), nv = Math.min(tank ? 6 : 3, Math.floor((v1 - v0 - 0.08) / (BD + GAP)));
       for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
         const uu = u0 + 0.05 + (u1 - u0 - 0.1 - nu * (BW + GAP)) / 2 + (i + 0.5) * (BW + GAP) + (j % 2 ? (BW + GAP) / 2 * 0 : 0);
         const vv = v1 - 0.05 - (j + 0.5) * (BD + GAP);
@@ -578,7 +704,7 @@ const BUILD = {
           const t = new THREE.Vector3().crossVectors(UP, h.n).normalize(); let ok = true;
           for (const e of [-0.42, 0.42]) { const q = h.p.clone().add(t.clone().multiplyScalar(e * BW)); const hh = cast(S2.meshes, S2.node, q.clone().add(h.n.clone().multiplyScalar(0.4)), h.n.clone().negate(), 0.8); if (!hh || hh.p.distanceTo(q) > 0.05) { ok = false; break; } }
           if (!ok) continue;
-          last = h.p.clone(); if (R() < 0.04 || lidSweep(h.p)) continue;
+          last = h.p.clone(); if (R() < 0.04 || lidSweep(h.p) || (info._pl?.cage?.feet || []).some(f => Math.hypot(f.x - h.p.x, f.z - h.p.z) < BW * 0.6 + 0.05)) continue;
           brick(tg, h.p, h.n, t, tank ? -0.3 : 0);
         }
       }
@@ -604,7 +730,23 @@ const BUILD = {
   },
   sandbags(M, out, info) {
     const P = M.H, tracked = !info.wheeled, R = rng(0x5A9D + M.H.n), S = { node: M.hull, meshes: M.hullMeshes };
-    const bagGeo = (L, W, Hh) => { const g = new THREE.SphereGeometry(1, 10, 6); const pa = g.attributes.position; for (let i = 0; i < pa.count; i++) { let x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i); x = Math.sign(x) * Math.pow(Math.abs(x), 0.55); z = Math.sign(z) * Math.pow(Math.abs(z), 0.6); y = y < 0 ? y * 0.25 : y; pa.setXYZ(i, x * L / 2, (y + 0.25) * Hh / 1.25, z * W / 2); } g.computeVertexNormals(); return g; };
+    // a filled sack lying on its face: boxy superellipse body, flat underside pressed onto the plate, crown falling away
+    // to the sewn end and the tied end (gathered into a short tuft), lumpy fill; every bag its own size / lumps / colour
+    const bagGeo = (L, W, Hh) => {
+      const g = new THREE.SphereGeometry(1, 12, 8), pa = g.attributes.position, sd = R() * 10, tied = R() < 0.5 ? 1 : -1;
+      for (let i = 0; i < pa.count; i++) {
+        let x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i);
+        x = Math.sign(x) * Math.pow(Math.abs(x), 0.5); z = Math.sign(z) * Math.pow(Math.abs(z), 0.6);
+        const ax = Math.abs(x); y = y < 0 ? y * 0.14 : y * (1 - 0.45 * Math.pow(ax, 5));
+        if (x * tied > 0.82) { const f = 1 - 0.65 * (ax - 0.82) / 0.18; z *= f; y = y * f + (1 - f) * 0.25; x += tied * (ax - 0.82) * 0.5; }
+        if (y > 0) y += 0.035 * Math.sin(5 * x + 3 * z + sd) * Math.cos(3 * z - 2 * x + sd * 1.3);
+        pa.setXYZ(i, x * L / 2, (y + 0.14) / 1.2 * Hh, z * W / 2);
+      }
+      g.computeVertexNormals(); return g;
+    };
+    // polypropylene sacks: white, sand, olive and green ones mixed, one or two kinds dominant per vehicle
+    const PAL = [[0.62, 0.6, 0.54], [0.6, 0.52, 0.37], [0.4, 0.41, 0.27], [0.31, 0.37, 0.25]], main = 1 + Math.floor(R() * 3), alt = (main + 1 + Math.floor(R() * 3)) % 4;
+    const bagCol = () => { const b = PAL[R() < 0.65 ? main : R() < 0.7 ? alt : Math.floor(R() * 4)], c = 0.86 + R() * 0.22; return b.map(v => Math.min(1, v * c)); };
     if (!tracked) {
       // wheeled: two courses of bags on the sloped upper hull side between the axles' arches, held by a welded rail
       const geos = [], rail = [];
@@ -612,14 +754,15 @@ const BUILD = {
       for (const sx of [-1, 1]) {
         const xFar = sx * (Math.max(Math.abs(P.q('x', 0.005)), Math.abs(P.q('x', 0.995))) + 1);
         let railPts = [];
-        for (let z = z0; z <= z1; z += 0.5) for (const [k, y] of [[0, yL], [1, (yL + yU) / 2 + 0.05]]) {
+        for (let z0_ = z0; z0_ <= z1; z0_ += 0.5) for (const [k, y] of [[0, yL], [1, (yL + yU) / 2 + 0.05]]) {
+          const z = z0_ + (k ? 0.25 : 0) + (R() - 0.5) * 0.04; if (z > z1) continue;   // upper course laid half a bag over (bonded)
           const h = cast(S.meshes, S.node, V3(xFar, y, z), V3(-sx, 0, 0)); if (!h || Math.abs(h.n.x) < 0.35 || h.n.y < -0.3) continue;
           // flatness under the bag: three probes along z must hit within 4 cm of the plane
           let ok = true; for (const [dz, dy] of [[-0.22, 0], [0.22, 0], [0, 0.1], [0, -0.1], [-0.2, 0.08], [0.2, -0.08]]) { const hh = cast(S.meshes, S.node, V3(xFar, y + dy, z + dz), V3(-sx, 0, 0)); if (!hh || Math.abs(hh.p.clone().sub(h.p).dot(h.n)) > 0.035 + Math.abs(dy) * Math.abs(h.n.y) * 1.2) ok = false; }
           if (!ok) continue;
-          const g = bagGeo(0.5 + R() * 0.06, 0.3, 0.17); const n = h.n, v = UP.clone().sub(n.clone().multiplyScalar(n.y)).normalize(), u = new THREE.Vector3().crossVectors(n, v).normalize();   // v: up the slope, u: along the hull
-          g.applyMatrix4(new THREE.Matrix4().makeBasis(u, n, v).multiply(new THREE.Matrix4().makeRotationY((R() - 0.5) * 0.15)).setPosition(h.p.clone().add(n.clone().multiplyScalar(0.01))));
-          const c = 0.8 + R() * 0.3; geos.push(prep(g, [c, c * 0.97, c * 0.9]));
+          const g = bagGeo(0.46 + R() * 0.1, 0.28 + R() * 0.05, 0.15 + R() * 0.04); const n = h.n, v = UP.clone().sub(n.clone().multiplyScalar(n.y)).normalize(), u = new THREE.Vector3().crossVectors(n, v).normalize();   // v: up the slope, u: along the hull
+          g.applyMatrix4(new THREE.Matrix4().makeBasis(u, n, v).multiply(new THREE.Matrix4().makeRotationY((R() - 0.5) * 0.15)).setPosition(h.p.clone().add(n.clone().multiplyScalar(-0.006))));   // pressed 6 mm into the plate
+          geos.push(prep(g, bagCol()));
           if (k === 0) railPts.push(h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(0.22)));
           if (k === 0) { weldPlate(rail, h.p.clone().add(v.clone().multiplyScalar(-0.17)), n, 0.07); tube(rail, h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(-0.005)), h.p.clone().add(v.clone().multiplyScalar(-0.17)).add(n.clone().multiplyScalar(0.22)), 0.012, 5); }
         }
@@ -689,19 +832,32 @@ const BUILD = {
     const legs = [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.15], [0.2, 0.15]].map(([dx, dz]) => ({ dx, dz, h: down(S, sp.x + dx, sp.z + dz, yStart) }));
     if (legs.filter(l => l.h && l.h.n.y > 0.3).length < 4) return;
     const deck = Math.max(...legs.map(l => l.h.p.y)) + 0.14;
-    for (const l of legs) { tube(st, l.h.p.clone().add(V3(0, -0.01, 0)), V3(sp.x + l.dx, deck, sp.z + l.dz), 0.016, 6); weldPlate(st, l.h.p, l.h.n, 0.07); }
-    for (const [a, b] of [[0, 1], [2, 3], [0, 2], [1, 3]]) { const A = legs[a], B = legs[b]; const ym = (deck + Math.max(A.h.p.y, B.h.p.y)) / 2; tube(st, V3(sp.x + A.dx, ym, sp.z + A.dz), V3(sp.x + B.dx, ym, sp.z + B.dz), 0.01, 5); }
-    const plate = new THREE.BoxGeometry(0.5, 0.012, 0.38); plate.translate(sp.x, deck + 0.006, sp.z); st.push(prep(plate));
-    const box = new THREE.BoxGeometry(0.44, 0.2, 0.32); box.translate(sp.x, deck + 0.112, sp.z); col.push(prep(box));
-    for (const sxx of [-1, 1]) for (let i = 0; i < 4; i++) { const f = new THREE.BoxGeometry(0.006, 0.12, 0.26); f.translate(sp.x + sxx * (0.226 + i * 0.0), deck + 0.1, sp.z); if (i === 0) col.push(prep(f)); }   // heat-sink plates on the box ends
-    const lid = new THREE.BoxGeometry(0.46, 0.02, 0.34); lid.translate(sp.x, deck + 0.222, sp.z); col.push(prep(lid));
-    // antennas: 6 whips in a ring on the lid (different bands, different lengths), black bases + a cable down to the roof
-    for (let i = 0; i < 6; i++) {
-      const a = i / 6 * Math.PI * 2, x = sp.x + Math.cos(a) * 0.16, z = sp.z + Math.sin(a) * 0.12, L = [0.55, 0.42, 0.7, 0.5, 0.62, 0.45][i];
-      const b = new THREE.CylinderGeometry(0.022, 0.026, 0.06, 8); b.translate(x, deck + 0.262, z); blk.push(prep(b));
-      const w = new THREE.CylinderGeometry(0.005, 0.009, L, 5); w.translate(x, deck + 0.29 + L / 2, z); blk.push(prep(w));
+    // stand: 30 mm square-tube legs on weld plates, square-tube rails between them at mid height, a 10 mm deck plate
+    for (const l of legs) { sqTube(st, l.h.p.clone().add(V3(0, -0.008, 0)), V3(sp.x + l.dx, deck, sp.z + l.dz), 0.03); weldPlate(st, l.h.p, l.h.n, 0.07); }
+    for (const [a, b] of [[0, 1], [2, 3], [0, 2], [1, 3]]) { const A = legs[a], B = legs[b]; const ym = (deck + Math.max(A.h.p.y, B.h.p.y)) / 2; bar(st, V3(sp.x + A.dx, ym, sp.z + A.dz), V3(sp.x + B.dx, ym, sp.z + B.dz), 0.03, 0.03); }
+    const plate = new THREE.BoxGeometry(0.5, 0.01, 0.38); plate.translate(sp.x, deck + 0.004, sp.z); st.push(prep(plate));
+    // the jammer: a ruggedised box (Piranha / Lima / Volnorez class) with cooling fins on the long sides, a gasketed lid,
+    // carry handles, connector panel; a ring of eight antennas of different bands on N connectors
+    const y0 = deck + 0.008, BH = 0.2;
+    const box = new THREE.BoxGeometry(0.44, BH, 0.3); box.translate(sp.x, y0 + BH / 2, sp.z); col.push(prep(box));
+    for (const sz of [-1, 1]) for (let i = 0; i < 7; i++) { const f = new THREE.BoxGeometry(0.005, BH * 0.78, 0.03); f.translate(sp.x - 0.18 + i * 0.06, y0 + BH * 0.47, sp.z + sz * (0.15 + 0.013)); col.push(prep(f)); }
+    const lid = new THREE.BoxGeometry(0.46, 0.022, 0.32); lid.translate(sp.x, y0 + BH + 0.009, sp.z); col.push(prep(lid));
+    const yl = y0 + BH + 0.02;
+    for (const sx of [-1, 1]) { const xf = sp.x + sx * 0.218, xo = xf + sx * 0.035, y = y0 + BH * 0.62; for (const dz of [-0.07, 0.07]) bar(blk, V3(xf, y, sp.z + dz), V3(xo, y, sp.z + dz), 0.012, 0.012); bar(blk, V3(xo, y, sp.z - 0.076), V3(xo, y, sp.z + 0.076), 0.014, 0.014); }   // carry handles
+    for (let i = 0; i < 3; i++) { const c = new THREE.CylinderGeometry(0.016, 0.016, 0.03, 8); c.rotateX(Math.PI / 2); c.translate(sp.x - 0.1 + i * 0.1, y0 + BH * 0.55, sp.z - 0.15 - 0.012); blk.push(prep(c)); }
+    for (let i = 0; i < 8; i++) {
+      const a = (i + 0.5) / 8 * Math.PI * 2, x = sp.x + Math.cos(a) * 0.18, z = sp.z + Math.sin(a) * 0.12, whip = i % 2 === 0;
+      const nb = new THREE.CylinderGeometry(0.014, 0.017, 0.03, 6); nb.translate(x, yl + 0.014, z); blk.push(prep(nb));
+      if (whip) {   // long fibreglass whip on a spring base
+        const L = [0.72, 0.6, 0.66, 0.55][i / 2]; const sb = new THREE.CylinderGeometry(0.012, 0.012, 0.07, 6); sb.translate(x, yl + 0.064, z); blk.push(prep(sb));
+        const w = new THREE.CylinderGeometry(0.003, 0.007, L, 5); w.translate(x, yl + 0.098 + L / 2, z); blk.push(prep(w));
+      } else {      // short sleeve-dipole (rubber-duck) antenna
+        const L = [0.26, 0.2, 0.3, 0.22][(i - 1) / 2]; const w = new THREE.CylinderGeometry(0.009, 0.014, L, 6); w.translate(x, yl + 0.028 + L / 2, z); blk.push(prep(w));
+      }
     }
-    tube(blk, V3(sp.x + 0.22, deck + 0.08, sp.z - 0.1), V3(sp.x + 0.3, legs[1].h.p.y + 0.012, sp.z - 0.2), 0.012, 5);
+    // power / control cable from the connector panel down over the deck plate edge to the roof (into the turret)
+    { const f = legs[0].h.p, c = [V3(sp.x, y0 + BH * 0.55, sp.z - 0.17), V3(sp.x - 0.04, y0 + 0.02, sp.z - 0.23), V3(sp.x - 0.1, (y0 + f.y) / 2, sp.z - 0.28), V3(sp.x - 0.14, f.y + 0.012, sp.z - 0.33)];
+      const g = down(S, c[3].x, c[3].z, yStart); if (g && g.n.y > 0.3 && Math.abs(g.p.y - f.y) < 0.2) { c[3].y = g.p.y + 0.008; c[2].y = (y0 + g.p.y) / 2; for (let k = 0; k < 3; k++) tube(blk, c[k], c[k + 1], 0.009, 5); } }
     out.push([S.node, mesh(col, mats().box, 'kit_ew')], [S.node, mesh(st, mats().steel, 'kit_ew_stand')], [S.node, mesh(blk, mats().black, 'kit_ew_antennas')]);
   },
   smoke(M, out, info, pl) {
