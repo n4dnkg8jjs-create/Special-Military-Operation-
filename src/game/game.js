@@ -15,6 +15,7 @@ import { Vehicle } from './vehicle.js';
 import { Combat } from './combat.js';
 import { CQB } from './cqb.js';
 import { buildHouses } from '../world/houses.js';
+import { setupTreeDamage } from '../world/treeDamage.js';
 import { prepareSoldierAssets } from './soldier.js';
 import { Commander, AutoDefender } from './ai.js';
 import { setupMedevac } from './medevac.js';
@@ -61,6 +62,7 @@ export class Game {
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
     this.combat = new Combat(this); this.cqb = new CQB(this);   // building clearing (game/cqb.js)
+    this.treeDamage = setupTreeDamage(this);   // shelled trees lose leaves, splinter, snap (world/treeDamage.js; driven by fx.explosion)
     this.cam = new RTSCamera(this.renderer.camera, canvas, BOUNDS);
     prepareSoldierAssets(this.assets);
     this.objectives = OBJECTIVES.map(o => ({ ...o, control: 0, owner: 'neutral', lostT: 0, contested: false, captured: false }));

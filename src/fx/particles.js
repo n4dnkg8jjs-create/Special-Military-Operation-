@@ -261,6 +261,7 @@ export class FX {
   }
   explosion(pos, power = 1, opts = {}) {
     const p = power, R = Math.random;
+    this.onBlast?.(pos, power);   // shelled trees (world/treeDamage.js): leaves, splinters, stumps
     // initial white-hot flash
     this.glow.spawn({ x: pos.x, y: pos.y + 0.6 * p, z: pos.z, life: 0.09, size0: 4 * p, size1: 9 * p, r: 1, g: 0.9, b: 0.7, a0: 3.5, a1: 0, frame: 0 });
     // textured fireball: several billowing puffs expanding and cooling from yellow to deep red
@@ -363,5 +364,6 @@ export class FX {
     this.rings = this.rings.filter(r => !r.dead);
     this.time += dt; this.flames.update(dt, this.time); if (camPos) this.tracers.update(dt, camPos);
     this.smoke.update(dt, camPos); this.glow.update(dt, null); this.fire.update(dt, null);
+    this.onUpdate?.(dt);   // (world/treeDamage.js: leaves / wood fragments / falling tops)
   }
 }
