@@ -22,6 +22,7 @@ import { MAP_SIZE } from './city.js';
 
 const TREE = /^(tree_|leafy_summer_|bush_)/, NOT_TREE = /fallen|stump|_lod\d*$|_mid$|row$/;
 const LEAF_CAP = 600, WOOD_CAP = 200, TOP_CAP = 40, STUMP_CAP = 400, GC = 8;
+const BIG_TRUNK = 0.4;   // trunk-shape radius (vegetation.js trunkShape, bark + lower limbs: ~1.6-2x the bole) of a tree a tank cannot push over; ~10-30 % of the trees per map
 const isLeafMat = m => !!m && (m.alphaTest > 0 || m.transparent || /leaf|leaves|foliage/i.test(m.name || ''));
 const leafOf = im => (Array.isArray(im.material) ? im.material.some(isLeafMat) : isLeafMat(im.material));
 const key2 = (x, z) => (Math.round(x * 20) + 60000) * 200000 + Math.round(z * 20) + 60000;
@@ -115,8 +116,38 @@ export class TreeDamage {
       }
     }
     this.buildPools();
-    this.stats = { blasts: 0, stripped: 0, snapped: 0 };
+    this.stats = { blasts: 0, stripped: 0, snapped: 0, crushed: 0 };
+    this.vehicleTrees();
     if (typeof window !== 'undefined') window.__trees = this;
+  }
+  // ------------------------------------------------------------------------------------------------ vehicles vs trees
+  // A tank pushes over most trees; a big trunk (radius >= BIG_TRUNK) it cannot: those cells become no-go for every
+  // vehicle (nav.veh = 2), so routes go round them. Anything smaller is knocked down by a vehicle driving into it
+  // (crush, from vehicle.update): the tree falls the way the hull is moving and leaves a stump.
+  vehicleTrees() {
+    const nav = this.nav; this.tr = new Float32Array(this.N); if (!nav || !this.N) return;
+    let big = 0;
+    for (let t = 0; t < this.N; t++) {
+      const r = this.trunk[t] ? this.trunk[t].r : 0.18 * this.s[t]; this.tr[t] = r;
+      if (r >= BIG_TRUNK) { nav.setVeh(this.x[t], this.z[t], r + 0.35, r + 0.35, 0, 2); big++; }
+    }
+    this.stats.bigTrunks = big;
+    if (big) { nav.vehDirty = true; nav.finalize(); }
+  }
+  crush(v) {
+    if (!this.N || !v.def) return;
+    const L = v.def.length * 0.5, W = v.def.width * 0.5, c = Math.cos(v.heading), s = Math.sin(v.heading), dir = (v.speed || 0) >= 0 ? 1 : -1;
+    const gx = Math.floor(v.pos.x / GC), gz = Math.floor(v.pos.z / GC);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const l = this.grid.get((gx + i) * 4096 + gz + j); if (!l) continue;
+      for (const t of l) {
+        if (this.st[t] === 2 || this.tr[t] >= BIG_TRUNK) continue;
+        const dx = this.x[t] - v.pos.x, dz = this.z[t] - v.pos.z, r = this.tr[t];
+        if (Math.abs(dx * c - dz * s) > W + r || Math.abs(dx * s + dz * c) > L + r) continue;
+        this.snap(t, this.x[t] - s * dir, this.z[t] - c * dir, 0.5, 5); this.stats.crushed++;
+        if (this.g.camDist?.(v.pos) < 160) this.g.sfx?.('debris', v.pos);
+      }
+    }
   }
   // ------------------------------------------------------------------------------------------------ pools
   buildPools() {
