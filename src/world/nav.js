@@ -16,7 +16,7 @@ export const VEH_COST = {
 // heurThr 1.6 cut the exposed share of routes from 52 % to 45 % for 1 % more length, ~1.6 ms a query). thrIter: a threat
 // query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
 // exposed, the search would flood the map).
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000 };
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -208,7 +208,10 @@ export class NavGrid {
   // the band along walls / fences (moving along facades rather than across open ground), plus the threat term
   infCost(k) {
     const cl = this.clear[k];
-    let c = this.cost[k] + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
+    // rubble heaps, collapsed blocks, sandbags, wrecks' debris (low cover, cost 2-7: the cost doubles as the cover class for
+    // exposed() / the cover map) are slow going for a man on foot but no obstacle: clamp them to ~2x open ground so squads
+    // pick their way over a ruin or through a gap in a heap instead of a long detour round it
+    let c = (this.low[k] && this.cost[k] > INF_COST.rubble ? INF_COST.rubble : this.cost[k]) + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
     if (this._thr) c += this.exposed(k) * INF_COST.threat;
     return c;
   }
