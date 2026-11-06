@@ -162,6 +162,21 @@ export class CommanderV1 {
   objPos(obj) { const o = OBJECTIVES.find(o => o.id === obj); return [o.x, o.z]; }
   // nearest player squad/vehicle within r of p
   threatsNear(p, r) { let n = 0, rpg = 0; for (const u of this.g.unitsOf('player')) { if (u.type === 'squad' && u.mounted) continue; const c = u.center(); if (c.distanceTo(p) < r) { n++; if (u.type === 'squad' && u.effective.some(s => s.weaponKey === 'rpg7' || s.rpg22 > 0)) rpg++; } } return { n, rpg }; }
+  // v7: a squad dug into a trench stays and fights while it is in contact (under fire in the last 15 s, or enemy known within
+  // 250 m): it goes to ground in the trench (squad.trenchThink / cower) and returns fire. It leaves only when overrun (enemy in the
+  // trench or within 22 m) - or once the contact has gone quiet (a covered withdrawal / the next task). Every 'pull back / regroup
+  // / carry on / counterattack / reposition' path checks this first: before, they took men out of the trench into the open the
+  // moment the fire came in, where they were cut down.
+  overrun(sq) {
+    const c = sq.center();
+    for (const q of this.g.squads) if (q.side !== sq.side && !q.destroyed && !q.mounted) for (const s of q.effective) if (!s.aboard && Math.hypot(s.pos.x - c.x, s.pos.z - c.z) < 22) return true;
+    return !!sq.trench && trenchMen(this.g, sq.trench, sq.side === 'enemy' ? 'player' : 'enemy').length > 0;
+  }
+  dugInHold(b) {
+    const sq = b?.sq; if (!sq || !sq.trench || sq.routing || sq.mounted) return false;
+    if (this.overrun(sq)) return false;
+    return sq.underFireT < 15 || this.threatsNear(sq.center(), 250).n > 0;
+  }
   friendsNear(p, r) { let n = 0; for (const u of this.g.unitsOf('enemy')) if (u.type === 'squad' && !u.mounted && u.center().distanceTo(p) < r) n++; return n; }
   think(b) {
     const g = this.g;
@@ -203,14 +218,14 @@ export class CommanderV1 {
     }
     // ---- strongpoint: a building taken in contact is held for a while (covering friends) before moving on
     if (b.state === 'strongpoint') {
-      if (!sq.building && !moving) b.state = 'advance';
-      else if (g.time > b.holdT && sq.morale > 55 && this.friendsNear(c, 90) >= 1 && sq.underFireT > 4) { b.state = 'advance'; sq.leaveBuilding(); }
+      if (!sq.building && !sq.trench && !moving) b.state = 'advance';   // (v7: a trench is a strongpoint too - it was dropped at once)
+      else if (g.time > b.holdT && sq.morale > 55 && this.friendsNear(c, 90) >= 1 && sq.underFireT > 4 && !this.dugInHold(b)) { b.state = 'advance'; sq.leaveBuilding(); }
       else { b.wait = 3; return; }
     }
     // ---- badly hurt or shaken and outgunned: pull back to cover / a building on the own side and regroup
     const strength = sq.effective.length / sq.soldiers.length;
     const careful = this.cautious();   // ahead on objectives / short of tickets: don't spend men needlessly
-    if ((strength <= (careful ? 0.55 : 0.45) || sq.morale < (careful ? 42 : 36)) && b.state !== 'hold' && !sq.building) {
+    if ((strength <= (careful ? 0.55 : 0.45) || sq.morale < (careful ? 42 : 36)) && b.state !== 'hold' && !sq.building && !this.dugInHold(b)) {
       const thr = this.threatsNear(c, 120);
       if (thr.n > this.friendsNear(c, 90) || sq.morale < 30) {
         const home = this.stagingFor(b.obj), back = new THREE.Vector3(home[0] - c.x, 0, home[1] - c.z); const L = back.length() || 1; back.multiplyScalar(1 / L);
@@ -237,11 +252,12 @@ export class CommanderV1 {
       // the point we sit on bleeds the player: stay; the player's points bleed us: send men to contest them
       const own = g.objectives.find(o => o.id === b.obj), guards = own ? this.friendsNear(new THREE.Vector3(own.x, 0, own.z), 45) : 0;
       const p = this.posture === 'attack' ? (guards > 1 ? 0.2 : 0.08) : this.posture === 'hold' ? 0 : 0.04;
-      if (Math.random() < p) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = (others.find(o => o.owner === 'player') || others[Math.floor(Math.random() * others.length)]).id; if (sq.building) sq.leaveBuilding(); } }
+      if (Math.random() < p && !this.dugInHold(b) && sq.underFireT > 20) { const others = g.objectives.filter(o => o.id !== b.obj && o.owner !== 'enemy'); if (others.length) { b.state = 'advance'; b.obj = (others.find(o => o.owner === 'player') || others[Math.floor(Math.random() * others.length)]).id; if (sq.building) sq.leaveBuilding(); } }
       return;
     }
     if (dObj < 22) { b.state = 'hold'; const T = this.freeTrench(ox, oz, 70, sq); if (T && Math.random() < 0.7) { sq.orderTrench(T); return; } const bld = this.nearBuilding(new THREE.Vector3(ox, 0, oz), 30, sq); if (bld && Math.random() < 0.6) sq.orderGarrison(bld); return; }
     if (sq.building && sq.underFireT < 4 && Math.random() < 0.7) { b.wait = 5; return; }
+    if (this.dugInHold(b)) { b.wait = 4; return; }   // v7: in a trench and in contact: fight from it (no bound out into the open)
     // in contact: fire and manoeuvre — one fire team keeps the enemy's heads down while the other bounds to
     // cover on a flank; if clearly outnumbered locally, go to ground in the best cover and wait for support
     const contact = this.contactNear(sq, c, 170);

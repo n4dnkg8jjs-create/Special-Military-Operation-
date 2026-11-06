@@ -317,7 +317,6 @@ export const TrenchMixin = {
       if (thrower && (bayFoes || (foes.length && nadesLeft > toGo && Math.random() < (this.assault ? 0.95 : 0.7)))) {
         const at = routeAt(R, Math.min(R.total, O.sc + 8)), gy = g.city.groundHeight ? g.city.groundHeight(at[0], at[1]) : 0;
         g.combat.throwGrenade(thrower, { pos: new THREE.Vector3(at[0], gy + 0.2, at[1]), inBuilding: false });
-        if (g.camDist(thrower.pos) < 80) g.sfx('grenade_throw', thrower.pos);
         O.frags++; O.phase = 'bang'; O.waitT = 3.5;
       } else { O.phase = 'bound'; }
       O.bayEnd = Math.min(R.total, O.next + 1 < O.corners.length ? O.corners[O.next + 1] - 2 : O.sc + 12);
@@ -335,7 +334,6 @@ export const TrenchMixin = {
     }
     if (ahead && da > 8 && da < 16 && thrower && (O.lastFrag ?? -99) < g.time - 5) {   // a defender in the bay (8 m+ out: lethal radius 6 m): grenade him first
       O.lastFrag = g.time; g.combat.throwGrenade(thrower, ahead); O.phase = 'bang'; O.waitT = 3.4; O.frags++;
-      if (g.camDist(thrower.pos) < 80) g.sfx('grenade_throw', thrower.pos);
       return this.clearPlace(dt);
     }
     if (ahead && da < 6) {   // shoot it out; a stand-off round the traverse (no line of fire) ends in a close-quarters rush
@@ -425,10 +423,10 @@ export const TrenchMixin = {
     });
   },
   fragDugout(s, d) {
-    const g = this.game; s.grenades--; s.throwT = 1.2; s.fireCd = 1.5;
+    const g = this.game; s.grenades--;
     if (g.camDist(s.pos) < 80) g.sfx('grenade_pin', s.pos);
     const to = new THREE.Vector3(d.door[0] + d.dir[0] * 3.4, -1.2, d.door[1] + d.dir[1] * 3.4);
-    g.combat.projectiles.push({ kind: 'grenade', pos: s.pos.clone().setY(s.pos.y + 1.3), from: s.pos.clone().setY(s.pos.y + 1.3), target: to, t: null, speed: 9, owner: s, side: this.side, fuse: 0, arc: true, dugout: d });
+    g.combat.startThrow(s, to, { speed: 9, style: 'low', extra: { dugout: d } });   // v7: underhand lob into the entrance
   },
 };
 

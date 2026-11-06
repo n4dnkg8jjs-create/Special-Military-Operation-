@@ -618,11 +618,15 @@ export class Squad {
         this.routCheckT = 3;
         const hold = TUNING.routHold.base + (this.leader?.role.leader && this.leader.effective ? TUNING.routHold.leader : 0) + (this.building || this.trench ? TUNING.routHold.cover : 0) + (this.vet || 0) * 0.04;
         if (Math.random() < hold) { this.morale = TUNING.routThreshold + 5; this.routHeld = (this.routHeld || 0) + 1; }
+        // v7: broken under fire in a trench / building and not overrun: running would be across the open into the fire - they
+        // cower in the trench / below the sills instead (pinned, morale held at the line) and may run once the fire lifts
+        else if ((this.trench || this.building) && this.underFireT < 8 && !this.overrunNear(20)) { this.morale = TUNING.routThreshold + 3; this.pinned = true; this.cowered = (this.cowered || 0) + 1; }
         else this.startRout();
       }
     }
     else if (this.routing && this.morale > 42 && this.underFireT > 8) { this.routing = false; this.order = null; this.morale = 45; if (this.side === 'player') this.game.hud?.alert(`${this.name} has rallied`, 'good'); }
   }
+  overrunNear(r) { const c = this.center(); for (const q of this.game.squads) if (q.side !== this.side && !q.destroyed && !q.mounted) for (const e of q.effective) if (!e.aboard && Math.hypot(e.pos.x - c.x, e.pos.z - c.z) < r) return true; return false; }
   startRout() {
     this.routing = true; this.leaveBuilding();
     if (this.side === 'player') { this.game.hud?.alert(`${this.name} is ROUTING!`, 'bad'); this.game.sfx('ui_alert'); }
@@ -680,7 +684,28 @@ export class Squad {
     if (!frozen && v && (v.destroyed || v.burning > 0)) this.dismount(v.heading + Math.PI);
     this.underFireT += dt;
   }
+  // v7: a man with somewhere to go but no route (no path found - pathFail -, or the path dropped by an interruption and never
+  // asked again) stood still for good: the v6 watchdog only watches men who are walking a path. After 1.5 s idle he asks
+  // again; then from a cell 1 m clear to the nearest free cell at his goal; then the goal is dropped (he rejoins his squad's
+  // next order). (Not: inside, aboard, clearing rooms, cellars, waiting on his fire team / his turn to dismount, dragging.)
+  idleGoalWatch() {
+    const g = this.game, nav = g.nav;
+    for (const s of this.effective) {
+      const busy = s.inside || s.cqb || s.cellar || s.cellarMove || s.dmWait != null || s.jumpT > 0 || s.hatchT > 0 || s.hatchWait != null || s.waitTeam || s.dragging || s.rampWalk || s.deckWalk;
+      if (busy || !s.goal || s.pathReq || (s.path && s.pathI < s.path.length) || Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 1.6) { s.idleGoalT = 0; if (!s.goal) s.goalRetry = 0; continue; }
+      if ((s.idleGoalT = (s.idleGoalT || 0) + 0.5) < 1.5) continue;
+      s.idleGoalT = 0; s.goalRetry = (s.goalRetry || 0) + 1; this.idleRetries = (this.idleRetries || 0) + 1;
+      if (s.goalRetry <= 2) g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], s.goalRetry === 1 ? 0.45 : 0.4, false, this.pathOpts?.());
+      else if (s.goalRetry <= 4) {
+        const [sx, sz] = nav.nearestFree(s.pos.x, s.pos.z, 0.6, 4), [gx, gz] = nav.nearestFree(s.goal[0], s.goal[1], 0.5, 8);
+        s.goal = [gx, gz];
+        if (Math.hypot(sx - s.pos.x, sz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, sx, sz, 0.3)) { s.path = [[sx, sz]]; s.pathI = 0; s.resumeGoal = true; }
+        else g.requestPath(s, s.pos.x, s.pos.z, gx, gz, 0.4);
+      } else { s.goal = null; s.goalRetry = 0; this.idleDrops = (this.idleDrops || 0) + 1; }
+    }
+  }
   think() {
+    this.idleGoalWatch();
     // fire teams: release the covering half once the moving half has arrived
     const waiting = this.soldiers.filter(s => s.waitTeam && s.effective);
     if (waiting.length) {
@@ -723,7 +748,7 @@ export class Squad {
       if (s.aboard) continue;
       if (s.rampWalk) { s.stance = 'crouch'; continue; }   // bent double through the low troop compartment and down the ramp
       if (kneelTeam) { s.stance = (s.suppression > 70 || this.pinned) && !s.supportClip && !(s.path && s.pathI < s.path.length) ? 'prone' : 'crouch'; continue; }
-      if (s.inBuilding) { s.stance = s.suppression > 60 ? 'crouch' : (s.target ? 'stand' : 'crouch'); continue; }
+      if (s.inBuilding) { s.stance = s.suppression > 45 || (this.underFireT < 2 && !s.target) ? 'crouch' : 'stand'; continue; }   // v7: up at the window watching (seen / seeing), down below the sill under fire
       const moving = s.path && s.pathI < s.path.length;
       // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
       // instead of popping up into a crouch-walk after the first metre; he gets up (prone_up) once it eases
@@ -851,6 +876,7 @@ export class Squad {
     else if (s.cellarMove) this.cellarStep(s, dt);      // climbing down to / up from the cellar
     else if (s.cellar) s.vel.set(0, 0, 0);
     else if (s.inBuilding) {
+      if (!s.inside.panel.open) s.bld.openWindow?.(s.inside.panel);   // v7: knocks the glass out of his window (buildings.js)
       // panel destroyed under him -> he falls back inside but keeps fighting; if the floor is gone he drops
       if (s.inside.panel.state === 3 && s.inside.panel.floor > 0 && Math.random() < dt * 0.3) { g.hitSoldier(s, { dmg: [40, 90], type: 'blast' }, s.pos, true); }
       s.vel.set(0, 0, 0);
@@ -863,6 +889,7 @@ export class Squad {
     else if (s.goalHeading != null) want = s.goalHeading;
     if (s.inBuilding && (s.target || s.groundAim)) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
     if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
+    if (s.throwT > 0 && s.throwYaw != null) want = s.throwYaw;   // v7: faces his grenade throw (combat.startThrow)
     if (!(s.jumpT > 0)) s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);   // root-motion exit clips: heading fixed
     // combat
     if (s.effective && !this.routing && !s.dragging && !(s.jumpT > 0)) g.combat.soldierCombat(s, dt);

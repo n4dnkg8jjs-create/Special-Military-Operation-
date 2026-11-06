@@ -137,7 +137,7 @@ export class CommanderV2 extends CommanderV1 {
     // trade space for tickets: a hopeless garrison (enemy far stronger, our tickets low) pulls back instead of dying
     if (this.low) for (const b of live.filter(b => b.role === 'garrison')) {
       const p = pic[b.obj]; if (!p) continue;
-      if (p.known > 2.2 * Math.max(1, this.power(b)) && this.power(b) < 4 && b.sq.morale < 60) { this.regroup(b, 'withdraw: outgunned, saving tickets'); b.role = null; this.stats.withdrawals++; }
+      if (p.known > 2.2 * Math.max(1, this.power(b)) && this.power(b) < 4 && b.sq.morale < 60 && !this.dugInHold(b)) { this.regroup(b, 'withdraw: outgunned, saving tickets'); b.role = null; this.stats.withdrawals++; }   // (v7: not out of a trench while in contact)
     }
     // ---- reserve: one mounted squad (or the reinforcement) held back while there is enough in the field
     let res = live.find(b => b.role === 'reserve');
@@ -156,7 +156,7 @@ export class CommanderV2 extends CommanderV1 {
       const wantBack = this.defensive ? o.owner === 'player' && now - (this.counterT?.[o.id] ?? -999) > 60 : this.lostT[o.id] && now - this.lostT[o.id] < 240;
       if (!wantBack && !contested) continue;
       const quietGar = b => this.defensive && b.role === 'garrison' && b.obj !== o.id && !b.op && b.sq.effective.length >= 4 && !this.intel.near(...this.oxz(b.obj), 250, 40).length && live.filter(q => q.role === 'garrison' && q.obj === b.obj).length > 1;
-      const cand = live.filter(b => this.isInf(b) && (b.role === 'reserve' || quietGar(b) || (!b.op && b.role !== 'garrison' && b.state !== 'regroup')) && D(this.upos(b), [o.x, o.z]) < (this.defensive ? 700 : 500));
+      const cand = live.filter(b => this.isInf(b) && (b.role === 'reserve' || quietGar(b) || (!b.op && b.role !== 'garrison' && b.state !== 'regroup')) && !this.dugInHold(b) && D(this.upos(b), [o.x, o.z]) < (this.defensive ? 700 : 500));   // (v7: nobody climbs out of a trench in contact to counterattack)
       const pw = cand.reduce((a, b) => a + this.power(b), 0);
       if (cand.length && pw >= pic[o.id].known * (this.defensive ? 0.8 : 1.1) && pw >= 4) {
         (this.counterT ??= {})[o.id] = now;
@@ -189,7 +189,7 @@ export class CommanderV2 extends CommanderV1 {
     if (!this.ops.some(op => op.type === 'attack') && now > this.opCool) {
       const pool = free(); if (res && (now > g.roundLen * 0.45 || this.posture === 'attack' && pool.length < 2)) pool.push(res);
       // behind on points and nothing free: strip garrisons off quiet objectives (nobody known within 300 m for a minute)
-      if (pool.length < 2 && behind) for (const b of live.filter(b => b.role === 'garrison' && b.kind !== 'defend' && !I.near(...this.oxz(b.obj), 300, 60).length)) { if (pool.length >= 3) break; b.role = null; if (b.sq.building) b.sq.leaveBuilding(); pool.push(b); }
+      if (pool.length < 2 && behind) for (const b of live.filter(b => b.role === 'garrison' && b.kind !== 'defend' && !I.near(...this.oxz(b.obj), 300, 60).length && !this.dugInHold(b))) { if (pool.length >= 3) break; b.role = null; if (b.sq.building) b.sq.leaveBuilding(); pool.push(b); }
       const pw = pool.reduce((a, b) => a + this.power(b), 0);
       const cands = g.objectives.filter(o => o.owner !== 'enemy');
       if (pool.length >= 2 && cands.length && !(this.posture === 'hold' && !cands.some(o => o.owner === 'player'))) {
@@ -414,6 +414,7 @@ export class CommanderV2 extends CommanderV1 {
     const dx = home[0] - c[0], dz = home[1] - c[1], L = Math.hypot(dx, dz) || 1, k = Math.min(L, short ? 30 : 90);
     const fb = V3(c[0] + dx / L * k, c[1] + dz / L * k), thr = V3(c[0] - dx / L * 50, c[1] - dz / L * 50);
     const sq = b.sq; if (!sq || sq.routing) return;
+    if (this.dugInHold(b)) { b.state = 'strongpoint'; b.holdT = g.time + 20; b.wait = 6; this.note(`${sq.name}: ${why} -> holds the trench (in contact, not overrun)`); this.stats.trenchHolds = (this.stats.trenchHolds || 0) + 1; return; }   // v7
     const bld = this.buildingBehind(V3(c[0], c[1]), V3(dx / L, dz / L), short ? 35 : 80, sq);
     if (bld && Math.random() < 0.6) sq.orderGarrison(bld);
     else { const cv = this.coverSpot(fb, thr, 18) || [fb.x, fb.z]; sq.orderMove(cv[0], cv[1], Math.atan2(-dx, -dz), 14, true); }
@@ -590,7 +591,7 @@ export class CommanderV2 extends CommanderV1 {
     // strongpoint taken in contact: hold it until the fire slackens and friends are about, then carry on with the task
     if (b.state === 'strongpoint') {
       if (!sq.building && !sq.trench && !moving) b.state = 'advance';
-      else if (g.time > b.holdT && sq.morale > 50 && sq.underFireT > 4 && (this.friendsNear(c, 90) >= 1 || g.time > b.holdT + 30)) { b.state = 'advance'; sq.leaveBuilding(); }
+      else if (g.time > b.holdT && sq.morale > 50 && sq.underFireT > 4 && (this.friendsNear(c, 90) >= 1 || g.time > b.holdT + 30) && !this.dugInHold(b)) { b.state = 'advance'; sq.leaveBuilding(); }
       else { b.wait = 3; return; }
     }
     // mauled / shaken and locally outgunned: pull back (garrisons hold unless it is hopeless)
@@ -605,6 +606,8 @@ export class CommanderV2 extends CommanderV1 {
     const role = b.role || 'idle';
     if (role === 'garrison') return this.holdObjective(b, b.obj);
     if (role === 'idle') { if (!sq.building && !sq.trench && sq.underFireT > 6) { const st = this.assembly(b.obj || g.objectives[0].id, cp); if (D(cp, st) > 40) this.moveInf(b, st, { why: 'to assembly area' }); } return; }
+    // v7: in a trench and in contact: fight from it - only the assault on its own objective (attackers) moves on
+    if (role !== 'garrison' && this.dugInHold(b) && !(b.op && b.op.phase === 'assault')) { b.wait = 4; return; }
     if (role === 'reserve') {
       if (!b.task?.dest || D(cp, b.task.dest) < 18) { if (!sq.building && !sq.trench && !b.arrived) { b.arrived = true; const bld = this.nearBuilding(c, 25, sq); if (bld) sq.orderGarrison(bld); } return; }
       return this.moveInf(b, b.task.dest, { why: 'to reserve position', run: true });
@@ -768,9 +771,10 @@ export class CommanderV2 extends CommanderV1 {
     if ((sq.building || sq.trench || sq.order?.type === 'garrison') && !capNeeded) return;
     if (g.time - (b.holdTry || 0) < 6) return; b.holdTry = g.time;
     // a point is only ours once men have stood on it: take it first (inside the capture ring), then go to the trench line
+    if (this.dugInHold(b)) return;   // v7: in the trench and in contact: stays
     const ob = this.objOf(id || b.obj), R = (ob.r ?? TUNING.captureRadius) - 6;
     if (ob.owner !== 'enemy' && !this.intel.near(ox, oz, 60, 20).length) {
-      if (Math.hypot(c.x - ox, c.z - oz) > R) { if (sq.trench || sq.building) sq.leaveBuilding(); sq.orderMove(ox, oz, Math.atan2(...this.toThem(id || b.obj)), 12, true); b.holdTry = g.time + 8; }
+      if (Math.hypot(c.x - ox, c.z - oz) > R && !(sq.trench && (sq.underFireT < 20 || this.intel.near(c.x, c.z, 300, 30).length))) { if (sq.trench || sq.building) sq.leaveBuilding(); sq.orderMove(ox, oz, Math.atan2(...this.toThem(id || b.obj)), 12, true); b.holdTry = g.time + 8; }   // (v7: not out of the trench across the open while in contact)
       return;
     }
     if (b.defT && !trenchMen(g, b.defT, 'player').length && b.defT.slots.some(sl => !sl.occupant || !sl.occupant.effective)) { sq.orderTrench(b.defT); return; }

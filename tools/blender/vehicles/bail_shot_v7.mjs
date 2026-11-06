@@ -1,0 +1,49 @@
+// soldiers_v7 copy of bail_shot.mjs that also reports each crewman's clip time, root / feet height over the terrain.
+// In-game hatch smoke test: run the headless sim with ?bail=i, then frame the bailing player vehicle and screenshot it.
+// Usage: node tools/blender/vehicles/bail_shot.mjs "<index.html query incl. sim=..&bail=i>" out.png [dist=11] [yawOffset=0.8] [pitch=0.5]
+// Prints the vehicle name/model and every hatch_lid_* rotation (closed = 0, open = manifest hatch_lids[].open).
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.glb': 'model/gltf-binary', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm', '.css': 'text/css' };
+const server = http.createServer((req, res) => {
+  const p = path.join(root, decodeURIComponent(req.url.split('?')[0]));
+  if (!p.startsWith(root) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'Content-Type': types[path.extname(p)] || 'application/octet-stream' });
+  fs.createReadStream(p).pipe(res);
+});
+await new Promise(r => server.listen(0, r));
+const [query, out, dist = '11', yawOff = '0.8', pitch = '0.75'] = process.argv.slice(2);
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
+page.setDefaultTimeout(900000);
+page.on('pageerror', e => console.log('[pageerror]', e.stack || e.message));
+page.on('console', m => { if (m.type() === 'error') console.log('[page]', m.text()); });
+await page.goto(`http://localhost:${server.address().port}/index.html?${query}`);
+await page.waitForFunction('window.__done === true', null, { timeout: 900000 });
+const info = await page.evaluate(([dist, yawOff, pitch]) => {
+  const THREE_V = window.game.pos?.constructor || (window.game.vehicles[0].pos.constructor);
+  const g = window.game, Q = new URLSearchParams(location.search);
+  const v = g.playerUnits.filter(u => u.type === 'vehicle')[+(Q.get('bail') || 0)];
+  const lids = {}; v.model.traverse(o => { if (/^hatch_lid_[A-Za-z_]+$/.test(o.name) && !/_geo/.test(o.name)) lids[o.name] = [o.rotation.x, o.rotation.y, o.rotation.z].map(a => +a.toFixed(3)); });
+  g.cam.lookAt(v.pos.x, v.pos.z); g.cam.tDist = dist; g.cam.tYaw = v.heading + yawOff; g.cam.tPitch = pitch;
+  for (let i = 0; i < 60; i++) g.cam.update(0.05);
+  if (Q.has('noveg')) g.scene.traverse(o => { if (o.isInstancedMesh || /tree|veg|grass|bush|foliage/i.test(o.name)) o.visible = false; });   // clear view of the roof hatches
+  g.scene.fog.density = 0; g.frame(0.0001); g.renderer.render(0.016, g.time);
+  // vehicles_v5 debug: what is drawn at each hatch rim (visible meshes whose world bbox holds the rim point)
+  const atRim = {}; const P = new THREE_V(); v.model.updateMatrixWorld(true);
+  v.model.traverse(e => { if (!/^hatch_[a-z]+(_[A-Za-z]+)?$/.test(e.name) || /^hatch_lid/.test(e.name)) return; e.getWorldPosition(P); const hits = [];
+    v.model.traverse(o => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (!p.visible) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).expandByScalar(0.06); if (b.containsPoint(P)) hits.push(o.name + (o.parent ? '<' + o.parent.name : '')); });
+    atRim[e.name] = hits; });
+  return { atRim, far: v.far, name: v.name, kind: v.kind, model: v.vman?.file || v.model?.name, abandoned: v.abandoned, destroyed: v.destroyed, pos: [v.pos.x, v.pos.z].map(Math.round), lids,
+    crew: g.squads.filter(s => s.name === `${v.name} crew`).map(s => s.soldiers.map(m => m.role?.role || m.role).join(',')),
+    // v7: per crewman: clip / time, root y vs the terrain under him, lowest toe / foot above the terrain under it (feet planted?)
+    men: g.squads.filter(s => s.name === `${v.name} crew`).flatMap(s => s.soldiers.map(m => { const gh = g.city.groundHeight; const feet = ['LeftToeBase', 'RightToeBase', 'LeftFoot', 'RightFoot'].map(n => m.model?.getObjectByName(n)).filter(Boolean).map(b => { b.getWorldPosition(P); return +(P.y - gh(P.x, P.z)).toFixed(3); });
+      return { clip: m.curName, t: +(m.cur?.time || 0).toFixed(2), hatchT: +(m.hatchT || 0).toFixed(2), inside: m.inside, rootDy: +(m.root.position.y - gh(m.root.position.x, m.root.position.z)).toFixed(3), footMin: feet.length ? Math.min(...feet) : null, warp: m.hatchWarp ? Object.fromEntries(Object.entries(m.hatchWarp).map(([k, x]) => [k, typeof x === 'number' ? +x.toFixed(2) : x])) : null, pos: [m.pos.x, m.pos.y, m.pos.z].map(x => +x.toFixed(2)), heading: +m.heading.toFixed(2) }; })) };
+}, [+dist, +yawOff, +pitch]);
+await page.screenshot({ path: out, timeout: 600000 });
+console.log(JSON.stringify(info));
+await browser.close(); server.close();

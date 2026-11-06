@@ -328,6 +328,7 @@ export class Building {
   requestKit(pool) {
     const c = this.cell;
     for (const p of this.panels) { p.var ??= Math.floor(this.rng() * 3); for (let k = 0; k < STATES.length; k++) pool.request(this.pieceName(p, k), 1, c); }
+    for (const sl of this.slots) for (let k = 0; k < 2; k++) { const n = `${sl.panel.type}_${STATES[k]}_open`; if (this.kit.pieces[n]) pool.request(n, 1, c); }   // v7: openWindow
     // lived-in variety: many Soviet balconies were glazed in by their owners over the decades
     for (const p of this.panels) if (p.balcony) { const r = this.rng(); p.balPiece = r < 0.45 && this.kit.pieces.balcony_slab_glazed ? 'balcony_slab_glazed' : r < 0.6 && this.kit.pieces.balcony_slab_open ? 'balcony_slab_open' : 'balcony_slab'; pool.request(p.balPiece, 1, c); if (p.balPiece === 'balcony_slab_glazed') pool.request(this.kit.pieces.balcony_slab_open ? 'balcony_slab_open' : 'balcony_slab', 1, c); }
     for (const p of this.panels) if (p.entrance) pool.request('entrance_canopy', 1, c);
@@ -411,6 +412,7 @@ export class Building {
   // damage variants (_v2/_v3) keep a facade from repeating the same hole over and over
   pieceName(p, st = p.state) {
     const base = `${p.type}_${STATES[st]}`;
+    if (p.open && st <= 1 && this.kit.pieces[base + '_open']) return base + '_open';   // v7: glass knocked out (openWindow)
     if (st >= 2 && p.var) { const v = `${base}_v${p.var + 1}`; if (this.kit.pieces[v]) return v; }
     return base;
   }
@@ -427,6 +429,17 @@ export class Building {
     this.pool.add(this.pieceName(p), this.panelMatrix(p, tmpM), p, p.color);
     if (p.balcony && p.acc && p.state >= 2 && p.acc.slot >= 0) this.pool.remove(p.balPiece || 'balcony_slab', p.acc);
     return true;
+  }
+  // v7: a man takes this window: the glass (and a glazed balcony) is knocked out so he can fire - and be seen - through it
+  openWindow(p) {
+    if (p.open || p.gone || !this.pool) return;
+    if (p.state >= 2) { p.open = true; return; }
+    const was = this.pieceName(p); p.open = true; const now = this.pieceName(p);
+    if (now !== was && p.slot >= 0) { this.pool.remove(was, p); if (this.pool.add(now, this.panelMatrix(p, tmpM), p, p.color) < 0) { p.open = false; this.pool.add(was, this.panelMatrix(p, tmpM), p, p.color); } }
+    if (p.balcony && p.acc && p.acc.slot >= 0 && p.balPiece === 'balcony_slab_glazed' && this.kit.pieces.balcony_slab_open) {
+      this.pool.remove('balcony_slab_glazed', p.acc); p.balPiece = 'balcony_slab_open'; this.pool.add('balcony_slab_open', this.panelMatrix(p, tmpM), p.acc, p.color);
+    }
+    this.pool.finish?.();
   }
   // Find the panel nearest to a world-space point on the facade.
   panelAt(wx, wy, wz) {

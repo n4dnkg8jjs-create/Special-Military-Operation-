@@ -75,12 +75,19 @@ const GLSL_FRAG = /* glsl */`
     mud = max( mud, vDmgG.w * back * smoothstep( 0.35, 0.65, n1 ) ) * cm;
     col = mix( col, col * vec3( 0.50, 0.43, 0.33 ) + vec3( 0.022, 0.016, 0.009 ), clamp( mud, 0.0, 1.0 ) );
     dmgDry = mud;
-    // blast: soot and small rips (dark holes with frayed light edges)
-    col = mix( col, vec3( 0.014, 0.013, 0.012 ), vDmgG.z * smoothstep( 0.4, 0.8, n1 + 0.25 * n2 ) * 0.85 );
-    float rip = vDmgG.y * ( 0.3 + 0.7 * low ) * cloth;
-    float rn = dmgN( P * 41.0 + 3.1 );
-    col = mix( col, col * 1.35 + 0.03, rip * smoothstep( 0.79, 0.81, rn ) * ( 1.0 - smoothstep( 0.835, 0.845, rn ) ) );
-    col = mix( col, vec3( 0.03, 0.012, 0.008 ), rip * smoothstep( 0.835, 0.845, rn ) );
+    // blast (v7): soft, feathered dust / smoke smudges (low frequency, ~15-30 cm), mostly on the side that faced the blast, dusty
+    // grey-brown multiplied into the cloth - not black dots; and a few larger frayed tears in the same area
+    float face = 1.0;
+    if ( vDmgH.w > 5.0 ) { float a = vDmgH.w - 10.0; vec2 rd = P.xz - vec2( 0.0, 0.0 ); float l = length( rd ); face = l > 0.02 ? smoothstep( -0.35, 0.75, dot( rd / l, vec2( sin( a ), cos( a ) ) ) ) : 0.6; }
+    float sm = dmgN( P * 5.5 + 1.7 ) * 0.7 + dmgN( P * 12.0 + 4.1 ) * 0.3;
+    float soot = vDmgG.z * face * smoothstep( 0.3, 0.8, sm ) * 0.55;
+    col = mix( col, col * vec3( 0.62, 0.60, 0.57 ) + vec3( 0.030, 0.026, 0.021 ), soot );
+    dmgDry = max( dmgDry, soot * 0.7 );
+    float rip = vDmgG.y * ( 0.35 + 0.65 * low ) * cloth * ( 0.3 + 0.7 * face );
+    float rn = dmgN( P * 15.0 + 3.1 ) + ( n2 - 0.5 ) * 0.06;
+    float tear = smoothstep( 0.875, 0.885, rn ) * rip;
+    col = mix( col, col * 1.18 + 0.025, rip * smoothstep( 0.855, 0.87, rn ) * ( 1.0 - smoothstep( 0.875, 0.885, rn ) ) );   // frayed edge
+    col = mix( col, col * 0.38, tear );                                                                                       // underlayer
     for ( int k = 0; k < 4; k ++ ) {
       float code = vDmgC[ k ]; if ( code <= 0.0 ) continue;
       float type = floor( code ), amt = fract( code );
@@ -166,7 +173,8 @@ export class DamageSkin {
     const R = this.rnd;
     if (region === 'helmet' || region === 'plate') { this.rips = Math.min(1, this.rips + 0.05); this.flush(); return null; }   // stopped: scuff only
     if (region === 'blast') {
-      this.soot = Math.min(1, this.soot + 0.55 + 0.3 * R()); this.rips = Math.min(1, this.rips + 0.5 + 0.3 * R()); this.mud = Math.min(1, this.mud + 0.35);
+      this.soot = Math.min(1, this.soot + 0.45 + 0.25 * R()); this.rips = Math.min(1, this.rips + 0.35 + 0.25 * R()); this.mud = Math.min(1, this.mud + 0.3);
+      this.blastDir = dir ? Math.atan2(dir.x, dir.z) : (R() - 0.5) * 2 * Math.PI;   // side facing the blast gets the smudges
       const k = 1 + (R() < 0.6 ? 1 : 0) + (opt.dead ? 1 : 0);
       for (let i = 0; i < k; i++) this.addWound(R() < 0.65 ? 'leg' : R() < 0.5 ? 'torso' : 'arm', dir, { ...opt, frag: true });
       return this.wounds[this.wounds.length - 1] || null;
@@ -240,7 +248,7 @@ export class DamageSkin {
       else put(3 * k + 2, 0, 0, 1, w.type + Math.min(0.99, w.blood * 0.99) + 1e-4);
     });
     put(12, this.mud, this.rips, this.soot, this.backMud);
-    put(13, this.wounds.length, this.fade, this.tint, 0);
+    put(13, this.wounds.length, this.fade, this.tint, this.blastDir != null ? 10 + this.blastDir : 0);
   }
 }
 

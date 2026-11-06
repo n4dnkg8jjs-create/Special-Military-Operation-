@@ -5,7 +5,7 @@ run after copying the WebP'd GLBs to assets/soldiers/:  python3 tools/blender/so
 import os, json, struct, fcntl
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.abspath(os.path.join(HERE, '../../../assets/soldiers'))
-NOTES = ("v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves "
+NOTES = ("v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves "
          "10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing "
          "over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: "
          "ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. "

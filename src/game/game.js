@@ -445,7 +445,14 @@ export class Game {
     this.time += dt; globalThis.__gameTime = this.time;
     this.servicePaths(this.noRender ? 50 : 5);
     this.spotT = (this.spotT || 0) - dt; if (this.spotT <= 0) { this.spotT = 0.5; this.updateSpotting(); }
-    for (const sq of this.squads) { sq.firedT = (sq.firedT ?? 99) + dt; if (!sq.destroyed || sq.alive.length) sq.update(dt); }
+    for (const sq of this.squads) {
+      sq.firedT = (sq.firedT ?? 99) + dt;
+      if (!sq.destroyed || sq.alive.length) sq.update(dt);
+      // v7: a wiped-out squad is no longer updated - but its last dead still have to fall (death clip / ragdoll: they froze
+      // standing, mid-fall or on the medic's shoulder, 'floating') and its casualties on the medevac bed to lie on it
+      else if (sq.mounted) sq.updateRiders(dt);   // (dead riders slide off the deck: they lay on it, 2 m up, and rode off with it)
+      else if (!sq.medevac) for (const s of sq.soldiers) if ((s.state === 'dead' && !s.corpseDone) || s.onBed) { s.vel.set(0, 0, 0); s.animate(dt, this.camDist(s.pos)); s.sync(); }
+    }
     for (const v of this.vehicles) v.update(dt);
     this.combat.update(dt);
     this.updateStrikes();

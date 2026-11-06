@@ -60,6 +60,7 @@ LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone',
 SNAP = {'hit_react': (0.0, 0.15, 40.0), 'throw_grenade_window': [(0.40, 0.70, 30.0), (0.70, 0.95, 45.0)], 'death_front': (0.75, 0.95, 40.0), 'death_back': (0.0, 9, 40.0), 'throw_grenade': (0.0, 9, 40.0),
         'death_crumple': (0.25, 1.4, 35.0)}
 SNAP.update(_DEATH_SNAP)
+SNAP.update({'throw_grenade_over': [(0.55, 0.95, 40.0)], 'throw_grenade_low': [(0.50, 0.85, 35.0)]})   # v7 throws: the release whip
 NO_GROUND = {'ride_sit_edge', 'ride_sit_deck', 'ride_aim'}   # seat frame, no ground under the root
 # ---- vehicle crew (clips_crew.py): PM pistol set; rebuilt crawls (clips_crawl.py); vehicle exits: clips_vehicle.py (vehicle_checks below)
 PISTOL = ['pistol_idle', 'pistol_aim', 'pistol_fire', 'pistol_walk', 'pistol_run', 'pistol_crouch_aim']

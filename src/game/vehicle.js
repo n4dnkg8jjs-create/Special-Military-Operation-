@@ -3,7 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { VEHICLES, WEAPONS, TUNING } from '../config.js';
 import { angDiff, Squad } from './squad.js';
 import { initArmor } from './armor.js';
-import { hasClip } from './soldier.js';
+import { hasClip, clipEvents } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 import { SpgMixin } from './artillery.js';
@@ -507,12 +507,31 @@ export class Vehicle {
         if (T) { const q = T.getWorldQuaternion(new THREE.Quaternion()); fr = new THREE.Vector3(1, 0, 0).applyQuaternion(q).setY(0).normalize(); ff = new THREE.Vector3(0, 0, 1).applyQuaternion(q).setY(0).normalize(); const tp = T.getWorldPosition(new THREE.Vector3()); lx = (hw.x - tp.x) * fr.x + (hw.z - tp.z) * fr.z; }
         else lx = hw.clone().applyMatrix4(inv).x;
       } else { const h = old[role] || [0, 0]; hw = new THREE.Vector3(this.pos.x + right.x * h[0] + fwd.x * h[1], 0, this.pos.z + right.z * h[0] + fwd.z * h[1]); lx = h[0]; }
+      // v7 (bail-out float fix): always out over the HULL side (a traversed turret used to send him off the bow / stern, past the
+      // clip's 1.92 m: he hung in the air over the deck or sank into the hull), and the root follows a warp (soldier.js sync): at the
+      // start the clip's hatch rim (exitD inboard, clipH up, aft) sits exactly on this vehicle's real rim (hull height, slope,
+      // turret angle), during the jump (events jump -> ground) it blends to the real landing spot on the terrain beside the hull
+      // (y = ground height there; it was y = 0)
+      const clip = this.kind === 'btr' && hasClip('hatch_exit_btr') ? 'hatch_exit_btr' : hasClip('hatch_exit_tank') ? 'hatch_exit_tank' : 'hatch_exit';
+      const exitD = clip === 'hatch_exit_btr' ? 1.70 : 1.92, aft = clip === 'hatch_exit_btr' ? 0 : 0.25, clipH = clip === 'hatch_exit_btr' ? 2.03 : 2.28;
+      const hx = (hw.x - this.pos.x) * right.x + (hw.z - this.pos.z) * right.z, hz = (hw.x - this.pos.x) * fwd.x + (hw.z - this.pos.z) * fwd.z;
+      lx = e ? hx : lx;
       const side = lx < -0.05 || (Math.abs(lx) <= 0.05 && i % 2) ? -1 : 1;
-      // clip frame: the tank hatch rim sits 1.92 m inboard and 0.25 m forward of the end root, the BTR rim 1.70 m inboard
-      const tank = this.kind === 'tank', exitD = tank ? 1.92 : 1.70, aft = tank ? 0.25 : 0;
-      const [x, z] = g.nav.nearestFree(hw.x + fr.x * side * exitD - ff.x * aft, hw.z + fr.z * side * exitD - ff.z * aft, 0.4, 4); s.pos.set(x, 0, z); s.heading = Math.atan2(fr.x * side, fr.z * side);
+      fr = right; ff = fwd;
+      // clip frame: heading = out over the side; the rim sits at clip (+aft, clipH, -exitD) from the root, clip +X = the model's
+      // +X (toward the bow on a left exit, the stern on a right one: the old code put right-side exits 0.5 m off along the hull)
+      const h = Math.atan2(fr.x * side, fr.z * side), cxx = Math.cos(h), cxz = -Math.sin(h), along = (cxx * fwd.x + cxz * fwd.z) * aft;
+      const halfW = (this.def?.width || 3.4) / 2, endL = side * Math.max(Math.abs(hx) + exitD, halfW + 0.55);
+      const [x, z] = g.nav.nearestFree(this.pos.x + right.x * endL + fwd.x * (hz - along), this.pos.z + right.z * endL + fwd.z * (hz - along), 0.4, 4);
+      const gy = g.city?.groundHeight ? g.city.groundHeight(x, z) : 0;
+      s.pos.set(x, gy, z); s.heading = h;
+      if (e) {
+        const sx = hw.x + fr.x * side * exitD - cxx * aft, sz = hw.z + fr.z * side * exitD - cxz * aft;
+        const ev = clipEvents(clip);
+        s.hatchWarp = { dx: sx - x, dy: hw.y - clipH - gy, dz: sz - z, t0: ev.jump ?? 3.2, t1: ev.ground ?? 3.75, clip };
+      }
       s.hatchWait = 0.6 + i * 1.4 + Math.random() * 0.5; s.inside = 'btr'; s.stance = 'stand';
-      s.hatchClip = this.kind === 'btr' && hasClip('hatch_exit_btr') ? 'hatch_exit_btr' : hasClip('hatch_exit_tank') ? 'hatch_exit_tank' : 'hatch_exit';
+      s.hatchClip = clip;
       const lid = Object.entries(lids).find(([, L]) => L.role === role);
       if (lid) s.hatchOpen = () => this.openLid(lid[0], lid[1]);
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }

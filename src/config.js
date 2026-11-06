@@ -144,6 +144,12 @@ export const TUNING = {
   plateStopsRifle: 0.85,
   helmetStopChance: 0.35,
   bleedOut: [110, 220],      // seconds a critically wounded soldier survives if not evacuated
+  // v7 hit outcomes (combat.hitSoldier): a man brought below 0 hp by small arms is killed outright only past `overkill` hp (was
+  // -95; HMG / autocannon / blasts keep -95: `overkillHeavy`), by a
+  // blast with `blastKill` odds (was 0.25), or by a head hit that is not a graze (`headGraze` of the unstopped head hits only
+  // wound: was 0); otherwise he is down, critically wounded. Light wounds below `lightHp` (was 55). Heavy weapons (HMG /
+  // autocannon x2.5 damage, shells) still overkill almost every time.
+  wound: { overkill: -125, overkillHeavy: -95, blastKill: 0.21, headGraze: 0.2, lightHp: 62 },
   dragSpeed: 1.1,
   moraleRegen: 1.8,          // per second when not under fire
   routThreshold: 12,         // (was 15) morale below this: rout check (routHold) every 3 s

@@ -5,6 +5,7 @@ import { WEAPONS, TUNING } from '../config.js';
 import { angDiff } from './squad.js';
 import { initArmor, resolveHit } from './armor.js';
 import { trunkHit } from '../world/vegetation.js';
+import { clipDuration, clipEvents, hasClip } from './soldier.js';
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), C2 = new THREE.Vector3();
 const LA = new THREE.Vector3(), LB = new THREE.Vector3(), WC = new THREE.Vector3();
@@ -273,7 +274,7 @@ export class Combat {
     const sd = s.squad?.side; if (sd) p *= (1 + (s.squad.vet || 0) * 0.1) * (1 + (this.g.mods?.[sd]?.accuracy || 0));   // veterancy, training / optics upgrades
     return THREE.MathUtils.clamp(p, 0.004, 0.75);
   }
-  windowExposed(t) { return (this.g.time - (t.lastShotT ?? -99)) < 1.5 || t.throwT > 0 || t.launcherT > 0; }
+  windowExposed(t) { return (this.g.time - (t.lastShotT ?? -99)) < 1.5 || t.throwT > 0 || t.launcherT > 0 || (t.stance === 'stand' && !t.ducking && !!t.inside?.panel?.open); }   // v7: standing in an open window (seen) is exposed too; below the sill he is not
   fireSmallArms(s, t, W) {
     const g = this.g, from = s.muzzleWorld(C).clone(), tp = this.targetPoint(t, B).clone();
     const d = from.distanceTo(tp);
@@ -308,21 +309,82 @@ export class Combat {
     }
   }
   throwGrenade(s, t) {
-    s.grenades = (s.grenades ?? 2) - 1; s.throwT = 1.2; s.fireCd = 1.5;
+    s.grenades = (s.grenades ?? 2) - 1;
     const to = t.inBuilding ? t.bld.panelCenter(t.inside.panel, new THREE.Vector3()) : t.pos.clone();
     to.x += (Math.random() - .5) * 4; to.z += (Math.random() - .5) * 4;
     if (this.g.camDist(s.pos) < 60) this.g.sfx('grenade_pin', s.pos);
-    this.projectiles.push({ kind: 'grenade', pos: s.pos.clone().setY(1.6), from: s.pos.clone().setY(1.6), target: to, t: null, speed: 14, owner: s, side: s.squad.side, fuse: 0, arc: true });
+    return this.startThrow(s, to, { speed: 14, style: t.inBuilding && (t.inside?.panel?.floor || 0) > 0 ? 'window' : null });
+  }
+  // v7 every hand grenade (open ground, windows, CQB rooms, trench bays, dugouts, cellars): the thrower plays a real throw clip -
+  // overhand (throw_grenade_over), up into a window (throw_grenade_window) or, crouched behind cover / at a door / bend, an
+  // underhand lob (throw_grenade_low) - with the grenade in his right hand from the pin pull; it leaves the hand at the clip's
+  // release frame (events.release) from where the hand is. The fuse runs from the throw as before (bang max(flight, 3.2 s) after
+  // he starts: the drills' timings are unchanged). Shot / hit before the release, he drops it at his feet.
+  // extra: projectile fields (cellar, dugout, ...); opts.style: 'window' | 'low' | 'over' (default: low when crouched / in a
+  // trench / clearing, else over)
+  startThrow(s, to, opts = {}) {
+    const low = Math.hypot(to.x - s.pos.x, to.z - s.pos.z) < 13 && (s.stance === 'crouch' || s.cqb || s.squad?.order?.type === 'clear' || s.squad?.order?.type === 'storm');   // a short toss from cover; longer: overhand
+    const want = opts.style === 'window' ? 'throw_grenade_window' : opts.style === 'low' || (!opts.style && low) ? 'throw_grenade_low' : 'throw_grenade_over';
+    const clip = hasClip(want) ? want : hasClip('throw_grenade_over') ? 'throw_grenade_over' : 'throw_grenade';
+    const ev = clipEvents(clip), rel = Math.max(0.2, ev.release ?? ev.release_approx ?? 0.8);
+    s.throwClip = clip; s.throwWindow = clip === 'throw_grenade_window';
+    s.throwT = Math.min(clipDuration(clip, 1.5), rel + 0.8); s.fireCd = Math.max(s.fireCd || 0, s.throwT + 0.3);
+    s.aimStopT = Math.max(s.aimStopT || 0, s.throwT);          // he stops to throw (squad.moveStep holds him)
+    s.throwYaw = Math.atan2(to.x - s.pos.x, to.z - s.pos.z);   // faces the throw (squad.updateSoldier)
+    const hand = s.pos.clone(); hand.y += 1.5;
+    const p = { kind: 'grenade', pos: hand.clone(), from: hand, target: to, t: null, speed: opts.speed || 12, owner: s, side: s.squad.side, fuse: 0, arc: true, delay: rel, ...(opts.extra || {}) };
+    this.projectiles.push(p);
+    return p;
+  }
+  // the grenade in the thrower's hand until the release; then it flies (a visible grenade, spinning, near the camera)
+  grenadeHeld(p, dt) {
+    const s = p.owner, g = this.g;
+    p.delay -= dt;
+    const ok = s && s.effective && s.throwT > 0 && s.state !== 'dead';
+    if (!ok) {   // shot / knocked down with the pin out: it falls where he is
+      p.delay = 0; p.dropped = true; const y = g.city.groundHeight && !s?.inBuilding && !s?.cqb ? g.city.groundHeight(s.pos.x, s.pos.z) : (s?.pos.y ?? 0);
+      p.from = (s?.pos || p.pos).clone().setY(y + 0.4); p.target = p.from.clone().setY(y + 0.1); p.speed = 4;
+      p.target.x += (Math.random() - .5) * 0.8; p.target.z += (Math.random() - .5) * 0.8; p.pos.copy(p.from); return;
+    }
+    if (s.sockets?.R) { s.root.updateMatrixWorld(true); s.sockets.R.getWorldPosition(p.pos); } else p.pos.copy(s.pos).setY(s.pos.y + 1.5);
+    if (p.delay > 0) return;
+    p.from = p.pos.clone();   // released: the flight starts at the hand
+    p.relT = g.time;
+    if (!g.noRender && g.camDist(s.pos) < 90) {
+      const A = g.assets?.gltf, tpl = (Math.random() < 0.5 ? A?.grenade_f1 : A?.grenade_rgd5) || A?.grenade_f1 || A?.grenade_rgd5;
+      if (tpl) { const m = p.gmesh = tpl.scene.clone(); m.traverse(o => { if (o.isMesh) { o.castShadow = true; if (/_LOD1$/i.test(o.name)) o.visible = false; } }); m.position.copy(p.pos); g.scene.add(m); p.spin = new THREE.Vector3(Math.random() * 12 + 6, Math.random() * 4, Math.random() * 4); }
+    }
+    if (g.camDist(s.pos) < 60) g.sfx('grenade_throw', s.pos);
   }
   throwSmoke(s, toward) {
     const p = s.pos.clone().lerp(toward, Math.min(1, 18 / s.pos.distanceTo(toward)));
-    this.g.fx.smokeScreen(p); this.g.sfx('grenade_throw', s.pos);
+    // v7: thrown like a grenade (clip, in hand, release); the screen builds where it lands (smokeLand)
+    if (s.effective && !s.aboard && !(s.throwT > 0)) { p.y = this.g.city.groundHeight ? this.g.city.groundHeight(p.x, p.z) + 0.1 : 0.1; this.startThrow(s, p, { speed: 14, extra: { smoke: true } }); return; }
+    this.smokeLand(p);
+  }
+  smokeLand(p) {
+    this.g.fx.smokeScreen(p); this.g.sfx('grenade_throw', p);
     const o = this.g.nav.addOccluder(p.x, p.z, 5, 5, 0, 7, null);
     o.smokeUntil = this.g.time + 30;
   }
   // ---------------------------------------------------------------- close quarters (building storming)
   // storming an occupied building: stack, breach, then room-by-room clearing inside (game/cqb.js)
   stormTick(sq, dt) { return this.g.cqb.think(sq, dt); }
+  // v7: a section that comes down takes its floors with it: the dead lying on them drop onto the rubble (they stayed in the air
+  // where the floor had been) and men inside clearing it (not at a window slot: city.collapseSection deals with those) are caught
+  collapseDrop(b, si) {
+    const g = this.g, gh = g.city.groundHeight, [a, c] = b.secCols?.[si] || [];
+    if (a == null || !b.toLocal) return;
+    const W = b.kit.W, x0 = -b.L / 2 + a * W - 0.5, x1 = -b.L / 2 + (c + 1) * W + 0.5;
+    for (const sq of g.squads) for (const s of sq.soldiers) {
+      if (s.state === 'evac' || s.aboard) continue;
+      const [lx, lz] = b.toLocal(s.pos.x, s.pos.z); if (lx < x0 || lx > x1 || Math.abs(lz) > b.D / 2 + 0.5) continue;
+      const y = gh ? gh(s.pos.x, s.pos.z) : 0; if (s.pos.y < y + 0.8) continue;
+      if (s.state === 'dead') { const dy = y - s.pos.y; s.pos.y = y; if (s.inBuilding) s.inside = null; s.cqb = null; s.root.position.y += dy; s.root.updateMatrixWorld(true); continue; }
+      if (s.slotRef || s.cellar) continue;
+      s.cqb = null; s.inside = null; s.pos.y = y; s.path = null; this.hitSoldier(s, { dmg: [70, 220], type: 'blast' }, s.pos, true);
+    }
+  }
   // ---------------------------------------------------------------- casualties
   hitSoldier(t, W, fromPos, blast = false, shooter = null) {
     if (!t.alive || t.state === 'dead') return;
@@ -330,7 +392,7 @@ export class Combat {
     if (blast || W.type === 'blast') { dmg = rf(...(W.dmg || [40, 90])); if (t.stance === 'prone') dmg *= 0.6; if (t.armor?.plateCoverage > 0.5) dmg *= 0.8; }
     else {
       const r = Math.random();
-      if (r < 0.06) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else dmg = 160; }
+      if (r < 0.06) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else if (W.type !== 'hmg' && W.type !== 'autocannon' && Math.random() < (TUNING.wound?.headGraze ?? 0)) { dmg = rf(45, 85); head = false; t.suppression = 100; } else dmg = 160; }   // v7: some head hits are grazes (face / neck / glancing): a bad wound, not death
       else if (r < 0.55) { // torso
         const A = t.armor || { plateCoverage: TUNING.plateCoverage, plateStop: TUNING.plateStopsRifle }; const stopP = W.type === 'rifle' ? A.plateStop * A.plateCoverage / 0.47 : W.type === 'mg' ? A.plateStop * A.plateCoverage / 0.47 * 0.65 : 0;
         if (Math.random() < Math.min(0.9, stopP)) { dmg = rf(4, 14); t.suppression = Math.min(100, t.suppression + 40); t.hitT = 0.5; }
@@ -345,7 +407,9 @@ export class Combat {
     if (g.camDist(t.pos) < 120) g.fx.blood(this.targetPoint(t, C));
     if (t.hp <= 0) {
       // survivability: most non-head hits leave a man badly wounded (savable by a medic/evac) rather than dead
-      if (head || t.hp < -95 || (blast && Math.random() < 0.25)) { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
+      const WT = TUNING.wound || {};
+      const heavy = blast || W.type === 'blast' || W.type === 'hmg' || W.type === 'autocannon';   // (heavy weapons keep the old overkill line)
+      if (head || t.hp < (heavy ? (WT.overkillHeavy ?? -95) : (WT.overkill ?? -95)) || (blast && Math.random() < (WT.blastKill ?? 0.25))) { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut) * (1 + (g.mods?.[sq.side]?.medevac || 0)); t.target = null; t.path = null;
         if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
@@ -354,7 +418,7 @@ export class Combat {
         if (g.camDist(t.pos) < 80) g.sfx('pain', t.pos);
         if (shooter) (shooter.squad || shooter).stats.kills += 0.5;
       } else { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
-    } else if (t.hp < 55 && t.state === 'ok') {
+    } else if (t.hp < (TUNING.wound?.lightHp ?? 55) && t.state === 'ok') {
       t.state = 'light'; t.hitT = 0.6; if (g.camDist(t.pos) < 60) g.sfx('pain', t.pos, { gain: 0.7 });
       sq.addMorale(-3);
     } else t.hitT = 0.4;
@@ -481,9 +545,14 @@ export class Combat {
         p.last.copy(p.pos);
       }
       if (p.kind === 'grenade') {
-        p.fuse += dt; const tot = p.from.distanceTo(p.target) / p.speed; const f = Math.min(1, p.fuse / tot);
-        p.pos.lerpVectors(p.from, p.target, f); p.pos.y = p.from.y + (p.target.y - p.from.y) * f + Math.sin(f * Math.PI) * 4;
-        if (p.fuse >= Math.max(tot, 3.2)) { this.projectiles.splice(i, 1); this.explode(p.target.clone().setY(Math.max(0.2, p.target.y)), 0.45, p.owner, [50, 140], 6); if (p.cellar) g.cqb?.cellarBlast(p.cellar, p.owner); }
+        // v7: held until the throw clip's release (startThrow / grenadeHeld); the fuse counts from the start of the throw
+        if (p.delay > 0) { p.fuse += dt; p.fuse0 = p.fuse; this.grenadeHeld(p, dt); if (p.delay > 0) continue; }
+        p.fuse += dt; const fl = p.fuse - (p.fuse0 || 0), tot = Math.max(0.05, p.from.distanceTo(p.target) / p.speed); const f = Math.min(1, fl / tot);
+        const arcH = p.dropped ? 0.15 : Math.min(4, 0.6 + p.from.distanceTo(p.target) * 0.16);   // a 5 m lob into a bay / room stays low; 25 m: ~4 m
+        p.pos.lerpVectors(p.from, p.target, f); p.pos.y = p.from.y + (p.target.y - p.from.y) * f + Math.sin(f * Math.PI) * arcH;
+        if (p.gmesh) { p.gmesh.position.copy(p.pos); if (f < 1) { p.gmesh.rotation.x += p.spin.x * dt; p.gmesh.rotation.y += p.spin.y * dt; p.gmesh.rotation.z += p.spin.z * dt; } }
+        if (p.smoke && f >= 1) { this.projectiles.splice(i, 1); if (p.gmesh) { g.scene.remove(p.gmesh); p.gmesh = null; } this.smokeLand(p.target.clone()); continue; }
+        if (p.fuse >= Math.max((p.fuse0 || 0) + tot, 3.2)) { this.projectiles.splice(i, 1); if (p.gmesh) { g.scene.remove(p.gmesh); p.gmesh = null; } this.explode(p.target.clone().setY(Math.max(0.2, p.target.y)), 0.45, p.owner, [50, 140], 6); if (p.cellar) g.cqb?.cellarBlast(p.cellar, p.owner); }
         continue;
       }
       // rockets & HE fly through the world: walls, terrain (trench lips, rubble, rises) and tree crowns / bushes stop
@@ -609,7 +678,7 @@ export class Combat {
       }
     }
     if (collapsed >= 2) { g.sfx('collapse', at); g.cam.addShake(Math.max(0, 0.5 - g.camDist(at) / 300)); } else if (collapsed) g.sfx('debris', at);
-    for (const si of b.checkCollapse()) g.city.collapseSection(b, si, g);
+    for (const si of b.checkCollapse()) { const had = b.collapsedSecs?.has(si); g.city.collapseSection(b, si, g); if (!had) this.collapseDrop(b, si); }
     // garrison morale
     for (const sq of g.squads) if (sq.building === b) { sq.addMorale(-4 * Math.min(3, changed.length)); sq.underFireT = 0; }
   }

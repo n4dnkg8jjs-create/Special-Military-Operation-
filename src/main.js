@@ -67,7 +67,7 @@ async function start(opts) {
     if (Q.has('hitlog')) globalThis.__hitlog = 1;
     if (Q.has('doors')) for (const v of game.vehicles) v.doorT = 1e9;
     if (Q.has('burn')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('burn')]; v.burning = 0.01; }
-    if (Q.has('bail')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('bail')]; if (v.passengers) v.passengers.dismount(); v.burning = 0.01; v.bailAt = 0.2; }
+    if (Q.has('bail')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('bail')]; if (v.passengers) v.passengers.dismount(); v.burning = 0.01; v.bailAt = 0.2; v.firefight = false; if (Q.has('bailturret')) v.turretYaw = +Q.get('bailturret'); }   // (firefight: no fire-fighting attempt, bail at once)
     if (Q.has('collapse')) { const b = game.city.buildings[+Q.get('collapse')]; game.city.collapseSection(b, +(Q.get('sec') || 0), game); }
     const t0 = performance.now();
     for (let t = 0; t < total; t += 0.05) { window.__replayStep?.(t); game.frame(0.05); if (game.over) break; }

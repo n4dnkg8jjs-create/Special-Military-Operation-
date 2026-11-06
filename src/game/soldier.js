@@ -200,6 +200,17 @@ export class Soldier {
       else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
     }
   }
+  // v7: the grenade in the right hand (weapon_socket) from the throw clip's pin pull to its release (events); combat.startThrow /
+  // grenadeHeld fly it from the hand at the release
+  handGrenadeTick() {
+    const ev = SHARED_EVENTS[this.curName] || {}, t = this.cur?.time ?? 0;
+    const on = this.throwT > 0 && this.state !== 'dead' && /^throw_grenade/.test(this.curName || '') && t >= (ev.pin_pull ?? 0.1) && t < (ev.release ?? ev.release_approx ?? 0.8);
+    if (on && !this.handGrenade && this.sockets?.R) {
+      const A = SHARED.assets.gltf, tpl = (this.rand < 0.5 ? A.grenade_rgd5 : A.grenade_f1) || A.grenade_f1 || A.grenade_rgd5;
+      if (tpl) { const o = this.handGrenade = tpl.scene.clone(); o.traverse(x => { if (x.isMesh) { x.castShadow = true; if (/_LOD1$/i.test(x.name)) x.visible = false; } }); this.sockets.R.add(o); }
+    }
+    if (this.handGrenade && this.handGrenade.visible !== on) this.handGrenade.visible = on;
+  }
   // RPG-22: shoulder a disposable launcher, fire, throw the empty tube away
   raiseLauncher() {
     if (!this.rpg22Tpl || this.launcherObj) return;
@@ -278,7 +289,7 @@ export class Soldier {
     else if (this.dragging && this.dragPhase === 'treat') { clip = 'treat_wounded'; alt = ['crouch_idle']; }
     else if (this.dragging && this.dragPhase === 'drag') { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
     else if (this.hitT > 0) { clip = 'hit_react'; }
-    else if (this.throwT > 0) { clip = this.throwWindow ? 'throw_grenade_window' : 'throw_grenade'; alt = ['throw_grenade']; }
+    else if (this.throwT > 0) { clip = this.throwClip || (this.throwWindow ? 'throw_grenade_window' : 'throw_grenade_over'); alt = ['throw_grenade_over', 'throw_grenade']; }   // v7: combat.startThrow picks the clip
     else if (this.stackT > 0) { clip = 'cqb_stack'; alt = ['crouch_idle']; }
     else if (this.dodgeT > 0) { clip = this.dodgeClip || 'dodge_dive'; alt = ['dodge_dive', 'pinned_prone', 'prone_idle']; }
     else if (this.proneTransT > 0 && !this.dragging && sp < 0.4) { clip = this.proneTrans; alt = [st === 'prone' ? 'prone_idle' : 'crouch_idle']; }
@@ -320,6 +331,7 @@ export class Soldier {
       if (this.animAcc >= every) { const adv = this.animAcc; this.mixer.update(adv); this.animAcc = 0; if (camDist < 60) this.magTick(); if (this.state === 'dead') this.deathSample(adv); }
       // recoil kick (procedural additive on spine)
       if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
+      if (this.throwT > 0 || this.handGrenade) this.handGrenadeTick();
       if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); if (this.wLod) { for (const o of this.wLod[0]) o.visible = !far; for (const o of this.wLod[1]) o.visible = far; } } }
     } else {
       // fallback pose
@@ -341,6 +353,15 @@ export class Soldier {
     this.root.position.copy(this.pos);
     if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.45; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.45; }
     this.root.rotation.y = this.heading;
+    // v7 bail-out (vehicle.bailCrew): the hatch clip's root is warped from the vehicle's real hatch rim (start) to the landing spot on
+    // the terrain (end), blended during the jump (events jump -> ground)
+    const W = this.hatchWarp;
+    if (W && this.inside !== 'btr') {
+      if (this.hatchT > 0 && (this.state === 'ok' || this.state === 'light')) {   // (downed on the way: the wounded clip plays at the landing spot, not up on the hull)
+        const t = this.curName === W.clip && this.cur ? this.cur.time : 0, k = 1 - THREE.MathUtils.smoothstep(t, W.t0, W.t1);
+        this.root.position.x += W.dx * k; this.root.position.y += W.dy * k; this.root.position.z += W.dz * k;
+      } else this.hatchWarp = null;   // done (or killed on the way: the body drops at the landing spot)
+    }
     this.root.visible = this.visible && (this.inside !== 'btr' || this.inCab) && (this.state !== 'evac' || !!this.onBed) && this.inView !== false;   // onBed: on the medevac pickup
   }
   muzzleWorld(out = new THREE.Vector3()) {
@@ -365,10 +386,14 @@ export class Soldier {
     this.peek = 0; this.peekAmt = 0; this.peekOut = false;
     this.deathRide = this.inside === 'ride' ? this.pos.y : null;   // deck height: squad.updateRiders drops him beside the vehicle
     this.deathInfo = { ...(info || {}), from: info?.from?.clone?.() || null }; this.deathT = 0; this.corpseDone = false; this.ragdoll = null; this._pp0 = this._pp1 = null;
+    { const gh = this.squad?.game?.city?.groundHeight; if (gh && !this.inside && this.squad.game.city.trenchInfo?.(this.pos.x, this.pos.z)) this.alignTrench(gh); }
     this.deathClip = this.pickDeath(kind, this.deathInfo, wasDown, speed);
     const ev = SHARED_EVENTS[this.deathClip] || {};
     this.ragdollAt = ev.ragdoll != null && ev.ragdoll >= 0 ? ev.ragdoll : null;
     if (this.deathInfo.blast && this.ragdollAt != null) this.ragdollAt = Math.min(this.ragdollAt, 0.12);
+    // v7: killed while a medic has him on the shoulder / is sliding him onto the pickup bed (the casualty clips put the body up to
+    // 1.6 m above his root): he falls off (ragdoll from that pose) instead of the lying death clip snapping him to the medic's feet
+    this.carriedDeath = /^(wounded_lifted|wounded_carry_walk|wounded_load_bed)/.test(this.curName || '') && !this.inBuilding ? (this.dragger?.squad?.medevac?.pos || this.dragger?.pos || this.pos).clone() : null;
     if (this.dragging) { this.dragging.dragger = null; this.dragging = null; }
     if (this.dragger) { this.dragger.dragging = null; this.dragger = null; }
   }
@@ -404,6 +429,15 @@ export class Soldier {
     if (!this.mixer) return false;
     this.deathT += dt;
     const gh = this.squad?.game?.city?.groundHeight;
+    if (this.carriedDeath) {
+      const from = this.carriedDeath; this.carriedDeath = null;
+      if (this.canRagdoll(camDist) && ragdollSlot()) { this.dropFrom = from; this._pp0 = this._pp1 = null; this.play(this.deathClip, 0); this.startRagdoll(); this.dropFrom = null; return true; }
+      // no ragdoll (far away / capped): the lying clip plays where his body was, on the ground
+      const hips = this.hipsBone ||= this.model.getObjectByName('Hips');
+      if (hips) { this.model.updateWorldMatrix(true, true); const hp = hips.getWorldPosition(_dv); this.pos.x = hp.x; this.pos.z = hp.z; }
+      if (gh) this.pos.y = gh(this.pos.x, this.pos.z);
+      this.root.position.copy(this.pos);
+    }
     if (this.deathRide != null && this.inside !== 'ride') {
       // squad.updateRiders has put the dead rider on the ground beside the vehicle (y = 0): real ground there; near the camera he
       // falls from deck height (the ragdoll drops him), otherwise he simply lies there
@@ -421,12 +455,22 @@ export class Soldier {
         this.deathFromDeck = true; this.startRagdoll(); this.deathFromDeck = false; return true;
       }
     }
+    // v7: killed in the air / above the ground (mid-jump off a deck, on the hatch rim, a ramp, a dead casualty's root left up):
+    // nothing re-grounds a dead man's root, the body lay at that height ('floating'). It falls (ragdoll) or is put on the ground.
+    if (this.deathT < 0.5 && gh && !this.aboard && !this.onBed && !this.hatchWarp && !this.ragdoll && !this.inStructure()) {
+      const y0 = gh(this.pos.x, this.pos.z);
+      if (this.pos.y > y0 + 0.3 && this.squad.game.city.trenchInfo?.(this.pos.x, this.pos.z)) { this.pos.y = y0; this.alignTrench(gh); }   // up on the fire step: onto the floor, along the trench
+      else if (this.pos.y > y0 + 0.3) {
+        if (this.canRagdoll(camDist) && ragdollSlot()) { this.root.position.copy(this.pos); this._pp0 = this._pp1 = null; this.play(this.deathClip, 0); this.startRagdoll(); return true; }
+        this.pos.y = y0;
+      }
+    }
     if (this.ragdollAt != null && this._pp1 && this._pp0 && this.canRagdoll(camDist)) {   // two samples: hand-off velocity
       let go = this.deathT >= this.ragdollAt;
       // the clip assumes flat ground at the root's height: once the body leans out over a trench edge, a slope or a heap (> 0.25 m
       // above / below the root) the ragdoll takes over at once and lets it fall onto the real surface
       let uneven = false;
-      if (!go && this.deathT > 0.3 && gh && !this.inBuilding && !this.cqb && !this.cellar) {   // (inside, clearing an upper floor / in a cellar: stays on that floor)
+      if (!go && this.deathT > 0.3 && gh && !this.inStructure()) {   // (inside, clearing an upper floor / in a cellar: stays on that floor)
         const hips = this.hipsBone ||= this.model.getObjectByName('Hips');
         if (hips) { const hp = hips.getWorldPosition(_dv); if (Math.abs(gh(hp.x, hp.z) - this.pos.y) > 0.25) go = uneven = true; }
       }
@@ -446,7 +490,20 @@ export class Soldier {
     const end = samplePose(this.model); a.time = t0; this.mixer.update(0);
     return ok(end);
   }
-  canRagdoll(camDist) { return camDist < 90 && !this.inBuilding && !this.aboard && !this.cqb && !this.cellar && !!this.squad?.game?.city?.groundHeight; }
+  // v7: a man dying in a trench lies along it (the lying clips assume open ground: across the trench his limbs went into the walls)
+  alignTrench(gh) {
+    const p = this.pos, y = gh(p.x, p.z); let best = null, bs = 1e9;
+    for (let k = 0; k < 8; k++) { const a = this.heading + k * Math.PI / 4, r = Math.abs(gh(p.x + Math.sin(a) * 0.9, p.z + Math.cos(a) * 0.9) - y) + Math.abs(gh(p.x - Math.sin(a) * 0.9, p.z - Math.cos(a) * 0.9) - y); if (r < bs - 0.05) { bs = r; best = a; } }
+    if (best != null) this.heading = best;
+  }
+  canRagdoll(camDist) { return camDist < 90 && !this.inStructure() && !this.aboard && !!this.squad?.game?.city?.groundHeight; }
+  // v7: inside a block / house (also a man knocked down at a window: combat.hitSoldier clears his slot, `inside`): the terrain
+  // height field is not his floor - no ragdoll onto it, no re-grounding (the dead fell through the floors to the ground)
+  inStructure() {
+    if (this.inBuilding || this.cqb || this.cellar) return true;
+    const g = this.squad?.game; if (!g) return false;
+    return !!(g.city?.buildingAt?.(this.pos.x, this.pos.z, 0.3) || g.houses?.at?.(this.pos.x, this.pos.z, 0.2));
+  }
   // pose after each clip update while a ragdoll hand-off is pending (two frames: velocity at the hand-off)
   deathSample(dt) {
     if (this.ragdollAt == null || this.corpseDone || this.ragdoll || this.deathT < Math.min(0.22, this.ragdollAt - 0.2)) return;   // from 0.22 s: early hand-off over uneven ground
@@ -465,6 +522,11 @@ export class Soldier {
       opt.spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), away).multiplyScalar((this.deathClip === 'death_blast' ? 0.8 : 3) * k);   // tumble away from it: omega x up = away, the head goes over backwards (death_blast already rotates)
       opt.drive = 0.015;
     } else if (info.from) opt.push = away.clone().multiplyScalar(0.9);
+    if (this.dropFrom) {   // v7: off the medic's shoulder / the tailgate, away from him / the truck
+      const o = new THREE.Vector3(this.pos.x - this.dropFrom.x, 0, this.pos.z - this.dropFrom.z), hp = this.model.getObjectByName('Hips')?.getWorldPosition(new THREE.Vector3());
+      if (hp) o.set(hp.x - this.dropFrom.x, 0, hp.z - this.dropFrom.z);
+      opt.impulse = (o.lengthSq() > 1e-4 ? o.normalize() : o.set(Math.random() - .5, 0, Math.random() - .5).normalize()).multiplyScalar(0.7).setY(0.2); opt.push = null;
+    }
     if (this.deathFromDeck) {   // off the deck, away from the hull
       const v = this.squad?.carrier, o = v?.pos ? new THREE.Vector3(this.pos.x - v.pos.x, 0, this.pos.z - v.pos.z) : new THREE.Vector3(Math.random() - .5, 0, Math.random() - .5);
       opt.impulse = (o.lengthSq() > 1e-4 ? o.normalize() : o.set(1, 0, 0)).multiplyScalar(0.8 + Math.random() * 0.6).setY(0.5);
@@ -486,13 +548,34 @@ export class Soldier {
   finalizeCorpse() {
     this.corpseDone = true;
     const hips = this.model?.getObjectByName?.('Hips');
-    if (!hips || this.inBuilding || this.aboard) return;
+    if (!hips || this.aboard || this.inStructure()) return;   // (inside: on that floor, as the clip ends)
     this.model.updateWorldMatrix(true, true);
     const hw = hips.getWorldPosition(new THREE.Vector3()), gh = this.squad?.game?.city?.groundHeight;
     const ny = gh ? gh(hw.x, hw.z) : this.pos.y;
     hw.y += ny - this.pos.y;
     this.pos.set(hw.x, ny, hw.z); this.root.position.copy(this.pos); this.root.updateWorldMatrix(true, true);
     hips.parent.worldToLocal(hw); hips.position.copy(hw);
+    if (gh) this.restOnGround(gh);
+  }
+  // v7: a corpse that ended its death clip without a ragdoll (far from the camera, ragdolls capped) lay as the clip left it - on
+  // flat ground at the root's height: on a slope / verge / heap one end floated and the other sank (and it stays like that when
+  // the camera comes closer). Tilt it onto the local ground plane (slopes up to ~25 deg; not across a trench wall), then settle
+  // it so its lowest joints rest on the surface.
+  restOnGround(gh) {
+    const p = this.pos, d = 0.6, gx = (gh(p.x + d, p.z) - gh(p.x - d, p.z)) / (2 * d), gz = (gh(p.x, p.z + d) - gh(p.x, p.z - d)) / (2 * d);
+    if (gx * gx + gz * gz > 0.0009 && gx * gx + gz * gz < 0.22) {
+      const n = new THREE.Vector3(-gx, 1, -gz).normalize(), qT = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
+      const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.heading);
+      this.model.quaternion.premultiply(qy.clone().invert().multiply(qT).multiply(qy));
+      this.root.updateWorldMatrix(true, true);
+    }
+    const cl = [], v = new THREE.Vector3(), g0 = gh(p.x, p.z);
+    // (joints over a step in the ground - a trench wall / lip, a heap edge - don't count: the body is not lifted onto it)
+    this.model.traverse(o => { if (o.isBone && !/Finger|Thumb|End$/i.test(o.name)) { o.getWorldPosition(v); const gy = gh(v.x, v.z); if (Math.abs(gy - g0) < 0.3) cl.push(v.y - gy); } });
+    if (cl.length < 4) return;
+    cl.sort((a, b) => a - b);
+    const dy = THREE.MathUtils.clamp(0.05 - (cl[1] + cl[2] + cl[3]) / 3, -0.3, 0.3);   // lowest joints ~5 cm up (inside the body)
+    if (Math.abs(dy) > 0.02) { this.pos.y += dy; this.root.position.copy(this.pos); this.root.updateWorldMatrix(true, true); }
   }
   lodTick(camDist) {
     if (!this.lods) return; const far = camDist > 70; if (far === this.far) return; this.far = far;

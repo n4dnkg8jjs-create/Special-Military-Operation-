@@ -349,6 +349,12 @@ def build_all(rig, R, only=None):
     out.update(CX.ride_clips(rig, lm, want))
     if want('throw_grenade_window'):
         out['throw_grenade_window'] = CX.throw_grenade_window(rig, stance, plant_feet)
+    if want('throw_grenade_over') or want('throw_grenade_low'):   # v7 (infantry_v7): overhand throw + crouched underhand lob
+        import clips_throw as CT
+        if want('throw_grenade_over'):
+            out['throw_grenade_over'] = CT.throw_grenade_over(rig)
+        if want('throw_grenade_low'):
+            out['throw_grenade_low'] = CT.throw_grenade_low(rig)
     if want('cqb_stack'):
         out['cqb_stack'] = CX.cqb_stack(rig, stance, plant_feet)
     # dismount_jump (+ _btr / _tank), dismount_door, dismount_rear, hatch_exit (+ _tank / _btr): clips_vehicle.py (below)

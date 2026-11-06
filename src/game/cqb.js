@@ -21,7 +21,7 @@ export class CQB {
   constructor(g) { this.g = g; this.stats = { rooms: 0, frags: 0, cellars: 0, duels: 0, kills: 0, attLost: 0 }; }
   // ---------------------------------------------------------------- interior geometry
   H(b) { return b.house ? 2.8 : b.kit.H; }
-  floorY(b, f) { return b.house ? b.y0 + 0.05 : f * b.kit.H + 0.02; }
+  floorY(b, f) { return b.house ? (b.floorY ? b.floorY() : b.y0 + 0.05) : f * b.kit.H + 0.02; }   // (v7: the house's real floor)
   floorOf(b, y) { return b.house ? 0 : Math.max(0, Math.min(b.floors - 1, Math.round((y - 0.02) / b.kit.H))); }
   door(b, ent) {
     if (b.house) { const d = b.doors.reduce((a, q) => (q.out.distanceTo(ent) < a.out.distanceTo(ent) ? q : a)); return { out: d.out.clone(), in: d.in.clone(), lx: d.lx }; }
@@ -79,10 +79,9 @@ export class CQB {
     if (sq.side === 'player') g.hud?.alert(`${sq.name}: breaching ${b.house ? 'the house' : 'the building'}`);
   }
   frag(s, at, cellar = null) {
-    const g = this.g; s.grenades = (s.grenades ?? 2) - 1; s.throwT = 1.2; this.stats.frags++;
+    const g = this.g; s.grenades = (s.grenades ?? 2) - 1; this.stats.frags++;
     if (g.camDist(s.pos) < 80) g.sfx('grenade_pin', s.pos);
-    const from = s.pos.clone(); from.y += 1.3;
-    g.combat.projectiles.push({ kind: 'grenade', pos: from.clone(), from, target: at, t: null, speed: 9, owner: s, side: s.squad.side, fuse: 0, arc: true, cellar });
+    g.combat.startThrow(s, at, { speed: 9, style: 'low', extra: { cellar } });   // v7: crouched underhand lob through the door / down the hatch
   }
   // a grenade down the cellar hatch: confined space, everyone down there is likely hit (combat.update calls this)
   cellarBlast(house, owner) {
@@ -158,7 +157,7 @@ export class CQB {
       if (c < bc) { bc = c; best = { sl, floor: sl.panel.floor, pos, entry: this.roomPos(b, sl, b.house ? 1.4 : 1.9) }; }
     }
     if (best) return best;
-    if (b.cellar && this.cellarMen(sq, b).length) { const h = b.cellar.hatch.clone(); h.y = b.y0 + 0.05; const e = h.clone(); e.x += 0.9; return { cellar: true, floor: 0, pos: h, entry: e }; }
+    if (b.cellar && this.cellarMen(sq, b).length) { const h = b.cellar.hatch.clone(); h.y = b.floorY ? b.floorY() : b.y0 + 0.05; const e = h.clone(); e.x += 0.9; return { cellar: true, floor: 0, pos: h, entry: e }; }
     return null;
   }
   ptIndex(R, p) { let i = 1; while (i < R.pts.length && R.cum[i] <= p) i++; return i; }

@@ -26,6 +26,7 @@ export class Assets {
       // ATGM / FPV team props
       ['kornet', 'assets/soldiers/kornet.glb'], ['stugna', 'assets/soldiers/stugna.glb'], ['atgm_tube_carried', 'assets/soldiers/atgm_tube_carried.glb'],
       ['fpv_drone', 'assets/soldiers/fpv_drone.glb'], ['fpv_controller', 'assets/soldiers/fpv_controller.glb'], ['fpv_goggles', 'assets/soldiers/fpv_goggles.glb'],
+      ['grenade_f1', 'assets/soldiers/grenade_f1.glb'], ['grenade_rgd5', 'assets/soldiers/grenade_rgd5.glb'],   // v7: in the thrower's hand / in flight
     ];
     // a map may ask for the other kit's env sets too (maps.js `assets`, e.g. the real-place maps: farmland.glb sheds /
     // fences / orchard trees in the Avdiivka private sector, modern.glb in an urban map)
@@ -156,6 +157,28 @@ export class Assets {
       for (const pt of raw[name].parts) { pt.geometry.translate(offsets[base].x, offsets[base].y, offsets[base].z); pt.geometry.computeBoundingBox(); pt.geometry.computeBoundingSphere(); }
       kit.pieces[name] = raw[name].parts;
       kit.pieces[name].size = offsets[base].size;
+    }
+    // v7: glass knocked out - for every window / balcony wall piece (intact, damaged) an `_open` copy without the glazing, sash and
+    // curtains in its openings (manifest module.openings_m); buildings.js switches a panel to it when a man takes that window
+    // (behind the opaque glass of an intact window a garrison could never be seen or seen out of)
+    const OPN = { window: [[0.85, 0.86, 2.35, 2.3]], balcony: [[0.42, 0.1, 1.16, 2.3], [1.34, 0.86, 2.78, 2.3]] };
+    for (const name of Object.keys(kit.pieces)) {
+      const mm = name.match(/^(?:wall|brick\w*)_(window|balcony)_(intact|damaged)$/); if (!mm) continue;
+      const rects = OPN[mm[1]], zmin = mm[2] === 'intact' ? -0.32 : -0.9;
+      const parts = kit.pieces[name].map(pt => {
+        const g0 = pt.geometry, pos = g0.attributes.position, idx = g0.index; if (!pos) return pt;
+        const keep = [], n = idx ? idx.count : pos.count;
+        for (let t = 0; t < n; t += 3) {
+          const a = idx ? idx.getX(t) : t, b = idx ? idx.getX(t + 1) : t + 1, c = idx ? idx.getX(t + 2) : t + 2;
+          const cx = (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3, cy = (pos.getY(a) + pos.getY(b) + pos.getY(c)) / 3, cz = (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
+          const inOpen = cz > zmin && cz < 0.3 && rects.some(([x0, y0, x1, y1]) => cx > x0 + 0.01 && cx < x1 - 0.01 && cy > y0 + 0.01 && cy < y1 - 0.01);
+          if (!inOpen) keep.push(a, b, c);
+        }
+        if (keep.length === n) return pt;
+        const g = g0.clone(); g.setIndex(keep); g.computeBoundingBox(); g.computeBoundingSphere();
+        return { ...pt, geometry: g };
+      });
+      kit.pieces[name + '_open'] = parts; kit.pieces[name + '_open'].size = kit.pieces[name].size;
     }
     const wi = kit.pieces.wall_window_intact;
     if (wi && !(mk.width || mk.W)) { kit.W = +wi.size.x.toFixed(3); kit.H = +wi.size.y.toFixed(3); kit.T = +wi.size.z.toFixed(3); }

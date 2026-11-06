@@ -88,14 +88,22 @@ def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.087, h=0.155, d=0.068, mag_
     out.append(local_part(rbox(w, hb, d, 0.013, 2), M @ T(0, hb / 2, d / 2), mats['fabric']))   # v6: fuller, softer corners
     # MOLLE strap at back, side seams = slight geometry: bottom drain grommet skipped
     if open_top:
-        # mag bottoms (base plates) sticking out, slightly curved forward (AK mags are inserted upside down)
-        mw = 0.028
+        # v7: AK-74 magazines stand in the pouch feed lips DOWN, base plate up, the broad curved side facing out (the pouch is as wide
+        # as the mag is deep, ~65 mm, and as deep as it is thick, ~27 mm): the protruding bottom third leans toward the mag's front
+        # (the curve), every mag the same way; floor plate on top.  (v6 had them turned 90 deg: narrow edge out, sticking 64 mm off
+        # the chest.)
+        mw, mt = 0.062, 0.026
         for k in range(n_mags):
-            x = (k - (n_mags - 1) / 2) * (mw + 0.006)
-            body = rbox(mw, 0.06, 0.064, 0.004, 1)
-            out.append(local_part(body, M @ T(x, hb + 0.0, d / 2 + 0.002, rx=-0.12), mats[mag_col], 'hard'))
-            plate = rbox(mw + 0.003, 0.008, 0.068, 0.002, 1)
-            out.append(local_part(plate, M @ T(x, hb + 0.03, d / 2 + 0.0, rx=-0.12), mats[mag_col], 'hard'))
+            x = (k - (n_mags - 1) / 2) * (mt + 0.004)
+            c, s_ = np.cos(0.13), np.sin(0.13)
+            Rz = np.eye(4); Rz[:2, :2] = [[c, -s_], [s_, c]]
+            base = M @ T(x, hb - 0.012, d / 2 + 0.001) @ Rz
+            body = rbox(mw, 0.07, mt, 0.005, 1, taper_top=0.04)
+            out.append(local_part(body, base @ T(0, 0.035, 0), mats[mag_col], 'hard'))
+            rib = rbox(0.010, 0.064, mt + 0.003, 0.002, 1)            # moulded front rib of the AK-74 mag
+            out.append(local_part(rib, base @ T(mw / 2 - 0.009, 0.034, 0), mats[mag_col], 'hard'))
+            plate = rbox(mw + 0.006, 0.008, mt + 0.005, 0.0025, 1)    # floor plate
+            out.append(local_part(plate, base @ T(0.002, 0.072, 0), mats[mag_col], 'hard'))
         # bungee retention cord across the top
         cord = rbox(w * 0.95, 0.006, 0.006, 0.0025, 1)
         out.append(local_part(cord, M @ T(0, hb + 0.012, d + 0.004), mats['hardware'], 'hard'))
