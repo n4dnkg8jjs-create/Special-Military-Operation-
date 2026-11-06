@@ -194,6 +194,8 @@ export class Combat {
       // priority: machine gunners and anti-tank gunners first, then leaders; men in the open over men behind cover
       for (const e of u.soldiers) if (e.effective && e.inside !== 'btr' && !e.cellar) consider(e, focus + (e.inBuilding ? -10 : 0) + (e.weaponKey === 'pkm' ? 25 : 0) + (e.weaponKey === 'rpg7' || e.rpg22 > 0 ? 18 : 0) + (e.role?.leader ? 10 : 0) + (e.vel.lengthSq() > 1 ? 12 : 0) - (this.g.nav.coverFrom(e.pos.x, e.pos.z, s.pos.x, s.pos.z) * 15));
     }
+    // an RPG gunner on his AK goes back to the launcher as soon as there is armour in its reach and a rocket left
+    if (s.origWeapon?.key === 'rpg7' && (s.origWeapon.mags > 0 || s.origWeapon.inMag > 0) && cands.some(c => c[0].type === 'vehicle' && !c[0].destroyed && Math.hypot(c[0].pos.x - s.pos.x, c[0].pos.z - s.pos.z) < WEAPONS.rpg7.range)) { this.swapBack(s); return this.acquire(s); }
     if (s.weaponKey === 'rpg7') { // RPG gunner: only vehicles or garrisoned clusters
       for (let i = cands.length - 1; i >= 0; i--) { const t = cands[i][0]; if (t.type !== 'vehicle' && !(t.inBuilding && cands[i][1] < 120 && Math.random() < 0.25)) cands.splice(i, 1); }
       if (!cands.length && s.sideKey && s.sideMags > 0) { this.swapToSide(s); return this.acquire(s); }
@@ -227,8 +229,9 @@ export class Combat {
     else if (s.target && s.target.type !== 'vehicle') this.wallLean(s);
     if (!s.target && s.sideKey && s.weaponKey !== 'rpg7' && s.origWeapon) this.swapBack(s);
   }
-  swapToSide(s) { if (s.origWeapon) return; s.origWeapon = { key: s.weaponKey, mags: s.mags, inMag: s.inMag }; s.weaponKey = s.sideKey; s.weapon = WEAPONS[s.sideKey]; s.mags = s.sideMags; s.inMag = 0; s.reloadT = 1.5; }
-  swapBack(s) { const o = s.origWeapon; s.sideMags = s.mags + (s.inMag > 0 ? 1 : 0); s.weaponKey = o.key; s.weapon = WEAPONS[o.key]; s.mags = o.mags; s.inMag = o.inMag; s.origWeapon = null; }
+  // (the model in his hands changes with it: soldier.showHeld - an RPG gunner firing rifle rounds out of the launcher was this)
+  swapToSide(s) { if (s.origWeapon) return; s.origWeapon = { key: s.weaponKey, mags: s.mags, inMag: s.inMag }; s.weaponKey = s.sideKey; s.weapon = WEAPONS[s.sideKey]; s.mags = s.sideMags; s.inMag = 0; s.reloadT = 1.5; s.target = null; s.showHeld?.(); }
+  swapBack(s) { const o = s.origWeapon; s.sideMags = s.mags + (s.inMag > 0 ? 1 : 0); s.weaponKey = o.key; s.weapon = WEAPONS[o.key]; s.mags = o.mags; s.inMag = o.inMag; s.origWeapon = null; s.target = null; s.reloadT = Math.max(s.reloadT || 0, 1.2); s.showHeld?.(); }
   startReload(s) {
     if (s.mags <= 0) {
       // out of ammo: borrow from squadmates / drop to side arm

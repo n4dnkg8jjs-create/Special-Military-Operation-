@@ -124,6 +124,23 @@ export class Soldier {
     this.mag = w.getObjectByName('magazine'); this.magHome = this.mag ? { parent: this.mag.parent, pos: this.mag.position.clone(), quat: this.mag.quaternion.clone() } : null;
     this.wSock = 'R'; this.far = undefined;
   }
+  // the weapon in his hands follows weaponKey when he changes between the two he carries (combat.swapToSide / swapBack:
+  // the RPG gunner's AK, a gunner out of ammo): ammo untouched, the other one goes on his back. Models are kept per key.
+  showHeld() {
+    if (!this.sockets?.R || this.dropped) return;
+    const S = this._wSet ||= {}, k = this.weaponKey;
+    if (this._heldKey === undefined) this._heldKey = this.role?.weapon || k;
+    if (this._heldKey === k) return;
+    if (this.weaponObj) {
+      S[this._heldKey] = [this.weaponObj, this.muzzleObj, this.mag, this.magHome, this.wLod];
+      const back = this.slingSock || this.sockets.back;
+      if (back) { back.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); } else this.weaponObj.visible = false;
+    }
+    const e = S[k];
+    if (e) { [this.weaponObj, this.muzzleObj, this.mag, this.magHome, this.wLod] = e; this.sockets.R.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.weaponObj.visible = true; this.wSock = 'R'; this.far = undefined; }
+    else this.attachWeapon();
+    this._heldKey = k; this.curName = null;
+  }
   // swap the carried weapon (ATGM survivor leaving the launcher and drawing his Makarov)
   setWeapon(wk) {
     if (this.weaponKey === wk || !WEAPONS[wk]) return;

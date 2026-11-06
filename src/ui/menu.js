@@ -43,8 +43,8 @@ if (q) {
 // FPV drone view auto-open (ui/droneFeed.js reads the same key; its window has the same toggle)
 const fa = $('fpvAuto');
 if (fa) {
-  try { fa.checked = localStorage.getItem('smo_fpvfeed_auto') !== '0'; } catch { }
-  fa.addEventListener('change', () => { try { localStorage.setItem('smo_fpvfeed_auto', fa.checked ? '1' : '0'); } catch { } });
+  try { fa.checked = localStorage.getItem('smo_fpvfeed_open') === '1'; } catch { }
+  fa.addEventListener('change', () => { try { localStorage.setItem('smo_fpvfeed_open', fa.checked ? '1' : '0'); } catch { } });
 }
 
 // ---------------------------------------------------------------- skirmish detail: mirror the selected map card

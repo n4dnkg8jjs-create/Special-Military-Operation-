@@ -29,8 +29,10 @@ const PH = ['launch', 'climb', 'cruise', 'dive', 'fall'];
 export const FEED_PHASE = PH;
 const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const prefAuto = () => { try { return localStorage.getItem('smo_fpvfeed_auto') !== '0'; } catch { return true; } };
-const savePrefAuto = on => { try { localStorage.setItem('smo_fpvfeed_auto', on ? '1' : '0'); } catch { } };
+// v2: a panel the player opens and closes (the 'FPV' tab at the right edge, or N); closed by default, it never pops up
+// on its own. Open, it shows the drone in the air (the next one when a drone is lost) or a standby screen.
+const prefOpen = () => { try { return localStorage.getItem('smo_fpvfeed_open') === '1'; } catch { return false; } };
+const savePrefOpen = on => { try { localStorage.setItem('smo_fpvfeed_open', on ? '1' : '0'); } catch { } };
 export function droneFeedEnabled() { try { return new URLSearchParams(location.search).get('dronefeed') !== '0'; } catch { return true; } }
 
 const AnalogShader = {
@@ -81,7 +83,7 @@ const AnalogShader = {
 export class DroneFeed {
   constructor(game) {
     this.g = game; game.droneFeed = this;
-    this.auto = prefAuto(); this.mode = 'off'; this.closed = false; this.cur = null; this.seen = new WeakSet();
+    this.panel = prefOpen(); this.mode = 'off'; this.cur = null;
     this.cpuMs = 0; this.st = { renders: 0, composites: 0, ms: 0, n: 0, msMax: 0 };
     this.noise = 0.05; this.brkT = 0; this.brkA = 0; this.roll = 0; this.rollV = 0; this.tearY = 0.5; this.losK = 0; this.losT = 0; this.acc = 1; this.rtOk = false; this.clock = 0;
     this.cam = new THREE.PerspectiveCamera(VFOV, RW / RH, 0.08, FAR); this.cam.rotation.order = 'YXZ';
@@ -102,31 +104,26 @@ export class DroneFeed {
   buildDom() {
     const el = this.el = document.createElement('div'); el.id = 'dronefeed'; el.className = 'df hidden';
     el.innerHTML = `<div class="df-bar"><i class="df-live"></i><span class="df-title">FPV</span><span class="df-sp"></span>
-      <button class="df-auto" title="Open the drone view automatically when an FPV drone is launched">Auto</button>
       <button class="df-cyc" title="Next drone in the air (Shift+N)">Next <b></b></button>
-      <button class="df-min" title="Hide drone view (N)">&ndash;</button>
-      <button class="df-x" title="Close the drone view until the next launch (N shows it again while a drone is in the air)">&times;</button></div>
+      <button class="df-x" title="Close the drone view (N)">&times;</button></div>
       <div class="df-scr" title="Click: move the camera to this drone"><div class="df-osd"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span><span class="cx"></span></div><div class="df-lost">SIGNAL LOST</div></div>`;
     const q = s => el.querySelector(s);
-    this.titleEl = q('.df-title'); this.cycEl = q('.df-cyc'); this.cycN = q('.df-cyc b'); this.autoEl = q('.df-auto'); this.scr = q('.df-scr'); this.osd = q('.df-osd'); this.lostEl = q('.df-lost');
+    this.titleEl = q('.df-title'); this.cycEl = q('.df-cyc'); this.cycN = q('.df-cyc b'); this.scr = q('.df-scr'); this.osd = q('.df-osd'); this.lostEl = q('.df-lost');
     this.osdEl = { tl: q('.tl'), tr: q('.tr'), bl: q('.bl'), br: q('.br') };
-    this.autoEl.classList.toggle('on', this.auto);
     for (const b of el.querySelectorAll('button')) b.addEventListener('pointerdown', e => e.stopPropagation());
-    this.autoEl.addEventListener('click', () => { this.auto = !this.auto; savePrefAuto(this.auto); this.autoEl.classList.toggle('on', this.auto); this.g.sfx?.('ui_click'); });
     this.cycEl.addEventListener('click', () => this.cycle(false));
-    q('.df-x').addEventListener('click', () => { this.closed = true; this.min = false; this.hide(); this.setPill(0); this.g.sfx?.('ui_click'); });
-    q('.df-min').addEventListener('click', () => { this.minimize(); this.g.sfx?.('ui_click'); });
-    // hidden: a small tab with the number of drones in the air; a click (or N) brings the window back
-    const pill = this.pill = document.createElement('button'); pill.id = 'dronefeedPill'; pill.className = 'hidden'; pill.title = 'Show drone view (N)';
+    q('.df-x').addEventListener('click', () => { this.setPanel(false); this.g.sfx?.('ui_click'); });
+    // closed: a tab at the right edge (live dot + number of drones in the air); a click (or N) opens the panel
+    const pill = this.pill = document.createElement('button'); pill.id = 'dronefeedPill'; pill.className = 'hidden'; pill.title = 'Drone view (N)';
     pill.innerHTML = '<i class="df-live"></i>FPV <b></b>'; this.pillN = pill.querySelector('b');
-    pill.addEventListener('pointerdown', e => e.stopPropagation()); pill.addEventListener('click', () => { this.restore(); this.g.sfx?.('ui_click'); });
+    pill.addEventListener('pointerdown', e => e.stopPropagation()); pill.addEventListener('click', () => { this.setPanel(true); this.g.sfx?.('ui_click'); });
     this.scr.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.button === 0) this.jump(); });
     const hud = document.getElementById('hud') || document.body, cmd = document.getElementById('cmd');
     if (cmd && cmd.parentNode === hud) { hud.insertBefore(el, cmd); hud.insertBefore(pill, cmd); } else hud.append(el, pill);   // before the order bar: its tooltips paint over the window
   }
   // window size: ~360x203 CSS px at 1600 px wide, larger on big screens; integer pixels so the canvas viewport matches
   layout() {
-    const w = Math.round(Math.min(560, Math.max(300, innerWidth * 0.19 + 56))), h = Math.round(w * 9 / 16);
+    const w = Math.round(Math.min(480, Math.max(280, innerWidth * 0.16 + 48))), h = Math.round(w * 9 / 16);
     if (w !== this._w || h !== this._h) { this._w = w; this._h = h; this.scr.style.width = w + 'px'; this.scr.style.height = h + 'px'; this.el.style.setProperty('--dfw', w + 'px'); }
     this.rectT = 0;
   }
@@ -136,10 +133,10 @@ export class DroneFeed {
   }
   show() { if (this.visible) return; this.visible = true; this.el.classList.remove('hidden'); this.layout(); this.readRect(); }
   hide() { if (!this.visible && this.mode === 'off') return; this.visible = false; this.mode = 'off'; this.cur = null; this.el.classList.add('hidden'); }
-  // hide to the tab: no rendering; new launches do not pop the window up again until it is restored
-  minimize() { this.min = true; this.hide(); this.setPill(this.sources().length); }
-  restore() { this.min = false; this.closed = false; const L = this.sources(); if (L.length) this.open(L.includes(this.lastCur) ? this.lastCur : L[0]); }
-  toggle() { if (this.visible) return this.minimize(); if (!this.sources().length) { this.g.hud?.alert?.('No FPV drone in the air'); return; } this.restore(); }
+  setPanel(on) { this.panel = on; savePrefOpen(on); if (!on) this.hide(); }
+  toggle() { this.setPanel(!this.panel); }
+  // the player has an FPV team (the tab only shows then)
+  hasTeam() { return this.g.squads.some(q => q.side === 'player' && q.kind === 'fpv' && !q.destroyed); }
   // ---------------------------------------------------------------- sources: the own side's drones in the air
   sources() {
     const g = this.g, out = this._src ||= []; out.length = 0;
@@ -166,11 +163,11 @@ export class DroneFeed {
     this.cur = this.lastCur = d; this.mode = 'live'; this.rtOk = false; this.acc = 1; this.brkT = 0; this.brkA = 0; this.roll = 0; this.rollV = 0; this.noise = 0.1; this.losT = 0;
     this.lostEl.classList.remove('show'); this.el.classList.remove('lost');
     d._fv ||= { yaw: 0, pitch: 0, roll: 0, yawRate: 0, dive: 0, init: false, spin: 0 };
-    this.show(); this.titleT = 0; this.setPill(0);
+    this.el.classList.remove('standby'); this.show(); this.titleT = 0;
   }
   cycle(fromKey) {
     const L = this.sources(); if (!L.length) { if (fromKey) this.g.hud?.alert?.('No FPV drone in the air'); return; }
-    if (!this.visible || this.mode !== 'live') { this.closed = false; this.min = false; return this.open(L.includes(this.cur) ? this.cur : L.includes(this.lastCur) ? this.lastCur : L[0]); }
+    if (!this.visible || this.mode !== 'live') { this.setPanel(true); return this.open(L.includes(this.cur) ? this.cur : L.includes(this.lastCur) ? this.lastCur : L[0]); }
     const i = L.indexOf(this.cur); this.open(L[(i + 1) % L.length]); this.g.sfx?.('ui_click');
   }
   jump() {
@@ -182,11 +179,12 @@ export class DroneFeed {
   // ---------------------------------------------------------------- per frame (also while the render is off: state only)
   update(dt) {
     const g = this.g; this.clock += dt;
-    if (g.over || g.phase === 'deploy') { if (this.visible) this.hide(); this.setPill(0); return; }
+    if (g.over || g.phase === 'deploy') { if (this.visible) this.hide(); this.setPill(-1); return; }
     const L = this.sources();
-    // a new launch: re-arms a closed window; auto-open when nothing is on screen (not while hidden to the tab)
-    for (const d of L) if (!this.seen.has(d)) { this.seen.add(d); this.closed = false; if (this.auto && !this.min && (this.mode === 'off' || this.mode === 'lost')) this.open(d); }
-    this.setPill(!this.visible && !this.closed ? L.length : 0);
+    this.setPill(this.panel || !this.hasTeam() ? -1 : L.length);
+    if (!this.panel) { if (this.visible) this.hide(); return; }
+    // open: the drone in the air (the last one watched first), else a standby screen (nothing rendered)
+    if (this.mode === 'off') { if (L.length) this.open(L.includes(this.lastCur) ? this.lastCur : L[0]); else if (!this.visible) { this.show(); this.el.classList.add('standby'); this.titleEl.textContent = 'FPV · standby'; } }
     if (this.mode === 'live') {
       const d = this.cur, I = L.includes(d) ? this.info(d) : null;
       if (!I || (I.phase === 'fall' && !I.pilotOk)) { this.mode = 'lost'; this.lostT = 0; this.lostEl.classList.remove('show'); }
@@ -195,7 +193,7 @@ export class DroneFeed {
     if (this.mode === 'lost') {
       this.lostT += dt;
       if (this.lostT > LOST_STATIC) this.lostEl.classList.add('show');
-      if (this.lostT > LOST_END) { this.lostEl.classList.remove('show'); const nx = L.find(x => x !== this.cur); if (nx && !this.closed) this.open(nx); else this.hide(); }
+      if (this.lostT > LOST_END) { this.lostEl.classList.remove('show'); const nx = L.find(x => x !== this.cur); if (nx) this.open(nx); else { this.mode = 'off'; this.cur = null; this.el.classList.remove('lost'); this.el.classList.add('standby'); this.titleEl.textContent = 'FPV · standby'; } }
     }
     if (!this.visible) return;
     // chrome: title, cycle count, OSD (DOM writes change-guarded, ~10 Hz)
@@ -212,8 +210,8 @@ export class DroneFeed {
       if ((this.rectT -= 0.1) <= 0) { this.rectT = 0.25; this.readRect(); }
     }
   }
-  setPill(n) {
-    if (n !== this._pn) { this._pn = n; this.pill.classList.toggle('hidden', !n); this.pillN.textContent = n > 1 ? String(n) : ''; }
+  setPill(n) {   // n < 0: no tab; 0: the tab, no drone up; n: drones in the air
+    if (n !== this._pn) { this._pn = n; this.pill.classList.toggle('hidden', n < 0); this.pill.classList.toggle('idle', n === 0); this.pillN.textContent = n > 1 ? String(n) : ''; }
   }
   osdText(I) {
     const fv = this.cur._fv, ground = this.g.city?.terrain?.heightAt?.(I.pos.x, I.pos.z) || 0, alt = Math.max(0, I.pos.y - ground);
