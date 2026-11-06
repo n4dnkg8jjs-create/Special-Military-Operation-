@@ -315,6 +315,7 @@ export class Squad {
     if (this.routing) return;
     // building held by the enemy -> storm it (stack up at an entrance, grenades, room clearing)
     if (b.slots.some(sl => sl.occupant && sl.occupant.squad.side !== this.side && sl.occupant.effective)) return this.orderStorm(b);
+    if (this.building === b && this.order?.type === 'garrison' && this.effective.every(s => s.slotRef || s.dragging)) return;   // already in / on the way in (no walking out and back in)
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const free = b.slots.filter(sl => !sl.occupant && !sl.panel.gone);
@@ -340,7 +341,7 @@ export class Squad {
     const f = Math.atan2(ent.x - c.x, ent.z - c.z);
     this.effective.forEach((s, i) => {
       const side = (i % 2 ? 1 : -1) * (1.2 + (i >> 1) * 0.9); // stack along the wall either side of the door
-      const r = new THREE.Vector3(Math.cos(b.rot), 0, -Math.sin(b.rot));
+      const d = b.house && b.doorNear ? b.doorNear(ent) : null, r = d ? d.tan : new THREE.Vector3(Math.cos(b.rot), 0, -Math.sin(b.rot));   // (a house: along the wall of its real door)
       const [gx, gz] = this.game.nav.nearestFree(ent.x + r.x * side, ent.z + r.z * side, 0.4, 6);
       s.goal = [gx, gz]; s.goalHeading = f; this.game.requestPath(s, s.pos.x, s.pos.z, gx, gz, 0.45);
     });
@@ -365,12 +366,19 @@ export class Squad {
     this.leaveTrench();
     if (!this.building) return;
     const b = this.building;
-    for (const s of this.soldiers) if (s.cellar || s.cellarMove) { const h = (s.cellar || s.cellarMove.house).cellar.hatch; s.cellar = null; s.cellarMove = null; if (!s.slotRef || !s.inBuilding) s.pos.set(h.x, h.y, h.z); }
+    const walk = b.house && b.P && this.game.cqb, out = [];   // a house: the men walk out through its door (no pop to the door)
+    for (const s of this.soldiers) if (s.cellar || s.cellarMove) { const h = (s.cellar || s.cellarMove.house).cellar.hatch; s.cellar = null; s.cellarMove = null; if (walk || !s.slotRef || !s.inBuilding) s.pos.set(h.x, h.y, h.z); }
     this.inCellar = false;
-    for (const s of this.soldiers) if (s.slotRef) {
-      s.slotRef.occupant = null; s.slotRef = null;
-      if (s.inBuilding) { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); s.inside = null; }
+    for (const s of this.soldiers) {
+      const entering = walk && s.cqb?.walk?.b === b && !s.inside;   // still on his way in
+      if (s.slotRef) { s.slotRef.occupant = null; s.slotRef = null; }
+      if (entering) { s.cqb = null; if (b.contains(s.pos, 0.2) && s.effective) out.push(s); continue; }
+      if (!s.inBuilding || s.bld !== b) continue;
+      if (walk && s.effective) out.push(s);
+      else { const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)); s.pos.set(ent.x, 0, ent.z); }
+      s.inside = null;
     }
+    if (out.length) { const d = b.doorNear(this.center()); out.sort((p, q) => p.pos.distanceToSquared(d.in) - q.pos.distanceToSquared(d.in)).forEach((s, k) => this.game.cqb.exitWalk(this, s, b, k)); }
     this.building = null;
   }
   orderMount(v) {
@@ -691,7 +699,7 @@ export class Squad {
   idleGoalWatch() {
     const g = this.game, nav = g.nav;
     for (const s of this.effective) {
-      const busy = s.inside || s.cqb || s.cellar || s.cellarMove || s.dmWait != null || s.jumpT > 0 || s.hatchT > 0 || s.hatchWait != null || s.waitTeam || s.dragging || s.rampWalk || s.deckWalk;
+      const busy = s.inside || s.cqb || s.houseWalk || s.cellar || s.cellarMove || s.dmWait != null || s.jumpT > 0 || s.hatchT > 0 || s.hatchWait != null || s.waitTeam || s.dragging || s.rampWalk || s.deckWalk;
       if (busy || !s.goal || s.pathReq || (s.path && s.pathI < s.path.length) || Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 1.6) { s.idleGoalT = 0; if (!s.goal) s.goalRetry = 0; continue; }
       if ((s.idleGoalT = (s.idleGoalT || 0) + 0.5) < 1.5) continue;
       s.idleGoalT = 0; s.goalRetry = (s.goalRetry || 0) + 1; this.idleRetries = (this.idleRetries || 0) + 1;
@@ -867,12 +875,13 @@ export class Squad {
     // dragging logic (medic / buddy)
     if (s.dragging) this.dragStep(s, dt);
     // garrison: entering the building through the entrance
-    if (s.slotRef && !s.inside && !s.cqb && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2 && g.cqb) { s.path = null; s.goal = null; g.cqb.entryWalk(this, s, s.slotRef.panel.b, s.slotRef); }   // in by the door, then walks (up the stairs) to his window
-    if (s.slotRef && !s.inside && !s.cqb && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {
+    if (s.slotRef && !s.inside && !s.cqb && !s.houseWalk && s.goal && g.cqb) { const dg = Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]); if (dg < (s.slotRef.panel.b.house ? 0.9 : 2.2) || (dg < 2.2 && !(s.path && s.pathI < s.path.length) && !s.pathReq)) { s.path = null; s.goal = null; g.cqb.entryWalk(this, s, s.slotRef.panel.b, s.slotRef); } }   // in by the door, then walks (up the stairs) to his window (a house: from its door's outside point, not from across its wall)
+    if (!g.cqb && s.slotRef && !s.inside && s.goal && Math.hypot(s.pos.x - s.goal[0], s.pos.z - s.goal[1]) < 2.2) {   // (no CQB module: straight to the window)
       s.inside = s.slotRef; s.path = null; s.goal = null;
       const bb = s.slotRef.panel.b; bb.slotPos(s.slotRef, s.pos); s.heading = Math.atan2(bb.outward(s.slotRef.panel).x, bb.outward(s.slotRef.panel).z);
     }
     if (s.cqb) g.cqb.step(this, s, dt);                 // inside, clearing rooms / walking to a window (cqb.js)
+    else if (s.houseWalk) g.cqb.walkStep(this, s, dt);  // out of a house through its door
     else if (s.cellarMove) this.cellarStep(s, dt);      // climbing down to / up from the cellar
     else if (s.cellar) s.vel.set(0, 0, 0);
     else if (s.inBuilding) {

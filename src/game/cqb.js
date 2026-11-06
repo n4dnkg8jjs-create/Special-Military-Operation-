@@ -24,7 +24,7 @@ export class CQB {
   floorY(b, f) { return b.house ? (b.floorY ? b.floorY() : b.y0 + 0.05) : f * b.kit.H + 0.02; }   // (v7: the house's real floor)
   floorOf(b, y) { return b.house ? 0 : Math.max(0, Math.min(b.floors - 1, Math.round((y - 0.02) / b.kit.H))); }
   door(b, ent) {
-    if (b.house) { const d = b.doors.reduce((a, q) => (q.out.distanceTo(ent) < a.out.distanceTo(ent) ? q : a)); return { out: d.out.clone(), in: d.in.clone(), lx: d.lx }; }
+    if (b.house) { const d = b.doors.reduce((a, q) => (q.out.distanceTo(ent) < a.out.distanceTo(ent) ? q : a)); return { out: d.out.clone(), in: d.in.clone(), lx: d.lx, d }; }
     const [lx] = b.toLocal(ent.x, ent.z);
     return { out: ent.clone(), in: b.toWorld(lx, 0.02, -b.D / 2 + 1.2), lx };
   }
@@ -32,17 +32,19 @@ export class CQB {
   // points from `from` (on floor f0) to `to` (on floor f1): straight on one floor, by the stairwell between floors
   leg(b, D, from, f0, to, f1) {
     const pts = [from];
-    if (!b.house && f0 !== f1) {
+    if (b.house) { if (b.interior) pts.push(...b.interior({ x: from[0], z: from[2] }, { x: to[0], z: to[2] })); pts.push(to); return pts; }   // one room: straight (over the rubble)
+    if (f0 !== f1) {
       const s = Math.sign(f1 - f0); pts.push(v3(this.stair(b, D, f0)));
       for (let f = f0; f !== f1; f += s) { const m = this.stair(b, D, f, 1); m.y = (this.floorY(b, f) + this.floorY(b, f + s)) / 2; pts.push(v3(m)); pts.push(v3(this.stair(b, D, f + s))); }
     }
     pts.push(to); return pts;
   }
-  roomPos(b, sl, back = 0) { const p = b.slotPos(sl, new THREE.Vector3()), o = b.outward(sl.panel); p.addScaledVector(o, -back); return p; }
+  roomPos(b, sl, back = 0) { const p = b.slotPos(sl, new THREE.Vector3()), o = b.outward(sl.panel); p.addScaledVector(o, -back); if (back && b.clampIn) b.clampIn(p); return p; }   // (a house: still inside its room)
   // ---------------------------------------------------------------- per-man movement (squad.updateSoldier hook)
   // men inside walk toward their file point / walk target: smooth, never a teleport
   step(sq, s, dt) {
     const C = s.cqb; if (!C) return;
+    if (C.walk?.wait > 0) { C.walk.wait -= dt; s.vel.set(0, 0, 0); return; }   // his turn at the door
     if (C.walk) { C.walk.p = Math.min(C.walk.R.total, C.walk.p + dt * 1.6); const a = routeAt(C.walk.R, C.walk.p); C.to = a; if (C.walk.p >= C.walk.R.total - 0.01) { const sl = C.walk.slot; s.cqb = null; if (sl && !sl.occupant) { sl.occupant = s; } if (sl && sl.occupant === s) { s.slotRef = sl; s.inside = sl; sq.building = C.walk.b; sq.building.slotPos(sl, s.pos); const o = C.walk.b.outward(sl.panel); s.heading = Math.atan2(o.x, o.z); } s.vel.set(0, 0, 0); return; } }
     if (!s.effective) { s.vel.set(0, 0, 0); return; }   // hit inside: lies where he fell
     const to = C.to; if (!to) { s.vel.set(0, 0, 0); return; }
@@ -72,7 +74,8 @@ export class CQB {
     const pool = sq.effective.filter(s => !s.dragging && !s.aboard).sort((p, q) => (q.assault ? 2 : 0) + (q.role?.leader ? 1 : 0) - (p.assault ? 2 : 0) - (p.role?.leader ? 1 : 0) + (p.pos.distanceTo(D.out) - q.pos.distanceTo(D.out)) * 0.1);
     C.file = pool.slice(0, Math.min(4, pool.length)); C.D = D; C.p = 0; C.floor = 0;
     const lead = C.file[0];
-    C.R = route([v3(lead.pos), v3(D.out), v3(D.in)]); C.legEnd = C.R.total;
+    C.R = route(b.house && D.d?.thr ? [v3(lead.pos), ...b.entryRoute(D.d, D.in).slice(0, 4)] : [v3(lead.pos), v3(D.out), v3(D.in)]); C.legEnd = C.R.total;   // (a house: up the porch steps, through its real door)
+    if (b.house) b.openWindow?.(null);   // (the door stands open)
     const thrower = C.file.find(s => (s.grenades ?? 0) > 0);
     if (thrower) { this.frag(thrower, D.in.clone().setY(D.in.y + 0.3)); C.waitT = 3.4; } else C.waitT = 0.6;
     C.phase = 'breach';
@@ -157,7 +160,7 @@ export class CQB {
       if (c < bc) { bc = c; best = { sl, floor: sl.panel.floor, pos, entry: this.roomPos(b, sl, b.house ? 1.4 : 1.9) }; }
     }
     if (best) return best;
-    if (b.cellar && this.cellarMen(sq, b).length) { const h = b.cellar.hatch.clone(); h.y = b.floorY ? b.floorY() : b.y0 + 0.05; const e = h.clone(); e.x += 0.9; return { cellar: true, floor: 0, pos: h, entry: e }; }
+    if (b.cellar && this.cellarMen(sq, b).length) { const h = b.cellar.hatch.clone(); h.y = b.floorY ? b.floorY() : b.y0 + 0.05; const e = h.clone(); e.x += 0.9; b.clampIn?.(e); return { cellar: true, floor: 0, pos: h, entry: e }; }
     return null;
   }
   ptIndex(R, p) { let i = 1; while (i < R.pts.length && R.cum[i] <= p) i++; return i; }
@@ -166,7 +169,7 @@ export class CQB {
     C.file.forEach((s, k) => {
       const at = C.p - k * GAP;
       if (at < 0 && !s.cqb) return;   // not his turn yet: stays in the stack by the door (covering, normal fire)
-      if (!s.cqb) { s.cqb = {}; s.path = null; s.goal = null; s.pathReq = null; s.target = null; s.peek = 0; }
+      if (!s.cqb) { s.cqb = { b: sq.order?.building }; s.path = null; s.goal = null; s.pathReq = null; s.target = null; s.peek = 0; }
       s.cqb.to = routeAt(C.R, Math.max(0, at)).slice();
       s.cqb.face = R && k < 2 ? [R.pos.x, R.pos.z] : null;
     });
@@ -187,7 +190,9 @@ export class CQB {
       let k = -1, bc = 1e9; picked.forEach((sl, i) => { const c = Math.abs(sl.panel.floor - this.floorOf(b, s.pos.y)) * 9 + this.roomPos(b, sl).distanceTo(s.pos); if (c < bc) { bc = c; k = i; } });
       if (k < 0) { s.cqb = { to: [s.pos.x, s.pos.y, s.pos.z] }; continue; }
       const sl = picked.splice(k, 1)[0]; sl.occupant = s;
-      const pts = this.leg(b, C?.D || this.door(b, b.entrances[0]), v3(s.pos), this.floorOf(b, s.pos.y), v3(this.roomPos(b, sl)), sl.panel.floor);
+      const via = b.house && b.P ? b.toDoorIn(s.pos, C?.D?.d) : [];   // (a house: a man still on the steps / in the doorway goes in by the door first)
+      const pts = via.length ? [v3(s.pos), ...via, ...this.leg(b, null, via[via.length - 1], 0, v3(this.roomPos(b, sl)), 0).slice(1)]
+        : this.leg(b, C?.D || this.door(b, b.entrances[0]), v3(s.pos), this.floorOf(b, s.pos.y), v3(this.roomPos(b, sl)), sl.panel.floor);
       s.cqb = { walk: { R: route(pts), p: 0, slot: sl, b } };
     }
     for (const s of sq.effective) if (!s.cqb && !s.dragging && !s.inBuilding && picked.length) {
@@ -196,26 +201,55 @@ export class CQB {
       s.goal = [ent.x, ent.z]; s.goalHeading = null; g.requestPath(s, s.pos.x, s.pos.z, ent.x, ent.z, 0.45);
     }
   }
-  // garrisoning: a man reaching the door walks in and to his window through the floors (no pop from the door to the window)
+  // garrisoning: a man reaching the door walks in and to his window through the floors (no pop from the door to the window). A
+  // house: from where he stands to the door's outside point, up the porch steps, through the doorway, across the room to his spot
+  // at the window - one man at a time in the doorway
   entryWalk(sq, s, b, sl) {
     const ent = b.entrances.reduce((a, e) => (e.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? e : a)), D = this.door(b, ent);
+    if (b.house && D.d?.thr) {
+      const pts = [v3(s.pos), ...b.entryRoute(D.d, this.roomPos(b, sl))], R = route(pts), inS = R.cum[4] ?? R.total;
+      const queue = sq.soldiers.filter(o => o !== s && o.cqb?.walk?.b === b && !o.cqb.walk.exit && o.cqb.walk.p < o.cqb.walk.inS).length;
+      s.cqb = { walk: { R, p: 0, slot: sl, b, inS, wait: queue * 0.75 } }; s.target = null; b.openWindow?.(null);
+      return;
+    }
     const pts = [v3(s.pos), v3(D.in)].concat(this.leg(b, D, v3(D.in), 0, v3(this.roomPos(b, sl)), sl.panel.floor).slice(1));
     s.cqb = { walk: { R: route(pts), p: 0, slot: sl, b } }; s.target = null;
+  }
+  // leaving a house: from his spot (or the hatch) across the room, out through the door and down the steps; then on to wherever
+  // he was sent (squad.update -> walkStep). k = his place in the file out of the door
+  exitWalk(sq, s, b, k = 0) {
+    const d = b.doorNear(s.pos), from = s.pos.clone(); b.clampIn?.(from, 0.3);
+    s.cqb = null; s.houseWalk = { R: route([v3(s.pos), ...b.exitRoute(from, d)]), p: 0, b, wait: k * 0.7 }; s.vel.set(0, 0, 0);
+  }
+  walkStep(sq, s, dt) {
+    const W = s.houseWalk;
+    if (!s.effective) { s.houseWalk = null; s.cqb = { to: null }; s.vel.set(0, 0, 0); return; }   // hit on the way out: lies inside
+    if (W.wait > 0) { W.wait -= dt; s.vel.set(0, 0, 0); return; }
+    const a = routeAt(W.R, W.p), sp = s.squad?.run ? 2.2 : 1.6; W.p = Math.min(W.R.total, W.p + dt * sp); const b = routeAt(W.R, W.p);
+    s.pos.set(b[0], b[1], b[2]); s.vel.set((b[0] - a[0]) / Math.max(dt, 1e-3), 0, (b[2] - a[2]) / Math.max(dt, 1e-3)); s.stance = 'crouch';
+    if (W.p >= W.R.total - 1e-3) {
+      s.houseWalk = null; s.vel.set(0, 0, 0); const g = this.g;
+      if (g.city.groundHeight) s.pos.y = g.city.groundHeight(s.pos.x, s.pos.z);
+      if (s.goal && !s.dragging) { s.path = null; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); }   // (the route asked for from inside the house is no good)
+    }
   }
   abort(sq, why) {
     const g = this.g, O = sq.order;
     if (sq.side === 'player' && why) g.hud?.alert(`${sq.name}: assault on the ${O?.building?.house ? 'house' : 'building'} failed — ${why}`, 'bad');
-    sq.order = null; this.exitAll(sq, O?.cqb?.D);
+    sq.order = null; this.exitAll(sq, O?.cqb?.D, O?.building);
     // one more go with whoever is left (a fresh entry team from the stack)
     if (O?.building && (O.tries || 0) < 1 && sq.effective.length >= 2 && !sq.routing && !O.building.collapsedAll) { sq.orderStorm(O.building); if (sq.order?.type === 'storm') sq.order.tries = (O.tries || 0) + 1; }
   }
-  // anyone still inside (order changed, rout, abort): out by the door
-  exitAll(sq, D = null) {
+  // anyone still inside (order changed, rout, abort): out by the door (a house: walks out through it)
+  exitAll(sq, D = null, b = null) {
+    let k = 0;
     for (const s of sq.soldiers) {
       if (!s.cqb) continue;
       const C = s.cqb; s.cqb = null;
       if (C.walk?.slot?.occupant === s && !s.inside) C.walk.slot.occupant = null;
       if (!s.effective) { s.cqb = { to: null }; continue; }   // the wounded / dead stay where they fell (on that floor)
+      const hb = b || C.walk?.b || C.b;
+      if (hb?.house && hb.P && hb.contains(s.pos, 0.2)) { this.exitWalk(sq, s, hb, k++); continue; }
       const out = D?.out || s.pos; s.pos.set(out.x, this.g.city.groundHeight ? this.g.city.groundHeight(out.x, out.z) : 0, out.z); s.path = null; s.goal = null; s.vel.set(0, 0, 0);
     }
   }
