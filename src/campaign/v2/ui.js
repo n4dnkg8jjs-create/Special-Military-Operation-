@@ -80,7 +80,7 @@ export class CampaignScreen {
     root.innerHTML = '';
     this.mapEl = h('div', { class: 'c2-map' }); root.appendChild(this.mapEl);
     this.osm = osm; this.geo = geo;
-    this.map = new StrategicMap(this.mapEl, C, osm, geo);
+    this.map = new StrategicMap(this.mapEl, C, osm, geo); this.hookEnemyLayer();
     this.map.viewOffset = 190; this.map.resize();   // keep the camera's centre in the part of the screen the side panel leaves free
     this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id), regrid: () => this.regrid() };
     this.top = h('div', { class: 'c2-top' }); this.left = h('div', { class: 'c2-left' }); this.right = h('div', { class: 'c2-right hidden' });
@@ -120,10 +120,52 @@ export class CampaignScreen {
     const f = this.map?.battleFrame?.(c.id); if (!f) return c.battleMap || '';
     return `${f.name}, ${f.size.toFixed(1)} km of the ${f.cellKm.toFixed(0)} km square${f.real ? ' (its real ground)' : ' (stand-in ground)'}`;
   }
+  // v7 (rules agent): the enemy is a brigade of battalion groups, not a garrison in every square. The map draws the
+  // observed enemy battalions as hostile task-force tokens (C.foes, as in versus). Until map3d draws the rest
+  // natively, after every map refresh: drop the per-square enemy badge where the brigade knows the square is empty
+  // (C.enemyPresence(cell).empty) and draw this week's observed enemy moves (C.enemyMoves.list, seen) as arrows.
+  // v7: what holds an enemy square, as far as the brigade knows (battalion groups, outposts, a covering battalion, nothing)
+  enemyHere(id) {
+    const C = this.C, P = C.enemyPresence?.(id);
+    if (!P) return STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))];
+    if (P.empty) return 'no enemy force seen';
+    const fs = (C.foes || []).filter(f => f.cell === id), n = fs.reduce((a, f) => a + f.n, 0);
+    if (fs.length) return `${fs.map(f => esc(f.name)).join(', ')} (${n} coy${n === 1 ? '' : 's'})`;
+    if (P.fresh && P.covered) return 'outposts — covered by a battalion next to it';
+    return STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] + (P.fresh ? '' : ' (last report)');
+  }
+  hookEnemyLayer() {
+    const m = this.map; if (!m || m.__v7enemy || this.vs) return; m.__v7enemy = true;
+    const orig = m.refresh.bind(m);
+    m.refresh = (...a) => { const r = orig(...a); try { this.enemyLayer(); } catch (e) { console.warn('enemy layer', e); } return r; };
+    // guard for a map3d race: two overlapping 'squares opened' fades (more frequent now that squares are occupied
+    // without a battle) — the first one's done() nulls map.fade while the second still steps it. A null fade reads as
+    // an empty one. (To be fixed in map3d: step: k => { if (this.fade) ... })
+    let fade = null; const none = { cells: new Set(), k: 1 };
+    Object.defineProperty(m, 'fade', { configurable: true, get: () => fade || none, set: v => { fade = v; } });
+  }
+  enemyLayer() {
+    const C = this.C, m = this.map; if (!C?.enemyPresence || !m?.badges || this.vs) return;
+    const key = p => `${p.x.toFixed(3)},${p.z.toFixed(3)}`, at = new Map();
+    for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player') at.set(key(m.cellCenter(c.id)), c.id);
+    m.badges = m.badges.filter(b => {
+      if (!b.enemy) return true;
+      const id = at.get(key(b.pos)), P = id && C.enemyPresence(id); if (!P) return true;
+      if (P.empty) { b.e.remove(); return false; }
+      if (P.fresh && !P.forces.length && P.covered) {   // no force in it: only the outposts of the battalion next door — a faint marker
+        b.e.title = `${C.cellName(id)}: no enemy force in the square — covered by a battalion next to it (outposts, counterattack company)${C.fort[id] ? `; fortifications ${C.fort[id]}` : ''}`;
+        b.e.style.opacity = '0.4'; const ech = b.e.querySelector('.c2-en-ech'); if (ech) ech.textContent = '·';
+      }
+      return true;
+    });
+    const M = C.enemyMoves;
+    if (M && M.turn === C.turn) for (const mv of M.list) if (mv.seen && mv.kind !== 'rejoin' && C.cell(mv.from) && C.cell(mv.to)) m.arrow(m.cellCenter(mv.from), m.cellCenter(mv.to), mv.kind === 'attack' || mv.kind === 'counterattack' ? '#e0503f' : '#d08a4a', '');
+    m.dirty = true;
+  }
   regrid() {
     const old = this.map, cam = { ...old.tcam }, vo = old.viewOffset, on = old.on, sup = old.showSupply, tgt = old.targeting;
     old.dispose();
-    this.map = new StrategicMap(this.mapEl, this.C, this.osm, this.geo);
+    this.map = new StrategicMap(this.mapEl, this.C, this.osm, this.geo); this.hookEnemyLayer();
     this.map.viewOffset = vo; this.map.on = on; this.map.showSupply = sup; this.map.resize(); this.map.jump(cam);
     if (tgt) this.map.setTargeting(tgt);
     const g = this.C.lastGrowth;
@@ -299,7 +341,7 @@ export class CampaignScreen {
       ${c.settlement ? `<div class="c2-kv"><span>Settlement</span><b>${esc(c.settlement.name)} (${esc(c.settlement.kind)})</b></div>` : ''}
       <div class="c2-kv"><span>Roads</span><b>${['none (cross-country)', 'local road', 'paved highway'][c.road || 0]}${c.river ? (c.bridge ? ' · river (bridge)' : ' · river (no bridge)') : ''}</b></div>
       <div class="c2-kv"><span>Fortifications</span><b>${(o === 'player' || known) ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[id] || 0] : 'unknown'}</b></div>
-      ${o !== 'player' ? `<div class="c2-kv"><span>Enemy strength</span><b>${known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] : 'unknown — reconnoitre'}</b></div>` : `<div class="c2-kv"><span>Supply</span><b class="${sup >= 1 ? 'good' : sup > 0 ? 'warn' : 'bad'}">${sup >= 1 ? 'in supply' : sup > 0 ? 'stretched' : 'cut off'}</b></div>`}
+      ${o !== 'player' ? `<div class="c2-kv"><span>Enemy strength</span><b>${known ? this.enemyHere(id) : 'unknown — reconnoitre'}</b></div>` : `<div class="c2-kv"><span>Supply</span><b class="${sup >= 1 ? 'good' : sup > 0 ? 'warn' : 'bad'}">${sup >= 1 ? 'in supply' : sup > 0 ? 'stretched' : 'cut off'}</b></div>`}
       ${(() => { const sp = (C.spottedEnemy?.() || []).filter(f => f.cell === id); return sp.length ? `<div class="c2-kv"><span>Spotted</span><b class="bad">${sp.map(f => `${esc(f.name)} (~${f.n} coy)`).join(', ')}</b></div>` : ''; })()}
       ${c.ext ? '<div class="c2-kv"><span>Map</span><b class="warn">past the original area of responsibility</b></div>' : ''}
       <div class="c2-kv"><span>Value</span><b>${c.vp || 0} VP · +${c.lp || 0} LP/wk</b></div>

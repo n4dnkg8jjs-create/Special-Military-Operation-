@@ -49,8 +49,11 @@ export function sideDef2(defs, opId, faction) {
     const second = ownCells.filter(c => dEnemy(c) === 2 && c.terrain !== 'water');
     const span = A.enemyEdge === 'east' || A.enemyEdge === 'west' ? 'row' : 'col', lo = Math.min(...second.map(c => c[span])), hi = Math.max(...second.map(c => c[span]));
     const pick = t => second.slice().sort((a, b) => Math.abs(a[span] - (lo + (hi - lo) * t)) - Math.abs(b[span] - (lo + (hi - lo) * t)) || a.id.localeCompare(b.id))[0] || hq;
-    const spots = [pick(1 / 3), pick(2 / 3), hq];
-    const forces = (own.start.forces || []).map((f, i) => ({ ...f, cell: spots[Math.min(i, spots.length - 1)].id, units: [...f.units] }));
+    // (v7) squares are held by the task force in or next to them (zone of control), so the brigade deploys like the
+    // single-player enemy: its battalions dispersed one square behind the front along the whole sector, the last one
+    // (the brigade reserve) with the HQ
+    const nf = (own.start.forces || []).length, spots = Array.from({ length: nf }, (_, i) => (i === nf - 1 && nf > 1 ? hq : pick(nf > 1 ? (i + 0.5) / (nf - 1) : 0.5)));
+    const forces = (own.start.forces || []).map((f, i) => ({ ...f, cell: spots[i].id, units: [...f.units] }));
     // the artillery group: mortars two squares behind the line, the guns three to four, spread along the front
     const back = d => ownCells.filter(c => dEnemy(c) === d && c.terrain !== 'water');
     const spread = (list, i, n) => { const L = list.slice().sort((a, b) => a[span] - b[span] || a.id.localeCompare(b.id)); return L[Math.min(L.length - 1, Math.floor((i + 0.5) * L.length / n))] || hq; };
@@ -208,7 +211,10 @@ export class VersusGame {
     const c = A.cell(b.cell), urban = ['urban', 'industrial'].includes(c.terrain) ? 1 : c.terrain === 'village' || c.terrain === 'forest' ? 0.5 : 0, fort = A.fort[b.cell] || 0;
     const sup = (C, us) => { const t = us.length ? C.tfOf(us[0].uid) : null; return t ? (t.supply ?? 1) : 1; };
     const pa = au.reduce((s, u) => s + A.unitPower(u), 0) * (0.6 + 0.4 * sup(A, au));
-    const line = du.length ? 0 : Math.max(0.5, A.garrison[b.cell] || 1) * 2.1;
+    // (v7) line battalions hold a square at full strength only where a task force of the defender covers it (in it or
+    // next to it, zone of control); squares behind the front with no task force near are thinly held (rear security)
+    const zoc = D.neighbors(b.cell).some(n => D.forcesAt(n).length) || D.forcesAt(b.cell).length > 0;
+    const line = du.length ? 0 : Math.max(0.5, A.garrison[b.cell] || 1) * 2.1 * (zoc ? 1 : 0.4);
     const pd = (du.reduce((s, u) => s + D.unitPower(u), 0) * (0.6 + 0.4 * sup(D, du)) + (du.length ? 1.2 : 0) + line) * F.suppressMul(A, b.cell, 'player') + fort * (urban >= 1 ? 1.0 : 0.6) + urban * 0.8;
     const win = pa * rnd(0.75, 1.25) > pd * rnd(0.75, 1.25);
     const cas = (us, won) => us.map(u => { const k = Math.round(u.men * rnd(0.04, won ? 0.22 : 0.4)); return { uid: u.uid, alive: Math.max(0, u.men - k), wounded: Math.min(k, Math.round(k * 0.6)), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && Math.random() < (won ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; });

@@ -13,6 +13,7 @@
 //
 // The content definition is never mutated: each Campaign2 works on its own grown view (growDef). Versus: the host
 // grows both sides together (versus.js), the defending side's view is the same band with owners / hubs flipped.
+import * as AI from './ai.js';
 export const GROW_REACH = 3;
 
 const keyOf = dir => (dir === 'south' || dir === 'north' ? 'row' : 'col');
@@ -68,7 +69,9 @@ export function applyBand(C, band, opts = {}) {
     if (C.owner[c.id] != null) continue;
     C.owner[c.id] = c.owner; C.garrison[c.id] = c.owner === 'player' ? 0 : (vs ? 1 : (c.garrison ?? 1)); C.fort[c.id] = c.fort || 0;
   }
-  if (!vs) for (const f of band.forces || []) if (C.owner[f.cell] === 'enemy') (C.eforces ||= []).push({ id: C.newId('ef'), name: f.name, kind: f.kind || 'mech', cell: f.cell, str: f.str ?? 1, max: f.str ?? 1, mp: 0, attacked: false, supply: 1 });
+  // v7: the band's battalion groups (companies, ai.js makeForce); its squares are held by them, not by a garrison
+  if (!vs) for (const f of band.forces || []) if (C.owner[f.cell] === 'enemy') (C.eforces ||= []).push(AI.makeForce(C, f));
+  if (!vs && C.def.enemy?.forces) for (const c of band.cells) if (C.owner[c.id] === 'enemy') C.garrison[c.id] = 0;
   if (!vs) for (const b of band.batteries || []) if (C.owner[b.cell] === 'enemy') C.arty.enemy.push({ id: C.newId('eb'), kind: b.kind, name: b.name || b.kind, cell: b.cell, hp: 1, acted: 0, moved: 0, revealed: null, down: 0, fired: 0 });
   C.gridV = (C.gridV || 0) + 1;
   C.lastGrowth = { band: band.id, name: band.name || band.id, turn: C.turn, cells: band.cells.map(c => c.id) };

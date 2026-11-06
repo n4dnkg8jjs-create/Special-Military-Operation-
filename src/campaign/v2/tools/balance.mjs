@@ -31,7 +31,7 @@ function botFires(C, goals) {
 function botSpotted(C) {
   for (const m of C.spottedEnemy?.() || []) { for (const b of C.batteries()) if (!C.fireCheck(b.id, 'suppress', m.cell)) { C.fire(b.id, 'suppress', m.cell); STAT.shotSpotted++; break; } }
 }
-const STAT = { shotSpotted: 0 };
+const STAT = { shotSpotted: 0, occupied: 0 };
 function prep(C, cell) { let n = 0; for (const b of C.batteries()) { if (n >= 2) break; if (!C.fireCheck(b.id, 'suppress', cell)) { C.fire(b.id, 'suppress', cell); n++; } } return n; }
 function botInterdict(C) {
   if (C.ammo.player < 4) return;
@@ -61,7 +61,15 @@ function botTurn(C) {
     if (!C.tf(tf.id) || tf.attacked || C.forcesAt(tf.cell).some(x => x !== tf && C.pendingAttacks.some(a => a.to === tf.cell))) continue;
     if (C.pendingAttacks.some(a => a.to === tf.cell)) continue;   // stays to defend
     if (C.tfPower(tf) < 1.5) continue;
-    const R = C.reach(tf), atk = C.def.aor.cells.filter(c => C.owner[c.id] !== 'player').map(c => ({ id: c.id, p: C.plan(tf.id, c.id, R) })).filter(x => x.p.ok && x.p.attack);
+    let R = C.reach(tf);
+    // v7: squares no enemy force holds or covers are occupied by moving in (towards the goal / directive targets first)
+    for (let k = 0; k < 3; k++) {
+      const tg = (M && strike.has(tf.id) ? M : null) || goals.slice().sort((a, b) => cheb(C, tf.cell, a.t) - cheb(C, tf.cell, b.t))[0]?.t;
+      const occ = C.def.aor.cells.filter(c => C.owner[c.id] === 'enemy').map(c => ({ id: c.id, p: C.plan(tf.id, c.id, R) })).filter(x => x.p.ok && x.p.occupy)
+        .sort((a, b) => (tg ? cheb(C, a.id, tg) - cheb(C, b.id, tg) : 0) - ((C.cell(a.id).vp || 0) - (C.cell(b.id).vp || 0)) * 0.5)[0];
+      if (!occ) break; C.move(tf.id, occ.id); STAT.occupied++; R = C.reach(tf);
+    }
+    const atk = C.def.aor.cells.filter(c => C.owner[c.id] !== 'player').map(c => ({ id: c.id, p: C.plan(tf.id, c.id, R) })).filter(x => x.p.ok && x.p.attack);
     const val = x => { const g = goals.find(q => q.t === x.id); return odds(C, tf, x.id) * (g ? (g.urgent <= 2 ? 3 : 2) : 1) + (C.cell(x.id).vp || 0) * 0.15; };
     const best = atk.sort((a, b) => val(b) - val(a))[0];
     const goal = best && goals.find(g => g.t === best.id);
@@ -82,12 +90,16 @@ function botTurn(C) {
 const tot = {};
 for (const side of Object.keys(defs)) {
   if (ONLY && side !== ONLY) continue;
-  const agg = tot[side] = { grown: 0, spotOwn: 0, spotEn: 0, firedSpot: 0, goal: 0, pct: 0, eatk: 0, fires: 0, uav: 0, uavLost: 0, ok: 0, fail: 0, battles: 0, won: 0, taken: 0, lost: 0, lp: 0, spent: 0, wins: 0, results: {}, perDir: {} };
-  for (let s = 0; s < SEEDS; s++) {
+  const agg = tot[side] = { occ: 0, emoves: 0, eseen: 0, ekinds: {}, edest: 0, eforces: 0, ecoys: 0, empty: 0, grown: 0, spotOwn: 0, spotEn: 0, firedSpot: 0, goal: 0, pct: 0, eatk: 0, fires: 0, uav: 0, uavLost: 0, ok: 0, fail: 0, battles: 0, won: 0, taken: 0, lost: 0, lp: 0, spent: 0, wins: 0, results: {}, perDir: {} };
+  for (let s = +(process.env.SEED0 || 0); s < SEEDS + +(process.env.SEED0 || 0); s++) {
     setRandom(seeded(1000 + s * 77)); const rr = Math.random; Math.random = seeded(5000 + s * 31);
     const C = new Campaign2(defs[side]); let n = 0;
-    STAT.shotSpotted = 0;
-    while (!C.outcome() && n++ < 70) { botTurn(C); C.endTurn(); agg.spotOwn += C.espots?.turn === C.turn ? C.espots.list.length : 0; agg.spotEn += C.spottedEnemy().length; }
+    STAT.shotSpotted = 0; STAT.occupied = 0;
+    const emptyShare = () => { const en = C.def.aor.cells.filter(c => C.owner[c.id] === 'enemy'); return en.filter(c => !C.eforces.some(f => f.cell === c.id)).length / Math.max(1, en.length); };
+    agg.empty += emptyShare();
+    while (!C.outcome() && n++ < 70) { botTurn(C); C.endTurn(); agg.spotOwn += C.espots?.turn === C.turn ? C.espots.list.length : 0; agg.spotEn += C.spottedEnemy().length;
+      for (const m of C.enemyMoves?.turn === C.turn ? C.enemyMoves.list : []) { agg.emoves++; if (m.seen) agg.eseen++; agg.ekinds[m.kind] = (agg.ekinds[m.kind] || 0) + 1; } }
+    agg.occ += STAT.occupied; agg.edest += C.stats.efDestroyed || 0; agg.eforces += C.eforces.length; agg.ecoys += C.eforces.reduce((a, f) => a + (f.coys?.length || 0), 0);
     agg.grown += (C.grown || []).length; agg.firedSpot += STAT.shotSpotted;
     const o = C.outcome(), sc = C.score();
     const G = C.goalProgress(); agg.goal += C.goalDone ? 1 : 0; agg.pct += G ? G.pct : 0; agg.eatk += C.stats.eAttacks || 0; agg.fires += C.fireLog.filter(f => f.side === 'player').length; agg.uav += C.uavLog.length; agg.uavLost += C.uav.player.lost || 0;
@@ -101,5 +113,7 @@ for (const side of Object.keys(defs)) {
   console.log(`== ${side}: wins ${agg.wins}/${S} ${JSON.stringify(agg.results)} · directives ${(agg.ok / S).toFixed(1)} ok / ${(agg.fail / S).toFixed(1)} failed · battles won ${agg.won}/${agg.battles} · squares +${(agg.taken / S).toFixed(1)} / -${(agg.lost / S).toFixed(1)} · LP left ${Math.round(agg.lp / S)}`);
   console.log(`   main goal achieved ${agg.goal}/${S} · goal held at end ${Math.round(agg.pct / S * 100)}% · enemy attacks/run ${(agg.eatk / S).toFixed(1)} · own fire missions/run ${(agg.fires / S).toFixed(0)} · UAV sorties/run ${(agg.uav / S).toFixed(0)} (lost ${(agg.uavLost / S).toFixed(1)})`);
   console.log(`   v5: grid bands added/run ${(agg.grown / S).toFixed(1)} · own task forces spotted (task-force-weeks)/run ${(agg.spotOwn / S).toFixed(1)} · enemy formations spotted/run ${(agg.spotEn / S).toFixed(1)} · fire missions on spotted enemy/run ${(agg.firedSpot / S).toFixed(1)}`);
+  console.log(`   v7: squares occupied without a fight/run ${(agg.occ / S).toFixed(1)} · enemy squares without a force at start ${Math.round(agg.empty / S * 100)}% · enemy moves/run ${(agg.emoves / S).toFixed(0)} (seen ${(agg.eseen / S).toFixed(0)}) · enemy bns destroyed/run ${(agg.edest / S).toFixed(1)} · enemy forces at end ${(agg.eforces / S).toFixed(1)} (${(agg.ecoys / S).toFixed(0)} coys)`);
+  console.log('   enemy move kinds/run: ' + Object.entries(agg.ekinds).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / S).toFixed(1)}`).join(' · '));
   console.log('   ' + Object.entries(agg.perDir).map(([id, p]) => `${id.replace(/^(ua|ru)_/, '')} ${p.ok}/${p.n}`).join(' · '));
 }

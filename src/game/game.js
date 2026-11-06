@@ -88,7 +88,10 @@ export class Game {
   // ---------------------------------------------------------------- forces
   makeSquad(side, x, z, facing, n, kind = 'mech', roles = null) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
-    const sq = new Squad(this, side, f, `${n}`, kind, roles); sq.placeAt(x, z, facing); this.squads.push(sq); return sq;
+    const sq = new Squad(this, side, f, `${n}`, kind, roles); sq.placeAt(x, z, facing); this.squads.push(sq);
+    // campaign v7: the enemy squads carry the veterancy of the battalion groups they come from (setup.enemyVet)
+    if (side === 'enemy' && this.campaign?.enemyVet && !this.opts?.net) sq.vet = this.campaign.enemyVet;
+    return sq;
   }
   makeVehicle(side, kind, x, z, h) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;

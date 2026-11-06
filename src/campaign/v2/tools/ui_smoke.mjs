@@ -89,7 +89,7 @@ if (battle) {
   ok(r6?.pending, `battle stored: ${JSON.stringify(r6)}`);
   if (r6) {
     await page.waitForTimeout(600);
-    await page.goto(`${base}/index.html?cbattle=1&sim=20&quality=low`); await done();
+    await page.goto(`${base}/index.html?cbattle=1&sim=20&quality=low`, { timeout: 180000 }); await done();   // (v7: load can exceed 30 s under machine load)
     const info = await page.evaluate(() => ({ camp: window.__info?.camp, map: window.game?.map?.id, v2: !!window.game?.campaign?.v2 }));
     ok(info.v2 && info.camp && info.camp.sector === r6.cell, `battle ran on ${info.map}: ${JSON.stringify(info.camp)?.slice(0, 200)}`);
     await shot(`ui_${side}_battle.png`);

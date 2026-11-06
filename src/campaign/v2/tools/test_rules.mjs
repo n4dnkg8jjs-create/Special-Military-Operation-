@@ -142,11 +142,12 @@ for (const side of Object.keys(defs)) {
   ok(B.length >= 3 && B.every(b => C.batteryRange(b.id).cells >= 3), 'artillery group with ranges');
   const mor = B.find(b => b.kind === 'mortar120'), far = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && !C.batteryRange(mor.id).coverage.includes(c.id) && C.isOpen(c.id));
   if (far) ok(/range/.test(C.fireCheck(mor.id, 'suppress', far.id) || ''), 'mortars out of range deep');
-  const tgt = Object.keys(C.fireTargets(B[1].id)).find(id => C.owner[id] === 'enemy' && C.garrison[id] >= 1);
+  // (v7: task-force campaigns have no line garrison — aim at a square an enemy force holds)
+  const tgt = Object.keys(C.fireTargets(B[1].id)).find(id => C.owner[id] === 'enemy' && (def.enemy?.forces ? C.eforces.some(f => f.cell === id) : C.garrison[id] >= 1));
   const ammo0 = C.ammo.player, g0 = C.garrison[tgt], d0 = C.defenderStrength(tgt);
   const fr = C.fire(B[1].id, 'suppress', tgt);
   ok(typeof fr === 'object' && fr.ok && C.ammo.player < ammo0 && C.suppression(tgt)?.by === 'player' && C.suppression(tgt).mul < 1, 'suppress mission');
-  ok(C.garrison[tgt] < g0 && C.defenderStrength(tgt) < d0, 'suppression wears the line');
+  ok((def.enemy?.forces ? true : C.garrison[tgt] < g0) && C.defenderStrength(tgt) < d0, 'suppression wears the line');
   ok(typeof C.fire(B[1].id, 'suppress', tgt) === 'string', 'one mission per battery per week');
   ok(typeof C.fire(B[0].id, 'counterbattery', tgt) === 'string', 'counter-battery needs a found battery');
   C.ammo.player = 0; ok(/ammunition/.test(C.fireCheck(B[2].id, 'suppress', tgt) || ''), 'no ammunition, no fire'); C.ammo.player = 6;
@@ -182,7 +183,7 @@ for (const side of Object.keys(defs)) {
   C2.save(); const C3 = Campaign2.load(defs); ok(C3 && C3.eforces.length === C2.eforces.length && C3.arty.player.length === C2.arty.player.length && C3.uav.player.stock === C2.uav.player.stock, 'v4 state persists');
 }
 // ------------------------------------------------------------------ v5: big formations reveal themselves; the grid grows
-const R5 = await import('../recon.js'), GR5 = await import('../growth.js');
+const R5 = await import('../recon.js'), GR5 = await import('../growth.js'), AI7 = await import('../ai.js');
 for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).filter(d => d.aor.ext)) {
   console.log(`== v5 ${def.id}`);
   setRandom(seeded(77)); for (const k of Object.keys(mem)) delete mem[k];
@@ -208,15 +209,15 @@ for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).fil
     ok(C.fireLog.some(f => f.side === 'enemy' && f.turn === C.turn && C.espots.list.some(x => x.cell === f.cell)) || C.ammo.enemy < 1, 'enemy artillery fires at the spotted formation'); }
   // --- the enemy's concentration is spotted by the player
   { const C = new Campaign2(def); const fs = C.eforces.slice(0, 3), lead = fs[0];
-    for (const f of fs.slice(1)) { lead.str += f.str; C.eforces = C.eforces.filter(x => x !== f); }
+    for (const f of fs.slice(1)) { lead.coys.push(...f.coys); C.eforces = C.eforces.filter(x => x !== f); } AI7.sync(lead);
     const near = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && C.frontline(c.id)); lead.cell = near.id;
     C.updateSpots();
     ok(C.spottedEnemy().some(x => x.id === lead.id), `an enemy concentration (str ${lead.str.toFixed(1)}) is spotted without recon`);
     ok(C.cellIntel(near.id).forces.some(x => x.id === lead.id && x.spotted), 'cellIntel lists the spotted enemy formation');
     const small = C.eforces.find(f => f !== lead && f.str <= 1.1 && !C.forces.some(t => C.adjacent(t.cell, f.cell)));
     if (small) ok(!C.spottedEnemy().some(x => x.id === small.id), `a single battalion group (str ${small.str}) stays hidden`);
-    const g0 = lead.str; C.suppressed = {}; const r = { side: 'player', kind: 'suppress', cell: near.id, n: 1, battery: C.batteries()[0].id }; C.applyFire(r);
-    ok(g0 - lead.str >= 0.089, `suppression hits a spotted mass 1.5x as hard (-${(g0 - lead.str).toFixed(2)})`); }
+    const sum = () => C.eforces.filter(f => f.cell === near.id).reduce((a, f) => a + f.str, 0), g0 = sum(); C.suppressed = {}; const r = { side: 'player', kind: 'suppress', cell: near.id, n: 1, battery: C.batteries()[0].id }; C.applyFire(r);
+    ok(g0 - sum() >= 0.085, `suppression hits a spotted mass 1.5x as hard (-${(g0 - sum()).toFixed(2)})`); }
   // --- growth: the grid stays as it is until taken ground nears the enemy edge, then the next band joins
   { const C = new Campaign2(def), X = def.aor.ext, n0 = def.aor.cells.length;
     ok(C.checkGrowth().length === 0 && C.def.aor.cells.length === n0, 'no growth at the start');
@@ -228,7 +229,7 @@ for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).fil
     const g = C.checkGrowth(), b1 = X.bands[0];
     ok(g.length === 1 && g[0] === b1.id, `taking ${C.cellName(take.id)} (3 from the edge) adds band ${b1.id}`);
     ok(C.def.aor.cells.length === n0 + b1.cells.length && def.aor.cells.length === n0, `grid grew by ${b1.cells.length} squares; the content definition is untouched`);
-    ok(b1.cells.every(c => C.cell(c.id) && C.owner[c.id] === 'enemy' && C.garrison[c.id] >= 1), 'new squares enemy-held with garrisons');
+    ok(b1.cells.every(c => C.cell(c.id) && C.owner[c.id] === 'enemy' && (C.fort[c.id] || 0) >= 0), 'new squares enemy-held (with their fortifications)');
     const A = C.def.aor; ok(A.cells.length === A.cols * A.rows && A.cells.every(c => c.col >= A.col0 && c.col < A.col0 + A.cols && c.row >= A.row0 && c.row < A.row0 + A.rows), `grown grid is a full ${A.cols}x${A.rows} rectangle (col0 ${A.col0}, row0 ${A.row0})`);
     ok(A.bbox[0] <= def.aor.bbox[0] && A.bbox[1] <= def.aor.bbox[1] && (A.bbox[0] < def.aor.bbox[0] || A.bbox[1] < def.aor.bbox[1]), 'bbox expanded');
     const edgeCell = b1.cells.find(c => c[key] === (X.dir === 'south' ? A.row0 + A.rows - 1 : A.col0));
@@ -236,7 +237,7 @@ for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).fil
     ok((A.enemySources || []).every(id => C.cell(id)) && b1.sources.every(id => A.enemySources.includes(id)) && !A.enemySources.some(id => C.cell(id)[key] === e.v), 'enemy supply sources moved out to the new edge');
     ok(b1.cells.filter(c => C.owner[c.id] === 'enemy').every(c => (C.esupplied[c.id] ?? 0) >= 0) && b1.cells.some(c => C.esupplied[c.id] >= 1), 'new squares are on the enemy supply network');
     ok((b1.hubs || []).every(h => C.hubs('enemy').some(x => x.cell === h.cell)), 'band hubs work for the enemy');
-    ok((b1.forces || []).every(f => C.eforces.some(x => x.name === f.name && x.cell === f.cell)), 'band garrison task forces arrive');
+    ok((b1.forces || []).every(f => C.eforces.some(x => x.name === f.name && x.cell === f.cell && x.coys?.length >= 2)), 'band battalion groups (with companies) arrive');
     ok((b1.directives || []).every(d => C.directives.some(a => a.id === d.id)), 'band directive issued');
     ok(C.gridV === 1 && C.lastGrowth?.band === b1.id, 'grid version bumped for the 3D map');
     // persistence of the grown grid
@@ -249,6 +250,94 @@ for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).fil
     ok(C.grown.includes(X.bands[2].id) && C.def.aor.cells.length === n0 + X.bands.reduce((a, b) => a + b.cells.length, 0), 'a won attack near the new edge adds the last band');
     ok(C.growthStatus().next === null, 'no more bands after the last');
     for (let i = 0; i < 3 && !C.outcome(); i++) C.endTurn(); ok(true, 'the grown campaign keeps running'); }
+}
+// ------------------------------------------------------------------ v7: the enemy is a brigade of battalion groups
+for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).filter(d => d.enemy?.forces)) {
+  console.log(`== v7 ${def.id}`);
+  setRandom(seeded(707)); for (const k of Object.keys(mem)) delete mem[k];
+  { const C = new Campaign2(def), en = def.aor.cells.filter(c => C.owner[c.id] === 'enemy');
+    // organisation: battalions of companies with veterancy; str follows the companies; screens are one company
+    ok(C.eforces.length >= 8 && C.eforces.every(f => f.coys?.length >= 1 && Math.abs(f.str - f.coys.reduce((a, c) => a + c.s, 0) / 3) < 0.02 && f.xp != null), `enemy battalion groups with companies (${C.eforces.length} forces, ${C.eforces.reduce((a, f) => a + f.coys.length, 0)} coys)`);
+    ok(C.eforces.filter(f => f.role === 'screen').every(f => f.coys.length === 1 && C.eforces.some(p => p.id === f.parent)), 'outposts are single companies detached from a battalion');
+    ok(C.eforces.some(f => f.role === 'reserve'), 'the enemy keeps a reserve');
+    // no garrison in every square: most of the rear is empty, every front square is held or covered
+    const empty = en.filter(c => !AI7.forcesAt(C, c.id).length).length;
+    ok(empty / en.length > 0.6, `most enemy squares hold no force (${empty}/${en.length})`);
+    const front = en.filter(c => C.frontline(c.id));
+    ok(front.every(c => AI7.covered(C, c.id)), `every front square is held or covered at the start (${front.length})`);
+    const deep = en.filter(c => !AI7.covered(C, c.id)); ok(deep.length > 10, `squares behind the line are undefended (${deep.length})`);
+    // defence comes from the forces: a battalion square > a covered square > an empty uncovered square
+    const bn = C.eforces.find(f => f.role === 'line' && f.coys.length >= 3), cov = front.find(c => !AI7.forcesAt(C, c.id).length && AI7.coverOf(C, c.id));
+    ok(C.defenderStrength(bn.cell) > (cov ? C.defenderStrength(cov.id) : 0) && (cov ? C.defenderStrength(cov.id) : 1) > C.defenderStrength(deep[0].id), `defence: battalion ${C.defenderStrength(bn.cell).toFixed(2)} > covered ${cov ? C.defenderStrength(cov.id).toFixed(2) : '-'} > empty ${C.defenderStrength(deep[0].id).toFixed(2)}`);
+    ok(Object.values(C.garrison).every(g => g >= 0) && deep.every(c => C.garrison[c.id] === 1 || C.garrison[c.id] === 0), 'garrison is only the picture of what the brigade knows (unknown squares 1, known empty 0)');
+    // the brigade sees only what it observes: C.foes = enemy forces in fresh squares, no spotted duplicates
+    ok(C.foes.every(f => C.fresh(f.cell) && C.eforces.some(e => e.id === f.id) && f.units.length === f.n), `visible enemy forces (${C.foes.length}) only where observed / in contact`);
+    ok(!C.eforces.some(f => !C.fresh(f.cell) && C.foes.some(x => x.id === f.id)), 'unobserved forces stay hidden');
+    // battle setup from the forces involved: the companies holding the square, their veterancy
+    const T = C.forces[0]; const st = C.battleSetup(bn.cell, T.units, 'attack');
+    const here = C.eforces.filter(f => f.cell === bn.cell), nHere = here.reduce((a, f) => a + f.coys.length, 0);
+    ok(st.enemyForces?.some(f => f.id === bn.id) && st.enemyCoys >= Math.min(8, nHere) && st.enemy.length >= Math.min(8, nHere) && st.enemy.some(e => e.kind === 'defend'), `attack battle: ${st.enemyCoys} enemy companies (${st.enemy.map(e => e.kind).join(',')}) from ${st.enemyForces?.map(f => f.name).join(' + ')}`);
+    { const xp = here.reduce((a, f) => a + f.xp * f.coys.length, 0) / nHere, lv = xp >= 9 ? 3 : xp >= 5 ? 2 : xp >= 2 ? 1 : 0; ok(st.enemyVet === lv, `enemy veterancy passed to the battle (level ${st.enemyVet})`); }
+    { const b2 = C.eforces.find(f => f.cell !== bn.cell && f.coys.length >= 3 && f.cell !== deep[0].id); const s2 = C.battleSetup(b2.cell, T.units, 'attack'); ok(s2.enemy.map(e => e.kind).join() !== st.enemy.map(e => e.kind).join() || s2.enemyForces[0].id !== st.enemyForces[0].id, 'different squares, different defenders'); }
+    const stE = C.battleSetup(deep[0].id, T.units, 'attack'); ok(stE.enemyCoys === 0 && stE.enemy.length <= 3, 'an empty square has only rear security');
+    // a fight there wears the battalion (not a garrison)
+    { const s0 = bn.str; C.battle = { mode: 'attack', tf: T.id, cell: bn.cell }; C.applyResult({ sector: bn.cell, mode: 'attack', win: false, units: [], enemyKia: 10, enemyVehLost: 1, objectivesHeld: 0 });
+      ok(bn.str < s0 || !C.eforces.includes(bn), `a repulsed attack costs the defending battalion (${s0} -> ${bn.str})`); }
+  }
+  // occupation: an undefended, observed square is taken by moving in, no battle; it ends the task force's week
+  { const C = new Campaign2(def); let done = false;
+    for (const c of def.aor.cells) {
+      if (done || C.owner[c.id] !== 'enemy' || !AI7.undefended(C, c.id)) continue;
+      const nb = C.neighbors(c.id).find(n => C.owner[n] === 'player'); if (!nb) continue;
+      const T = C.forces[0]; T.cell = nb; T.mp = C.tfMpMax(T); C.observe(c.id);
+      const p = C.plan(T.id, c.id); const b0 = C.stats.battles;
+      ok(p.ok && p.occupy && !p.attack, `undefended ${C.cellName(c.id)}: plan says occupy`);
+      C.move(T.id, c.id); ok(C.owner[c.id] === 'player' && T.cell === c.id && C.stats.battles === b0 && T.mp === 0, 'occupied without a battle; the week is spent');
+      done = true;
+    }
+    if (!done) { const c = def.aor.cells.find(x => C.owner[x.id] === 'enemy' && AI7.undefended(C, x.id) && C.isOpen(x.id) && C.neighbors(x.id).some(n => C.owner[n] === 'enemy' && AI7.undefended(C, n))); const nb = c && C.neighbors(c.id).find(n => C.owner[n] === 'enemy' && AI7.undefended(C, n));
+      if (c && nb) { C.owner[nb] = 'player'; const T = C.forces[0]; T.cell = nb; T.mp = C.tfMpMax(T); C.observe(c.id); const p = C.plan(T.id, c.id); ok(p.ok && p.occupy, 'undefended square next to a taken one: occupy'); C.move(T.id, c.id); ok(C.owner[c.id] === 'player' && T.mp === 0, 'occupied, week spent'); } }
+    // a covered square still needs an attack
+    const cov = def.aor.cells.find(c => C.owner[c.id] === 'enemy' && C.frontline(c.id) && AI7.covered(C, c.id) && C.neighbors(c.id).some(n => C.owner[n] === 'player'));
+    if (cov) { const T = C.forces[1]; T.cell = C.neighbors(cov.id).find(n => C.owner[n] === 'player'); T.mp = C.tfMpMax(T); T.attacked = false; ok(C.plan(T.id, cov.id).attack === true, 'a held / covered square needs an attack'); }
+  }
+  // the enemy commander over some weeks: it moves every week, keeps the line covered, keeps a reserve, pushes
+  // outposts / rotates, counterattacks lost ground, attacks with several battalions; seen moves reach the log
+  { setRandom(seeded(4242)); const C = new Campaign2(def); let weeks = 0, movedWeeks = 0, kinds = {}, seenNotes = 0, multi = 0, uncovered = 0, frontN = 0, counters = 0;
+    // give the brigade a foothold in the enemy line to provoke a counterattack
+    const key = (def.goal?.cells || []).map(g => g.cell).find(id => C.neighbors(id).some(n => C.owner[n] === 'player')) || def.aor.cells.find(c => C.owner[c.id] === 'enemy' && C.frontline(c.id) && !AI7.forcesAt(C, c.id).length)?.id;
+    for (let i = 0; i < 16 && !C.outcome(); i++) {
+      if (i === 2 && key) { for (const f of AI7.forcesAt(C, key)) { const b = C.neighbors(key).find(n => C.owner[n] === 'enemy'); if (b) f.cell = b; } C.owner[key] = 'player'; C.elost[key] = C.turn; C.computeSupply(); }
+      const n0 = C.logSeq || 0; C.endTurn(); weeks++;
+      const M = C.enemyMoves; if (M?.turn === C.turn && M.list.length) movedWeeks++;
+      for (const m of M?.list || []) kinds[m.kind] = (kinds[m.kind] || 0) + 1;
+      seenNotes += C.log.filter(l => l.n > n0 && /^Enemy movement observed/.test(l.text)).length;
+      for (const a of C.pendingAttacks) { if ((a.tfs || []).length > 1) multi++; if (a.counter) counters++; }
+      const fr = def.aor.cells.filter(c => C.owner[c.id] === 'enemy' && C.neighbors(c.id).some(n => C.owner[n] === 'player')); frontN += fr.length; uncovered += fr.filter(c => !AI7.covered(C, c.id)).length;
+    }
+    ok(movedWeeks >= weeks * 0.6, `the enemy moves forces most weeks even against a passive brigade (${movedWeeks}/${weeks})`);
+    ok(Object.keys(kinds).length >= 4, `varied manoeuvre (${Object.entries(kinds).map(([k, v]) => k + ' ' + v).join(', ')})`);
+    ok(seenNotes > 0, `observed enemy moves are logged (${seenNotes} lines)`);
+    ok(uncovered / Math.max(1, frontN) < 0.25, `the enemy keeps its front covered (${uncovered}/${frontN} front-square-weeks open)`);
+    ok(C.eforces.some(f => f.role === 'reserve' || f.role === 'rest') || C.eforces.length < 4, 'reserve / resting battalions kept');
+    ok((C.stats.eAttacks || 0) > 0, `the enemy attacks (${C.stats.eAttacks}; ${multi} with several battalions, ${counters} counterattacks announced)`);
+    ok(C.pendingAttacks.every(a => (a.tfs || [a.tf]).every(id => C.eforces.some(f => f.id === id && f.cell === a.from)) && a.power > 0), 'announced attacks: every battalion on the staging square, power set');
+    ok(C.enemyMoves.list.every(m => C.cell(m.from) && C.cell(m.to) && typeof m.seen === 'boolean'), 'C.enemyMoves entries: from, to, seen');
+    // a defensive battle against an announced attack uses the attacking battalions' companies
+    const a = C.pendingAttacks.find(x => C.forcesAt(x.to).length); if (a) { const st = C.defendSetup(a.id); ok(st && st.enemyForces.length === (a.tfs || [a.tf]).length && st.enemyCoys >= 2 && !st.enemy.some(e => e.kind === 'defend'), `defend battle against ${a.tfName}: ${st?.enemy.map(e => e.kind).join(',')}`); C.battle = null; }
+    // rotation: a worn battalion (half its companies gone) is pulled back to rest when another battalion covers its square
+    { const keys = new Set([...(def.goal?.cells || []).map(g => g.cell), ...(def.aor.hubs || []).map(h => h.cell)]), C = new Campaign2(def);
+      const w = C.eforces.find(f => f.role === 'line' && f.coys.length >= 2 && !keys.has(f.cell) && C.neighbors(f.cell).some(n => C.owner[n] === 'enemy' && !keys.has(n)));
+      if (w) { const nb = C.neighbors(w.cell).find(n => C.owner[n] === 'enemy' && !keys.has(n)), helper = C.eforces.find(f => f !== w && f.role === 'line' && f.coys.length >= 3 && !keys.has(f.cell));
+        if (helper) { helper.cell = nb; helper.movedT = C.turn; }
+        for (const c of w.coys) c.s = 0.3; AI7.sync(w); C.pendingAttacks = []; C.endTurn();
+        ok(w.role === 'rest' || C.enemyMoves.list.some(m => m.id === w.id && m.kind === 'rotate'), `worn ${w.name} rotates out to rest (${w.role} at ${C.cellName(w.cell)})`);
+        if (w.role === 'rest') { const s0 = w.str; C.pendingAttacks = []; C.endTurn(); ok(w.str > s0 || !C.eforces.includes(w), `resting battalion recovers (${s0} -> ${w.str})`); } } }
+    // persistence of the v7 force records
+    C.save(); const L7 = Campaign2.load(defs); ok(L7 && L7.eforces.every((f, i) => f.coys?.length === C.eforces[i].coys.length && f.role === C.eforces[i].role), 'battalion groups (companies, roles) persist');
+  }
+  // older saves (forces with str only) are migrated to companies
+  { const C = new Campaign2(def); const f = C.eforces[0]; delete f.coys; f.str = 1.2; AI7.migrate(f); ok(f.coys.length === 4 && Math.abs(f.str - 1.2) < 0.05, 'old force record migrated (str 1.2 -> 4 coys)'); }
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

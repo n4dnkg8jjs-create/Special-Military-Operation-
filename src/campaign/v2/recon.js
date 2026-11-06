@@ -61,7 +61,7 @@ export function weekly(C, side, hqSupplied) { const U = C.uav?.[side]; if (!U) r
 // Leleka patrols, satellites and radio direction finding: columns, vehicle parks, assembly areas and the radio traffic
 // of a big headquarters are found even without a dedicated sortie, and then draw artillery, Lancets and UAV
 // attention. Small dispersed groups stay hidden unless a drone looks at their square or they are in contact.
-// SIGNATURE = companies in the task force (player: unit records alive; enemy: 3 per point of strength — a battalion)
+// SIGNATURE = companies in the task force (player: unit records alive; enemy: its companies (v7))
 //   +1 if it moved this / last week, +1 if it attacked (or is preparing an announced attack), -1 in a town, works or
 //   woods when it kept still. SIGNATURE >= SPOT_SIZE (5, i.e. more than four companies) = SPOTTED by the other side,
 //   if it stands within SPOT_DEPTH squares of that side's line: 2 squares at 5, +2 per point above (6 -> 4, 7 -> 6,
@@ -69,7 +69,7 @@ export function weekly(C, side, hqSupplied) { const U = C.uav?.[side]; if (!U) r
 //   aims spoiling fire at the biggest one it sees and both sides' suppression hits a spotted mass twice as hard.
 export const SPOT_SIZE = 5, SPOT_DEPTH_MAX = 8;
 const COVER = new Set(['urban', 'industrial', 'forest']);
-export function companies(C, side, f) { return side === 'player' ? C.tfUnits(f).filter(u => C.alive(u)).length : Math.max(1, Math.round((f.str || 0) * 3)); }
+export function companies(C, side, f) { return side === 'player' ? C.tfUnits(f).filter(u => C.alive(u)).length : (f.coys ? Math.max(1, f.coys.length) : Math.max(1, Math.round((f.str || 0) * 3))); }
 // { n, sig, depth, moved, attacked } for a task force of `side` ('player' = C.forces, 'enemy' = C.eforces)
 export function signature(C, side, f) {
   const n = companies(C, side, f), T = C.turn;

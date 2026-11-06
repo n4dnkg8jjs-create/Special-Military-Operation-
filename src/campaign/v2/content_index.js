@@ -101,6 +101,13 @@ export function validate2(def) {
   for (const b of S.batteries || []) { if (!BK.includes(b.kind)) err(`battery kind ${b.kind}`); if (own(b.cell) !== 'player') err(`battery ${b.id} not on an own cell`); }
   for (const b of def.enemy?.batteries || []) { if (!BK.includes(b.kind)) err(`enemy battery kind ${b.kind}`); if (own(b.cell) !== 'enemy') err(`enemy battery ${b.name} not on an enemy cell`); }
   for (const f of def.enemy?.forces || []) if (own(f.cell) !== 'enemy') err(`enemy force ${f.name} not on an enemy cell`);
+  // v7: the enemy brigade's battalion groups: companies of known kinds, veterancy, role
+  const CK = ['mech', 'tank', 'inf', 'assault', 'vdv', 'atgm', 'recon'], RL = ['line', 'hold', 'reserve', 'screen', 'rest'];
+  const efCheck = (f, w) => { if (f.coys && (!Array.isArray(f.coys) || !f.coys.length || f.coys.length > 6 || f.coys.some(c => !CK.includes(typeof c === 'string' ? c : c.k)))) err(`${w} ${f.name}: coys`); if (f.xp != null && !(f.xp >= 0 && f.xp <= 12)) err(`${w} ${f.name}: xp`); if (f.role && !RL.includes(f.role)) err(`${w} ${f.name}: role ${f.role}`); if (!f.coys && !(f.str > 0)) err(`${w} ${f.name}: coys or str`); };
+  for (const f of def.enemy?.forces || []) efCheck(f, 'enemy force');
+  for (const f of def.enemy?.reinforcements || []) efCheck(f, 'enemy reinforcement');
+  for (const b of def.aor?.ext?.bands || []) for (const f of b.forces || []) efCheck(f, `band ${b.id} force`);
+  if (def.enemy?.coyPower != null && !(def.enemy.coyPower > 0.5 && def.enemy.coyPower < 4)) err('enemy.coyPower');
   for (const h of def.aor?.hubs || []) { if (!['railhead', 'base', 'ammo'].includes(h.kind)) err(`hub kind ${h.kind}`); if (own(h.cell) !== (h.side || 'player') && own(h.cell) !== 'contested') err(`hub ${h.name} not held by its side at start`); }
   for (const id of def.aor?.enemySources || []) if (own(id) !== 'enemy') err(`enemy source ${id} not enemy`);
   if (def.goal) { if (!def.goal.title || !(def.goal.cells || []).length) err('goal title / cells'); for (const g of def.goal.cells || []) if (!own(g.cell) || !(g.pts > 0)) err(`goal cell ${g.cell}`); }

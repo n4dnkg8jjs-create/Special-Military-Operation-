@@ -36,7 +36,7 @@ const EXT_BANDS = {
   ua_x1: { name: 'Nove – Kharkove – Ocheretuvate',
     text: 'Behind Solodka Balka and Verbove the ground falls away to the R-85 lateral road: Nove, Kharkove and Ocheretuvate, depots and reserve positions behind the second belt.',
     hubs: [{ cell: XN('Nove'), name: 'Nove supply point', kind: 'ammo', side: 'enemy' }],
-    forces: [{ name: 'Motor-rifle bn (Ocheretuvate)', kind: 'mech', cell: XN('Ocheretuvate'), str: 1.0 }],
+    forces: [{ name: 'Motor-rifle bn (Ocheretuvate)', kind: 'mech', cell: XN('Ocheretuvate'), coys: ['mech', 'mech', 'mech'], xp: 2 }, { name: 'Motor-rifle bn (Nove)', kind: 'mech', cell: XN('Nove'), coys: ['mech', 'mech', 'inf'], xp: 1 }],
     directives: [{ id: 'ua_x_nove', issue: { when: 'grown:ua_x1' }, from: 'OSUV "Tavria"', title: 'Exploit past the second belt: Nove', kind: 'capture', targets: [XN('Nove')], deadline: 6,
       text: 'The brigade has broken through the second belt. Push south along the T-04-08 to Nove before the enemy closes the gap with his reserves from Tokmak; keep the flanks on the R-85 under drone watch.',
       reward: { lp: 60 }, penalty: { lp: 5 },
@@ -44,14 +44,14 @@ const EXT_BANDS = {
   ua_x2: { name: 'The Tokmak line',
     text: 'North of Tokmak the third Russian belt runs across the T-04-08: a continuous anti-tank ditch, dragon\'s teeth and dozens of bunkers (mapped in OpenStreetMap), with Chervonohirka as its strongpoint.',
     hubs: [{ cell: XN('Chervonohirka'), name: 'Chervonohirka ammunition point', kind: 'ammo', side: 'enemy' }],
-    forces: [{ name: 'Fortress bn (Tokmak line)', kind: 'inf', cell: XN('Tokmak line (T-04-08)'), str: 1.1 }],
+    forces: [{ name: 'Fortress bn (Tokmak line)', kind: 'inf', cell: XN('Tokmak line (T-04-08)'), coys: ['inf', 'inf', 'atgm', 'inf'], xp: 1, role: 'hold' }, { name: 'Motor-rifle bn (Chervonohirka)', kind: 'mech', cell: XN('Chervonohirka'), coys: ['mech', 'mech', 'mech'], xp: 2 }],
     directives: [{ id: 'ua_x_tokmak_line', issue: { when: 'grown:ua_x2' }, from: 'OSUV "Tavria" — Intelligence', title: 'Map the Tokmak line', kind: 'recon', targets: [XN('Tokmak line (T-04-08)'), XN('Chervonohirka')], deadline: 5,
       text: 'The third belt in front of Tokmak is close. Fly drones over the ditch and the strongpoints at Chervonohirka and on the T-04-08: where are the lanes, the bunkers, the reserves?',
       reward: { lp: 40 }, penalty: { lp: 5 }, history: 'Satellite imagery in 2023 showed a continuous defence line around Tokmak\'s northern approaches, the third of the belts south of Orikhiv.', sources: [SRC.surovikin] }] },
   ua_x3: { name: 'Tokmak',
     text: 'Tokmak, the rail junction and supply hub of the whole Russian grouping south of Orikhiv: the railhead on the Fedorivka – Volnovakha line, depots, a fortified town.',
     hubs: [{ cell: XN('Tokmak station'), name: 'Tokmak railhead (Fedorivka – Volnovakha line)', kind: 'railhead', side: 'enemy' }],
-    forces: [{ name: 'Tokmak garrison (motor-rifle regiment)', kind: 'mech', cell: XN('Tokmak'), str: 1.4 }],
+    forces: [{ name: 'Tokmak garrison (motor-rifle regiment)', kind: 'mech', cell: XN('Tokmak'), coys: ['mech', 'mech', 'mech', 'tank', 'inf'], xp: 2, role: 'hold' }],
     directives: [{ id: 'ua_x_tokmak', issue: { when: 'grown:ua_x3' }, from: 'OSUV "Tavria"', title: 'Combat order: the outskirts of Tokmak', kind: 'capture', targets: [XN('Tokmak')], deadline: 8,
       text: 'Tokmak is in reach. Seize the northern quarters of the town and put the railhead under direct fire: every train that cannot unload in Tokmak is a shell that does not reach the front.',
       reward: { lp: 150 }, penalty: { lp: 10 }, history: 'Tokmak was the counteroffensive\'s operational objective (cutting the land bridge to Crimea); the front stayed about 20 km north of it.', sources: [SRC.counter] }] },
@@ -278,21 +278,35 @@ export const CAMPAIGN2_UA = {
   },
   enemy: {
     // Russian behaviour on the grid: localised attacks in winter, counterattacks with airborne reserves from August,
-    // winter assaults on the salient from December. The enemy commander (ai.js) moves these battalion groups.
+    // winter assaults on the salient from December. v7: the enemy is organised like the brigade — battalion groups of
+    // companies (coys) standing where the real units stood: the 42nd Motor Rifle Division's regiments and 22nd Army
+    // Corps units in the forward zone and the Robotyne – Verbove belt, a tank battalion and the regimental reserve
+    // behind it; outposts (one company each, ai.js deploy) fill the gaps in the forward zone, the rear is empty; role 'hold' = a
+    // garrison that holds its fortified village (relieved only in place).
+    // The airborne (7th / 76th VDV divisions) arrive in August. The enemy commander (ai.js) moves all of them.
     forces: [
-      { name: 'Motor-rifle bn (Robotyne)', kind: 'mech', cell: N('Robotyne'), str: 1.2 },
-      { name: 'Motor-rifle bn (Kopani)', kind: 'mech', cell: N('Kopani'), str: 1.0 },
-      { name: 'Motor-rifle bn (Verbove heights)', kind: 'mech', cell: N('Verbove heights'), str: 1.0 },
-      { name: 'Tank coy (Novoprokopivka)', kind: 'tank', cell: N('Novoprokopivka'), str: 0.9 },
-      { name: 'Storm detachment', kind: 'assault', cell: N('Tree belts SE of Mala Tokmachka'), str: 0.8 },
-      { name: 'Regimental reserve', kind: 'mech', cell: N('Solodka Balka'), str: 1.2 },
+      // forward zone (row 8): the screen in front of the belt
+      { name: 'Motor-rifle bn (Kamianske – west)', kind: 'mech', cell: 'c1_8', coys: ['mech', 'mech', 'inf'], xp: 2 },
+      { name: 'Motor-rifle bn (Kopani)', kind: 'mech', cell: N('Kopani'), coys: ['mech', 'mech', 'mech'], xp: 3 },
+      { name: 'Motor-rifle bn (Robotyne north)', kind: 'mech', cell: N('Balka N of Robotyne'), coys: ['mech', 'mech', 'tank'], xp: 3 },
+      { name: 'Storm detachment', kind: 'assault', cell: N('Tree belts SE of Mala Tokmachka'), coys: ['assault', 'assault'], xp: 4 },
+      { name: 'Motor-rifle bn (Verbove heights)', kind: 'mech', cell: N('Heights NW of Verbove'), coys: ['mech', 'mech', 'mech'], xp: 2 },
+      { name: 'Rifle bn (Novofedorivka)', kind: 'inf', cell: 'c13_8', coys: ['inf', 'inf', 'atgm'], xp: 1 },
+      // the main belt (Rivne – Robotyne – Verbove) and the depth
+      { name: 'Motor-rifle bn (Robotyne)', kind: 'mech', cell: N('Robotyne'), coys: ['mech', 'mech', 'inf'], xp: 2, role: 'hold' },
+      { name: 'Motor-rifle bn (Verbove)', kind: 'mech', cell: N('Verbove'), coys: ['mech', 'inf', 'inf'], xp: 1, role: 'hold' },
+      { name: 'Naval infantry bn (Rivne)', kind: 'mech', cell: N('Rivne'), coys: ['mech', 'mech', 'mech'], xp: 3 },
+      { name: 'Motor-rifle bn (Verbove heights, main belt)', kind: 'mech', cell: N('Verbove heights'), coys: ['mech', 'mech', 'inf'], xp: 2 },
+      { name: 'Rifle bn (Ilchenkove)', kind: 'inf', cell: N('Ilchenkove'), coys: ['inf', 'inf', 'atgm'], xp: 1, role: 'hold' },
+      { name: 'Tank bn (Novoprokopivka)', kind: 'tank', cell: N('Novoprokopivka'), coys: ['tank', 'tank', 'mech'], xp: 3, role: 'reserve' },
+      { name: 'Regimental reserve', kind: 'mech', cell: N('Solodka Balka'), coys: ['mech', 'mech', 'mech'], xp: 2, role: 'reserve' },
     ],
     reinforcements: [
-      { date: '2023-06-12', name: 'Tank bn (army reserve)', kind: 'tank', str: 1.2 },
-      { date: '2023-08-14', name: 'Airborne bn (VDV)', kind: 'vdv', str: 1.5 },
-      { date: '2023-08-28', name: 'Airborne bn (VDV) #2', kind: 'vdv', str: 1.4 },
-      { date: '2023-12-04', name: 'Storm-V detachment', kind: 'assault', str: 1.0 },
-      { date: '2024-01-15', name: 'Motor-rifle bn (rotation)', kind: 'mech', str: 1.1 },
+      { date: '2023-06-12', name: 'Tank bn (army reserve)', kind: 'tank', coys: ['tank', 'tank', 'mech'], xp: 2 },
+      { date: '2023-08-14', name: 'Airborne bn (VDV)', kind: 'vdv', coys: ['vdv', 'vdv', 'vdv', 'tank'], xp: 5 },
+      { date: '2023-08-28', name: 'Airborne bn (VDV) #2', kind: 'vdv', coys: ['vdv', 'vdv', 'vdv'], xp: 5 },
+      { date: '2023-12-04', name: 'Storm-V detachment', kind: 'assault', coys: ['assault', 'assault', 'assault'], xp: 1 },
+      { date: '2024-01-15', name: 'Motor-rifle bn (rotation)', kind: 'mech', coys: ['mech', 'mech', 'mech'], xp: 2 },
     ],
     batteries: [
       { kind: 'mortar120', name: '120 mm mortar battery', cell: N('Balka N of Robotyne') },
@@ -301,7 +315,7 @@ export const CAMPAIGN2_UA = {
       { kind: 'grad', name: 'Rocket bn (BM-21 Grad)', cell: 'c9_11' },
     ],
     // ~10,000 rounds a day against Ukraine's ~3,600 (spring 2023); dense EW along the belt
-    ammo: [{ date: '2023-02-06', a: 4.5 }, { date: '2023-10-01', a: 5.5 }, { date: '2024-01-01', a: 6 }], ammoStart: 8, ammoMax: 14, ew: 0.1, minStrength: 4, crisisWeeks: 6, crisisName: 'Motor-rifle bn (rushed in)',
+    ammo: [{ date: '2023-02-06', a: 4.5 }, { date: '2023-10-01', a: 5.5 }, { date: '2024-01-01', a: 6 }], ammoStart: 8, ammoMax: 14, ew: 0.1, minStrength: 7, crisisWeeks: 4, crisisName: 'Motor-rifle bn (rushed in)',
     line: [{ date: '2023-02-06', l: 1.4 }, { date: '2023-06-05', l: 1.7 }, { date: '2023-10-16', l: 1.6 }],
     pressure: [{ date: '2023-02-06', p: 0.10 }, { date: '2023-06-05', p: 0.14 }, { date: '2023-08-14', p: 0.22 }, { date: '2023-10-16', p: 0.18 }, { date: '2023-12-04', p: 0.24 }, { date: '2024-02-05', p: 0.20 }],
     reinforce: [{ date: '2023-02-06', r: 0.10 }, { date: '2023-06-05', r: 0.06 }, { date: '2023-08-14', r: 0.10 }, { date: '2023-10-16', r: 0.06 }, { date: '2023-12-04', r: 0.08 }],
@@ -311,6 +325,7 @@ export const CAMPAIGN2_UA = {
       3: [{ kind: 'defend', obj: 'A' }, { kind: 'defend', obj: 'B' }, { kind: 'defend', obj: 'B' }, { kind: 'imech', obj: 'A' }, { kind: 'assault', obj: 'B' }, { kind: 'mech', obj: 'A' }, { kind: 'tank', obj: 'A' }, { kind: 'tank', obj: 'B' }, { kind: 'atgm', obj: 'A' }, { kind: 'fpv', obj: 'B' }, { kind: 'spg' }],
     },
     artillery: 0.8, fpvThreat: 0.45, mortarMissions: 2,
+    coyPower: 1.9,   // v7: a dug-in Russian company in the belt (minefields, ATGMs, Ka-52s, artillery on call) — ai.js COY_POWER
   },
   catalog: [
     { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised soldiers from the brigade\'s reserve battalion to fill gaps in depleted squads.', kind: 'replacements', men: 8, lp: 12, eta: 1 },

@@ -130,5 +130,30 @@ for (const opId of ['UA', 'RU']) for (const host of ['UA', 'RU']) {
   }
 }
 ok(stats.fires > 20 && stats.uav > 20, `versus commanders used fires (${stats.fires}), drones (${stats.uav}), counter-battery (${stats.cb})`);
+// ------------------------------------------------------------------ v7: zone of control and a dispersed defender
+for (const op of ['UA', 'RU']) {
+  console.log(`== v7 versus ${op}`);
+  const V = new VersusGame(defs, op, op), Dd = V.side[OTHER(op)];
+  const cells = new Set(Dd.forces.map(t => t.cell));
+  ok(Dd.forces.length >= 4 && cells.size >= Math.min(Dd.forces.length - 1, 4), `${op}: the defending brigade starts dispersed (${Dd.forces.length} task forces on ${cells.size} squares)`);
+  ok(Dd.forces.every(t => Dd.owner[t.cell] === 'player'), `${op}: defender task forces on own squares`);
+  // staff-resolved attacks: a square no defending task force covers is thinly held, a covered one is held by its line
+  const A0 = V.side[op], strong = A0.forces.slice().sort((a, b) => A0.tfPower(a) - A0.tfPower(b))[0];   // the weakest task force: the odds matter
+  const zoc = id => Dd.forcesAt(id).length > 0 || Dd.neighbors(id).some(n => Dd.forcesAt(n).length);
+  const open = Dd.def.aor.cells.filter(c => Dd.owner[c.id] === 'player' && !zoc(c.id) && !['urban', 'industrial'].includes(c.terrain) && (Dd.fort[c.id] || 0) <= 1).map(c => c.id);
+  const held = Dd.def.aor.cells.filter(c => Dd.owner[c.id] === 'player' && !Dd.forcesAt(c.id).length && zoc(c.id) && !['urban', 'industrial'].includes(c.terrain) && (Dd.fort[c.id] || 0) <= 1).map(c => c.id);
+  const trial = (cell, seed) => {
+    const W = new VersusGame(defs, op, op), A = W.side[op], D = W.side[OTHER(op)], T = A.tf(strong.id);
+    const st = A.neighbors(cell).find(n => A.owner[n] === 'player') || A.neighbors(cell)[0];
+    A.owner[st] = 'player'; W.own[st] = op; T.cell = st; T.planned = { cell, auto: true };
+    const rr = Math.random; Math.random = seeded(seed); const r = W.autoBattle({ f: op, tf: T.id, cell, stage: st, defTfs: [], defUids: [], id: 't' }); Math.random = rr;
+    return r.rAtt.win;
+  };
+  if (open.length && held.length) {
+    let wOpen = 0, wHeld = 0; for (let i = 0; i < 24; i++) { wOpen += trial(open[i % open.length], 900 + i) ? 1 : 0; wHeld += trial(held[i % held.length], 900 + i) ? 1 : 0; }
+    ok(wOpen > wHeld, `${op}: squares outside the defender's zone of control fall more easily (won ${wOpen}/24 vs ${wHeld}/24)`);
+  } else ok(true, `${op}: (no open/held pair to compare)`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
