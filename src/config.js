@@ -35,7 +35,7 @@ export const WEAPONS = {
   // ATGM teams (tripod, SACLOS): tandem HEAT, long range. FPV: RPG-7 warhead strapped to a quadcopter.
   kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
   stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 1200, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 1000, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
-  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [130, 230], pen: 420, blast: 4, spread: 0, sound: 'rpg' },
+  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [170, 290], pen: 420, blast: 4, spread: 0, sound: 'rpg' },
   // IFV weapons (BMP-3 / M2A2 Bradley)
   m242:   { name: 'M242 Bushmaster 25 mm', type: 'autocannon', range: 900, rof: 200, burst: [2, 5], burstGap: [0.8, 1.6], mag: 300, reload: 0, dmg: [80, 130], pen: 55, blast: 1.8, spread: 1.4, sound: 'cannon30', tracerEvery: 1 },
   a70:    { name: '2A70 100 mm (HE-Frag)', type: 'tankgun', range: 1200, rof: 10, mag: 40, reload: 6, dmg: [180, 320], pen: 40, blast: 6, spread: 0.6, sound: 'tankgun', projectile: { speed: 250, gravity: 0 } },

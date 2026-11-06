@@ -736,7 +736,7 @@ export class Combat {
       if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25)) { v.burning = 0.01; msgs.push('on fire'); }
     }
     // an FPV warhead on the engine deck: engine wrecked, fuel and oil very often catch
-    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.5) { v.burning = 0.01; msgs.push('engine on fire'); }
+    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.65) { v.burning = 0.01; msgs.push('engine on fire'); }
     const crewHit = role => { const c = v.crewList.find(m => m.role === role && m.hp > 0); if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
     for (const e of fx) {
       const part = v.parts.find(p => p.name === e); if (!part) continue;

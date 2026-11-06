@@ -5,6 +5,10 @@ import { trunkHit } from '../world/vegetation.js';
 
 // Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 10 drones).
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+// FPV flight model: a quad steers by tilting its thrust - acceleration-limited (~2.6 g sideways, more in the dive),
+// the airframe banks / pitches into the acceleration and yaws smoothly into the flight path, with a little turbulence
+const FPV_ACC = 26, FPV_ACC_DIVE = 38;
+const _up = new THREE.Vector3(), _fw = new THREE.Vector3(), _rt = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const TUNING_EVADE_MISS = 0.26;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -401,7 +405,10 @@ export class FpvTeam {
         else if (d.man?.effective && !d.man.inBuilding && !d.miss && !d.dodged) d.aim.set(d.man.pos.x, 0.9, d.man.pos.z);
         want = tmpA.subVectors(d.aim, d.pos).normalize().multiplyScalar(34);
       }
-      d.vel.lerp(want, Math.min(1, dt * 2.5));
+      // steer: accelerate toward the wanted velocity, capped (no instant direction changes)
+      const acc = tmpB.subVectors(want, d.vel).multiplyScalar(2.2), am = d.phase === 'dive' ? FPV_ACC_DIVE : FPV_ACC, al = acc.length();
+      if (al > am) acc.multiplyScalar(am / al);
+      (d.acc ||= new THREE.Vector3()).lerp(acc, 1 - Math.exp(-dt * 10)); d.vel.addScaledVector(d.acc, dt);
       // the targeted vehicle's crew sees / hears it coming: vehicle.drive() weaves and breaks away while this is fresh
       if (tgt.type === 'vehicle' && (d.phase === 'dive' || (d.phase === 'cruise' && Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) < 160))) tgt.droneThreat = { t: g.time, phase: d.phase, x: d.pos.x, z: d.pos.z, dist: d.pos.distanceTo(tc), id: d };
       this.reactions(d, dt);
@@ -412,7 +419,16 @@ export class FpvTeam {
   moveDrone(d, dt) {
     const g = this.g;
     d.pos.addScaledVector(d.vel, dt); d.mesh.position.copy(d.pos);
-    const v = d.vel.lengthSq() > 0.1 ? d.vel : null; if (v) { d.mesh.lookAt(d.pos.clone().add(v)); d.mesh.rotateX(d.phase === 'dive' ? 0.15 : 0.3); }
+    // attitude: the body's up axis = thrust direction (acceleration + gravity), nose yawed into the flight path; smoothed
+    if (d.phase === 'fall') { d.spin = (d.spin || 0) + dt * 9; d.mesh.rotation.set(d.spin * 0.7, d.spin, d.spin * 0.4); }
+    else if (d.vel.lengthSq() > 0.1) {
+      const a = d.acc || _up.set(0, 0, 0), tw = (d.tw = (d.tw || 0) + dt);
+      _up.set(a.x + d.vel.x * 0.28 + Math.sin(tw * 7.3) * 0.8, a.y + 9.8 + d.vel.y * 0.28, a.z + d.vel.z * 0.28 + Math.cos(tw * 6.1) * 0.8).normalize();   // (+ drag: it leans into its speed)
+      _fw.set(d.vel.x, d.phase === 'dive' ? d.vel.y * 0.35 : 0, d.vel.z); if (_fw.lengthSq() < 1e-4) _fw.set(0, 0, 1); _fw.normalize();
+      _rt.crossVectors(_up, _fw).normalize(); _fw.crossVectors(_rt, _up);
+      _m4.makeBasis(_rt, _up, _fw); _q.setFromRotationMatrix(_m4);
+      d.mesh.quaternion.slerp(_q, 1 - Math.exp(-dt * 9));
+    }
     { const sp = d.vel.length(); d.snd?.set(d.pos, d.phase === 'dive' ? 1.25 : 0.85, THREE.MathUtils.clamp(0.82 + sp / 70 + (d.phase === 'dive' ? 0.22 : 0) + (d.phase === 'climb' ? 0.12 : 0), 0.75, 1.5)); }
     const aimD = d.aim ? d.pos.distanceTo(d.aim) : 99;
     if (d.phase === 'dive' && (aimD < 1.4 || d.aim && d.vel.y < 0 && d.pos.y <= d.aim.y + 0.05 && Math.hypot(d.pos.x - d.aim.x, d.pos.z - d.aim.z) < 2.5)) return this.impact(d, d.aim.clone());
@@ -455,7 +471,7 @@ export class FpvTeam {
         s.droneAlertT = 1.5; s.heading = Math.atan2(d.pos.x - s.pos.x, d.pos.z - s.pos.z);
         if (!s.inBuilding && Math.random() < dt * 4) { const mz = s.muzzleWorld(tmpB); g.fx.muzzle(mz, tmpA.subVectors(d.pos, mz).normalize(), 0.8); if (g.camDist(mz) < 120) g.sfx(s.weapon.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos, { gain: 0.7 }); }
         const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN * (s.inBuilding ? 0.5 : 1);
-        if (Math.random() < p * dt * 8) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
+        if (Math.random() < p * dt * 4) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
         continue;
       }
       s.droneHideT = g.time + 5;   // squad.think: flat / crouched while it is about
@@ -496,6 +512,12 @@ export class FpvTeam {
         if (t.side === 'player') g.hud?.alert(`${t.name}: FPV drone stopped by the cage`, '');
       } else g.combat.hitVehicle(t, this.W, from, 'ce', d.pilot, false, at);
       g.fx.explosion(at, 0.6); g.sfx('explosion_small', at);
-    } else g.combat.explode(at, 0.65, d.pilot, [70, 190], 6.5);
+    } else {
+      // infantry: the man it was flown into takes the warhead (frag sleeve / OG-7 / PG-7 + steel balls); the burst wounds
+      // out to ~20 m (combat.explode fragment zone). "The success rate in wounding infantry is high" (RUSI 2025)
+      const m = d.man;
+      if (t.type !== 'vehicle' && d.phase === 'dive' && m?.effective && !d.dodged && !m.cellar && m.pos.distanceTo(at) < 2.6) g.combat.hitSoldier(m, { dmg: [150, 260], type: 'blast' }, at, true, d.pilot);
+      g.combat.explode(at, 0.8, d.pilot, [90, 220], 8);
+    }
   }
 }
