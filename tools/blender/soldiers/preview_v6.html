@@ -57,15 +57,32 @@ for (let i = 0; i < specs.length; i++) {
   if (c) { const mx = new THREE.AnimationMixer(m); mx.clipAction(c).play(); mx.setTime(c.duration * (+t || 0)); }
 }
 scene.updateMatrixWorld(true);
-const zi = q.get('zoom'), cx = q.get('cx') != null ? +q.get('cx') : zi != null ? x0 + (+zi) * dx : 0;
-const cy = +(q.get('cy') || 0.95), cz = +(q.get('cz') || 0), r = +(q.get('r') || 3.2 + specs.length * 0.9), el = +(q.get('el') || 10);
+const zi = q.get('zoom');
+let cx = q.get('cx') != null ? +q.get('cx') : zi != null ? x0 + (+zi) * dx : 0;
+let cy = +(q.get('cy') || 0.95), cz = +(q.get('cz') || 0);
+// soldiers_v8: bone=<name> aims the camera at that bone of soldier `zoom` (default 0), bo=x,y,z offset in world metres;
+// along=1: az / el are relative to the direction parent bone -> bone (camera out past the hand, looking back into the sleeve);
+// each=1: one row per az, one view per soldier in it, each aimed at that soldier's bone
+const r = +(q.get('r') || 3.2 + specs.length * 0.9), el = +(q.get('el') || 10);
 const azs = (q.get('az') || '0').split(',').map(Number);
-const views = azs.length, cols = Math.min(views, +(q.get('cols') || 4)), rows = Math.ceil(views / cols);
+const each = q.get('bone') && q.get('each');
+const views = each ? azs.length * specs.length : azs.length, cols = Math.min(views, +(q.get('cols') || 4)), rows = Math.ceil(views / cols);
+const aim = (k) => {
+  if (!q.get('bone')) return [cx, cy, cz, 0, 0];
+  const b = roots[k].getObjectByName(q.get('bone')); const wp = new THREE.Vector3(); b.getWorldPosition(wp);
+  const bo = (q.get('bo') || '0,0,0').split(',').map(Number);
+  let az0 = 0, el0 = 0;
+  const pp = new THREE.Vector3(); b.parent.getWorldPosition(pp); const d = wp.clone().sub(pp).normalize();
+  wp.addScaledVector(d, -(+q.get('back') || 0));          // back=<m>: aim that far up the parent bone (e.g. at the sleeve end)
+  if (q.get('along')) { az0 = Math.atan2(d.x, d.z) * 180 / Math.PI; el0 = Math.asin(d.y) * 180 / Math.PI; }
+  return [wp.x + bo[0], wp.y + bo[1], wp.z + bo[2], az0, el0];
+};
 const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 30), (W / cols) / (H / rows), 0.01, 200);
 renderer.setScissorTest(true); renderer.autoClear = false; renderer.clear();
 for (let i = 0; i < views; i++) {
-  const a = azs[i] * Math.PI / 180, e = el * Math.PI / 180;
-  cam.position.set(cx + r * Math.cos(e) * Math.sin(a), cy + r * Math.sin(e), cz + r * Math.cos(e) * Math.cos(a)); cam.lookAt(cx, cy, cz);
+  const k = each ? i % specs.length : +(zi || 0), [tx, ty, tz, az0, el0] = aim(k), ai = each ? Math.floor(i / specs.length) : i;
+  const a = (azs[ai] + az0) * Math.PI / 180, e = Math.max(-85, Math.min(85, el + el0)) * Math.PI / 180;
+  cam.position.set(tx + r * Math.cos(e) * Math.sin(a), ty + r * Math.sin(e), tz + r * Math.cos(e) * Math.cos(a)); cam.lookAt(tx, ty, tz);
   const x = (i % cols) * W / cols, y = (rows - 1 - Math.floor(i / cols)) * H / rows;
   renderer.setViewport(x, y, W / cols, H / rows); renderer.setScissor(x, y, W / cols, H / rows); renderer.render(scene, cam);
 }

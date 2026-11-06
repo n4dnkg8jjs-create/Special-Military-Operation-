@@ -548,18 +548,23 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
         mats_cache['eye'] = g.material('eye', color=(1, 1, 1, 1), base_tex=g.image(T['eye']), roughness=0.12)
     prims = [dict(pos=v['uniform_pos'], nrm=v['uniform_nrm'], uv=U['uv'], idx=U['tri'], mat=mu, W=U['W']),
              dict(pos=v['head_pos'], nrm=v['head_nrm'], uv=H['uv'], idx=H['tri'], mat=ms, W=H['W'])]
+    if 'col' in U:          # soldiers_v8 (wrist.py): sleeve hems, inside of the sleeve shadowed
+        prims[0]['color'] = np.repeat(U['col'][:, None], 3, 1)
     for e, ep in zip(R['eyes'], v['eyes']):
         prims.append(dict(pos=ep, nrm=MU.vertex_normals(ep, e['tri']), uv=AS.eye_uv(ep), idx=e['tri'], mat=mats_cache['eye'], W=e['W']))
     return W.skinned('body_' + vn, prims, lod=0.28, extras={'default_visible': vn == 'A', 'variant': vn})
 
 
 def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True, combos_on=True, crew_on=True,
-          thick=True, sling=True):
+          thick=True, sling=True, wrist=True):
     R = load()
     if thick:
         thicken_uniform(R)
     sk = R['skel']
     rig = A.Rig(sk, R['hands']['pos'], R['hands']['W'])
+    # soldiers_v8: cinched sleeve ends + hems, forearm continued inside the sleeve, glove cuffs (rig built from the original hands)
+    import wrist as WR
+    wst = WR.apply(R, rig) if wrist else None
     W = AS.SoldierWriter(sk, 'soldier_' + fac)
     g = W.g
     rec = CB.Recorder(W)
@@ -569,11 +574,14 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     # hands + gloves
     hd = R['hands']
     mh = g.material('hands_skin', color=(1, 1, 1, 1), base_tex=g.image(R['tex']['hands']), roughness=0.6)
-    W.skinned('hands', [dict(pos=hd['pos'], nrm=hd['nrm'], uv=hd['uv'], idx=hd['tri'], mat=mh, W=hd['W'])], lod=0.28)
-    gp = hd['pos'] + hd['nrm'] * 0.0025
+    W.skinned('hands', [dict(pos=hd['pos'], nrm=hd['nrm'], uv=hd['uv'], idx=hd['tri'], mat=mh, W=hd['W'], color=hd.get('col'))], lod=0.28)
     gcol = '#3a3a33' if fac == 'ru' else '#5b5040'
     mg = g.material('gloves', color=list(AS.TX.hexc(gcol)) + [1], roughness=0.75)
-    W.skinned('gloves', [dict(pos=gp, nrm=hd['nrm'], uv=hd['uv'], idx=hd['tri'], mat=mg, W=hd['W'])], extras={'default_visible': False, 'replaces': 'hands'}, lod=0.28)
+    if wst is not None:     # glove with a cuff (UA: neoprene + velcro tab, RU: knit), base-layer cuff under the sleeve
+        gp, gn, gc = WR.glove_mesh(R, wst, rig, fac)
+    else:
+        gp, gn, gc = hd['pos'] + hd['nrm'] * 0.0025, hd['nrm'], None
+    W.skinned('gloves', [dict(pos=gp, nrm=gn, uv=hd['uv'], idx=hd['tri'], mat=mg, W=hd['W'], color=gc)], extras={'default_visible': False, 'replaces': 'hands'}, lod=0.28)
     # boots (parametric combat boots: laced upper, eyelets/speed hooks, lugged outsole)
     B = BD.Base()
     bcol, brough = ('#151413', 0.62) if fac == 'ru' else ('#6e5a42', 0.85)

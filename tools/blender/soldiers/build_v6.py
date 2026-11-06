@@ -6,7 +6,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import build_anims as BA
 BA.setup()
 import build_soldier as BS
-OUT = os.path.join(HERE, '.cache', 'v6'); os.makedirs(OUT, exist_ok=True)
+OUT = os.environ.get('SOLDIER_OUT') or os.path.join(HERE, '.cache', 'v6'); os.makedirs(OUT, exist_ok=True)   # v8: SOLDIER_OUT=.../.cache/v8
 info = {}
 for fac in (sys.argv[1:] or ('ru', 'ua')):
     t0 = time.time()

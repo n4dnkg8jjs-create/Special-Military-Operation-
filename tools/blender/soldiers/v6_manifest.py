@@ -1,11 +1,13 @@
 """soldiers_v6 manifest entries (read-modify-write of assets/soldiers/manifest.json under its .lock; never write_manifest.py):
-for soldier_ua / soldier_ru only size_bytes, mesh_nodes_tris, lod1_tris, default_config_tris (re-counted from the shipped GLBs) and a
+for soldier_ua / soldier_ru only size_bytes, mesh_nodes_tris, lod1_tris, default_config_tris, the presets' tris / tape_tris (re-counted
+from the shipped GLBs) and a
 `v6_notes` field are updated; everything else (combos, clips, other assets) is left as it is.
 run after copying the WebP'd GLBs to assets/soldiers/:  python3 tools/blender/soldiers/v6_manifest.py"""
 import os, json, struct, fcntl
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.abspath(os.path.join(HERE, '../../../assets/soldiers'))
-NOTES = ("v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves "
+NOTES = ("v8: wrists (wrist.py): sleeve ends cinched round the wrist with a 3.4 mm rounded hem + shadowed inner facing (the sleeves were open 6 cm tubes before), forearm skin continues 8 cm inside the sleeve, gloves with a cuff tucked under the sleeve (UA dark neoprene + velcro tab, RU knit) and a dark base-layer cuff; hem / tube skinned forearm-only behind the wrist (wrist_check.py: 111 clips, no poke-through). "
+         "v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves "
          "10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing "
          "over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: "
          "ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. "
@@ -42,6 +44,9 @@ def main():
             e['lod1_tris'] = {n: nt.get(n, v) for n, v in e.get('lod1_tris', {}).items()}
             if 'default_visible' in e:
                 e['default_config_tris'] = int(sum(nt.get(n, 0) for n in e['default_visible']))
+            for lk in ('combos', 'assault_combos', 'crew_combos'):          # v8: preset tri counts from the shipped GLB too
+                for c in e.get(lk, []):
+                    c['tris'] = nt.get(c['name'], c.get('tris')); c['tape_tris'] = nt.get(c['name'] + '_tape', c.get('tape_tris'))
             e['v6_notes'] = NOTES
             print(k, e['size_bytes'], 'combo_1', e['mesh_nodes_tris'].get('combo_1'), 'default', e.get('default_config_tris'))
         tmp = mp + '.tmp_v6'
