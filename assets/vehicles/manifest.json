@@ -9389,7 +9389,8 @@
     ],
     "bed_floor_height": 0.88
    },
-   "markings": "red crosses on the front doors, bed sides, bonnet and tailgate, a white red-cross air panel on the bed tarp and a red-cross flag on the rear hoop; dirty white civilian paint, no badges",
+   "markings": "flat ranger-green repaint; white panels with red crosses on the front doors, canopy sides, tailgate, bonnet and canopy roof; faction ID meshes id_tape (canopy roof tape bands, tinted to the faction tape colour at runtime) and id_ru (white V marks, Russian trucks only); no badges",
+   "variants": "shared by UA and RU (medevac.js tints id_tape, shows id_ru for RU)",
    "sources": [
     "https://www.toyota.com.au/hilux/specs (Hilux double cab: 5325 x 1855 x 1815 mm, wheelbase 3085 mm, track 1540 mm, 265/65R17)",
     "https://www.mitsubishi-motors.com/en/products/l200 (L200 double cab: 5305 x 1815 x 1780 mm, wheelbase 3000 mm, bed 1520 x 1470 mm)"
@@ -9406,32 +9407,34 @@
     "note": "unarmoured: rifle fire disables it, any AT round destroys it"
    },
    "file": "assets/vehicles/pickup.glb",
-   "file_mb": 7.89,
+   "file_mb": 8.19,
    "tris": {
-    "lod0": 77300,
-    "lod1": 23127,
-    "hull_wreck": 18950
+    "lod0": 89382,
+    "lod1": 26552,
+    "hull_wreck": 24614
    },
    "model_bbox_m": {
     "min": [
      -1.19,
      -0.011,
-     -2.972
+     -2.955
     ],
     "max": [
      1.19,
-     2.61,
-     2.799
+     2.184,
+     2.686
     ],
     "size": [
      2.38,
-     2.621,
-     5.771
+     2.195,
+     5.641
     ]
    },
    "materials": [
     "glass_clear",
     "light_lens",
+    "pickup_id_ru",
+    "pickup_id_tape",
     "pickup_paint",
     "pickup_wreck"
    ],
@@ -9470,6 +9473,12 @@
      "open": -1.571,
      "parent": "hull",
      "note": "hinge on the bottom edge, opens down to a flat loading shelf at bed-floor height"
+    },
+    "canopy_door": {
+     "axis": "x",
+     "open": 1.484,
+     "parent": "hull",
+     "note": "canopy rear lift door, hinge on the roof rear edge, swings up and back (opens together with the tailgate)"
     }
    },
    "door_animation": "door_* / tailgate are hinge empties under hull (closed = rotation 0); set node.rotation[axis] = open (radians) to open, interpolate from 0. Front doors open 68 deg, rear 72 deg, tailgate 90 deg down (flat, at bed-floor height).",
@@ -9530,7 +9539,7 @@
         "pos": [
          1.045,
          0.0,
-         -0.455
+         -0.435
         ]
        },
        {
@@ -9539,7 +9548,49 @@
         "pos": [
          -1.045,
          0.0,
-         -0.455
+         -0.435
+        ]
+       },
+       {
+        "name": "canopy_door",
+        "type": "empty",
+        "pos": [
+         0.0,
+         1.798,
+         -2.5
+        ],
+        "children": [
+         {
+          "name": "canopy_door_geo",
+          "type": "mesh",
+          "tris": 1244,
+          "pos": [
+           0.0,
+           1.798,
+           -2.5
+          ]
+         },
+         {
+          "name": "canopy_door_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 372,
+          "pos": [
+           0.0,
+           1.798,
+           -2.5
+          ]
+         },
+         {
+          "name": "canopy_door_glass",
+          "type": "mesh",
+          "tris": 76,
+          "pos": [
+           0.0,
+           1.798,
+           -2.5
+          ]
+         }
         ]
        },
        {
@@ -9572,7 +9623,7 @@
          {
           "name": "door_FL_geo",
           "type": "mesh",
-          "tris": 1560,
+          "tris": 2370,
           "pos": [
            0.907,
            0.8,
@@ -9583,7 +9634,7 @@
           "name": "door_FL_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 468,
+          "tris": 710,
           "pos": [
            0.907,
            0.8,
@@ -9593,7 +9644,7 @@
          {
           "name": "door_FL_glass",
           "type": "mesh",
-          "tris": 12,
+          "tris": 76,
           "pos": [
            0.907,
            0.8,
@@ -9614,7 +9665,7 @@
          {
           "name": "door_FR_geo",
           "type": "mesh",
-          "tris": 1560,
+          "tris": 2370,
           "pos": [
            -0.907,
            0.8,
@@ -9625,7 +9676,7 @@
           "name": "door_FR_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 468,
+          "tris": 710,
           "pos": [
            -0.907,
            0.8,
@@ -9635,7 +9686,7 @@
          {
           "name": "door_FR_glass",
           "type": "mesh",
-          "tris": 12,
+          "tris": 76,
           "pos": [
            -0.907,
            0.8,
@@ -9656,7 +9707,7 @@
          {
           "name": "door_RL_geo",
           "type": "mesh",
-          "tris": 1312,
+          "tris": 2030,
           "pos": [
            0.907,
            0.8,
@@ -9667,7 +9718,7 @@
           "name": "door_RL_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 392,
+          "tris": 608,
           "pos": [
            0.907,
            0.8,
@@ -9677,7 +9728,7 @@
          {
           "name": "door_RL_glass",
           "type": "mesh",
-          "tris": 12,
+          "tris": 76,
           "pos": [
            0.907,
            0.8,
@@ -9698,7 +9749,7 @@
          {
           "name": "door_RR_geo",
           "type": "mesh",
-          "tris": 1312,
+          "tris": 2030,
           "pos": [
            -0.907,
            0.8,
@@ -9709,7 +9760,7 @@
           "name": "door_RR_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 392,
+          "tris": 608,
           "pos": [
            -0.907,
            0.8,
@@ -9719,7 +9770,7 @@
          {
           "name": "door_RR_glass",
           "type": "mesh",
-          "tris": 12,
+          "tris": 76,
           "pos": [
            -0.907,
            0.8,
@@ -9740,7 +9791,7 @@
        {
         "name": "glass_geo",
         "type": "mesh",
-        "tris": 116,
+        "tris": 448,
         "pos": [
          0.0,
          0.0,
@@ -9750,7 +9801,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 40312,
+        "tris": 47430,
         "pos": [
          0.0,
          0.0,
@@ -9761,7 +9812,27 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 12087,
+        "tris": 14224,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "id_ru",
+        "type": "mesh",
+        "tris": 48,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "id_tape",
+        "type": "mesh",
+        "tris": 56,
         "pos": [
          0.0,
          0.0,
@@ -10019,7 +10090,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 18950,
+      "tris": 24614,
       "pos": [
        0.0,
        0.0,

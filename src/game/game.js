@@ -462,7 +462,7 @@ export class Game {
       s.inView = this._frustum.intersectsSphere(sph);
       // apply it here every frame: sync() only runs inside update(), so while paused / after the end a man culled
       // off-screen stayed invisible when the camera panned onto him ('units turn invisible')
-      s.root.visible = s.visible && s.inside !== 'btr' && (s.state !== 'evac' || !!s.onBed) && s.inView;   // onBed: casualty lying on the medevac pickup
+      s.root.visible = s.visible && (s.inside !== 'btr' || s.inCab) && (s.state !== 'evac' || !!s.onBed) && s.inView;   // onBed: casualty lying on the medevac pickup
       const near = Math.hypot(s.pos.x - f.x, s.pos.z - f.z) < 70 + this.cam.dist * 0.3;
       if (near !== s.shadowOn) { s.shadowOn = near; s.root.traverse(o => { if (o.isMesh) o.castShadow = near; }); }
     }

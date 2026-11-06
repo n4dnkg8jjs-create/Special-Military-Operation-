@@ -341,7 +341,7 @@ export class Soldier {
     this.root.position.copy(this.pos);
     if (this.peekAmt > 0.01 && this.peekVec) { this.root.position.x += this.peekVec[0] * this.peekAmt * 0.45; this.root.position.z += this.peekVec[1] * this.peekAmt * 0.45; }
     this.root.rotation.y = this.heading;
-    this.root.visible = this.visible && this.inside !== 'btr' && (this.state !== 'evac' || !!this.onBed) && this.inView !== false;   // onBed: on the medevac pickup
+    this.root.visible = this.visible && (this.inside !== 'btr' || this.inCab) && (this.state !== 'evac' || !!this.onBed) && this.inView !== false;   // onBed: on the medevac pickup
   }
   muzzleWorld(out = new THREE.Vector3()) {
     if (this.muzzleObj) return this.muzzleObj.getWorldPosition(out);

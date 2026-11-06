@@ -67,9 +67,13 @@ export class MedevacTruck extends Vehicle {
     this.steerN = ['steer_L1', 'steer_R1'].map(N).filter(Boolean);
     const D = this.vman.doors || {};
     this.doors = {};
-    for (const [n, ax, open] of [['door_FL', 'y', -1.19], ['door_FR', 'y', 1.19], ['door_RL', 'y', -1.26], ['door_RR', 'y', 1.26], ['tailgate', 'x', -1.571]]) {
+    for (const [n, ax, open] of [['door_FL', 'y', -1.19], ['door_FR', 'y', 1.19], ['door_RL', 'y', -1.26], ['door_RR', 'y', 1.26], ['tailgate', 'x', -1.571], ['canopy_door', 'x', 1.484]]) {
       const o = N(n); if (o) this.doors[n] = { o, ax: D[n]?.axis || ax, open: D[n]?.open ?? open, k: 0, until: 0, hold: false };
     }
+    // faction identification on the shared model: tape bands in the side's tape colour (UA yellow / RU white), white V marks only on RU trucks
+    const tape = N('id_tape'), ru = N('id_ru');
+    if (tape?.material) { tape.material = tape.material.clone(); tape.material.color.setHex(this.faction?.tape ?? 0xf2c81a); }
+    if (ru) ru.visible = this.faction?.id === 'RU';
     this.baseTurretRot = 0; this.baseGunRot = 0;
     this.game.scene.add(root);
   }
@@ -142,11 +146,12 @@ export class MedevacTruck extends Vehicle {
     if (this.mstate === 'away') this.root.visible = false;
   }
   // ------------------------------------------------------------------ doors
-  door(n, on, t = 0) { const D = this.doors[n]; if (!D) return; if (on) { D.until = Math.max(D.until, this.game.time + t); D.hold = t === 0; } else D.hold = false; }
+  // the hardtop's rear lift door (canopy_door) goes up / down together with the tailgate
+  door(n, on, t = 0) { if (n === 'tailgate') this.door('canopy_door', on, t); const D = this.doors[n]; if (!D) return; if (on) { D.until = Math.max(D.until, this.game.time + t); D.hold = t === 0; } else D.hold = false; }
   animDoorsM(dt) {
     for (const [n, D] of Object.entries(this.doors)) {
       const want = (D.hold || this.game.time < D.until) && Math.abs(this.speed) < 1 ? 1 : 0, k = D.k;
-      D.k = want > k ? Math.min(1, k + dt * (n === 'tailgate' ? 1.6 : 2.4)) : Math.max(0, k - dt * (n === 'tailgate' ? 1.2 : 2.4));
+      const slow = n === 'tailgate' || n === 'canopy_door'; D.k = want > k ? Math.min(1, k + dt * (slow ? 1.6 : 2.4)) : Math.max(0, k - dt * (slow ? 1.2 : 2.4));
       if (D.k === k) continue;
       const e = D.k * D.k * (3 - 2 * D.k); D.o.rotation[D.ax] = D.open * e;
       if ((k === 0 && D.k > 0) || (k === 1 && D.k < 1)) this.game.sfx('hatch', this.pos, { gain: 0.5 });
@@ -175,10 +180,22 @@ export class MedevacTruck extends Vehicle {
   attachCrew(sq) {
     this.crewSq = sq; sq.medevac = this; sq.noncombat = true; sq.run = true;
     this.medics = sq.soldiers.map((s, i) => ({ s, i, task: 'in', t: 0 }));
-    for (const s of sq.soldiers) { s.inside = 'btr'; s.pos.copy(this.pos); s.stance = 'stand'; s.sync(); }
+    for (const s of sq.soldiers) { s.inside = 'btr'; s.inCab = true; s.pos.copy(this.pos); s.stance = 'stand'; s.sync(); }
+  }
+  // the driver and both medics stay drawn in their cab seats (soldier.inCab: aboard for the game logic, but visible): the
+  // first frame of medevac_cab_exit is the seated pose, its root beside the seat (seat + 0.62 m to the truck's right + 0.10 m
+  // forward, facing right) - for the medics that root is exactly their door spot, so exit / enter blend in and out of it
+  seatMan(m, dt) {
+    const s = m.s, seat = this.wpos(`ride_seat_${m.i + 1}`, _w), out = this.left().negate(), f = this.fwd();
+    s.inCab = this.mstate !== 'away';
+    s.pos.copy(seat).addScaledVector(out, 0.62).addScaledVector(f, 0.10); s.pos.y = seat.y - 0.84;
+    s.heading = Math.atan2(out.x, out.z); s.vel.set(0, 0, 0);
+    s.netClip = clipOf('exit'); s.netTs = 1e-4; s.netClipT = 0;
+    if (s.inCab && s.animate) s.animate(dt, this.game.camDist(s.pos));
+    s.sync();
   }
   medicsOut() { return this.medics.some(m => m.i > 0 && m.task !== 'in' && m.s.alive); }
-  medicsInside(dt) { for (const m of this.medics) if (m.task === 'in' && m.s.alive) { m.s.pos.copy(this.pos); } }
+  medicsInside(dt) { for (const m of this.medics) if (m.task === 'in' && m.s.alive) this.seatMan(m, dt); }
   // the armour model's crew hits (armor.js parts driver / commander / gunner) land on the men in the cab
   crewSync() {
     const roles = ['driver', 'commander', 'gunner'];
@@ -228,25 +245,25 @@ export class MedevacTruck extends Vehicle {
   startExitCab(m) {
     const D = this.doorSpot(m.i), s = m.s;
     m.task = 'exit'; m.t = 0; m.T = dur('exit', 1.8);
-    s.inside = null; s.pos.copy(D.p); s.heading = D.h; s.vel.set(0, 0, 0); s.path = null; s.goal = null;
+    s.inside = null; s.inCab = false; s.pos.copy(D.p); s.heading = D.h; s.vel.set(0, 0, 0); s.path = null; s.goal = null;
     s.netClip = clipOf('exit'); s.netTs = 1; s.netClipT = null;
     this.door(D.door, true, m.T + 0.4 + m.i * 0.1);
     if (m.i === 1 || !this.medics[1]?.s.alive) this.door('tailgate', true);
   }
   goDoor(m) {
     const D = this.doorSpot(m.i), s = m.s;
-    m.task = 'return'; s.goal = [D.p.x, D.p.z]; this.game.requestPath(s, s.pos.x, s.pos.z, D.p.x, D.p.z, 0.45); s.netClip = null;
+    m.task = 'return'; m.t = 0; m.best = null; m.stuck = 0; m.force = false; s.goal = [D.p.x, D.p.z]; this.game.requestPath(s, s.pos.x, s.pos.z, D.p.x, D.p.z, 0.45); s.netClip = null;
   }
   // ------------------------------------------------------------------ the medics' tasks
   updateMedics(dt) {
     const g = this.game, sq = this.crewSq; if (!sq) return;
     for (const m of this.medics) {
       const s = m.s;
-      if (!s.alive) { if (m.cas) this.dropCas(m); if (s.state === 'dead' || s.onBed) { s.animate(dt, g.camDist(s.pos)); s.sync(); } continue; }   // (a medic on the bed: his squad does not animate him)
-      if (m.task === 'in') { s.pos.copy(this.pos); s.sync(); continue; }
+      if (!s.alive) { s.inCab = false; if (m.cas) this.dropCas(m); if (s.state === 'dead' || s.onBed) { s.animate(dt, g.camDist(s.pos)); s.sync(); } continue; }   // (a medic on the bed: his squad does not animate him)
+      if (m.task === 'in') { this.seatMan(m, dt); continue; }
       if (!s.effective) {   // the medic himself is down: he becomes a casualty for the other one
         if (m.cas) this.dropCas(m);
-        m.task = 'down'; s.netClip = null; s.inside = null;
+        m.task = 'down'; s.netClip = null; s.inside = null; s.inCab = false;
         if (s.state === 'critical') { s.bleed -= dt; if (s.bleed <= 0) { s.die('death_crumple'); g.onDeath(s, null, true); } }
         s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos)); s.sync(); continue;
       }
@@ -291,14 +308,20 @@ export class MedevacTruck extends Vehicle {
             const more = this.load.length + this.medics.filter(q => q.cas).length < CAP ? this.mgr.candidates(this, PICKUP_R) : [];
             if (more.length && this.mstate === 'ready' && !this.queued) { this.claim(m, more[0]); this.goCas(m); break; }
           }
-          if (Math.hypot(s.pos.x - D.p.x, s.pos.z - D.p.z) < 0.45 || (!s.path && !s.pathReq && Math.hypot(s.pos.x - D.p.x, s.pos.z - D.p.z) < 1.6)) {
+          // stuck guard: no 0.3 m of progress for 5 s -> new route; twice and within 4.5 m of the door -> he gets in anyway
+          // (round the stern the hull push and the door spot inside the mirror-wide footprint can pin a man at a corner)
+          const dd = Math.hypot(s.pos.x - D.p.x, s.pos.z - D.p.z);
+          if (m.best == null || dd < m.best - 0.3) { m.best = dd; m.bestT = m.t; }
+          else if (m.t - m.bestT > 5) { m.bestT = m.t; m.stuck = (m.stuck || 0) + 1; s.path = null; if (m.stuck >= 2 && dd < 4.5) m.force = true; }
+          if (dd < 0.45 || m.force || (!s.path && !s.pathReq && dd < 1.6)) {
+            m.force = false; m.best = null; m.stuck = 0;
             s.pos.set(D.p.x, s.pos.y, D.p.z); s.heading = D.h; s.path = null; s.vel.set(0, 0, 0);
             m.task = 'enter'; m.t = 0; m.T = dur('enter', 1.8); s.netClip = clipOf('enter'); s.netTs = 1; this.door(D.door, true, m.T);
           } else if (!s.path && !s.pathReq) { s.goal = [D.p.x, D.p.z]; g.requestPath(s, s.pos.x, s.pos.z, D.p.x, D.p.z, 0.45); }
           break;
         }
         case 'enter':
-          if (m.t >= m.T) { m.task = 'in'; s.inside = 'btr'; s.netClip = null; if (!this.load.length && !this.medics.some(q => q.i > 0 && q.task !== 'in' && q.s.alive)) this.door('tailgate', false); }   // loaded: the tailgate stays down (litters + feet over it, as on real casevac pickups)
+          if (m.t >= m.T) { m.task = 'in'; s.inside = 'btr'; s.inCab = true; s.netClip = null; if (!this.load.length && !this.medics.some(q => q.i > 0 && q.task !== 'in' && q.s.alive)) this.door('tailgate', false); }   // loaded: the tailgate stays down (litters + feet over it, as on real casevac pickups)
           break;
       }
       // movement (path following, collisions) and facing, then animation
@@ -409,7 +432,7 @@ export class MedevacTruck extends Vehicle {
   }
   goAway() {
     const g = this.game;
-    this.scripted = null; this.mstate = 'away'; this.speed = 0; this.root.visible = false; this.tripT = TRIP[0] + Math.random() * (TRIP[1] - TRIP[0]);
+    this.scripted = null; this.mstate = 'away'; this.speed = 0; this.root.visible = false; for (const m of this.medics) m.s.inCab = false; this.tripT = TRIP[0] + Math.random() * (TRIP[1] - TRIP[0]);
     this.awayPos = this.pos.clone(); this.backAt = g.time + this.tripT; this.leaving = true;   // Medevac.tick takes it out of game.vehicles (nobody can see / shoot it)
     this.target = null; this.seenBy = {}; this.detect = {}; this.spotted = false;
     const b = g.hud?.banners?.get(this); if (b) { b.el._sdisplay = 'none'; b.el.style.display = 'none'; }
@@ -442,7 +465,7 @@ export class MedevacTruck extends Vehicle {
     if (!sq) return;
     for (const m of this.medics) {
       const s = m.s; if (m.cas) this.dropCas(m);
-      s.netClip = null;
+      s.netClip = null; s.inCab = false;
       if (m.task === 'in' && s.alive) {
         if (Math.random() < 0.35) { s.die(null, { blast: true }); s.lostInVeh = true; g.onDeath(s, null, false); continue; }
         s.inside = null; s.pos.copy(this.pos).addScaledVector(left, -2.4 + m.i * 0.9).addScaledVector(f, m.i - 1); s.pos.y = this.groundY(s.pos.x, s.pos.z); s.sync();

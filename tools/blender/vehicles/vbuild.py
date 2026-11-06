@@ -67,9 +67,14 @@ def compose_paint(d, scheme, decals=None, seed=1):
     fade = np.clip(up, 0, 1) ** 1.5 * (0.15 + 0.25 * T.fbm(P, 1.1, 3, seed + 3))
     col = T.mix(col, C(S['fade']), fade)
     if decals is not None:
-        dm = np.clip(decals(P, N), 0, 1) * paintable
-        dm *= T.sstep(0.25, 0.4, T.fbm(P, 30, 2, seed + 50) + 0.25)    # hand-painted, slightly patchy
-        col = T.mix(col, C(S.get('decal_rgb', (206, 206, 198))), dm * 0.92)
+        dr = decals(P, N)
+        # a mask (one colour: scheme decal_rgb) or layers [(sRGB, mask, patchy)] painted in order (pickup.py: white panels + red crosses)
+        layers = dr if isinstance(dr, list) else [(S.get('decal_rgb', (206, 206, 198)), dr, True)]
+        for li, (rgb_, m_, patchy) in enumerate(layers):
+            dm = np.clip(m_, 0, 1) * paintable
+            if patchy:
+                dm *= T.sstep(0.25, 0.4, T.fbm(P, 30, 2, seed + 50 + li) + 0.25)    # hand-painted, slightly patchy
+            col = T.mix(col, C(rgb_), dm * (0.92 if patchy else 0.97))
     rough = S.get('rough_base', 0.6) + 0.1 * (T.fbm(P, 3.0, 3, seed + 6) - 0.5) - 0.12 * fade
     rough = rough.astype(np.float32)
     metal = np.zeros((h, w), np.float32)

@@ -240,7 +240,7 @@ function clipSeg(a, b, poly) {   // segment a-b clipped to a convex polygon -> [
 
 // a screen panel: convex outline `outer` (x, z) minus axis-aligned rectangular `holes` (snapped to the cell grid),
 // at height y resting on its supports (segments, (x, z)) and sagging between them. uv in metres / tile.
-function screenGeo(outer, holes, y, cell, sag, supports, tile = 0.24) {
+function screenGeo(outer, holes, y, cell, sag, supports, tile = 0.13) {   // tile = 2 x 2 diamonds: ~6.5 cm chain-link (rabitz) as on the field screens
   const xs = outer.map(p => p[0]), zs = outer.map(p => p[1]);
   const i0 = Math.floor(Math.min(...xs) / cell), i1 = Math.ceil(Math.max(...xs) / cell), j0 = Math.floor(Math.min(...zs) / cell), j1 = Math.ceil(Math.max(...zs) / cell);
   const inHole = (x, z) => holes.some(h => x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1);
@@ -257,7 +257,7 @@ function screenGeo(outer, holes, y, cell, sag, supports, tile = 0.24) {
   return prep(g);
 }
 // a hanging chain-link curtain under the edge a -> b (x, z) from height yTop down by h, bellying out by `belly`
-function curtainGeo(a, b, yTop, h, outN, belly = 0.03, tile = 0.24) {
+function curtainGeo(a, b, yTop, h, outN, belly = 0.03, tile = 0.13) {
   const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.15) return null;
   const nu = Math.max(2, Math.ceil(L / 0.2)), nv = 3, pos = [], uv = [];
   const P = (u, v) => { const w = Math.sin(Math.PI * u) * Math.sin(Math.PI * v * 0.8) * belly; const x = a[0] + (b[0] - a[0]) * u + outN[0] * w, z = a[1] + (b[1] - a[1]) * u + outN[1] * w; const yy = yTop - v * h * (1 - 0.06 * Math.sin(Math.PI * u)); return [x, yy, z, u * L / tile, (yTop - yy) / tile]; };
@@ -745,7 +745,9 @@ const CACHE = new Map();
 export function attachKits(model, kits, info = {}) {
   removeKits(model);
   if (!kits?.length) return [];
-  const ks = ORDER.filter(k => kits.includes(k));
+  // smoke: every model but the Bohdana already carries its 902-type launchers (node smoke_launchers) - the kit is then a
+  // reload / refill (battle effect only), no extra launcher cluster on top of the modelled one
+  const ks = ORDER.filter(k => kits.includes(k) && !(k === 'smoke' && model.getObjectByName('smoke_launchers')));
   const hullGeo = model.getObjectByName('hull_geo') || (() => { let g = null; model.traverse(o => { if (!g && o.isMesh) g = o; }); return g; })();
   const key = (hullGeo?.geometry?.uuid || model.uuid) + '|' + ks.join(',') + '|' + !!info.wheeled + '|' + (info.kind || '');
   let recipe = CACHE.get(key);
