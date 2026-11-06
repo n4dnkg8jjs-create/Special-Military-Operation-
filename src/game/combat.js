@@ -394,7 +394,7 @@ export class Combat {
       const r = Math.random();
       if (r < 0.06) { head = true; if (Math.random() < (t.armor?.helmetStop ?? TUNING.helmetStopChance) && W.type !== 'hmg' && W.type !== 'autocannon') { dmg = rf(8, 20); head = false; t.suppression = 100; } else if (W.type !== 'hmg' && W.type !== 'autocannon' && Math.random() < (TUNING.wound?.headGraze ?? 0)) { dmg = rf(45, 85); head = false; t.suppression = 100; } else dmg = 160; }   // v7: some head hits are grazes (face / neck / glancing): a bad wound, not death
       else if (r < 0.55) { // torso
-        const A = t.armor || { plateCoverage: TUNING.plateCoverage, plateStop: TUNING.plateStopsRifle }; const stopP = W.type === 'rifle' ? A.plateStop * A.plateCoverage / 0.47 : W.type === 'mg' ? A.plateStop * A.plateCoverage / 0.47 * 0.65 : 0;
+        const A = t.armor || { plateCoverage: TUNING.plateCoverage, plateStop: TUNING.plateStopsRifle }; const stopP = W.type === 'rifle' || W.type === 'frag' ? A.plateStop * A.plateCoverage / 0.47 : W.type === 'mg' ? A.plateStop * A.plateCoverage / 0.47 * 0.65 : 0;
         if (Math.random() < Math.min(0.9, stopP)) { dmg = rf(4, 14); t.suppression = Math.min(100, t.suppression + 40); t.hitT = 0.5; }
         else dmg = rf(W.dmg[0], W.dmg[1]) * 1.1;
       } else { dmg = rf(W.dmg[0] * 0.6, W.dmg[1] * 0.8) * (t.armor?.plateCoverage > 0.5 && r < 0.7 ? 0.5 : 1); if (r > 0.78) t.legWound = true; }
@@ -623,18 +623,33 @@ export class Combat {
     const cd = g.camDist(at); g.cam.addShake(Math.max(0, power * 0.5 - cd / 200)); if (cd < 120) g.renderer.flash(0.04 * power);
     if (onGround) g.city.addCrater(at.x, at.z, 1.2 + power * 1.3);
     if (b) this.damageBuilding(b, at, power * 55);
-    // casualties
+    // casualties. Inside `radius`: the blast core (overpressure + dense fragments, kills/wounds by distance). Beyond
+    // it, out to fragR: the fragment zone - each man has a falling chance of being struck by a splinter, mostly
+    // wounding (152/155 mm HE: ~50 m lethal / ~100 m casualty radius for men standing in the open; 82 mm mortar ~30 m;
+    // prone, trench, cover and buildings cut it hard)
+    const fragR = radius * (power >= 2.5 ? 6.5 : power >= 1 ? 4 : 2.5), supR = Math.max(radius * 3, fragR);
     for (const sq of g.squads) {
       for (const s of sq.soldiers) {
         if (!s.alive || s.inside === 'btr') continue;
-        const d = s.pos.distanceTo(at); if (d > radius * 3) continue;
+        const d = s.pos.distanceTo(at); if (d > supR) continue;
         if (s.cellar) {   // down in a cellar: only a heavy shell right on the house reaches it (a grenade down the hatch: cqb.cellarBlast)
           if (hs === s.cellar && power >= 2 && Math.random() < 0.12 * power) this.hitSoldier(s, { dmg: [40, 120], type: 'blast' }, at, true, owner);
           continue;
         }
-        s.suppression = Math.min(100, s.suppression + 60 * (1 - d / (radius * 3)) * power);
+        s.suppression = Math.min(100, s.suppression + 60 * (1 - d / supR) * power);
         sq.underFireT = 0;
-        if (d > radius) continue;
+        if (d > radius) {   // fragment zone
+          if (d > fragR) continue;
+          let p = 0.85 * Math.pow(radius / d, 1.5);
+          if (s.stance === 'prone') p *= 0.35; else if (s.stance === 'crouch') p *= 0.7;
+          if (s.inBuilding) p *= s.bld.house ? 0.3 : 0.06;   // brick/timber walls vs concrete panels
+          else if (s.pos.y < -0.8) p *= 0.12;                // down in a trench / foxhole: only what comes down from above
+          if (Math.random() >= p) continue;
+          if (!s.inBuilding && !this.los(at.x, at.y + 0.5, at.z, s.pos.x, 1, s.pos.z, null, null)) continue;   // a wall/wreck took it
+          const f = Math.pow(radius / d, 0.5);
+          this.hitSoldier(s, { type: 'frag', dmg: [30 * f, 130 * f] }, at, false, owner);
+          continue;
+        }
         let k = Math.pow(1 - d / radius, 1.4);
         if (s.inBuilding && s.bld.house) {   // brick / timber cottage: walls stop less than a concrete panel
           if (hs === s.bld) k = Math.pow(Math.max(0, 1 - d / Math.max(5, radius)), 1.1) * 0.95; else k *= 0.6;
@@ -650,7 +665,7 @@ export class Combat {
         if (s.stance === 'prone') k *= 0.55;
         if (Math.random() < 0.15 + k) this.hitSoldier(s, { dmg: [dmgRange[0] * k, dmgRange[1] * k], type: 'blast' }, at, true, owner);
       }
-      if (sq.side) sq.addMorale(-1.5 * power * (sq.center().distanceTo(at) < radius * 3 ? 1 : 0));
+      if (sq.side) sq.addMorale(-1.5 * power * (sq.center().distanceTo(at) < supR ? 1 : 0));
     }
     for (const v of g.vehicles) {
       if (v.destroyed) continue; const d = v.pos.distanceTo(at); if (d > radius) continue;
