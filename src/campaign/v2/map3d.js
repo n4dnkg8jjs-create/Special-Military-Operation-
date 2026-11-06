@@ -76,7 +76,7 @@ export class StrategicMap {
     this.resize(); this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(container);
     this.setDate(C.date, false);
     this.refresh();
-    this.t0 = performance.now(); this.last = this.t0; this.anims ||= [];
+    this.t0 = performance.now(); this.last = this.t0; this.anims ||= []; this.fxFreeze = false;
     const loop = now => { if (this.dead) return; this.raf = requestAnimationFrame(loop); this.frame(Math.min(0.1, (now - this.last) / 1000), now); this.last = now; };
     this.raf = requestAnimationFrame(loop);
   }
@@ -472,62 +472,236 @@ export class StrategicMap {
       const x = (hc.col + 0.5) * s, y = (hc.row + 0.5) * s; g.lineWidth = 2; g.beginPath(); g.arc(x, y, s * 0.28, 0, 7); g.moveTo(x - s * 0.42, y); g.lineTo(x + s * 0.42, y); g.moveTo(x, y - s * 0.42); g.lineTo(x, y + s * 0.42); g.stroke();
     }
   }
-  // a fire mission landing: expanding rings and flashes on the target square
-  strike(cellId, color = '#ff7a5a') {
-    const p = this.cellCenter(cellId), R = Math.min(this.cw, this.ch) * 0.45, objs = [];
-    for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthTest: false })); m.rotation.x = -Math.PI / 2; const a = i * 2.4, r = R * (0.2 + 0.6 * ((i * 37) % 10) / 10); m.position.set(p.x + Math.cos(a) * r, 0.03, p.z + Math.sin(a) * r); m.renderOrder = 9; this.scene.add(m); objs.push([m, i * 0.18]); }
-    this.anims.push({ t: 0, dur: 2.2, step: k => { const t = k * 2.2; for (const [m, d] of objs) { const u = Math.max(0, Math.min(1, (t - d) / 0.9)); m.scale.setScalar(R * 0.08 + u * R * 0.35); m.material.opacity = u > 0 ? (1 - u) * 0.85 : 0; } this.dirty = true; }, done: () => { for (const [m] of objs) { this.scene.remove(m); m.geometry.dispose(); } } });
+  // ------------------------------------------------------------------ v7: fire missions (ArtyFx) and recon UAVs
+  // A fire mission as the player orders it (ui.js targetClick): muzzle flashes and smoke at the battery's gun line, shell
+  // tracers / rocket trails along the arcs, staggered bursts in the target square (pattern by mission: suppression spread
+  // over the square, interdiction walking along the road, counter-battery a tight sheaf on the found guns), craters for
+  // the rest of the week. `mission` may still be a colour (old callers): suppression.
+  get afx() {
+    if (this._afx) return this._afx;
+    const fx = this._afx = new ArtyFx(this.scene);
+    // shell arcs as fat dashed lines (2 px, readable on the pale winter ground); materials registered for resize
+    fx.lineFactory = (pts, color) => { const g = new LineGeometry(); g.setPositions(pts); const m = this.lineMat(color, 2, 0, true); m.transparent = true; m.depthTest = true; m.dashSize = 0.2; m.gapSize = 0.14; m.resolution.set(this.W * this.renderer.getPixelRatio(), this.H * this.renderer.getPixelRatio()); const l = new Line2(g, m); l.computeLineDistances(); l.renderOrder = 10; return l; };
+    fx.lineDispose = l => { l.geometry.dispose(); l.material.dispose(); const i = this.lineMats.indexOf(l.material); if (i >= 0) this.lineMats.splice(i, 1); };
+    return fx;
   }
-  // ---- recon UAVs orbiting their target square (sorties flown this week: [{ cell, type, side, lost, cells }])
+  strike(cellId, mission = 'suppress', bat = null, res = null) {
+    if (!this.C.cell(cellId)) return;
+    if (typeof mission !== 'string' || mission[0] === '#') mission = 'suppress';
+    const C = this.C, key = `${C.turn}|player|${mission}|${cellId}|${bat?.id}`;
+    this.syncFires(); this.fxLive.add(key); this.afx.decals.delete(key);
+    this.fireMission({ side: 'player', kind: mission, bkind: bat?.kind, from: bat?.cell, cell: cellId, key, hits: res?.hits || 0 });
+    this.dirty = true;
+  }
+  fxAdvance(s) { if (this.fxPending?.length) { for (const o of this.fxPending) this.fireMission(o); this.fxPending = null; } const n = Math.round(s * 30); for (let i = 0; i < n; i++) this.afx.update(1 / 30); this.dirty = true; }
+  // unit vector (x, z) from the front towards `side`'s rear
+  rearDir(side) {
+    const C = this.C, k = `${C.turn}|${side}`; if (this._rear?.k === k) return this._rear.d;
+    let ox = 0, oz = 0, on = 0, ex = 0, ez = 0, en = 0;
+    for (const c of C.def.aor.cells) { const p = this.cellCenter(c.id); if (C.owner[c.id] === 'player') { ox += p.x; oz += p.z; on++; } else { ex += p.x; ez += p.z; en++; } }
+    let d = on && en ? [ox / on - ex / en, oz / on - ez / en] : [0, this.def.aor.enemyEdge === 'north' ? 1 : -1]; if (side !== 'player') d = [-d[0], -d[1]];
+    const L = Math.hypot(d[0], d[1]) || 1; d = [d[0] / L, d[1] / L]; this._rear = { k, d }; return d;
+  }
+  // the longest stretch of the best road class inside a square, as [[x, z], ...] (falls back to the grid's road links)
+  roadInCell(cellId) {
+    this._roads ||= new Map(); if (this._roads.has(cellId)) return this._roads.get(cellId);
+    const c = this.C.cell(cellId), p = this.cellCenter(cellId), hw = this.cw / 2 - 0.03, hh = this.ch / 2 - 0.03, inside = (x, z) => Math.abs(x - p.x) < hw && Math.abs(z - p.z) < hh;
+    const W = { primary: 6, secondary: 5, tertiary: 4, unclassified: 3, residential: 1.5, track: 1, service: 0.5 };
+    let best = null, bs = 0;
+    for (const w of this.geo?.ways || []) { const cw = W[w.c]; if (!cw) continue; let run = [];
+      const done = () => { if (run.length > 1) { let L = 0; for (let i = 1; i < run.length; i++) L += Math.hypot(run[i][0] - run[i - 1][0], run[i][1] - run[i - 1][1]); if (L * cw > bs) { bs = L * cw; best = run; } } run = []; };
+      for (const q of w.pts) { const x = this.X(q[1]), z = this.Z(q[0]); if (inside(x, z)) run.push([x, z]); else done(); } done(); }
+    if (!best || bs < 0.4) {
+      const n = this.C.neighbors(cellId).map(id => this.C.cell(id)).find(d => d?.road && (d.col === c.col || d.row === c.row));
+      const dir = n ? [n.col - c.col, n.row - c.row] : [1, 0]; best = [[p.x - dir[0] * hw, p.z - dir[1] * hh], [p.x + dir[0] * hw, p.z + dir[1] * hh]];
+    }
+    this._roads.set(cellId, best); return best;
+  }
+  // where the rounds of a mission fall: [{ x, z, t (fire time from the start), g (gun) }], deterministic per key
+  impactPlan(o, D, T, dir, perp, r) {
+    const cs = Math.min(this.cw, this.ch), gs = () => (r() + r() + r() - 1.5) * 2, out = [], mlrs = D.tube === 'mlrs', clampC = (x, z) => [clamp(x, T.x - cs * 0.47, T.x + cs * 0.47), clamp(z, T.z - cs * 0.47, T.z + cs * 0.47)];
+    if (o.kind === 'interdict') {
+      const road = this.roadInCell(o.cell), seg = []; let L = 0; for (let i = 1; i < road.length; i++) { const l = Math.hypot(road[i][0] - road[i - 1][0], road[i][1] - road[i - 1][1]); seg.push([L, l]); L += l; }
+      const at = f => { let s = f * L; for (let i = 0; i < seg.length; i++) if (s <= seg[i][0] + seg[i][1] || i === seg.length - 1) { const k = clamp((s - seg[i][0]) / (seg[i][1] || 1), 0, 1); return [road[i][0] + (road[i + 1][0] - road[i][0]) * k, road[i][1] + (road[i + 1][1] - road[i][1]) * k]; } return road[0]; };
+      const N = mlrs ? 22 : D.guns * 2 + 2, rev = r() < 0.5;
+      for (let i = 0; i < N; i++) { const f = clamp((i + 0.5 + (r() - 0.5) * 0.7) / N, 0.02, 0.98), [x, z] = at(rev ? 1 - f : f); out.push({ x: x + (r() - 0.5) * 0.05, z: z + (r() - 0.5) * 0.05, t: i * (mlrs ? 0.11 : 0.42) + r() * 0.08, g: i }); }
+      return out;
+    }
+    if (o.kind === 'counterbattery') {
+      const B = (o.side === 'player' ? this.C.batteries('enemy') : this.C.batteries('player')).find(b => b.cell === o.cell);
+      const rb = rng(hash((B?.id || 'x') + o.cell)), bc = [T.x + (rb() - 0.5) * 0.4 * cs, T.z + (rb() - 0.5) * 0.4 * cs], aims = [-1, 0, 1].map(i => [bc[0] + perp[0] * i * 0.09, bc[1] + perp[1] * i * 0.09]);
+      o.cbAims = aims;
+      const V = D.volleys + 1, G = mlrs ? 12 : D.guns;
+      for (let v = 0; v < V; v++) for (let g = 0; g < G; g++) { const a = aims[(g + v) % 3], [x, z] = clampC(a[0] + gs() * 0.045, a[1] + gs() * 0.045); out.push({ x, z, t: mlrs ? (v * G + g) * 0.1 : v * 1.5 + g * 0.08 + r() * 0.1, g }); }
+      return out;
+    }
+    // suppression: an aim point in the square, a dispersion ellipse long along the line of fire, each volley walked
+    const sl = cs * (mlrs ? 0.25 : D.tube === 'mortar' ? 0.11 : 0.15), sc = cs * (mlrs ? 0.15 : D.tube === 'mortar' ? 0.09 : 0.12), aim = [T.x + (r() - 0.5) * 0.25 * cs, T.z + (r() - 0.5) * 0.25 * cs];
+    const V = mlrs ? 1 : D.volleys, G = mlrs ? 32 : D.guns;
+    for (let v = 0; v < V; v++) { const wv = (v - (V - 1) / 2) * 0.12 * cs, ax = aim[0] + perp[0] * wv + dir[0] * (r() - 0.5) * 0.1 * cs, az = aim[1] + perp[1] * wv + dir[1] * (r() - 0.5) * 0.1 * cs;
+      for (let g = 0; g < G; g++) { const l = gs() * sl, w = gs() * sc, [x, z] = clampC(ax + dir[0] * l + perp[0] * w, az + dir[1] * l + perp[1] * w); out.push({ x, z, t: mlrs ? g * 0.1 + r() * 0.04 : v * 1.7 + g * 0.09 + r() * 0.12, g }); } }
+    return out;
+  }
+  // o: { side, kind (mission), bkind (battery kind), from (battery square or null = hidden guns beyond the line), cell, key, hits, delay }
+  fireMission(o) {
+    const fx = this.afx, D = KIND_FX[o.bkind] || KIND_FX.how122, cs = Math.min(this.cw, this.ch), r = rng(hash(o.key || o.cell));
+    const T = this.cellCenter(o.cell), hidden = !o.from || !this.C.cell(o.from);
+    let A; if (hidden) { const rd = this.rearDir(o.side === 'player' ? 'player' : 'enemy'), km = D.tube === 'mortar' ? 5 : 11; A = { x: T.x + rd[0] * km + (r() - 0.5) * 3, z: T.z + rd[1] * km + (r() - 0.5) * 3 }; } else A = this.cellCenter(o.from);
+    const rb = rng(hash(o.key + 'g')), bc = hidden ? [A.x, A.z] : [A.x + (rb() - 0.5) * 0.4 * cs, A.z + (rb() - 0.5) * 0.4 * cs];
+    const dx = T.x - bc[0], dz = T.z - bc[1], L = Math.hypot(dx, dz) || 1, dir = [dx / L, dz / L], perp = [-dir[1], dir[0]];
+    const n = D.guns, sp = D.tube === 'mlrs' ? 0.13 : D.tube === 'mortar' ? 0.05 : 0.085;
+    const guns = [...Array(n)].map((_, i) => [bc[0] + perp[0] * (i - (n - 1) / 2) * sp + (rb() - 0.5) * 0.03, bc[1] + perp[1] * (i - (n - 1) / 2) * sp + (rb() - 0.5) * 0.03]);
+    const pts = this.impactPlan(o, D, T, dir, perp, r), mlrs = D.tube === 'mlrs';
+    const flight = D.tube === 'mortar' ? 1.2 + L * 0.13 : mlrs ? 1.1 + L * 0.07 : 1.4 + L * 0.08, h = L * (D.tube === 'mortar' ? 0.42 : mlrs ? 0.13 : 0.2);
+    const t0 = o.delay || 0, ik = D.k;
+    if (!hidden) fx.at(t0, () => fx.arcLine([bc[0], 0.02, bc[1]], [T.x, 0, T.z], h, o.side === 'player' ? 0xffd27a : 0xff8a70, flight + Math.max(...pts.map(p => p.t)) + 2));
+    let last = 0; for (const p of pts) last = Math.max(last, p.t + flight);
+    // what the mission is aimed at, faintly on the ground while it lasts: the road under interdiction (a glowing band
+    // along it), the found guns under counter-battery fire (a ring)
+    const warm = o.side === 'player' ? [1, 0.62, 0.25] : [1, 0.35, 0.25];
+    if (o.kind === 'interdict') fx.at(t0, () => { const road = this.roadInCell(o.cell); for (let i = 1; i < road.length; i++) { const [a, b] = [road[i - 1], road[i]], l = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.ceil(l / 0.04); for (let j = 0; j < n; j++) { const f = j / n; fx.add({ x: a[0] + (b[0] - a[0]) * f, y: 0.004, z: a[1] + (b[1] - a[1]) * f, life: last + 5, s0: 0.1, s1: 0.1, tile: 4, mode: 1, c0: warm, a0: 0.5, fin: 0.06, fpow: 2.5, add: true }); } } });
+    if (o.kind === 'counterbattery' && o.cbAims) fx.at(t0, () => { const a = o.cbAims[1]; fx.add({ x: a[0], y: 0.004, z: a[1], life: last + 5, s0: 0.42, s1: 0.36, tile: 7, mode: 1, c0: warm, a0: 0.55, fin: 0.05, fpow: 2.2, add: true }); });
+    for (const p of pts) {
+      const g = guns[p.g % n], fl = flight * (0.96 + r() * 0.08);
+      fx.at(t0 + p.t, () => {
+        if (!hidden) mlrs ? fx.rocketLaunch(g[0], g[1], dir, D.k) : fx.muzzle(g[0], g[1], dir, D.tube, D.k);
+        fx.proj.push({ a: [g[0], 0.015, g[1]], b: [p.x, 0, p.z], h, dur: fl, t: 0, len: L + 1.5 * h, step: mlrs ? 0.025 : 0.05, rocket: mlrs, tracer: hidden ? 0.4 : 0.6, s: D.k, hit: () => fx.impact(p.x, p.z, ik, mlrs ? 'rocket' : 'shell', o.key) });
+      });
+    }
+    // counter-battery hits: secondary explosions (ammunition cooking off) and black smoke over the guns
+    if (o.hits && o.cbAims) for (let i = 0; i < 2 + o.hits; i++) { const a = o.cbAims[i % 3]; fx.at(t0 + last + 0.5 + i * 0.9 + r() * 0.4, () => fx.impact(a[0] + (Math.random() - 0.5) * 0.04, a[1] + (Math.random() - 0.5) * 0.04, 1.2, 'secondary', o.key)); }
+  }
+  // per week: craters / scorch of this week's fire missions (both sides, from C.fireLog), wind, and — when a new week
+  // starts — the enemy's fire of the turn resolution played over the player's squares (staggered)
+  syncFires() {
+    const C = this.C, fx = this.afx, cur = (C.fireLog || []).filter(l => l.turn === C.turn), keyOf = l => `${l.turn}|${l.side}|${l.kind}|${l.cell}|${l.battery}`, keys = new Set(cur.map(keyOf));
+    if (this.fxTurn !== C.turn) {
+      const first = this.fxTurn == null; this.fxTurn = C.turn; this.fxLive = new Set();
+      const wr = rng(hash('wind' + C.turn)), wa = wr() * 6.283, ws = 0.005 + wr() * 0.007; fx.wind = [Math.cos(wa) * ws, Math.sin(wa) * ws];
+      if (!first) {
+        const found = new Set((C.foundBatteries?.() || []).map(b => b.id));
+        // queued: played once no modal (the weekly report) covers the map — see frame()
+        this.fxPending = cur.filter(l => l.side === 'enemy' && C.cell(l.cell)).slice(0, 10).map((l, i) => { const k = keyOf(l), B = C.battery(l.battery); this.fxLive.add(k); fx.decals.delete(k);
+          return { side: 'enemy', kind: l.kind, bkind: B?.kind, from: found.has(l.battery) ? B?.cell : null, cell: l.cell, key: k, delay: 0.6 + i * 2.6 }; });
+      }
+    }
+    for (const k of [...fx.decals.keys()]) if (!keys.has(k) && !this.fxLive.has(k)) { fx.decals.delete(k); fx.decalDirty = true; }
+    for (const l of cur) { const k = keyOf(l); if (fx.decals.has(k) || this.fxLive.has(k) || !C.cell(l.cell)) continue;
+      const B = C.battery(l.battery), D = KIND_FX[B?.kind] || KIND_FX.how122, T = this.cellCenter(l.cell), A = B && C.cell(B.cell) ? this.cellCenter(B.cell) : { x: T.x, z: T.z + 1 };
+      const L = Math.hypot(T.x - A.x, T.z - A.z) || 1, dir = [(T.x - A.x) / L, (T.z - A.z) / L], r = rng(hash(k)), r2 = rng(hash(k + 'd'));
+      fx.decals.set(k, []);
+      for (const p of this.impactPlan({ side: l.side, kind: l.kind, cell: l.cell }, D, T, dir, [-dir[1], dir[0]], r)) {
+        const s = D.k;
+        fx.addDecal(k, { x: p.x, y: 0.002, z: p.z, s: (0.045 + r2() * 0.02) * s * 1.35, rot: r2() * 6.28, tile: 8, mode: 1, r: 1, g: 1, b: 1, a: 0.92 });
+        if (r2() < 0.6) fx.addDecal(k, { x: p.x, y: 0.0015, z: p.z, s: (0.12 + r2() * 0.06) * s * 1.35, rot: r2() * 6.28, tile: 9, mode: 1, r: 1, g: 1, b: 1, a: 0.75 });
+      }
+    }
+    if (fx.decalDirty) { fx.writeDecals(); this.dirty = true; }
+  }
+  // ---- recon UAVs: sorties of this week (own: C.uavLog; enemy: C.uav.enemy.log) — [{ cell, type, side, lost, cells }].
+  // A new sortie is launched from its own side's rear and joins a banked orbit over the target at altitude; at the end
+  // of the week (uavDepart) every drone leaves the orbit towards its own rear, climbing, and fades out. Motion is a
+  // function of the UAV clock (this.uavT): heading, bank and pitch come from the path's derivatives.
   setUavs(list) {
     this.uavGroup ||= (() => { const g = new THREE.Group(); this.scene.add(g); return g; })();
-    const key = JSON.stringify((list || []).map(u => [u.cell, u.type, u.side, !!u.lost]));
+    this.uavT ??= 0; this.uavs ||= [];
+    const seen = {}; list = (list || []).filter(u => !(u.lost && !u.cells?.length)).map(u => { const b = `${u.side || 'player'}|${u.type}|${u.cell}`; seen[b] = (seen[b] ?? -1) + 1; return { ...u, id: `${b}|${seen[b]}` }; });
+    const key = JSON.stringify(list.map(u => [u.id, (u.cells || []).length]));
     if (key === this.uavKey) return; this.uavKey = key;
-    for (const u of this.uavs || []) if (!u.leaving) { this.uavGroup.remove(u.obj, u.ring, u.area); u.area?.geometry.dispose(); }
-    this.uavs = (this.uavs || []).filter(u => u.leaving);
-    (list || []).forEach((u, i) => {
-      if (u.lost && !u.cells?.length) return;
-      const own = (u.side || 'player') === 'player', side = own ? this.def.id : (this.def.id === 'UA' ? 'RU' : 'UA');
-      const obj = uavModel(side, u.type, Math.min(this.cw, this.ch)); const c = this.cellCenter(u.cell);
-      const R = Math.min(this.cw, this.ch) * (u.type === 'quad' ? 0.3 : 0.48), alt = Math.min(this.cw, this.ch) * (u.type === 'quad' ? 0.22 : 0.34);
-      // observed area: a square outline over the squares the drone sees, and the sensor footprint under it
-      const cells = (u.cells || [u.cell]).map(id => this.C.cell(id)).filter(Boolean);
+    const launch = !!this.uavInit; this.uavInit = true;
+    const want = new Set(list.map(u => u.id));
+    for (const u of [...this.uavs]) if (!u.leave && !want.has(u.id)) this.removeUav(u);
+    let i = 0; for (const u of list) if (!this.uavs.some(x => x.id === u.id && !x.leave)) this.uavs.push(this.makeUav(u, launch, i++));
+    this.dirty = true;
+  }
+  makeUav(u, launch, i) {
+    const own = (u.side || 'player') === 'player', side = own ? this.def.id : (this.def.id === 'UA' ? 'RU' : 'UA'), quad = u.type === 'quad';
+    const obj = uavModel(side, u.type), c = this.cellCenter(u.cell), tint = own ? '#9fe6ff' : '#ffb2a2';
+    const R = quad ? 0.3 : side === 'RU' ? 0.8 : 0.62, alt = quad ? 0.2 : side === 'RU' ? 0.74 : 0.56, w = (quad ? 0.14 : side === 'RU' ? 0.25 : 0.3) * (hash(u.id) % 2 ? -1 : 1);
+    const d = { id: u.id, obj, c, R, alt, w, quad, own, ph: (hash(u.id) % 628) / 100, t0: this.uavT, s0: obj.scale.x, mats: obj.userData.mats, props: [], gimbal: obj.getObjectByName('gimbal'), strobe: obj.getObjectByName('strobe') };
+    obj.traverse(o => { if (o.name === 'prop' || o.name === 'rotor') d.props.push(o); });
+    // the squares the drone sees (own sorties): a square outline
+    const cells = own ? (u.cells || [u.cell]).map(id => this.C.cell(id)).filter(Boolean) : [];
+    if (cells.length) {
       const c0 = Math.min(...cells.map(x => x.col)), c1 = Math.max(...cells.map(x => x.col)), r0 = Math.min(...cells.map(x => x.row)), r1 = Math.max(...cells.map(x => x.row));
       const x0 = this.x0 + (c0 - this.col0) * this.cw, x1 = this.x0 + (c1 - this.col0 + 1) * this.cw, z0 = this.z0 + (r0 - this.row0) * this.ch, z1 = this.z0 + (r1 - this.row0 + 1) * this.ch;
       const ag = new LineGeometry(); ag.setPositions([x0, 0.02, z0, x1, 0.02, z0, x1, 0.02, z1, x0, 0.02, z1, x0, 0.02, z0]);
-      this.uavAreaMat ||= this.lineMat('#7fd6ff', 2.4, 0.85, true); this.uavAreaFoe ||= this.lineMat('#ff9c8c', 2.4, 0.85, true);
-      const area = new Line2(ag, own ? this.uavAreaMat : this.uavAreaFoe); area.computeLineDistances(); area.renderOrder = 8;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(R * 0.96, R * 1.04, 64), new THREE.MeshBasicMaterial({ color: own ? '#7fd6ff' : '#ff9c8c', transparent: true, opacity: 0.55, depthTest: false, side: THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2; ring.position.set(c.x, 0.018, c.z); ring.renderOrder = 8; ring.userData.uavRing = true;
-      this.uavGroup.add(obj, ring, area);
-      this.uavs.push({ obj, ring, area, c, R, alt, ph: i * 1.7 + (hash(u.cell) % 100) / 16, w: (u.type === 'quad' ? 0.9 : 0.55) * (i % 2 ? -1 : 1), t0: performance.now(), lost: u.lost, own });
-    });
-    this.dirty = true;
-  }
-  // end of the week: the drones climb away towards their own rear and are gone
-  uavDepart() {
-    for (const u of this.uavs || []) if (!u.leaving) { u.leaving = performance.now(); u.from = u.obj.position.clone(); this.uavGroup.remove(u.ring, u.area); }
-    this.uavKey = null;
-  }
-  animUavs(now) {
-    if (!this.uavs?.length) return false;
-    const rear = this.def.aor.enemyEdge === 'north' ? 1 : -1;
-    for (const u of [...this.uavs]) {
-      if (u.leaving) {
-        const k = (now - u.leaving) / 2600; if (k >= 1) { this.uavGroup.remove(u.obj); this.uavs.splice(this.uavs.indexOf(u), 1); continue; }
-        const e = k * k; u.obj.position.set(u.from.x + Math.sin(u.ph) * e * this.cw * 2, u.from.y + e * u.alt * 2.5, u.from.z + rear * -e * this.ch * 5);
-        u.obj.rotation.set(0, Math.atan2(Math.sin(u.ph) * 2, rear * -5), 0); u.obj.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = 1 - k; } });
-        continue;
-      }
-      const t = (now - u.t0) / 1000, a = u.ph + t * u.w;
-      u.obj.position.set(u.c.x + Math.cos(a) * u.R, u.alt + Math.sin(t * 0.9 + u.ph) * u.alt * 0.04, u.c.z + Math.sin(a) * u.R);
-      // heading along the orbit tangent, banked into the turn
-      const dir = Math.sign(u.w); u.obj.rotation.set(0, -a - (dir > 0 ? 0 : Math.PI), 0, 'YXZ'); u.obj.rotateZ(dir * 0.38);
-      const prop = u.obj.getObjectByName('prop'); if (prop) prop.rotation.z += 1.7;
-      u.ring.material.opacity = 0.35 + 0.25 * Math.sin(t * 3);
-      // keep the model readable from far away: a minimum on-screen size
-      const s = Math.max(1, this.cam.dist / (Math.min(this.cw, this.ch) * 9)); u.obj.scale.setScalar((u.obj.userData.s0 ||= u.obj.scale.x) * Math.min(4, s));
+      this.uavAreaMat ||= this.lineMat('#7fd6ff', 2, 0.6, true); d.area = new Line2(ag, this.uavAreaMat); d.area.computeLineDistances(); d.area.renderOrder = 8; this.uavGroup.add(d.area);
     }
+    // soft ground shadow (blurred silhouette, offset along the sun), sensor footprint + faint view frustum
+    const S = uavShadow(obj); d.shadow = new THREE.Mesh(new THREE.PlaneGeometry(S.w, S.d).rotateX(Math.PI / 2).translate(S.x, 0, S.z), new THREE.MeshBasicMaterial({ color: 0x000000, map: S.tex, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide })); d.shadow.renderOrder = 3;
+    d.fp = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: footprintTex(), color: tint, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })); d.fp.renderOrder = 9;
+    const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(24), 3));
+    d.fr = new THREE.LineSegments(fg, new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0, depthWrite: false })); d.fr.frustumCulled = false; d.fr.renderOrder = 9;
+    this.uavGroup.add(obj, d.shadow, d.fp, d.fr);
+    if (launch) {
+      const rd = this.rearDir(own ? 'player' : 'enemy'), dist = quad ? 2.6 : 5, dur = quad ? 7 : 9, t1 = this.uavT + i * 1.5;
+      const P0 = [c.x + rd[0] * dist + (Math.random() - 0.5) * 1.5, 0.02, c.z + rd[1] * dist + (Math.random() - 0.5) * 1.5], E = this.uavOrbit(d, t1 + dur), E2 = this.uavOrbit(d, t1 + dur + 0.05), E1 = this.uavOrbit(d, t1 + dur - 0.05), V = [0, 1, 2].map(k => (E2[k] - E1[k]) / 0.1);
+      const tdx = c.x - P0[0], tdz = c.z - P0[2], tl = Math.hypot(tdx, tdz) || 1;
+      d.launch = { t0: t1, dur, P: [P0, [P0[0] + tdx / tl * dist * 0.35, alt * 0.7, P0[2] + tdz / tl * dist * 0.35], E.map((v, k) => v - V[k] * dur / 3), E] };
+    }
+    this.placeUav(d, this.uavT, 0); return d;
+  }
+  uavOrbit(d, t) {
+    const a = d.ph + d.w * (t - d.t0);
+    return d.quad ? [d.c.x + d.R * Math.cos(a), d.alt + 0.008 * Math.sin(t * 1.3 + d.ph), d.c.z + d.R * 0.65 * Math.sin(a)] : [d.c.x + d.R * Math.cos(a), d.alt + 0.012 * Math.sin(t * 0.8 + d.ph), d.c.z + d.R * Math.sin(a)];
+  }
+  uavPos(d, t) {
+    const bez = (P, k) => { k = clamp(k, 0, 1); const m = 1 - k; return [0, 1, 2].map(i => m * m * m * P[0][i] + 3 * m * m * k * P[1][i] + 3 * m * k * k * P[2][i] + k * k * k * P[3][i]); };
+    if (d.leave && t >= d.leave.t0) return bez(d.leave.P, (t - d.leave.t0) / d.leave.dur);
+    if (d.launch && t < d.launch.t0 + d.launch.dur) return bez(d.launch.P, (t - d.launch.t0) / d.launch.dur);
+    return this.uavOrbit(d, t);
+  }
+  removeUav(d) { this.uavGroup.remove(d.obj, d.shadow, d.fp, d.fr); if (d.area) this.uavGroup.remove(d.area); d.area?.geometry.dispose(); d.shadow.geometry.dispose(); d.fr.geometry.dispose(); d.obj.traverse(o => o.geometry?.dispose()); this.uavs.splice(this.uavs.indexOf(d), 1); }
+  // end of the week: every drone breaks off towards its own rear, climbing, and fades out
+  uavDepart() {
+    for (const d of this.uavs || []) if (!d.leave) {
+      const t = this.uavT, P0 = this.uavPos(d, t), a = this.uavPos(d, t - 0.05), b = this.uavPos(d, t + 0.05), V = [0, 1, 2].map(k => (b[k] - a[k]) / 0.1), rd = this.rearDir(d.own ? 'player' : 'enemy'), dur = 7;
+      const P3 = [P0[0] + rd[0] * 7, P0[1] + 0.6, P0[2] + rd[1] * 7];
+      d.leave = { t0: t, dur, P: [P0, P0.map((v, k) => v + V[k] * dur / 3), [P3[0] - rd[0] * 2.5, P3[1], P3[2] - rd[1] * 2.5], P3] };
+      if (d.area) { this.uavGroup.remove(d.area); d.area.geometry.dispose(); d.area = null; }
+    }
+    this.uavKey = null; this.dirty = true;
+  }
+  uavAdvance(s) { this.uavT = (this.uavT || 0) + s; for (const d of [...(this.uavs || [])]) if (this.placeUav(d, this.uavT, 0)) this.removeUav(d); this.dirty = true; }
+  placeUav(d, t, dt) {
+    const P = this.uavPos(d, t), A = this.uavPos(d, t - 0.06), B = this.uavPos(d, t + 0.06), vx = (B[0] - A[0]) / 0.12, vy = (B[1] - A[1]) / 0.12, vz = (B[2] - A[2]) / 0.12, vh = Math.hypot(vx, vz);
+    const hd = (t1, t2) => { const p = this.uavPos(d, t1), q = this.uavPos(d, t2); return Math.atan2(q[0] - p[0], q[2] - p[2]); };
+    let yr = hd(t + 0.04, t + 0.16) - hd(t - 0.16, t - 0.04); yr = Math.atan2(Math.sin(yr), Math.cos(yr)) / 0.2;
+    const yaw = Math.atan2(vx, vz);
+    const roll = d.quad ? clamp(-yr * 0.5, -0.22, 0.22) : clamp(-yr * 1.25, -0.6, 0.6), pitch = d.quad ? clamp(vh * 2.4, 0, 0.32) : clamp(-Math.atan2(vy, vh + 1e-6), -0.35, 0.35);
+    const o = d.obj; o.position.set(P[0], P[1], P[2]); o.rotation.set(pitch, yaw, roll, 'YXZ');
+    const sc = clamp(this.cam.dist / 3.2, 1, 5); o.scale.setScalar(d.s0 * sc); d.shadow.scale.setScalar(d.s0 * sc);
+    // visibility: fade in at the launch, out at the end of the departure
+    let vis = 1, orbit = !(d.launch && t < d.launch.t0 + d.launch.dur) && !d.leave;
+    if (d.launch && t < d.launch.t0 + d.launch.dur) vis = clamp((t - d.launch.t0) / 0.8, 0, 1);
+    if (d.leave) vis = 1 - clamp(((t - d.leave.t0) / d.leave.dur - 0.5) / 0.5, 0, 1);
+    o.visible = vis > 0.01;
+    for (const m of d.mats) { m.userData.o0 ??= m.opacity; m.opacity = m.userData.o0 * vis; }
+    for (const p of d.props) p.rotation.z += dt * 31;
+    if (d.strobe) d.strobe.visible = ((t + d.ph) % 1.4) < 0.09;
+    // shadow on the ground along the sun (DirectionalLight from (-0.6, 1, 0.4)), softer and fainter with height
+    d.shadow.position.set(P[0] + 0.6 * P[1], 0.003, P[2] - 0.4 * P[1]); d.shadow.rotation.y = yaw; d.shadow.material.opacity = (d.quad ? 0.4 : 0.26) * vis;
+    // gimbal on the look point (sweeping the observed square in orbit, ahead and down in transit) + footprint
+    const lp = orbit ? [d.c.x + Math.sin(t * 0.19 + d.ph) * (d.quad ? 0.18 : 0.32) * this.cw, 0, d.c.z + Math.cos(t * 0.15 + d.ph) * (d.quad ? 0.15 : 0.28) * this.ch] : [P[0] + vx / (vh || 1) * 0.8, 0, P[2] + vz / (vh || 1) * 0.8];
+    o.updateMatrixWorld(true);
+    const gp = new THREE.Vector3(); if (d.gimbal) { d.gimbal.lookAt(lp[0], lp[1], lp[2]); d.gimbal.getWorldPosition(gp); } else gp.set(P[0], P[1], P[2]);
+    d.fpA = clamp((d.fpA ?? 0) + (orbit ? dt : -dt) * 0.8, 0, 1);
+    const fa = d.fpA * vis; d.fp.visible = d.fr.visible = fa > 0.01;
+    if (fa > 0.01) {
+      const lx = lp[0] - gp.x, lz = lp[2] - gp.z, rng3 = Math.hypot(lx, gp.y, lz), fw = rng3 * (d.quad ? 0.5 : 0.36), fd = rng3 * (d.quad ? 0.38 : 0.27), ly = Math.atan2(lx, lz);
+      d.fp.position.set(lp[0], 0.006, lp[2]); d.fp.rotation.y = ly; d.fp.scale.set(fw, 1, fd * 1.25); d.fp.material.opacity = 0.55 * fa;
+      const f = [Math.sin(ly), Math.cos(ly)], rt = [f[1], -f[0]], pa = d.fr.geometry.attributes.position.array; let k = 0;
+      for (const [a, b] of [[1, 1], [-1, 1], [-1, -1], [1, -1]]) { pa[k++] = gp.x; pa[k++] = gp.y; pa[k++] = gp.z; pa[k++] = lp[0] + rt[0] * a * fw / 2 + f[0] * b * fd * 0.62; pa[k++] = 0.006; pa[k++] = lp[2] + rt[1] * a * fw / 2 + f[1] * b * fd * 0.62; }
+      d.fr.geometry.attributes.position.needsUpdate = true; d.fr.material.opacity = 0.2 * fa;
+    }
+    if (d.area) d.area.material.opacity = 0.6;
+    return d.leave && t >= d.leave.t0 + d.leave.dur;
+  }
+  animUavs(dt) {
+    if (!this.uavs?.length) return false;
+    if (!this.uavHold) this.uavT += Math.min(dt, 0.1);
+    for (const d of [...this.uavs]) if (this.placeUav(d, this.uavT, this.uavHold ? 0 : dt)) this.removeUav(d);
     return true;
   }
   // ---- supply network view: routes from hubs to own task forces / the front, hub markers, interdicted squares
@@ -648,10 +822,13 @@ export class StrategicMap {
     for (const b of C.foundBatteries?.() || []) { const p = this.cellCenter(b.cell); p.x += this.cw * 0.28; p.z += this.ch * 0.1; p.y = 0.03;
       const e = document.createElement('div'); e.className = 'c2-bat foe'; e.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 1 L23 12 L12 23 L1 12 Z" fill="${COL.enemy}" stroke="#1a0c0a" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="#1a0c0a"/></svg>`; e.title = `Enemy battery found: ${b.name || b.kind}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
     this.drawSupply(C.supplyNet?.player);
-    this.setUavs([...(C.uavLog || []).filter(l => l.turn === C.turn).map(l => ({ cell: l.cell, type: l.type, side: 'player', lost: l.lost, cells: l.cells }))]);
+    this.setUavs([...(C.uavLog || []).filter(l => l.turn === C.turn).map(l => ({ cell: l.cell, type: l.type, side: 'player', lost: l.lost, cells: l.cells })),
+      ...(C.uav?.enemy?.log || []).filter(l => l.turn === C.turn && !l.lost && C.cell(l.cell)).map(l => ({ cell: l.cell, type: l.type, side: 'enemy', cells: [l.cell] }))]);
+    this.syncFires();
     // squares that just opened fade in
     const jo = C.justOpened?.length ? C.justOpened.join(',') + '@' + C.turn : null;
-    if (jo && jo !== this.fadeKey) { this.fadeKey = jo; this.fade = { cells: new Set(C.justOpened), k: 0 }; (this.anims ||= []).push({ t: 0, dur: 2.2, step: k => { this.fade.k = k; this.paintOverlay(); }, done: () => { this.fade = null; this.paintOverlay(); } }); }
+    if (jo && jo !== this.fadeKey) { this.fadeKey = jo; const F = this.fade = { cells: new Set(C.justOpened), k: 0 };   // overlapping fades: each steps its own object, only the current one is cleared
+      (this.anims ||= []).push({ t: 0, dur: 2.2, step: k => { F.k = k; if (this.fade === F) this.paintOverlay(); }, done: () => { if (this.fade === F) { this.fade = null; this.paintOverlay(); } } }); }
     if (this.path) this.showPath(this.path, true);
     // place the new markers now (not on the next frame: they would flash in the top-left corner for a frame)
     if (this.camera && this.W) { this.updateCamera(); this.placeLabels(performance.now()); }
@@ -799,16 +976,20 @@ export class StrategicMap {
     }
     // render on demand: camera moved, state changed, animations, or a slow tick for the pulsing markers
     const sig = `${this.cam.x.toFixed(4)},${this.cam.z.toFixed(4)},${this.cam.dist.toFixed(4)},${this.cam.yaw.toFixed(4)},${this.cam.pitch.toFixed(4)},${this.W},${this.H}`;
-    const flying = this.animUavs(now);
+    const flying = this.animUavs(dt);
+    // v7: artillery effects (stepped by hand when frozen: fxAdvance), one more frame after the last particle died
+    if (this.fxPending?.length && !document.querySelector('.c2-modal')) { for (const o of this.fxPending) this.fireMission(o); this.fxPending = null; }
+    const fxOn = this._afx && !this.fxFreeze && this._afx.busy ? this._afx.update(dt) : false; if (this.fxWas && !fxOn) this.dirty = true; this.fxWas = fxOn;
     // v6: the slow re-render tick only while something pulses (the denser true-scale map is ~1M triangles: no idle redraws)
     const pulsing = this.dyn.children.some(o => o.userData.pulse) || this.badges.some(b => b.until);
-    if (sig === this.lastSig && !this.dirty && !flying && !this.anims.length && (!pulsing || now - (this.lastRender || 0) < 140)) return;
+    if (sig === this.lastSig && !this.dirty && !flying && !fxOn && !this.anims.length && (!pulsing || now - (this.lastRender || 0) < 140)) return;
     this.lastSig = sig; this.dirty = false; this.lastRender = now;
     this.updateCamera();
     // pulses
     const pulse = 0.55 + 0.35 * Math.sin(now / 260);
     for (const o of this.dyn.children) if (o.userData.pulse) o.material.opacity = pulse;
     if (this.pathMat.dashed) this.pathMat.dashOffset = -now / 900;
+    this._afx?.setView(this.camera, this.H * this.renderer.getPixelRatio(), clamp(this.cam.dist / 6, 1, 3.5));
     this.renderer.render(this.scene, this.camera);
     this.placeLabels(now);
   }
@@ -845,46 +1026,321 @@ export class StrategicMap {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = v => (Math.round(v * 10) / 10).toString();
 const pips = (mp, max) => { let s = ''; for (let i = 0; i < Math.ceil(max); i++) s += `<i class="${mp >= i + 1 - 1e-6 ? 'on' : mp > i + 1e-6 ? 'half' : ''}"></i>`; return s; };
-// recon UAV for the strategic map (procedural, no markings): UA — a Leleka-100-style blended flying wing with wingtip
-// fins and a pusher propeller; RU — an Orlan-10-style high-wing monoplane with a tractor propeller and tail fin;
-// type 'quad' — a small quadcopter. Forward = +Z; built at real proportions (span 1) and scaled up for the map.
-export function uavModel(side, type, cell) {
-  const g = new THREE.Group(), M = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, metalness: 0.15 });
-  const body = M(side === 'RU' ? '#7a7f70' : '#9aa1a8'), dark = M('#2b2d2f'), glass = M('#1c2630');
-  const add = (geo, mat, x = 0, y = 0, z = 0, name) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (name) m.name = name; g.add(m); return m; };
+// ---------------------------------------------------------------------------------------------- v7: recon UAV models
+// Procedural, no markings, built in metres (forward = +Z, up = +Y, port = +X) and scaled to the map (km) with ONE
+// exaggeration for the fixed wings (UAV_EXAG: Orlan-10 3.1 m span -> 217 m, Leleka-100 2.0 m -> 140 m) and a larger
+// one for the 0.35 m quadcopter (UAV_EXAG_QUAD) so it stays readable; StrategicMap adds a minimum on-screen size.
+//  UA 'wing': Leleka-100-style blended flying wing (swept, tapered, upturned wingtip fins, rear pusher prop, chin gimbal)
+//  RU 'wing': Orlan-10-style high-wing monoplane (slim fuselage tapering into a tail boom, nose tractor prop, tailplane +
+//             swept fin + ventral fin, gimbal ball under the fuselage, parachute hatch, whip antennas)
+//  'quad':    DJI-Mavic-class folding quadcopter (rounded body, splayed arms, 4 rotors, front 3-axis gimbal camera)
+// Details: lofted NACA-section wings, matte composite materials (camouflage on the Leleka in the shader), propeller
+// discs with a motion-blur texture, gimbal (aimed at the target by the map), antennas, nav lights + strobe.
+export const UAV_EXAG = 70, UAV_EXAG_QUAD = 190;
+const nacaT = u => 5 * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u ** 3 - 0.1036 * u ** 4);
+// lofted lifting surface through airfoil sections S = [{ o: [x,y,z] leading edge, c: chord, t: thickness ratio }]
+// chord along `cd`, thickness along `nd`; ends capped
+function loftGeo(S, nd = [0, 1, 0], cd = [0, 0, -1], n = 9) {
+  const us = []; for (let i = 0; i <= n; i++) us.push((1 - Math.cos(i / n * Math.PI)) / 2);
+  const ring = []; for (let i = n; i >= 0; i--) ring.push([us[i], 1]); for (let i = 1; i < n; i++) ring.push([us[i], -1]);
+  const R = ring.length, pos = [], idx = [];
+  for (const s of S) for (const [u, sg] of ring) { const hh = nacaT(u) * s.t * s.c * sg; for (let k = 0; k < 3; k++) pos.push(s.o[k] + cd[k] * u * s.c + nd[k] * hh); }
+  // winding so that the faces point outwards whatever the station order / thickness axis
+  const sd = new THREE.Vector3().fromArray(S[S.length - 1].o).sub(new THREE.Vector3().fromArray(S[0].o)), flip = new THREE.Vector3(-cd[0], -cd[1], -cd[2]).cross(sd).dot(new THREE.Vector3(...nd)) < 0;
+  const tri = (a, b, c) => flip ? idx.push(a, c, b) : idx.push(a, b, c);
+  for (let j = 0; j < S.length - 1; j++) for (let i = 0; i < R; i++) { const a = j * R + i, b = j * R + (i + 1) % R, c = a + R, d = b + R; tri(a, b, c); tri(b, d, c); }
+  for (const j of [0, S.length - 1]) { const le = j * R + n; for (let i = 0; i < R; i++) { const a = j * R + i, b = j * R + (i + 1) % R; if (a === le || b === le) continue; j ? tri(le, a, b) : tri(le, b, a); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+// body of revolution along Z from a profile [[r, z], ...] (nose first); sy squashes the section vertically
+function latheZ(prof, sx = 1, sy = 1, seg = 18) {
+  const g = new THREE.LatheGeometry(prof.map(([r, z]) => new THREE.Vector2(Math.max(r, 1e-4), -z)), seg); g.rotateX(-Math.PI / 2); g.scale(sx, sy, 1); g.computeVertexNormals(); return g;
+}
+// matte composite with an optional procedural camouflage (object-space noise, crisp blotches)
+function uavMat(base, camo = null, opt = {}) {
+  const m = new THREE.MeshStandardMaterial({ color: base, roughness: opt.rough ?? 0.82, metalness: opt.metal ?? 0.04, transparent: true, side: opt.side ?? THREE.FrontSide });
+  if (camo) {
+    m.onBeforeCompile = sh => {
+      sh.uniforms.cA = { value: new THREE.Color(camo[0]) }; sh.uniforms.cB = { value: new THREE.Color(camo[1]) }; sh.uniforms.cS = { value: camo[2] || 4 };
+      sh.vertexShader = 'varying vec3 vCam;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCam = position;');
+      sh.fragmentShader = `varying vec3 vCam; uniform vec3 cA, cB; uniform float cS;
+float h3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z); }
+` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+{ vec3 q = vCam * cS; float n = vn(q) * 0.62 + vn(q * 2.7 + 7.1) * 0.38;
+  diffuseColor.rgb = n > 0.6 ? cA : (n < 0.36 ? cB : diffuseColor.rgb); }`);
+    };
+    m.customProgramCacheKey = () => 'uavcamo';
+  }
+  return m;
+}
+let _propTex = null, _glowTex = null;
+// motion-blurred two-blade propeller disc: faint ghost blades (conic gradient), brighter tip ring, clear hub
+function propTex() {
+  if (_propTex) return _propTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d');
+  const cg = g.createConicGradient(0, 64, 64);
+  for (let i = 0; i <= 16; i++) { const a = i / 16, b = Math.abs(((a * 2) % 1) - 0.5) * 2; cg.addColorStop(a, `rgba(30,32,34,${(0.12 + 0.42 * Math.pow(1 - b, 3)).toFixed(3)})`); }
+  g.fillStyle = cg; g.beginPath(); g.arc(64, 64, 62, 0, 7); g.fill();
+  g.globalCompositeOperation = 'destination-out'; const rg = g.createRadialGradient(64, 64, 4, 64, 64, 64); rg.addColorStop(0, 'rgba(0,0,0,1)'); rg.addColorStop(0.16, 'rgba(0,0,0,0.6)'); rg.addColorStop(0.5, 'rgba(0,0,0,0.25)'); rg.addColorStop(0.92, 'rgba(0,0,0,0)'); rg.addColorStop(1, 'rgba(0,0,0,1)'); g.fillStyle = rg; g.fillRect(0, 0, 128, 128);
+  g.globalCompositeOperation = 'source-over'; g.strokeStyle = 'rgba(70,72,74,0.35)'; g.lineWidth = 3; g.beginPath(); g.arc(64, 64, 58, 0, 7); g.stroke();
+  _propTex = new THREE.CanvasTexture(cv); _propTex.colorSpace = THREE.SRGBColorSpace; return _propTex;
+}
+function glowTex() {
+  if (_glowTex) return _glowTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.2, 'rgba(255,255,255,0.8)'); rg.addColorStop(0.5, 'rgba(255,255,255,0.18)'); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+  _glowTex = new THREE.CanvasTexture(cv); return _glowTex;
+}
+// sensor footprint on the ground: faint fill, corner brackets, a small centre cross
+let _fpTex = null;
+function footprintTex() {
+  if (_fpTex) return _fpTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d');
+  const rg = g.createRadialGradient(64, 64, 10, 64, 64, 80); rg.addColorStop(0, 'rgba(255,255,255,0.16)'); rg.addColorStop(1, 'rgba(255,255,255,0.03)'); g.fillStyle = rg; g.fillRect(4, 4, 120, 120);
+  g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 3; const b = 22;
+  for (const [x, y, sx, sy] of [[4, 4, 1, 1], [124, 4, -1, 1], [124, 124, -1, -1], [4, 124, 1, -1]]) { g.beginPath(); g.moveTo(x + sx * b, y); g.lineTo(x, y); g.lineTo(x, y + sy * b); g.stroke(); }
+  g.lineWidth = 2; g.beginPath(); g.moveTo(56, 64); g.lineTo(72, 64); g.moveTo(64, 56); g.lineTo(64, 72); g.stroke();
+  _fpTex = new THREE.CanvasTexture(cv); return _fpTex;
+}
+export function uavModel(side, type, cell = 2) {
+  const g = new THREE.Group(), mats = [], add = (geo, mat, name) => { const m = new THREE.Mesh(geo, mat); if (name) m.name = name; g.add(m); return m; };
+  const M = (...a) => { const m = uavMat(...a); mats.push(m); return m; };
+  const dark = M('#26282a', null, { rough: 0.6 }), glass = M('#0b0f14', null, { rough: 0.15, metal: 0.3 }), grey = M('#3c3f42', null, { rough: 0.55, metal: 0.2 });
+  const cyl = (r0, r1, h, s = 10) => new THREE.CylinderGeometry(r0, r1, h, s);
+  // propeller: hub + spinner, blades (hidden in flight) and the blurred disc; axis = local +Z of the 'prop' group
+  const prop = (x, y, z, D, axis = 'z', name = 'prop') => {
+    const p = new THREE.Group(); p.name = name; p.position.set(x, y, z); if (axis === 'y') p.rotation.x = -Math.PI / 2; g.add(p);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(D / 2, 32), new THREE.MeshBasicMaterial({ map: propTex(), transparent: true, depthWrite: false, side: THREE.DoubleSide, opacity: 0.9 })); disc.name = 'disc'; mats.push(disc.material); p.add(disc);
+    for (const s of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(D * 0.46, D * 0.07, D * 0.012), dark); b.position.x = s * D * 0.24; b.rotation.x = s * 0.35; b.name = 'blade'; b.visible = false; p.add(b); }
+    p.add(new THREE.Mesh(cyl(D * 0.05, D * 0.07, D * 0.08).rotateX(Math.PI / 2), dark));
+    return p;
+  };
+  const light = (x, y, z, col, name, sz) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); s.position.set(x, y, z); s.scale.setScalar(sz); if (name) s.name = name; mats.push(s.material); g.add(s); add(new THREE.SphereGeometry(sz * 0.12, 6, 4), new THREE.MeshBasicMaterial({ color: col })).position.set(x, y, z); };
+  // gimbal: yoke + ball + lens (lens on local +Z; the map aims the 'gimbal' group at the target)
+  const gimbal = (x, y, z, r, ballMat) => {
+    const gg = new THREE.Group(); gg.name = 'gimbal'; gg.position.set(x, y, z); g.add(gg);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), ballMat); gg.add(ball);
+    const lens = new THREE.Mesh(cyl(r * 0.42, r * 0.42, r * 0.3, 14).rotateX(Math.PI / 2), glass); lens.position.z = r * 0.88; gg.add(lens);
+    const ir = new THREE.Mesh(cyl(r * 0.2, r * 0.2, r * 0.2, 10).rotateX(Math.PI / 2), glass); ir.position.set(r * 0.55, r * 0.35, r * 0.78); gg.add(ir);
+    add(cyl(r * 0.55, r * 0.75, r * 0.5, 12), ballMat).position.set(x, y + r * 0.9, z);   // mount
+    return gg;
+  };
+  let span, E = UAV_EXAG;
   if (type === 'quad') {
-    add(new THREE.BoxGeometry(0.16, 0.06, 0.22), dark);
+    // DJI Mavic 3 class: 0.35 m diagonal unfolded, 9.4" props; dark grey plastic
+    E = UAV_EXAG_QUAD; span = 0.35;
+    const body = M('#45494d', null, { rough: 0.5, metal: 0.1 }), top = M('#55595e', null, { rough: 0.45 });
+    add(latheZ([[0, 0.115], [0.03, 0.11], [0.045, 0.09], [0.05, 0.03], [0.048, -0.04], [0.04, -0.09], [0.02, -0.11], [0, -0.112]], 1.0, 0.72, 20), body);
+    add(new THREE.BoxGeometry(0.06, 0.012, 0.12).translate(0, 0.034, -0.02), top);   // battery top
+    for (const s of [-1, 1]) { add(cyl(0.007, 0.007, 0.004, 10).rotateX(Math.PI / 2).translate(s * 0.016, 0.006, 0.112), glass); add(cyl(0.006, 0.006, 0.004, 10).rotateZ(Math.PI / 2).translate(s * 0.046, 0.0, 0.02), glass); }  // vision sensors
+    // arms: front pair forward-outward at body height, rear pair lower and backward
     for (const [sx, sz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-      const arm = add(new THREE.BoxGeometry(0.03, 0.02, 0.26), dark, sx * 0.1, 0.01, sz * 0.1); arm.rotation.y = sx * sz * Math.PI / 4;
-      const r = add(new THREE.CylinderGeometry(0.11, 0.11, 0.005, 20), new THREE.MeshBasicMaterial({ color: '#d0d4d8', transparent: true, opacity: 0.35 }), sx * 0.19, 0.04, sz * 0.19); r.name = 'rotor';
+      const front = sz > 0, ax = sx * 0.035, az = front ? 0.07 : -0.06, mx = sx * 0.125, mz = front ? 0.125 : -0.105, my = front ? 0.012 : -0.008;
+      const L = Math.hypot(mx - ax, mz - az), arm = add(new THREE.BoxGeometry(0.016, 0.012, L), body); arm.position.set((ax + mx) / 2, my, (az + mz) / 2); arm.rotation.y = Math.atan2(mx - ax, mz - az);
+      add(cyl(0.014, 0.016, 0.022, 14), dark).position.set(mx, my + 0.012, mz);
+      if (front) add(cyl(0.003, 0.003, 0.035, 6), body).position.set(mx, my - 0.02, mz);   // landing leg
+      prop(mx, my + 0.026, mz, 0.24, 'y', 'rotor');
+      light(mx, my - 0.004, mz + (front ? 0.012 : -0.012), front ? '#ff4a3a' : '#5dff7a', front ? null : 'strobe', 0.03);
     }
-    g.scale.setScalar(cell * 0.08 / 0.5); return g;
-  }
-  if (side === 'RU') {
-    // Orlan-10 style: slim fuselage, high straight wing, tail boom with a tall fin and tailplane, nose propeller
-    const fus = add(new THREE.CapsuleGeometry(0.06, 0.62, 4, 12), body); fus.rotation.x = Math.PI / 2;
-    const wing = add(new THREE.BoxGeometry(1.55, 0.02, 0.2), body, 0, 0.07, 0.05);
-    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.02, 0.06, 0.18), body, s * 0.775, 0.09, 0.05);
-    add(new THREE.CylinderGeometry(0.018, 0.012, 0.5, 8).rotateX(Math.PI / 2), body, 0, 0.02, -0.55);
-    add(new THREE.BoxGeometry(0.5, 0.015, 0.12), body, 0, 0.03, -0.78);
-    add(new THREE.BoxGeometry(0.015, 0.2, 0.14), body, 0, 0.12, -0.78);
-    add(new THREE.SphereGeometry(0.045, 12, 8), glass, 0, -0.06, 0.15);   // camera turret
-    const prop = add(new THREE.CircleGeometry(0.17, 24), new THREE.MeshBasicMaterial({ color: '#cfd3d6', transparent: true, opacity: 0.32, side: THREE.DoubleSide }), 0, 0, 0.42, 'prop');
-    add(new THREE.BoxGeometry(0.34, 0.025, 0.01), dark, 0, 0, 0.415).parent = prop;
+    const gb = gimbal(0, -0.022, 0.12, 0.018, grey); gb.children[0].scale.set(1.25, 1, 1.1);
+  } else if (side === 'RU') {
+    // Orlan-10: 3.1 m span, ~2 m long, light grey composite
+    span = 3.1; const body = M('#a3a6a0', ['#8e918b', '#b3b5ae', 1.3]);
+    add(latheZ([[0, 0.98], [0.035, 0.97], [0.07, 0.93], [0.095, 0.84], [0.11, 0.7], [0.118, 0.45], [0.116, 0.15], [0.1, -0.1], [0.072, -0.32], [0.045, -0.52], [0.032, -0.8], [0.024, -1.0], [0, -1.02]], 0.86, 1.0, 20), body);
+    // high wing on a fairing; constant-chord centre, tapered outer panels with a little dihedral
+    add(new THREE.BoxGeometry(0.12, 0.05, 0.3).translate(0, 0.11, 0.07), body);
+    const W = []; for (const x of [-1.55, -1.2, -0.62, 0, 0.62, 1.2, 1.55]) { const ax = Math.abs(x), out = Math.max(0, ax - 0.62); W.push({ o: [x, 0.145 + out * 0.07, 0.24 - out * 0.03], c: 0.3 - out * 0.09, t: 0.13 - out * 0.02 }); }
+    add(loftGeo(W, [0, 1, 0], [0, 0, -1], 9), body);
+    // empennage on the boom: tailplane, swept fin, ventral fin
+    add(loftGeo([-0.36, 0, 0.36].map(x => ({ o: [x, 0.02, -0.76 - Math.abs(x) * 0.08], c: 0.17 - Math.abs(x) * 0.08, t: 0.09 }))), body);
+    add(loftGeo([0, 0.14, 0.27].map(y => ({ o: [0, 0.02 + y, -0.72 - y * 0.55], c: 0.24 - y * 0.42, t: 0.09 })), [1, 0, 0]), body);
+    add(loftGeo([0, -0.08].map(y => ({ o: [0, -0.01 + y, -0.82 + y * 0.4], c: 0.12 + y * 0.4, t: 0.09 })), [1, 0, 0]), body);
+    add(new THREE.CapsuleGeometry(0.05, 0.16, 4, 10).rotateX(Math.PI / 2).scale(1, 0.55, 1).translate(0, 0.13, -0.22), body);   // parachute hatch
+    add(cyl(0.012, 0.012, 0.09, 8).rotateX(Math.PI / 2).translate(0, -0.075, 0.85), dark);   // exhaust
+    for (const z of [-0.36, -0.5]) add(cyl(0.003, 0.002, 0.22, 5).rotateX(-0.25).translate(0, 0.2, z), dark);   // whip antennas
+    add(new THREE.BoxGeometry(0.004, 0.06, 0.05).translate(0, -0.13, -0.15), dark);   // blade antenna
+    add(cyl(0.025, 0.025, 0.01, 12).translate(0, 0.165, 0.3), M('#d9dad5'));   // GPS puck
+    gimbal(0, -0.125, 0.3, 0.065, M('#7e817b', null, { rough: 0.5 }));
+    prop(0, 0, 1.0, 0.56);
+    add(cyl(0.0, 0.04, 0.08, 12).rotateX(Math.PI / 2).translate(0, 0, 1.02), grey);   // spinner
+    light(1.55, 0.18, 0.12, '#ff3b30', null, 0.16); light(-1.55, 0.18, 0.12, '#38ff6a', null, 0.16); light(0, 0.3, -0.98, '#ffffff', 'strobe', 0.18);
   } else {
-    // Leleka-100 style: blended flying wing, swept leading edge, fins at the tips, pusher propeller
-    const sh = new THREE.Shape(); sh.moveTo(0, 0.32); sh.lineTo(0.95, -0.12); sh.lineTo(0.95, -0.26); sh.lineTo(0.12, -0.18); sh.lineTo(0, -0.24); sh.lineTo(-0.12, -0.18); sh.lineTo(-0.95, -0.26); sh.lineTo(-0.95, -0.12); sh.closePath();
-    const wing = new THREE.ExtrudeGeometry(sh, { depth: 0.03, bevelEnabled: false }); wing.rotateX(Math.PI / 2); wing.translate(0, 0.015, 0); add(wing, body);
-    const pod = add(new THREE.CapsuleGeometry(0.07, 0.36, 4, 12), body, 0, 0.03, 0.02); pod.rotation.x = Math.PI / 2;
-    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.015, 0.16, 0.14), body, s * 0.94, 0.06, 0.18);
-    add(new THREE.SphereGeometry(0.045, 12, 8), glass, 0, -0.06, 0.18);
-    const prop = add(new THREE.CircleGeometry(0.16, 24), new THREE.MeshBasicMaterial({ color: '#cfd3d6', transparent: true, opacity: 0.32, side: THREE.DoubleSide }), 0, 0.03, -0.27, 'prop');
-    add(new THREE.BoxGeometry(0.32, 0.025, 0.01), dark, 0, 0.03, -0.265).parent = prop;
+    // Leleka-100: 2 m span, ~1.2 m long electric flying wing; olive-grey camouflage
+    span = 2.0; const body = M('#6f7461', ['#545846', '#8b8e78', 3.2]);
+    add(latheZ([[0, 0.52], [0.04, 0.5], [0.07, 0.44], [0.088, 0.32], [0.092, 0.12], [0.085, -0.12], [0.07, -0.3], [0.045, -0.42], [0.03, -0.47], [0, -0.48]], 1.15, 0.72, 20), body);
+    const W = []; for (const x of [-1, -0.82, -0.5, -0.2, 0, 0.2, 0.5, 0.82, 1]) { const ax = Math.abs(x); W.push({ o: [x, ax * 0.035, 0.31 - ax * 0.5 + (ax < 0.2 ? 0 : 0)], c: ax < 0.2 ? 0.66 - ax * 0.9 : 0.48 - (ax - 0.2) * 0.33, t: ax < 0.2 ? 0.16 : 0.12 - ax * 0.02 }); }
+    add(loftGeo(W, [0, 1, 0], [0, 0, -1], 9), body);
+    for (const s of [-1, 1]) add(loftGeo([0, 0.09, 0.18].map(y => ({ o: [s * (1.0 + y * 0.04), 0.035 + y, -0.19 - y * 0.6], c: 0.22 - y * 0.5, t: 0.08 })), [1, 0, 0]), body);   // wingtip fins
+    add(cyl(0.035, 0.05, 0.1, 12).rotateX(Math.PI / 2).translate(0, 0.01, -0.5), grey);   // motor
+    add(cyl(0.003, 0.002, 0.16, 5).rotateX(-0.3).translate(0, 0.1, -0.12), dark);   // antenna
+    add(cyl(0.022, 0.022, 0.008, 12).translate(0, 0.07, 0.12), M('#c9cbc2'));   // GPS puck
+    gimbal(0, -0.068, 0.34, 0.052, M('#4e5244', null, { rough: 0.5 }));
+    prop(0, 0.01, -0.57, 0.42);
+    light(1.0, 0.04, -0.16, '#ff3b30', null, 0.13); light(-1.0, 0.04, -0.16, '#38ff6a', null, 0.13); light(0, 0.06, -0.44, '#ffffff', 'strobe', 0.14);
   }
-  // the props were built as group children; parent the blade to its disc so both spin
-  const p = g.getObjectByName('prop'); for (const ch of [...g.children]) if (ch.parent === p && !p.children.includes(ch)) { g.remove(ch); p.add(ch); ch.position.set(0, 0, 0); }
-  g.scale.setScalar(cell * 0.16 / 1.9);
+  g.scale.setScalar(E / 1000);
+  g.userData = { span: span * E / 1000, mats, type, side, E };
   return g;
+}
+// blurred top-down silhouette of a model (soft ground shadow), cached per model kind
+const _shadowTex = {};
+function uavShadow(obj) {
+  const key = obj.userData.side + obj.userData.type; if (_shadowTex[key]) return _shadowTex[key];
+  const box = new THREE.Box3(), v = new THREE.Vector3(); obj.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert(), tris = [];
+  obj.traverse(o => { if (!o.isMesh || !o.visible || o.material.map) return; const p = o.geometry.attributes.position, ix = o.geometry.index, m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), pts = [];
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(m); pts.push([v.x, v.z]); box.expandByPoint(v); }
+    const n = ix ? ix.count : p.count; for (let i = 0; i < n; i += 3) tris.push([0, 1, 2].map(k => pts[ix ? ix.getX(i + k) : i + k])); });
+  for (const o of obj.children) if (o.name === 'prop' || o.name === 'rotor') { const d = o.children[0].geometry.parameters.radius; box.expandByPoint(v.set(o.position.x - d, 0, o.position.z - d)); box.expandByPoint(v.set(o.position.x + d, 0, o.position.z + d)); }
+  const pad = 0.15 * Math.max(box.max.x - box.min.x, box.max.z - box.min.z), x0 = box.min.x - pad, z0 = box.min.z - pad, w = box.max.x - box.min.x + 2 * pad, d = box.max.z - box.min.z + 2 * pad;
+  const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d'); g.filter = 'blur(3px)'; g.fillStyle = '#000';
+  const P = ([x, z]) => [(x - x0) / w * S, (1 - (z - z0) / d) * S];
+  const tmp = document.createElement('canvas'); tmp.width = tmp.height = S; const t = tmp.getContext('2d'); t.fillStyle = '#000';
+  for (const tr of tris) { t.beginPath(); tr.forEach((p, i) => { const [a, b] = P(p); i ? t.lineTo(a, b) : t.moveTo(a, b); }); t.fill(); }
+  for (const o of obj.children) if (o.name === 'rotor') { const r = o.children[0].geometry.parameters.radius / w * S, [a, b] = P([o.position.x, o.position.z]); t.globalAlpha = 0.35; t.beginPath(); t.arc(a, b, r, 0, 7); t.fill(); t.globalAlpha = 1; }
+  g.drawImage(tmp, 0, 0);
+  const tex = new THREE.CanvasTexture(cv); return (_shadowTex[key] = { tex, x: x0 + w / 2, z: z0 + d / 2, w, d });
+}
+// ---------------------------------------------------------------------------------------------- v7: artillery effects
+// One particle system for every fire mission on the map: two instanced billboard pools (alpha-blended smoke / dust and
+// additive flashes / fire / tracers; a quad per particle, positions, sizes, colours written into instanced attributes
+// each frame) and one static decal layer (craters and scorch marks, rebuilt only when it changes). Sizes are in km and
+// exaggerated like the UAV models (a 152 mm burst ~100 m across), tracer heads keep a minimum size on screen.
+// update() returns false once nothing is alive, so the map stops rendering when the fire is over.
+const FXV = `attribute vec3 iPos; attribute vec4 iCol; attribute vec4 iP; uniform float uPx, uK; varying vec2 vUv; varying vec4 vCol;
+void main() {
+  float sz = iP.x * uK, s = sin(iP.y), c = cos(iP.y); vec2 q = position.xy; vec4 mv;
+  if (iP.w > 0.5 && iP.w < 1.5) { vec2 r = vec2(q.x * c - q.y * s, q.x * s + q.y * c) * sz; mv = modelViewMatrix * vec4(iPos + vec3(r.x, 0.0, -r.y), 1.0); }
+  else { mv = modelViewMatrix * vec4(iPos, 1.0); if (iP.w > 1.5) sz = max(sz, uPx * 2.6 * -mv.z); vec2 r = vec2(q.x * c - q.y * s, q.x * s + q.y * c) * sz; mv.xy += r; }
+  gl_Position = projectionMatrix * mv;
+  float t = iP.z; vUv = (vec2(mod(t, 4.0), 3.0 - floor(t / 4.0)) + uv) / 4.0; vCol = iCol;
+}`;
+const FXF = `uniform sampler2D map; varying vec2 vUv; varying vec4 vCol;
+void main() { vec4 t = texture2D(map, vUv); float a = t.a * vCol.a; if (a < 0.004) discard; gl_FragColor = vec4(vCol.rgb * t.rgb, a); }`;
+let _fxAtlas = null;
+// 4x4 atlas of 128 px tiles: 0-3 shaded smoke puffs, 4 soft glow, 5 star flash, 6 spark, 7 shock ring, 8 crater,
+// 9 scorch, 10 fireball, 11 clod
+function fxAtlas() {
+  if (_fxAtlas) return _fxAtlas;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 512; const g = cv.getContext('2d'), T = 128;
+  const tile = (i, fn) => { const ox = (i % 4) * T, oy = Math.floor(i / 4) * T; g.save(); g.beginPath(); g.rect(ox, oy, T, T); g.clip(); g.translate(ox, oy); fn(rng(17 + i * 31)); g.restore(); };
+  const blob = (x, y, R, rgba0, rgba1 = null) => { const gr = g.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, rgba0); gr.addColorStop(1, rgba1 || rgba0.replace(/[\d.]+\)$/, '0)')); g.fillStyle = gr; g.fillRect(x - R, y - R, 2 * R, 2 * R); };
+  for (let i = 0; i < 4; i++) tile(i, r => { for (let k = 0; k < 34; k++) { const a = r() * 6.283, d = 24 * Math.sqrt(r()), x = 64 + Math.cos(a) * d, y = 66 + Math.sin(a) * d * 0.85, R = 12 + r() * 22, l = Math.round(250 - (y - 30) * 1.05 - r() * 20); blob(x, y, R, `rgba(${l},${l},${l},${(0.22 + r() * 0.2).toFixed(2)})`); } });
+  tile(4, () => { blob(64, 64, 62, 'rgba(255,255,255,1)'); blob(64, 64, 20, 'rgba(255,255,255,0.9)'); });
+  tile(5, r => { blob(64, 64, 60, 'rgba(255,255,255,0.75)'); g.fillStyle = 'rgba(255,255,255,0.85)'; for (let k = 0; k < 7; k++) { const a = k / 7 * 6.283 + r() * 0.4, L = 40 + r() * 22; g.beginPath(); g.moveTo(64 + Math.cos(a) * L, 64 + Math.sin(a) * L); g.lineTo(64 + Math.cos(a + 1.57) * 5, 64 + Math.sin(a + 1.57) * 5); g.lineTo(64 + Math.cos(a - 1.57) * 5, 64 + Math.sin(a - 1.57) * 5); g.fill(); } blob(64, 64, 18, 'rgba(255,255,255,1)'); });
+  tile(6, () => { blob(64, 64, 30, 'rgba(255,255,255,1)'); blob(64, 64, 10, 'rgba(255,255,255,1)'); });
+  tile(7, () => { const gr = g.createRadialGradient(64, 64, 30, 64, 64, 62); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.75, 'rgba(255,255,255,0.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, T, T); });
+  tile(8, r => {   // crater: ejecta rays, light rim, dark bowl
+    for (let k = 0; k < 26; k++) { const a = r() * 6.283, L = 30 + r() * 30, w = 2 + r() * 5; g.strokeStyle = `rgba(${70 + r() * 30 | 0},${62 + r() * 24 | 0},${52 + r() * 20 | 0},${(0.25 + r() * 0.35).toFixed(2)})`; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a) * L, 64 + Math.sin(a) * L); g.stroke(); }
+    blob(64, 64, 34, 'rgba(48,40,32,0.85)'); for (let k = 0; k < 10; k++) { const a = r() * 6.283; blob(64 + Math.cos(a) * 20, 64 + Math.sin(a) * 20, 9 + r() * 6, 'rgba(150,132,104,0.55)'); } blob(64, 64, 16, 'rgba(22,18,14,0.95)'); });
+  tile(9, r => { for (let k = 0; k < 16; k++) { const a = r() * 6.283, d = 22 * Math.sqrt(r()); blob(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 18 + r() * 18, `rgba(24,20,16,${(0.18 + r() * 0.18).toFixed(2)})`); } });
+  tile(10, r => { for (let k = 0; k < 18; k++) { const a = r() * 6.283, d = 20 * Math.sqrt(r()), x = 64 + Math.cos(a) * d, y = 64 + Math.sin(a) * d; blob(x, y, 14 + r() * 20, `rgba(255,${150 + r() * 70 | 0},${40 + r() * 50 | 0},0.5)`); } blob(64, 64, 22, 'rgba(255,240,190,0.95)'); });
+  tile(11, r => { g.fillStyle = 'rgba(40,32,24,0.95)'; g.beginPath(); for (let k = 0; k < 9; k++) { const a = k / 9 * 6.283, L = 22 + r() * 22; k ? g.lineTo(64 + Math.cos(a) * L, 64 + Math.sin(a) * L) : g.moveTo(64 + Math.cos(a) * L, 64 + Math.sin(a) * L); } g.fill(); });
+  _fxAtlas = new THREE.CanvasTexture(cv); _fxAtlas.generateMipmaps = true; _fxAtlas.minFilter = THREE.LinearMipmapLinearFilter; return _fxAtlas;
+}
+function fxMaterial(additive) {
+  return new THREE.ShaderMaterial({ vertexShader: FXV, fragmentShader: FXF, uniforms: { map: { value: fxAtlas() }, uPx: { value: 0.001 }, uK: { value: 1 } }, transparent: true, depthWrite: false, depthTest: true, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
+}
+class FxLayer {
+  constructor(N, additive, order) {
+    this.N = N; const q = new THREE.PlaneGeometry(1, 1), g = new THREE.InstancedBufferGeometry(); g.index = q.index; g.setAttribute('position', q.attributes.position); g.setAttribute('uv', q.attributes.uv);
+    const A = (n, k) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(N * k), k); a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(n, a); return a; };
+    this.aPos = A('iPos', 3); this.aCol = A('iCol', 4); this.aP = A('iP', 4); g.instanceCount = 0; this.geo = g;
+    this.mesh = new THREE.Mesh(g, fxMaterial(additive)); this.mesh.frustumCulled = false; this.mesh.renderOrder = order; this.ps = [];
+  }
+  write(list) {
+    const n = Math.min(this.N, list.length), P = this.aPos.array, C = this.aCol.array, Q = this.aP.array;
+    for (let i = 0; i < n; i++) { const p = list[i]; P[i * 3] = p.x; P[i * 3 + 1] = p.y; P[i * 3 + 2] = p.z; C[i * 4] = p.r; C[i * 4 + 1] = p.g; C[i * 4 + 2] = p.b; C[i * 4 + 3] = p.a; Q[i * 4] = p.s; Q[i * 4 + 1] = p.rot; Q[i * 4 + 2] = p.tile; Q[i * 4 + 3] = p.mode; }
+    this.geo.instanceCount = n; for (const a of [this.aPos, this.aCol, this.aP]) { a.needsUpdate = true; a.clearUpdateRanges?.(); a.addUpdateRange?.(0, n * a.itemSize); }
+  }
+}
+const KIND_FX = { mortar120: { k: 0.82, tube: 'mortar', guns: 4, volleys: 3 }, how122: { k: 0.9, tube: 'how', guns: 6, volleys: 3 }, d30: { k: 0.9, tube: 'how', guns: 6, volleys: 3 }, how152: { k: 1, tube: 'how', guns: 6, volleys: 3 }, msta: { k: 1, tube: 'how', guns: 6, volleys: 3 }, m777: { k: 1, tube: 'how', guns: 4, volleys: 3 }, grad: { k: 1.05, tube: 'mlrs', guns: 2, volleys: 1 } };
+export class ArtyFx {
+  constructor(scene) {
+    this.smoke = new FxLayer(9000, false, 11); this.glow = new FxLayer(4000, true, 12); this.decal = new FxLayer(3000, false, 2);
+    this.decal.mesh.material.polygonOffset = true; this.decal.mesh.material.polygonOffsetFactor = -2;
+    scene.add(this.decal.mesh, this.smoke.mesh, this.glow.mesh);
+    this.parts = []; this.proj = []; this.events = []; this.lines = []; this.time = 0; this.wind = [0.006, 0.002]; this.decals = new Map(); this.decalDirty = false; this.scene = scene;
+  }
+  get busy() { return this.parts.length > 0 || this.proj.length > 0 || this.events.length > 0 || this.lines.length > 0; }
+  at(dt, fn) { this.events.push({ t: this.time + dt, fn }); }
+  // a particle: p { x y z vx vy vz life s0 s1 tile mode c0 c1 a0 fin fpow drag rise grav wind rot vrot ground }
+  add(p) { if (this.parts.length > 12000) return null; p.age = 0; p.rot ??= Math.random() * 6.283; p.vrot ??= 0; p.c1 ||= p.c0; p.fin ??= 0.08; p.fpow ??= 1.4; p.drag ??= 0; p.rise ??= 0; p.grav ??= 0; p.wind ??= 0; p.vx ??= 0; p.vy ??= 0; p.vz ??= 0; p.mode ??= 0; p.add = !!p.add; p.r = p.g = p.b = p.a = p.s = 0; this.parts.push(p); return p; }
+  update(dt) {
+    dt = Math.min(dt, 0.1); this.time += dt;
+    for (let i = this.events.length - 1; i >= 0; i--) if (this.events[i].t <= this.time) { const e = this.events[i]; this.events.splice(i, 1); e.fn(); }
+    // projectiles: a ballistic arc a -> b, apex h; trail dots / rocket smoke every `step` km along the path
+    for (let i = this.proj.length - 1; i >= 0; i--) {
+      const q = this.proj[i]; q.t += dt; if (q.t < 0) continue;
+      const k = Math.min(1, q.t / q.dur), pos = k2 => [q.a[0] + (q.b[0] - q.a[0]) * k2, q.a[1] + (q.b[1] - q.a[1]) * k2 + 4 * q.h * k2 * (1 - k2), q.a[2] + (q.b[2] - q.a[2]) * k2];
+      const k0 = q.k ?? 0, L = q.len * (k - k0), n = Math.min(q.rocket ? 24 : 10, Math.ceil(L / q.step));
+      for (let j = 1; j <= n; j++) { const kk = k0 + (k - k0) * j / n, [x, y, z] = pos(kk), age = (1 - j / n) * dt;
+        if (q.rocket) { if (kk > 0.38) continue; const tp = this.add({ x, y, z, vx: (Math.random() - 0.5) * 0.006, vy: 0.002, vz: (Math.random() - 0.5) * 0.006, life: 3.5 + Math.random() * 2.5, s0: 0.035 * q.s, s1: 0.11 * q.s, tile: Math.random() * 4 | 0, c0: [0.95, 0.94, 0.92], c1: [0.8, 0.8, 0.79], a0: 0.6, fin: 0.02, fpow: 1.6, drag: 0.6, wind: 1, vrot: (Math.random() - 0.5) * 0.4 }); if (tp) tp.age = age;
+          this.add({ x, y, z, life: 0.18, s0: 0.02 * q.s, s1: 0.012 * q.s, tile: 4, mode: 2, c0: [1, 0.62, 0.25], a0: 0.8, fin: 0.01, add: true }); }
+        else { this.add({ x, y, z, life: 0.5, s0: 0.012, s1: 0.007, tile: 6, mode: 2, c0: [1, 0.5, 0.16], a0: q.tracer, fin: 0.01, fpow: 1.5 }); this.add({ x, y, z, life: 0.25, s0: 0.016, s1: 0.01, tile: 4, mode: 2, c0: [1, 0.75, 0.45], a0: q.tracer * 0.6, fin: 0.01, add: true }); }
+      }
+      q.k = k;
+      if ((q.rocket && k < 0.4) || q.tracer > 0.3) { const [x, y, z] = pos(k); this.add({ x, y, z, life: 0.05, s0: 0.035 * q.s, s1: 0.035 * q.s, tile: 4, mode: 2, c0: q.rocket ? [1, 0.85, 0.55] : [1, 0.8, 0.55], a0: 1, fin: 0.01, add: true }); }
+      if (k >= 1) { this.proj.splice(i, 1); q.hit?.(); }
+    }
+    // particles
+    const [wx, wz] = this.wind, sm = [], gl = [];
+    for (let i = this.parts.length - 1; i >= 0; i--) {
+      const p = this.parts[i]; p.age += dt; const k = p.age / p.life; if (k >= 1) { this.parts[i] = this.parts[this.parts.length - 1]; this.parts.pop(); continue; }
+      if (p.drag) { const d = Math.exp(-p.drag * dt); p.vx *= d; p.vy *= d; p.vz *= d; }
+      p.vy += (p.rise - p.grav) * dt; p.x += (p.vx + wx * p.wind * Math.min(1, p.y * 6 + 0.3)) * dt; p.y += p.vy * dt; p.z += (p.vz + wz * p.wind * Math.min(1, p.y * 6 + 0.3)) * dt;
+      if (p.y < 0.001 && p.grav) { p.y = 0.001; p.vy = 0; p.vx *= 0.3; p.vz *= 0.3; }
+      p.rot += p.vrot * dt;
+      const e = 1 - (1 - k) * (1 - k), cc = Math.min(1, k * (p.cs || 1.6));
+      p.s = p.s0 + (p.s1 - p.s0) * e; p.r = p.c0[0] + (p.c1[0] - p.c0[0]) * cc; p.g = p.c0[1] + (p.c1[1] - p.c0[1]) * cc; p.b = p.c0[2] + (p.c1[2] - p.c0[2]) * cc;
+      p.a = p.a0 * Math.min(1, k / p.fin) * Math.pow(1 - k, p.fpow);
+      (p.add ? gl : sm).push(p);
+    }
+    this.smoke.write(sm); this.glow.write(gl);
+    for (let i = this.lines.length - 1; i >= 0; i--) { const l = this.lines[i]; l.t += dt; const k = l.t / l.dur; if (k >= 1) { this.scene.remove(l.obj); if (this.lineDispose) this.lineDispose(l.obj); else { l.obj.geometry.dispose(); l.obj.material.dispose(); } this.lines.splice(i, 1); continue; } l.obj.material.opacity = l.a * Math.min(1, k / 0.1) * (1 - k); }
+    if (this.decalDirty) this.writeDecals();
+    return this.busy;
+  }
+  // k: size boost when the camera is far out (the effects stay readable on the strategic view; decals grow less)
+  setView(camera, H, k = 1) { const v = 2 * Math.tan(camera.fov * Math.PI / 360) / H; for (const L of [this.smoke, this.glow, this.decal]) { L.mesh.material.uniforms.uPx.value = v; L.mesh.material.uniforms.uK.value = L === this.decal ? Math.sqrt(k) : k; } }
+  writeDecals() { const all = []; for (const l of this.decals.values()) all.push(...l); this.decal.write(all); this.decalDirty = false; }
+  addDecal(key, d) { if (!this.decals.has(key)) this.decals.set(key, []); this.decals.get(key).push(d); this.decalDirty = true; }
+  // ---- building blocks
+  muzzle(x, z, dir, kind, k = 1) {
+    const [dx, dz] = dir, mort = kind === 'mortar', R = Math.random;
+    this.add({ x: x + dx * 0.012, y: 0.012, z: z + dz * 0.012, life: 0.13, s0: 0.05 * k, s1: 0.08 * k, tile: 5, mode: 2, c0: [1, 0.92, 0.7], a0: 1, fin: 0.01, fpow: 1, add: true });
+    this.add({ x, y: 0.01, z, life: 0.32, s0: 0.07 * k, s1: 0.11 * k, tile: 4, c0: [1, 0.55, 0.2], a0: 0.75, fin: 0.02, add: true });
+    for (let i = 0; i < (mort ? 2 : 4); i++) { const v = 0.05 + R() * 0.06; this.add({ x, y: 0.012, z, vx: dx * v + (R() - 0.5) * 0.03, vy: 0.03 + R() * 0.03, vz: dz * v + (R() - 0.5) * 0.03, life: 3.5 + R() * 2.5, s0: 0.02 * k, s1: (0.08 + R() * 0.04) * k, tile: R() * 4 | 0, c0: [0.85, 0.84, 0.8], c1: [0.72, 0.72, 0.7], a0: mort ? 0.4 : 0.55, fin: 0.04, drag: 1.6, rise: 0.003, wind: 1, vrot: (R() - 0.5) * 0.4 }); }
+    if (!mort) for (let i = 0; i < 5; i++) { const a = R() * 6.283, v = 0.03 + R() * 0.03; this.add({ x, y: 0.004, z, vx: Math.cos(a) * v, vy: 0.004, vz: Math.sin(a) * v, life: 2 + R() * 1.5, s0: 0.02 * k, s1: 0.06 * k, tile: R() * 4 | 0, c0: [0.62, 0.55, 0.44], a0: 0.35, fin: 0.05, drag: 2.4, wind: 0.6 }); }
+  }
+  rocketLaunch(x, z, dir, k = 1) {
+    const [dx, dz] = dir, R = Math.random;
+    this.add({ x, y: 0.01, z, life: 0.25, s0: 0.05 * k, s1: 0.08 * k, tile: 10, c0: [1, 0.8, 0.5], a0: 0.9, fin: 0.02, add: true });
+    for (let i = 0; i < 3; i++) { const v = 0.04 + R() * 0.05; this.add({ x, y: 0.008, z, vx: -dx * v + (R() - 0.5) * 0.04, vy: 0.01 + R() * 0.02, vz: -dz * v + (R() - 0.5) * 0.04, life: 6 + R() * 4, s0: 0.03 * k, s1: (0.11 + R() * 0.06) * k, tile: R() * 4 | 0, c0: [0.8, 0.77, 0.7], c1: [0.7, 0.69, 0.66], a0: 0.4, fin: 0.04, drag: 1.2, rise: 0.002, wind: 1 }); }
+  }
+  impact(x, z, k = 1, kind = 'shell', key = null) {
+    k *= 1.35; const R = Math.random, rk = kind === 'rocket', sec = kind === 'secondary';
+    this.add({ x, y: 0.01, z, life: 0.16, s0: 0.07 * k, s1: 0.12 * k, tile: 5, mode: 2, c0: [1, 0.93, 0.75], a0: 1, fin: 0.01, fpow: 1, add: true });
+    this.add({ x, y: 0.02 * k, z, vy: 0.03, life: rk || sec ? 0.9 : 0.6, s0: 0.06 * k, s1: (rk || sec ? 0.15 : 0.12) * k, tile: 10, c0: [1, 0.85, 0.55], c1: [0.9, 0.35, 0.1], a0: 0.95, fin: 0.03, fpow: 1.8, add: true, cs: 1.5 });
+    this.add({ x, y: 0.003, z, life: 0.4, s0: 0.02 * k, s1: 0.26 * k, tile: 7, mode: 1, c0: [1, 0.9, 0.75], a0: 0.22, fin: 0.02, fpow: 1, add: true });
+    for (let i = 0; i < 7; i++) { const a = R() * 6.283, v = 0.08 + R() * 0.12; this.add({ x, y: 0.01, z, vx: Math.cos(a) * v * 0.6, vy: 0.08 + R() * 0.12, vz: Math.sin(a) * v * 0.6, life: 0.6 + R() * 0.5, s0: 0.006, s1: 0.004, tile: 6, mode: 2, c0: [1, 0.75, 0.4], a0: 0.9, fin: 0.01, grav: 0.35, add: true }); }
+    for (let i = 0; i < 6; i++) { const a = R() * 6.283, v = 0.04 + R() * 0.07; this.add({ x, y: 0.01, z, vx: Math.cos(a) * v * 0.5, vy: 0.07 + R() * 0.1, vz: Math.sin(a) * v * 0.5, life: 0.9 + R() * 0.5, s0: 0.008 * k, s1: 0.008 * k, tile: 11, c0: [0.3, 0.25, 0.2], a0: 0.95, fin: 0.01, fpow: 0.4, grav: 0.32, vrot: 4 }); }
+    // the dust / smoke column: dark earth at the root, lighter as it rises, leaning with the wind
+    const dark = sec ? [0.12, 0.11, 0.1] : [0.3, 0.26, 0.21], light = sec ? [0.25, 0.24, 0.23] : [0.72, 0.7, 0.66];
+    for (let i = 0; i < 3; i++) this.add({ x: x + (R() - 0.5) * 0.04 * k, y: 0.03 * k, z: z + (R() - 0.5) * 0.04 * k, vx: (R() - 0.5) * 0.03, vy: 0.03 * k, vz: (R() - 0.5) * 0.03, life: 2.6 + R() * 1.5, s0: 0.06 * k, s1: (0.22 + R() * 0.06) * k, tile: R() * 4 | 0, c0: dark.map(c => c * 0.8), c1: light, a0: 0.9, fin: 0.02, fpow: 1.6, drag: 1.4, wind: 0.6, vrot: (R() - 0.5) * 0.5, cs: 1 });
+    for (let i = 0; i < (sec ? 7 : 5); i++) this.add({ x: x + (R() - 0.5) * 0.03 * k, y: 0.015, z: z + (R() - 0.5) * 0.03 * k, vx: (R() - 0.5) * 0.02, vy: (0.05 + R() * 0.06 + i * 0.03) * k, vz: (R() - 0.5) * 0.02, life: (sec ? 14 : 6) + R() * 4, s0: 0.045 * k, s1: (0.17 + R() * 0.07 + i * 0.02) * k, tile: R() * 4 | 0, c0: dark, c1: light, a0: 0.82, fin: 0.03, fpow: 1.2, drag: 0.9, rise: sec ? 0.004 : 0.001, wind: 1, vrot: (R() - 0.5) * 0.3, cs: 1.2 });
+    for (let i = 0; i < 6; i++) { const a = R() * 6.283, v = 0.06 + R() * 0.05; this.add({ x, y: 0.006, z, vx: Math.cos(a) * v, vy: 0.006, vz: Math.sin(a) * v, life: 4 + R() * 2.5, s0: 0.04 * k, s1: (0.14 + R() * 0.06) * k, tile: R() * 4 | 0, c0: [0.52, 0.46, 0.38], c1: [0.7, 0.67, 0.62], a0: 0.7, fin: 0.04, drag: 1.8, wind: 0.8, vrot: (R() - 0.5) * 0.3 }); }
+    for (let i = 0; i < 2; i++) this.add({ x: x + (R() - 0.5) * 0.04, y: 0.06 * k, z: z + (R() - 0.5) * 0.04, vy: 0.012, life: 16 + R() * 8, s0: 0.1 * k, s1: (0.32 + R() * 0.1) * k, tile: R() * 4 | 0, c0: [0.7, 0.69, 0.67], a0: 0.4, fin: 0.25, fpow: 1.1, drag: 0.4, rise: 0.0006, wind: 1.2, vrot: (R() - 0.5) * 0.15 });
+    if (key) { this.addDecal(key, { x, y: 0.002, z, s: (0.045 + R() * 0.02) * k, rot: R() * 6.28, tile: 8, mode: 1, r: 1, g: 1, b: 1, a: 0.92 }); if (R() < 0.6 || sec) this.addDecal(key, { x: x + (R() - 0.5) * 0.02, y: 0.0015, z: z + (R() - 0.5) * 0.02, s: (0.12 + R() * 0.06) * k * (sec ? 1.8 : 1), rot: R() * 6.28, tile: 9, mode: 1, r: 1, g: 1, b: 1, a: 0.75 }); }
+  }
+  arcLine(a, b, h, color, dur) {
+    const pts = []; for (let i = 0; i <= 48; i++) { const k = i / 48; pts.push(a[0] + (b[0] - a[0]) * k, a[1] + 4 * h * k * (1 - k), a[2] + (b[2] - a[2]) * k); }
+    let l; if (this.lineFactory) l = this.lineFactory(pts, color);
+    else { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); l = new THREE.Line(g, new THREE.LineDashedMaterial({ color, dashSize: 0.22, gapSize: 0.14, transparent: true, opacity: 0, depthWrite: false })); l.computeLineDistances(); l.renderOrder = 10; }
+    this.scene.add(l); this.lines.push({ obj: l, t: 0, dur, a: 0.75 });
+  }
 }
 export function echelon(n) { return n <= 2 ? '•••' : n <= 6 ? 'I' : 'II'; }
 // NATO-style friendly frame with an icon from the force's composition

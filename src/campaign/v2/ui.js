@@ -622,8 +622,9 @@ export class CampaignScreen {
   targetClick(id) {
     const C = this.C, T = this.targeting; if (!T || !id) return;
     if (T.kind === 'fire') {
+      const hp0 = C.batteries('enemy').filter(b => b.cell === id).map(b => b.hp);   // counter-battery hits -> secondary explosions on the map
       const r = this.act('fire', T.bat, T.mission, id); if (typeof r === 'string') { blip('error'); return this.toast(r, false); }
-      blip('attack'); this.map.strike?.(id, T.mission === 'interdict' ? '#ffb35a' : '#ff7a5a');
+      blip('attack'); this.map.strike?.(id, T.mission, C.battery(T.bat), { hits: C.batteries('enemy').filter(b => b.cell === id).filter((b, i) => b.hp < (hp0[i] ?? b.hp)).length });
       this.toast(`${C.battery(T.bat)?.name}: ${({ suppress: 'suppression', interdict: 'interdiction', counterbattery: 'counter-battery' })[T.mission]} mission on ${C.cellName(id)}`);
     } else if (T.kind === 'move') {
       const e = this.act('moveBattery', T.bat, id); if (e) { blip('error'); return this.toast(e, false); } blip('move'); this.toast(`${C.battery(T.bat)?.name} displaces to ${C.cellName(id)}`);
