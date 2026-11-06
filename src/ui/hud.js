@@ -3,6 +3,7 @@ import { WEAPONS } from '../config.js';
 import { ROADS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
 import { unitSymbol, unitKindOf, UNIT_TYPE_NAME, ORDER_ICONS } from './symbols.js';
+import { ContactMarkers } from './contactMarkers.js';
 
 // Battle HUD. Look & tokens: src/ui/style.css. All per-frame DOM writes are change-guarded
 // (each element remembers what it last showed), slow panels refresh at 4 Hz.
@@ -41,7 +42,8 @@ export class HUD {
     // order buttons: icons in front of the labels
     this.orderBtns = {};
     for (const b of document.querySelectorAll('#orders button')) { this.orderBtns[b.dataset.o] = b; if (!b.querySelector('.ico') && ORDER_ICONS[b.dataset.o]) b.insertAdjacentHTML('afterbegin', ORDER_ICONS[b.dataset.o]); }
-    this.mortarEl = document.getElementById('mortarCount');
+    this.mortarEl = document.getElementById('mortarCount'); this.artyEl = document.getElementById('artyCount');
+    this.contacts = new ContactMarkers(game);   // "?" over enemy units not identified yet
     this.rings(); this.sizeMinimap(); this.drawMinimapBase(); this.rebuildCards();
     addEventListener('resize', () => { this.sizeMinimap(); });
     this.mm.addEventListener('mousedown', e => { if (e.button !== 0) return; this.mmDrag = true; this.minimapClick(e); });
@@ -187,13 +189,14 @@ export class HUD {
       garrison: sq.some(u => !u.mounted), smoke: sq.some(u => !u.mounted),
       mount: sel.some(u => u.type === 'squad' ? (u.mounted || (u.carrier && !u.carrier.destroyed)) : !!u.passengers || (deploy && (u.kind === 'btr' || u.kind === 'ifv'))),
       resupply: sq.some(u => u.carrier && !u.carrier.destroyed && !u.mounted),
-      fireground: sel.length > 0 && !deploy, mortar: g.mortars > 0 && !deploy,
+      fireground: sel.length > 0 && !deploy, mortar: g.mortars > 0 && !deploy, artillery: (g.fires?.count.player || 0) > 0 && !deploy,
     };
     for (const k in B) set(B[k], 'disabled', !en[k]);
     tog(B.holdfire, 'on', sel.length > 0 && sel.every(u => u.holdFire));
     tog(B.run, 'on', !!inp?.runMode);
     tog(B.fireground, 'on', inp?.mode === 'fireground'); tog(B.mortar, 'on', inp?.mode === 'mortar');
     set(this.mortarEl, 'textContent', String(g.mortars));
+    if (B.artillery) { tog(B.artillery, 'on', inp?.mode === 'artillery'); if (this.artyEl) set(this.artyEl, 'textContent', String(g.fires?.count.player || 0)); }
   }
   updateInfo(force) {
     const sel = [...this.selected].filter(u => !u.destroyed);
@@ -210,6 +213,8 @@ export class HUD {
     tog(this.info, 'enemy', u && u.side !== 'player');
   }
   unitPanel(u) {
+    // an enemy nobody has identified yet: nothing but the fact that something is there
+    if (u.side !== 'player' && !u.spotted && !u.destroyed) return `<div class="ui-head">${unitSymbol('contact', 'hostile')}<div class="tt"><h4>Unconfirmed contact</h4><div class="sub">No line of sight · not identified</div></div></div><div class="kv"><div><span>Right-click</span><b>area fire / close in</b></div></div>`;
     const aff = u.side === 'player' ? 'friend' : 'hostile', kind = unitKindOf(u);
     const row = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
     const meter = (label, f, val, cls) => `<span>${label}</span><div class="meter ${cls}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
@@ -402,6 +407,10 @@ export class HUD {
       x.fillStyle = friend ? 'rgba(92,178,230,.55)' : 'rgba(234,90,75,.6)'; x.fill();
       x.lineWidth = sel ? 2 : 1.2; x.strokeStyle = sel ? '#fff' : friend ? C.friend : C.hostile; x.stroke();
     };
+    // unconfirmed contacts: a faint hollow diamond, no men, no type
+    x.strokeStyle = 'rgba(234,90,75,.55)'; x.lineWidth = 1;
+    for (const u of g.squads) if (u.side === 'enemy' && !u.spotted && !u.destroyed && !u.mounted && !u.medevac) { const c = (u.leader?.alive ? u.leader : u.soldiers.find(s => s.alive))?.pos; if (c) { const px = P(c.x), pz = P(c.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); } }
+    for (const v of g.vehicles) if (v.side === 'enemy' && !v.spotted && !v.destroyed) { const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
       const friend = sq.side === 'player';
@@ -472,6 +481,7 @@ export class HUD {
     this.frames++; this.fpsT += dt; if (this.fpsT > 1) { this.fpsEl.textContent = `${Math.round(this.frames / this.fpsT)} fps`; this.frames = 0; this.fpsT = 0; }
     for (const u of this.selected) if (u.destroyed) this.selected.delete(u);
     this.updateRings(); this.updateBanners(); this.updateTop(); this.g.medevac?.hudUpdate();
+    this.contacts.update(dt); this.g.fires?.frame();
     this.slowT = (this.slowT || 0) - dt; const slow = this.slowT <= 0;
     this.updateTickets(dt, slow);
     if (slow) { this.slowT = 0.25; this.updateCards(); this.updateInfo(); this.drawMinimap(); }

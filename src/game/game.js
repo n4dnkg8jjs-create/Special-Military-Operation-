@@ -19,6 +19,7 @@ import { setupTreeDamage } from '../world/treeDamage.js';
 import { prepareSoldierAssets } from './soldier.js';
 import { Commander, AutoDefender } from './ai.js';
 import { setupMedevac } from './medevac.js';
+import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
 
 const Q = new URLSearchParams(location.search);
@@ -61,8 +62,8 @@ export class Game {
     this.houses = buildHouses(this);   // private houses: garrisonable, with a cellar (world/houses.js)
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
-    this.combat = new Combat(this); this.cqb = new CQB(this);   // building clearing (game/cqb.js)
     this.treeDamage = setupTreeDamage(this);   // shelled trees lose leaves, splinter, snap (world/treeDamage.js; driven by fx.explosion)
+    this.combat = new Combat(this); this.cqb = new CQB(this);   // building clearing (game/cqb.js)
     this.cam = new RTSCamera(this.renderer.camera, canvas, BOUNDS);
     prepareSoldierAssets(this.assets);
     this.objectives = OBJECTIVES.map(o => ({ ...o, control: 0, owner: 'neutral', lostT: 0, contested: false, captured: false }));
@@ -71,6 +72,7 @@ export class Game {
     this.zoneMarkers();
     this.deploy();
     this.medevac = setupMedevac(this);   // casualty-evacuation pickup + medics for both sides (game/medevac.js)
+    this.fires = setupFires(this);       // 152 / 155 mm tube-artillery fire missions, both sides (game/fireMission.js)
     const net = this.opts.net;
     this.commander = net ? { update() {}, begin() {}, adoptCrew() {}, plan: [], waveI: 0 } : new Commander(this);   // versus: the other side is a human
     if (net) this.reinforced = true;   // no scripted reinforcements in versus
@@ -354,7 +356,8 @@ export class Game {
         const was = !!u.spotted;
         u.spotted = (u.seenBy.player != null && this.time - u.seenBy.player < 3) || (was && u.detect.player > 0.25);
         if (was && !u.spotted && !u.destroyed) this.lastKnown(u); else if (u.spotted && u.lkm) this.dropLastKnown(u);
-        if (u.type === 'squad') for (const s of u.soldiers) s.visible = (u.spotted && !s.cellar) || s.state === 'dead';
+        // enemies are always drawn (an unidentified one under a "?": ui/contactMarkers.js); men down in a cellar are not
+        if (u.type === 'squad') for (const s of u.soldiers) s.visible = !s.cellar || s.state === 'dead';
       }
     }
   }
@@ -457,7 +460,7 @@ export class Game {
     }
     for (const v of this.vehicles) v.update(dt);
     this.combat.update(dt);
-    this.updateStrikes();
+    this.updateStrikes(); this.fires?.update();
     this.commander.update(dt);
     this.autoDef?.update(dt);
     this.updateObjectives(dt);

@@ -25,6 +25,7 @@ const GLYPH = {
   atgm: (x, y, w, h) => `<path d="M${x + w * 0.22} ${y + h * 0.88}L${x + w / 2} ${y + h * 0.12}L${x + w * 0.78} ${y + h * 0.88}"/>`,   // anti-armour
   spg: (x, y, w, h) => `<circle class="fill" cx="${x + w / 2}" cy="${y + h * 0.36}" r="${Math.min(w, h) * 0.11}"/>` + `<rect x="${x + w * 0.24}" y="${y + h * 0.62}" width="${w * 0.52}" height="${h * 0.2}" rx="${h * 0.1}"/>`,   // SP artillery
   medevac: (x, y, w, h) => `<path d="M${x + w / 2} ${y + h * 0.16}v${h * 0.68}M${x + w * 0.3} ${y + h / 2}h${w * 0.4}" stroke-width="3.2"/>`,   // medical (casualty evacuation)
+  contact: (x, y, w, h) => `<text x="${x + w / 2}" y="${y + h * 0.84}" text-anchor="middle" font-size="${h * 1.05}" font-weight="800" fill="currentColor" stroke="none" font-family="sans-serif">?</text>`,   // unconfirmed contact
   fpv: (x, y, w, h) => `<path d="M${x + w * 0.16} ${y + h * 0.38}Q${x + w * 0.33} ${y + h * 0.78} ${x + w / 2} ${y + h * 0.5}Q${x + w * 0.67} ${y + h * 0.78} ${x + w * 0.84} ${y + h * 0.38}"/>`,   // UAS
 };
 
@@ -54,4 +55,5 @@ export const ORDER_ICONS = {
   smoke: I('<path d="M6.5 17a3.5 3.5 0 0 1 .4-7 5 5 0 0 1 9.5-1.2A3.8 3.8 0 0 1 17.5 17z"/><path d="M8 20.5h8"/>'),
   fireground: I('<path d="M3 19h18"/><circle cx="12" cy="11" r="5"/><path d="M12 3.5v3M12 15.5v3M4.5 11h3M16.5 11h3"/>'),
   mortar: I('<path d="M3 19C6 7 15 4 20 12"/><path d="M17.5 13.5l2.6-1.4.1 3"/><path d="M3 21h6"/>'),
+  artillery: I('<path d="M2.5 20.5h7M4 18l5.5-3.2L20 7"/><path d="M9.5 14.8l1.6 3.4"/><circle cx="6.5" cy="18.6" r="1.9"/><path d="M15 3.5l.9 1.9 2-.6-.6 2 1.9.9-1.9.9.6 2-2-.6-.9 1.9"/>'),
 };

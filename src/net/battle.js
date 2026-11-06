@@ -167,7 +167,7 @@ export function clientFrame(g, dt) {
       if (kit && so.kitObjs && kit !== so._kit) { so._kit = kit; for (let ki = 0; ki < so.kitObjs.length; ki++) so.kitObjs[ki].visible = kit[ki] === '1'; }
       const state = STATE[stt] || 'ok';
       if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
-      so.visible = sq.side === 'player' || !!vis || state === 'dead';
+      so.visible = true;   // the host's units are always drawn; unidentified ones (vis 0) carry a "?" (ui/contactMarkers.js)
     }
   }
   for (const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis] of s.v) {

@@ -97,8 +97,8 @@
         <div class="keys-grid">
           <div><h4>Camera</h4><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or screen edge to pan · <kbd>Q</kbd><kbd>E</kbd> rotate · wheel zoom · middle-drag orbit</p></div>
           <div><h4>Select</h4><p>Click or drag a box · double-click selects the type · <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> sets a group, <kbd>1</kbd>–<kbd>9</kbd> recalls it · <kbd>Tab</kbd> folds the roster</p></div>
-          <div><h4>Move</h4><p>Right-click to move or attack · right-drag a formation line · <kbd>R</kbd> run · vehicles back up on their own for short moves back or out of contact · <kbd>X</kbd> halt · <kbd>Space</kbd> pause</p></div>
-          <div><h4>Orders</h4><p><kbd>F</kbd> hold fire · <kbd>G</kbd> garrison · <kbd>M</kbd> mount · <kbd>B</kbd> resupply · <kbd>V</kbd> smoke · <kbd>C</kbd> fire at ground · <kbd>T</kbd> mortar</p></div>
+          <div><h4>Move</h4><p>Right-click to move or attack · right-drag a formation line · <kbd>R</kbd> run · vehicles back up on their own for short moves back or out of contact · <kbd>X</kbd> halt · <kbd>Space</kbd> pause · enemies not yet identified carry a <b>?</b>: right-click one for area fire</p></div>
+          <div><h4>Orders</h4><p><kbd>F</kbd> hold fire · <kbd>G</kbd> garrison · <kbd>M</kbd> mount · <kbd>B</kbd> resupply · <kbd>V</kbd> smoke · <kbd>C</kbd> fire at ground · <kbd>T</kbd> mortar · <kbd>Y</kbd> artillery (152 / 155 mm)</p></div>
           <div><h4>Deploy</h4><p>Place units inside your staging ground, then start the battle with <kbd>Enter</kbd></p></div>
           <div><h4>Support</h4><p>Kornet / Stugna teams set up when halted and engage armour to ~1.2 km. FPV teams launch ten drones; right-click a target to pick one</p></div>
         </div>
@@ -162,6 +162,7 @@
       <button data-o="smoke" data-tip="Throw smoke toward the cursor" data-k="V"><span class="ol">Smoke</span></button>
       <button data-o="fireground" data-tip="Fire at ground: suppress an area without a spotted enemy" data-k="C"><span class="ol">Fire at</span></button>
       <button data-o="mortar" data-tip="Call an 82 mm mortar fire mission" data-k="T"><span class="ol">Mortar</span><span id="mortarCount" class="cnt">3</span></button>
+      <button data-o="artillery" data-tip="Call a 152 / 155 mm artillery fire mission: an adjusting round, then fire for effect ~40 s after the call. Drone-adjusted, a tighter sheaf than the mortars, a much bigger burst: keep own troops 150 m clear" data-k="Y"><span class="ol">Artillery</span><span id="artyCount" class="cnt">2</span></button>
     </div>
   </div>
   <div id="pausebadge" class="hidden"><b>Paused</b><span>Press <kbd>Space</kbd> to resume</span></div>

@@ -108,6 +108,8 @@ export class CommanderV1 {
       const own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
       const ap = new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
       if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
+      // the heavy battery (152 / 155 mm, game/fireMission.js) on a real concentration: rationed there (cooldown, count, never danger close)
+      if (t !== pg && this.clusterScore(t) >= 2 && g.fires?.aiCall(ap.x, ap.z)) return;
       // off-map fire support is rationed like the player's: a fixed number of missions per battle
       if ((g.enemyMortars ??= (g.campaign?.enemyMortars ?? TUNING.mortarStrikes)) <= 0) return;
       g.enemyMortars--;

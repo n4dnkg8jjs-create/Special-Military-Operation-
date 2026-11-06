@@ -427,6 +427,8 @@ export class CommanderV2 extends CommanderV1 {
     const g = this.g, own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
     const ap = V3(x + (Math.random() - .5) * err, z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
     if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.note(`howitzer mission: ${why}`); this.stats.fires++; this.lastFire = g.time; return true; }
+    // the heavy battery (152 / 155 mm, game/fireMission.js): rationed there - one mission every few minutes, never danger close
+    if (g.fires?.aiCall(ap.x, ap.z)) { this.note(`artillery mission (${g.fires.count.enemy} left): ${why}`); this.stats.fires++; this.lastFire = g.time; return true; }
     if ((g.enemyMortars ??= (g.campaign?.enemyMortars ?? TUNING.mortarStrikes)) <= 0) return false;
     g.enemyMortars--; g.callStrike(ap.x, ap.z, 6, 16, 'enemy', 9, 'mortar'); g.hud?.alert('Incoming mortar fire!', 'bad');
     this.note(`mortar mission (${g.enemyMortars} left): ${why}`); this.stats.fires++; this.lastFire = g.time; return true;
@@ -604,10 +606,10 @@ export class CommanderV2 extends CommanderV1 {
     if (sq.morale < 30) { if (!moving && sq.underFireT < 3 && !sq.building && !sq.trench) { const bld = this.nearBuilding(c, 30, sq); if (bld) sq.orderGarrison(bld); } b.wait = 6; return; }
     if (moving) return;
     const role = b.role || 'idle';
-    if (role === 'garrison') return this.holdObjective(b, b.obj);
-    if (role === 'idle') { if (!sq.building && !sq.trench && sq.underFireT > 6) { const st = this.assembly(b.obj || g.objectives[0].id, cp); if (D(cp, st) > 40) this.moveInf(b, st, { why: 'to assembly area' }); } return; }
     // v7: in a trench and in contact: fight from it - only the assault on its own objective (attackers) moves on
     if (role !== 'garrison' && this.dugInHold(b) && !(b.op && b.op.phase === 'assault')) { b.wait = 4; return; }
+    if (role === 'garrison') return this.holdObjective(b, b.obj);
+    if (role === 'idle') { if (!sq.building && !sq.trench && sq.underFireT > 6) { const st = this.assembly(b.obj || g.objectives[0].id, cp); if (D(cp, st) > 40) this.moveInf(b, st, { why: 'to assembly area' }); } return; }
     if (role === 'reserve') {
       if (!b.task?.dest || D(cp, b.task.dest) < 18) { if (!sq.building && !sq.trench && !b.arrived) { b.arrived = true; const bld = this.nearBuilding(c, 25, sq); if (bld) sq.orderGarrison(bld); } return; }
       return this.moveInf(b, b.task.dest, { why: 'to reserve position', run: true });
@@ -769,9 +771,9 @@ export class CommanderV2 extends CommanderV1 {
     const g = this.g, sq = b.sq, [ox, oz] = this.oxz(id || b.obj || g.objectives[0].id), c = sq.center();
     const ob0 = this.objOf(id || b.obj), capNeeded = ob0.owner !== 'enemy' && this.defensive && b.role === 'garrison';
     if ((sq.building || sq.trench || sq.order?.type === 'garrison') && !capNeeded) return;
+    if (this.dugInHold(b)) return;   // v7: in the trench and in contact: stays
     if (g.time - (b.holdTry || 0) < 6) return; b.holdTry = g.time;
     // a point is only ours once men have stood on it: take it first (inside the capture ring), then go to the trench line
-    if (this.dugInHold(b)) return;   // v7: in the trench and in contact: stays
     const ob = this.objOf(id || b.obj), R = (ob.r ?? TUNING.captureRadius) - 6;
     if (ob.owner !== 'enemy' && !this.intel.near(ox, oz, 60, 20).length) {
       if (Math.hypot(c.x - ox, c.z - oz) > R && !(sq.trench && (sq.underFireT < 20 || this.intel.near(c.x, c.z, 300, 30).length))) { if (sq.trench || sq.building) sq.leaveBuilding(); sq.orderMove(ox, oz, Math.atan2(...this.toThem(id || b.obj)), 12, true); b.holdTry = g.time + 8; }   // (v7: not out of the trench across the open while in contact)

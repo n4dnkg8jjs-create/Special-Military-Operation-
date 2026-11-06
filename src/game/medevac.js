@@ -387,7 +387,7 @@ export class MedevacTruck extends Vehicle {
     for (const c of this.load) {
       if (!c.onBed) continue;
       this.slotPos(c.bedSlot, c.pos); c.heading = this.heading + Math.PI; c.netClip = clipOf('cBed');
-      c.root.visible = this.mstate !== 'away' && (this.side === 'player' || this.spotted);
+      c.root.visible = this.mstate !== 'away';   // (enemy pickups are drawn like every enemy unit: ui/contactMarkers.js)
       c.sync();
     }
   }
