@@ -288,23 +288,33 @@ export class Farmland extends City {
       for (const pts of this.ruts) { yx.globalAlpha = 0.35 + R() * 0.25; yx.lineWidth = 2.6 * k; yx.beginPath(); pts.forEach((p, i) => i ? yx.lineTo(...P(p[0], p[1])) : yx.moveTo(...P(p[0], p[1]))); yx.stroke(); }
     }
     const pt = this.paintTimes = {}, p0 = performance.now(); pt.draw = 0;
-    const Y = blurred(yards, 1.5 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.2 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data;
+    const Y = blurred(yards, 2 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.6 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data;
+    // field type, one-hot (R ploughed, G stubble, B fallow, none = sunflower / maize), blurred ~2.5 m (ground look v7):
+    // neighbouring fields fade into each other over a few metres through a weedy balk instead of meeting on a hard,
+    // wobbly line; the boundary itself only wobbles gently (field edges are ploughed straight)
+    const FT = blurred((() => { const c = layer(), x = c.getContext('2d'), im = x.createImageData(N, N), d = im.data;
+      for (let j = 0; j < N; j++) { const z = j / k - o; for (let i = 0; i < N; i++) {
+        const x2 = i / k - o, p = (j * N + i) * 4;
+        const jx = x2 + (this.noise2(x2 / 30, z / 30, 7) - 0.5) * 3 + (this.noise2(x2 / 5, z / 5, 9) - 0.5) * 1, jz = z + (this.noise2(x2 / 30, z / 30, 8) - 0.5) * 3 + (this.noise2(x2 / 5, z / 5, 10) - 0.5) * 1;
+        const t = this.fields[this.fieldIndex(jx, jz)].type;
+        d[p] = t === T_PLOW ? 255 : 0; d[p + 1] = t === T_STUB ? 255 : 0; d[p + 2] = t === T_FALLOW ? 255 : 0; d[p + 3] = 255;
+      } }
+      x.putImageData(im, 0, 0); return c; })(), 3.5 * k).getImageData(0, 0, N, N).data;
     pt.read = Math.round(performance.now() - p0); pt.layers = Math.round(p0 - pa);
     const nx = XS.length - 1;
     for (let j = 0; j < N; j++) {
       const z = j / k - o;
       for (let i = 0; i < N; i++) {
         const x = i / k - o, p = (j * N + i) * 4;
-        // jitter the field lookup so boundaries are ragged, not ruled
-        const jx = x + (this.noise2(x / 9, z / 9, 7) - 0.5) * 7, jz = z + (this.noise2(x / 9, z / 9, 8) - 0.5) * 7;
-        const f = this.fields[this.fieldIndex(jx, jz)];
         const n1 = this.noise2(x / 22, z / 22, 1), n2 = this.noise2(x / 6, z / 6, 2);
-        let r = 0, g = 0, b = 0, a = 0;
-        if (f.type === T_PLOW) { g = 1; r = Math.max(0, n1 - 0.72) * 2.5; }
-        else if (f.type === T_STUB) { b = 1; r = Math.max(0, n1 - 0.65) * 1.8; }
-        else if (f.type === T_FALLOW) { r = 0.75 + n2 * 0.4; a = Math.max(0, 0.35 - n1) * 1.2; }
-        else { g = 0.55 + n2 * 0.25; r = 0.25 + n1 * 0.35; } // sunflower / maize: weedy soil between the rows
-        const ver = V[p] / 255, yd = Y[p] / 255, gd = G[p] / 255;
+        // per-type layers weighted by the blurred one-hot field type
+        const oP = FT[p] / 255, oS = FT[p + 1] / 255, oF = FT[p + 2] / 255, oC = Math.max(0, 1 - oP - oS - oF);
+        let r = oP * Math.max(0, n1 - 0.72) * 2.5 + oS * Math.max(0, n1 - 0.65) * 1.8 + oF * (0.75 + n2 * 0.4) + oC * (0.25 + n1 * 0.35);
+        let g = oP + oC * (0.55 + n2 * 0.25), b = oS, a = oF * Math.max(0, 0.35 - n1) * 1.2;   // sunflower / maize: weedy soil between the rows
+        // balk where two different fields meet: a weedy, grassy strip (purity of the blurred type < 1)
+        const balk = Math.max(0, Math.min(1, (0.9 - Math.max(oP, oS, oF, oC)) / 0.35)) * (0.75 + n2 * 0.5);
+        r = Math.max(r, balk * 0.95); g *= 1 - balk * 0.85; b *= 1 - balk * 0.85;
+        const ver = V[p + 3] / 255, yd = Y[p + 3] / 255, gd = G[p + 3] / 255;   // alpha: white-on-transparent layers (v7)
         r = Math.max(r * (1 - ver), ver * (0.85 + n2 * 0.3)); g *= 1 - ver; b *= 1 - ver;
         if (gd > 0) { g = Math.max(g * (1 - gd), gd * (0.75 + n2 * 0.3)); r *= 1 - gd * 0.7; b *= 1 - gd; }
         a = Math.max(a, yd); r *= 1 - yd * 0.6; g *= 1 - yd * 0.8; b *= 1 - yd * 0.8;
@@ -312,7 +322,7 @@ export class Farmland extends City {
         if (fm === 1) { r = 0.6 + n2 * 0.3; g = 0; b = 0; a = Math.max(a, 0.25 + n1 * 0.3); }          // leaf litter under the stand
         else if (fm === 2) { r = 0.85 + n2 * 0.2; g = 0; b = 0; a = Math.max(a * 0.5, Math.max(0, 0.3 - n1) * 0.6); } // grassy clearing
         const ti = Math.floor(x + o), tj = Math.floor(z + o);
-        if (TM && ti >= 0 && tj >= 0 && ti < TN && tj < TN && TM[tj * TN + ti]) { g = Math.max(g, 0.55 + n2 * 0.3); r *= 0.4; b *= 0.2; a = Math.max(a, 0.25); } // fresh spoil
+        if (TM && ti >= 0 && tj >= 0 && ti < TN && tj < TN && TM[tj * TN + ti]) { g *= 0.05; r *= 0.2; b *= 0.05; a = Math.max(a * 0.5, 0.12); } // fresh spoil: bare loess / soil (no ploughed rows, no stubble)
         out[p] = Math.min(255, r * 255); out[p + 1] = Math.min(255, g * 255); out[p + 2] = Math.min(255, b * 255); out[p + 3] = Math.min(255, a * 255);
       }
     }
@@ -711,7 +721,7 @@ export class Farmland extends City {
       for (const [x, z, r] of this.burns) { const a = -0.9 + (R() - .5) * 0.6, ux = Math.cos(a), uz = Math.sin(a); for (let i = 0; i < 9; i++) { const t = (R() - .5) * 2.2 * r, o = (R() - .5) * r * 0.7; blob(L.r, x + ux * t - uz * o, z + uz * t + ux * o, r * (0.18 + R() * 0.26), 0.7, 0.85); } }
       for (const [a, b, c, d] of this.burntBelts) { line(L.r, [[a, b], [c, d]], 14, 0.45); for (let i = 0; i < 10; i++) { const f = R(); blob(L.r, a + (c - a) * f + (R() - .5) * 8, b + (d - b) * f + (R() - .5) * 8, 6 + R() * 10, 0.55); } }
       for (const [x, z, r] of this.burntSpots || []) { blob(L.r, x, z, r, 0.85); blob(L.a, x, z, r * 0.8, 0.4); }
-      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 7 + R() * 3, 0.9); blob(L.g, x, z, 9, 0.5); blob(L.a, x, z, 10, 0.6); }
+      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 4.5 + R() * 2, 0.75); blob(L.g, x, z, 7, 0.4); blob(L.a, x, z, 8, 0.45); }   // (v7: a burnt-out vehicle scorches a few metres, not a 20 m disc)
       for (const [x, z, sc] of MAP.smoulder || []) blob(L.r, x, z, 14 * sc, 0.6);
       // mud: tracks (wheel-churned, worst at the junctions and the field entrances), trails, lanes, yards
       const tracks = ROADS.filter(r => r.type === 'track'), paved = ROADS.filter(r => r.type !== 'track');

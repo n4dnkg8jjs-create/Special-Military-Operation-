@@ -462,9 +462,9 @@ export class City {
             float tPud = 0.0;
             {
               float ty = vWPos.y;
-              float tsp = smoothstep(0.02, 0.14, ty) * (1.0 - 0.7 * smoothstep(0.42, 0.78, vn(wp * 0.19 + 3.0)));
+              float tsp = smoothstep(0.03, 0.45, ty + (vn(wp * 1.3) - 0.5) * 0.12) * (1.0 - 0.7 * smoothstep(0.35, 0.8, vn(wp * 0.19 + 3.0)));   // (v7: fades in up the slope, no outline at the relief's foot)
               vec3 soil = dirt * vec3(0.44, 0.39, 0.34) * (0.7 + 0.6 * vn(wp * 4.3)) + vec3(0.05, 0.045, 0.035) * step(0.78, vn(wp * 9.1));
-              col = mix(col, soil, tsp * 0.85);
+              col = mix(col, soil, tsp * 0.75);
               float tfl = smoothstep(0.55, 0.95, -ty);
               col = mix(col, dirt * vec3(0.34, 0.3, 0.26) * (0.8 + 0.4 * vn(wp * 1.9 + 5.0)), tfl * 0.7);
               tPud = smoothstep(0.6, 0.67, vn(wp * 0.5 + 11.0) + 0.16 * vn(wp * 2.3)) * tfl;
@@ -532,7 +532,7 @@ export class City {
     const mud = layer(), mx = mud.getContext('2d'); mx.fillStyle = '#fff';
     const cm = this.craterMesh, M = new THREE.Matrix4(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
     const blob = (ctx, x, z, r, alpha) => { ctx.globalAlpha = alpha; ctx.beginPath(); const n = 14, ph = R() * 6.28; for (let i = 0; i <= n; i++) { const a = i / n * 6.28, rr = r * (0.55 + 0.45 * this.noise2(Math.cos(a + ph) * 2 + x, Math.sin(a + ph) * 2 + z, 9) + (R() - .5) * 0.25); const [px2, pz2] = toPx(x + Math.cos(a) * rr, z + Math.sin(a) * rr); i ? ctx.lineTo(px2, pz2) : ctx.moveTo(px2, pz2); } ctx.fill(); };
-    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); blob(mx, v.x, v.z, sc.x * 0.6, 0.5); blob(rx, v.x, v.z, sc.x * 0.9, 0.25); }
+    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); blob(mx, v.x, v.z, sc.x * 0.28, 0.45); }   // bowl only (v7: no mud disc + gravel ring round every crater)
     // lawns: an ordered plan — the whole district is laid out as courtyard lawns and road verges, then we cut
     // out roads + pavements, a trampled apron around every block, straight footpaths and the dirt yards
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
@@ -551,13 +551,13 @@ export class City {
     const out = new Uint8Array(N * N * 4);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = i / k - o, z = j / k - o, p = (j * N + i) * 4;
-      const rubble = g1[p] / 255, path = g2[p] / 255, lw = g4[p] / 255;
+      const rubble = g1[p + 3] / 255, path = g2[p + 3] / 255, lw = g4[p + 3] / 255;   // alpha: white-on-transparent layers (v7)
       const n1 = this.noise2(x / 14, z / 14, 1);
       // lawns are full; only shell-churned / heavily walked spots wear through
       // soft, irregular lawn edges: grass thins out over a couple of metres instead of stopping on a line
       const edge = Math.min(1, Math.max(0, lw + (this.noise2(x / 3.5, z / 3.5, 6) - 0.5) * 0.45 * (1 - Math.abs(lw * 2 - 1))));
       let grass = Math.max(edge * (0.84 + n1 * 0.16), 0.22 * this.noise2(x / 6, z / 6, 3)) * (1 - rubble * 0.6) * (1 - path * 0.5);
-      const mudv = g3[p] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
+      const mudv = g3[p + 3] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
       out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = Math.max(path, (1 - lw) * 0.5) * 255;
     }
     const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
@@ -602,7 +602,7 @@ export class City {
       const px = (this.rng() - .5) * MAP_SIZE, pz = (this.rng() - .5) * MAP_SIZE;
       const si = (Math.floor((pz + o) * k) * N + Math.floor((px + o) * k)) * 4; const gw = this.splatData[si] / 255;
       if (gw < 0.35 || this.rng() > gw) continue;
-      if (this.warData && (warAt(this, MAP_SIZE, px, pz, 0) > 0.55 || warAt(this, MAP_SIZE, px, pz, 1) > 0.7 || warAt(this, MAP_SIZE, px, pz, 2) > 0.75)) continue;
+      if (this.warData && this.rng() < warAt(this, MAP_SIZE, px, pz, 0) * 2.5 + warAt(this, MAP_SIZE, px, pz, 1) * 2.6 + warAt(this, MAP_SIZE, px, pz, 3) * 1.6 + Math.max(0, warAt(this, MAP_SIZE, px, pz, 2) - 0.4) * 2) continue;   // (v7) thins out gradually into scorch / churn / mud / wet ground
       if (onRoad(px, pz, SIDEWALK + 0.4) || (this.lots || []).some(l => px > l[0] && px < l[2] && pz > l[1] && pz < l[3])) continue; const ni = this.nav.idx(px, pz); if (ni < 0 || this.nav.cost[ni] !== 1) continue;
       if (this.terrain.cutSDF(px, pz) < 0.9) continue;
       const s = 0.35 + this.rng() * 0.55; if (this.uneven(px, pz, 0.9 * s) > 0.25) continue;   // not across a spoil heap / mound edge

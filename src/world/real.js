@@ -987,30 +987,40 @@ export class RealRural extends Farmland {
       this.ruts = fieldRuts(R, 30, start, (x, z) => hit(x, z), (x, z) => !hit(x, z) && bad(x, z), MAP_SIZE / 2);
       for (const pts of this.ruts) { yx.globalAlpha = 0.3 + R() * 0.25; yx.lineWidth = 2.6 * k; path(yx, pts); yx.stroke(); }
     }
-    const Y = blurred(yards, 1.5 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.6 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data, F = fx.getImageData(0, 0, N, N).data;
+    const Y = blurred(yards, 2 * k).getImageData(0, 0, N, N).data, G = blurred(gard, 1.6 * k).getImageData(0, 0, N, N).data, V = blurred(verge, 3 * k).getImageData(0, 0, N, N).data, F = fx.getImageData(0, 0, N, N).data;
     const byId = []; for (const f of this.fieldsR) byId[f.id] = f;
+    // field type one-hot (R ploughed, G stubble, B fallow / steppe, none = crop rows), from a gently jittered lookup,
+    // blurred ~2.5 m (ground look v7): fields fade into each other through a weedy balk, not on a hard wobbly line
+    const fieldAt = new Uint8Array(N * N);
+    const FT = blurred((() => { const c = layer(), x = c.getContext('2d'), im = x.createImageData(N, N), d = im.data;
+      for (let j = 0; j < N; j++) { const z = j / k - o; for (let i = 0; i < N; i++) {
+        const x2 = i / k - o, p = (j * N + i) * 4;
+        const ji = Math.min(N - 1, Math.max(0, i + Math.round(((this.noise2(x2 / 30, z / 30, 7) - 0.5) * 3 + (this.noise2(x2 / 5, z / 5, 9) - 0.5)) * k))), jj = Math.min(N - 1, Math.max(0, j + Math.round(((this.noise2(x2 / 30, z / 30, 8) - 0.5) * 3 + (this.noise2(x2 / 5, z / 5, 10) - 0.5)) * k)));
+        const id = F[(jj * N + ji) * 4], f = byId[id], t = f ? f.type : 2; fieldAt[j * N + i] = id;
+        d[p] = t === 0 ? 255 : 0; d[p + 1] = t === 1 ? 255 : 0; d[p + 2] = t === 2 ? 255 : 0; d[p + 3] = 255;
+      } }
+      x.putImageData(im, 0, 0); return c; })(), 3.5 * k).getImageData(0, 0, N, N).data;
     for (let j = 0; j < N; j++) {
       const z = j / k - o;
       for (let i = 0; i < N; i++) {
         const x = i / k - o, p = (j * N + i) * 4;
-        // jittered field lookup: ragged boundaries
-        const ji = Math.min(N - 1, Math.max(0, i + Math.round((this.noise2(x / 9, z / 9, 7) - 0.5) * 7 * k))), jj = Math.min(N - 1, Math.max(0, j + Math.round((this.noise2(x / 9, z / 9, 8) - 0.5) * 7 * k)));
-        const f = byId[F[(jj * N + ji) * 4]];
+        const f = byId[fieldAt[j * N + i]];
         const n1 = this.noise2(x / 22, z / 22, 1), n2 = this.noise2(x / 6, z / 6, 2);
-        let r = 0, g = 0, b = 0, a = 0;
-        if (!f) { r = 0.8 + n2 * 0.35; a = Math.max(0, 0.32 - n1) * 1.1; g = Math.max(0, n1 - 0.78) * 1.5; }   // overgrown village land / steppe
-        else if (f.type === 0) { g = 1; r = Math.max(0, n1 - 0.72) * 2.5; }
-        else if (f.type === 1) { b = 1; r = Math.max(0, n1 - 0.65) * 1.8; }
-        else if (f.type === 2) { r = 0.75 + n2 * 0.4; a = Math.max(0, 0.35 - n1) * 1.2; }
-        else { g = 0.55 + n2 * 0.25; r = 0.25 + n1 * 0.35; }
-        const ver = V[p] / 255, yd = Y[p] / 255, gd = G[p] / 255;
+        // per-type layers weighted by the blurred one-hot type (R channel: fallow, or steppe / village land off the fields)
+        const oP = FT[p] / 255, oS = FT[p + 1] / 255, oF = FT[p + 2] / 255, oC = Math.max(0, 1 - oP - oS - oF);
+        const rF = f ? 0.75 + n2 * 0.4 : 0.8 + n2 * 0.35, aF = f ? Math.max(0, 0.35 - n1) * 1.2 : Math.max(0, 0.32 - n1) * 1.1, gF = f ? 0 : Math.max(0, n1 - 0.78) * 1.5;
+        let r = oP * Math.max(0, n1 - 0.72) * 2.5 + oS * Math.max(0, n1 - 0.65) * 1.8 + oF * rF + oC * (0.25 + n1 * 0.35);
+        let g = oP + oF * gF + oC * (0.55 + n2 * 0.25), b = oS, a = oF * aF;
+        const balk = Math.max(0, Math.min(1, (0.9 - Math.max(oP, oS, oF, oC)) / 0.35)) * (0.75 + n2 * 0.5);   // weedy balk between fields
+        r = Math.max(r, balk * 0.95); g *= 1 - balk * 0.85; b *= 1 - balk * 0.85;
+        const ver = V[p + 3] / 255, yd = Y[p + 3] / 255, gd = G[p + 3] / 255;   // alpha: white-on-transparent layers (v7)
         r = Math.max(r * (1 - ver), ver * (0.85 + n2 * 0.3)); g *= 1 - ver; b *= 1 - ver;
         if (gd > 0) { g = Math.max(g * (1 - gd * 0.8), gd * Math.max(0, this.noise2(x / 11, z / 11, 13) - 0.45) * 1.3); r = Math.max(r, gd * (0.6 + n1 * 0.4)); b *= 1 - gd; }   // gardens: abandoned beds going to weeds, a few dug patches
         a = Math.max(a, yd); r *= 1 - yd * 0.6; g *= 1 - yd * 0.8; b *= 1 - yd * 0.8;
         const fm = this.forestMask[Math.floor((z + o) / 4) * this.forestMN + Math.floor((x + o) / 4)];
         if (fm === 1) { r = 0.6 + n2 * 0.3; g = 0; b = 0; a = Math.max(a, 0.25 + n1 * 0.3); }
         const ti = Math.floor(x + o), tj = Math.floor(z + o);
-        if (TM && ti >= 0 && tj >= 0 && ti < TN && tj < TN && TM[tj * TN + ti]) { g = Math.max(g, 0.55 + n2 * 0.3); r *= 0.4; b *= 0.2; a = Math.max(a, 0.25); }
+        if (TM && ti >= 0 && tj >= 0 && ti < TN && tj < TN && TM[tj * TN + ti]) { g *= 0.05; r *= 0.2; b *= 0.05; a = Math.max(a * 0.5, 0.12); }   // fresh spoil: bare soil, no rows
         out[p] = Math.min(255, r * 255); out[p + 1] = Math.min(255, g * 255); out[p + 2] = Math.min(255, b * 255); out[p + 3] = Math.min(255, a * 255);
       }
     }
@@ -1032,7 +1042,7 @@ export class RealRural extends Farmland {
       for (const [x, z, r] of this.burns) { const a = -0.9 + (R() - 0.5) * 0.6, ux = Math.cos(a), uz = Math.sin(a); for (let i = 0; i < 9; i++) { const t = (R() - 0.5) * 2.2 * r, o = (R() - 0.5) * r * 0.7; blob(L.r, x + ux * t - uz * o, z + uz * t + ux * o, r * (0.18 + R() * 0.26), 0.7, 0.85); } }
       for (const [a, b, c, d] of this.burntBelts) { line(L.r, [[a, b], [c, d]], 12, 0.35); }
       for (const [x, z, r] of this.burntSpots || []) { blob(L.r, x, z, r, 0.8); blob(L.a, x, z, r * 0.8, 0.4); }
-      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 7 + R() * 3, 0.9); blob(L.g, x, z, 9, 0.5); blob(L.a, x, z, 10, 0.6); }
+      for (const [x, z] of this.wreckSpots || []) { blob(L.r, x, z, 4.5 + R() * 2, 0.75); blob(L.g, x, z, 7, 0.4); blob(L.a, x, z, 8, 0.45); }   // (v7: a burnt-out vehicle scorches a few metres, not a 20 m disc)
       for (const [x, z, sc] of MAP.smoulder || []) blob(L.r, x, z, 14 * sc, 0.6);
       // mud: dirt / gravel streets (worst at junctions and gateways), trails, yards
       for (const r of this.osm.roads) {
@@ -1119,7 +1129,8 @@ export class RealUrban extends City {
     for (const p of this.yardPolys) { px.globalAlpha = 0.5; path(px, p, true); px.fill(); }
     const mud = layer(), mx = mud.getContext('2d'); mx.fillStyle = '#fff';
     const cm = this.craterMesh, M = new THREE.Matrix4(), sc = new THREE.Vector3(), q = new THREE.Quaternion();
-    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); mx.globalAlpha = 0.5; mx.beginPath(); mx.arc(...P(v.x, v.z), sc.x * 0.6 * k, 0, 7); mx.fill(); rx.globalAlpha = 0.25; rx.beginPath(); rx.arc(...P(v.x, v.z), sc.x * 0.9 * k, 0, 7); rx.fill(); }
+    // craters: mud in the bowl only (v7: no mud disc / gravel ring around every crater in a lawn -- the war map's churn ring does the ejecta)
+    if (cm) for (let i = 0; i < cm.count; i++) { cm.getMatrixAt(i, M); M.decompose(v, q, sc); mx.globalAlpha = 0.45; mx.beginPath(); mx.arc(...P(v.x, v.z), sc.x * 0.26 * k, 0, 7); mx.fill(); }
     for (const g of this.gardenPolys) { mx.globalAlpha = 0.25 + R() * 0.25; path(mx, g, true); mx.fill(); }
     // lawns: everything is lawn / verge, minus carriageways + pavements, building aprons, hard surfaces
     const lawn = layer(), lx = lawn.getContext('2d'); lx.fillStyle = '#fff'; lx.fillRect(0, 0, N, N);
@@ -1135,10 +1146,10 @@ export class RealUrban extends City {
     const g1 = blurred(rub, 4 * k).getImageData(0, 0, N, N).data, g2 = blurred(pth, 1.2 * k).getImageData(0, 0, N, N).data, g3 = blurred(mud, 2 * k).getImageData(0, 0, N, N).data, g4 = lb.getImageData(0, 0, N, N).data;
     const out = new Uint8Array(N * N * 4);
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-      const x = i / k - o, z = j / k - o, p = (j * N + i) * 4, rubble = g1[p] / 255, pathv = g2[p] / 255, lw = g4[p] / 255, n1 = this.noise2(x / 14, z / 14, 1);
+      const x = i / k - o, z = j / k - o, p = (j * N + i) * 4, rubble = g1[p + 3] / 255, pathv = g2[p + 3] / 255, lw = g4[p + 3] / 255, n1 = this.noise2(x / 14, z / 14, 1);   // alpha (v7)
       const edge = Math.min(1, Math.max(0, lw + (this.noise2(x / 3.5, z / 3.5, 6) - 0.5) * 0.45 * (1 - Math.abs(lw * 2 - 1))));
       const grass = Math.max(edge * (0.84 + n1 * 0.16), 0.22 * this.noise2(x / 6, z / 6, 3)) * (1 - rubble * 0.6) * (1 - pathv * 0.5);
-      const mudv = g3[p] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
+      const mudv = g3[p + 3] / 255 * (0.6 + this.noise2(x / 2, z / 2, 5) * 0.5);
       out[p] = grass * 255; out[p + 1] = Math.min(1, rubble * (0.35 + this.noise2(x / 4, z / 4, 4) * 0.8)) * 255; out[p + 2] = mudv * 255; out[p + 3] = Math.max(pathv, (1 - lw) * 0.5) * 255;
     }
     const t = new THREE.DataTexture(out, N, N, THREE.RGBAFormat); t.flipY = false; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
