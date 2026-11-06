@@ -19,15 +19,15 @@
 //     guns fire for effect with a tight, computed sheaf: mean point of impact within ~3 m, ~5-6 m per axis per round
 //     (~6-7 m CEP), the 2S3's older guns / worn tubes a little looser than the M777A2. The bigger burst does the rest.
 //   Effect: a 152/155 mm HE-Frag burst is lethal to men in the open out to ~15-20 m and wounds well beyond (game radius
-//     17-18 m, suppression to 3x that); a near miss (<5-8 m) wrecks soft vehicles and can disable armour (tracks,
+//     15 m, as the on-map Msta-S / Bohdana, suppression to 3x that); a near miss (<5-8 m) wrecks soft vehicles and can disable armour (tracks,
 //     optics); a direct hit on a panel building takes out a section of wall / floor.
 //   Danger close: 600 m for 155 mm in US doctrine; the game warns when own troops are within 150 m (where its blast
 //     model starts to bite), the mission still goes in - the caller has accepted the risk.
 import * as THREE from 'three';
 
 export const BATTERIES = {
-  UA: { name: '155 mm', gun: 'M777', label: '155 mm M777 battery', guns: 3, rpg: 2, power: 3.3, dmg: [180, 440], radius: 18, sigma: 5, adjErr: [15, 28], tof: [13, 16], volley: [10, 13] },
-  RU: { name: '152 mm', gun: '2S3 Akatsiya', label: '152 mm 2S3M Akatsiya battery', guns: 4, rpg: 2, power: 3.1, dmg: [170, 420], radius: 17, sigma: 6, adjErr: [18, 32], tof: [13, 16], volley: [11, 14] },
+  UA: { name: '155 mm', gun: 'M777', label: '155 mm M777 battery', guns: 3, rpg: 2, power: 2.8, dmg: [170, 420], radius: 15, sigma: 5, adjErr: [15, 28], tof: [13, 16], volley: [10, 13] },
+  RU: { name: '152 mm', gun: '2S3 Akatsiya', label: '152 mm 2S3M Akatsiya battery', guns: 4, rpg: 2, power: 2.7, dmg: [170, 420], radius: 15, sigma: 6, adjErr: [18, 32], tof: [13, 16], volley: [11, 14] },
 };
 export const ARTY = { missions: 2, aiMissions: 1, dangerClose: 150, aiCooldown: 180, proc: [5, 7.5], correct: [3, 4.5] };
 
@@ -146,13 +146,14 @@ class FireMissions {
     g.combat.blastSide = r.side;
     g.combat.explode(at, B.power, null, B.dmg, B.radius);
     g.combat.blastSide = null;
-    g.sfx('explosion_large', at, { gain: 1 });
-    if (!b) g.fx.dustCloud(new THREE.Vector3(r.x, 0.5, r.z), 9, 4, 14, [0.5, 0.45, 0.38]);
+    // same 152/155 mm HE-Frag burst as the on-map Msta-S / Bohdana (game.js updateStrikes, caliber 'spg'): same
+    // explosion, dust and lethal radius - it is the same shell, only fired by an off-map battery
+    if (!b) for (let k = 0; k < 2; k++) g.fx.vehicleDust(at, 16);
     // near misses on vehicles: fragments and blast through the running gear, optics, soft skin
     for (const v of g.vehicles) {
-      if (v.destroyed) continue; const d = v.pos.distanceTo(at); if (d > 8) continue;
-      v.hp -= (8 - d) * (v.kind === 'tank' ? 26 : 75);
-      if (v.hp <= 0) v.knockOut(false); else if (d < 3.5 && Math.random() < 0.5) { v.immob ||= {}; v.immob.track = true; v.immobile = true; }
+      if (v.destroyed) continue; const d = v.pos.distanceTo(at); if (d > 7) continue;
+      v.hp -= (7 - d) * (v.kind === 'tank' ? 25 : 70);
+      if (v.hp <= 0) v.knockOut(false); else if (d < 3 && Math.random() < 0.5) { v.immob ||= {}; v.immob.track = true; v.immobile = true; }
     }
   }
   // targeting preview while the order is armed: the expected beaten zone, and the danger-close circle in red when
