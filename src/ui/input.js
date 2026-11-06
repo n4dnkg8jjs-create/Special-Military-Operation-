@@ -64,6 +64,7 @@ export class Input {
   up(e) {
     const d = this.drag; this.drag = null; this.box.style.display = 'none'; this.hud.preview.count = 0;
     if (!d) return;
+    if (d.btn === 2 && this.mode) { this.cancelMode(); this.hud.updateInfo(); return; }
     if (d.btn === 0) {
       if (this.mode === 'fireground') { const p = this.groundAt(e.clientX, e.clientY); if (p) { const sel = [...this.hud.selected]; for (const u of sel) { u.fireAt = { p: p.clone(), until: this.g.time + 30 }; u.target = null; } this.hud.groundMarker?.(p); if (sel.some(u => u.kind !== 'spg')) this.g.hud.alert(`${sel.length > 1 ? sel.length + ' units' : sel[0]?.name} firing on the area for 30 s (X halts)`); this.g.sfx('ui_order'); } this.mode = null; document.body.style.cursor = ''; return; }
       if (this.mode === 'mortar') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerMortar(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; } return; }
@@ -166,11 +167,14 @@ export class Input {
       const m = this.lastMouse && this.groundAt(this.lastMouse[0], this.lastMouse[1]); const th = u.effective.find(s => !s.inside); if (!th || !m) continue;
       u.smokes = (u.smokes ?? 2) - 1; g.combat.throwSmoke(th, m);
     }
-    if (o === 'fireground') { if (g.phase === 'deploy') { g.hud.alert('Area fire is available once the battle starts'); return; } if (sel.length) { this.mode = 'fireground'; document.body.style.cursor = 'crosshair'; g.hud.alert('Fire at ground: left-click the area to engage'); } }
+    // a targeting mode is cancelled by its own key/button again, by Esc, or by a right-click
+    if ((o === 'fireground' || o === 'mortar') && this.mode === o) { this.cancelMode(); g.sfx('ui_click'); this.hud.updateInfo(); return; }
+    if (o === 'fireground') { if (g.phase === 'deploy') { g.hud.alert('Area fire is available once the battle starts'); return; } if (sel.length) { this.mode = 'fireground'; document.body.style.cursor = 'crosshair'; g.hud.alert('Fire at ground: left-click the area to engage · right-click or Esc to cancel'); } }
     if (o === 'mortar' && g.phase === 'deploy') { g.hud.alert('Fire missions are available once the battle starts'); return; }
-    if (o === 'mortar') { if (g.mortars > 0) { this.mode = 'mortar'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mortar: left-click a target area'); } }
+    if (o === 'mortar') { if (g.mortars > 0) { this.mode = 'mortar'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mortar: left-click a target area · right-click or Esc to cancel'); } }
     g.sfx('ui_click'); this.hud.updateInfo();
   }
+  cancelMode() { if (!this.mode) return false; this.mode = null; document.body.style.cursor = ''; this.hud.alert?.('Cancelled'); return true; }
   key(e) {
     if (e.repeat) return; const g = this.g;
     const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyV: 'smoke', KeyC: 'fireground' };

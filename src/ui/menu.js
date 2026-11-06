@@ -78,7 +78,7 @@ const TIPS = [
   'Garrisoned buildings and trenches protect the men inside — until the walls come down.',
   'Right-drag on the ground to set out a formation line facing the drag direction.',
   'ATGM teams need to halt and set up before they can fire. Keep them back from the line of contact.',
-  'FPV teams carry five drones. Right-click a spotted vehicle to choose the target.',
+  'FPV teams carry ten drones. Right-click a spotted vehicle to choose the target.',
   'Smoke (V) blocks line of sight both ways — use it to cross open ground.',
   'Armour without infantry is vulnerable in towns. Keep squads close to the tanks.',
   'Wounded must be pulled back: a casualty left in the open costs you the men who go to get him.',

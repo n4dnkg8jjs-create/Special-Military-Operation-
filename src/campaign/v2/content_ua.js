@@ -325,7 +325,7 @@ export const CAMPAIGN2_UA = {
     { key: 'assault_plus', label: 'Assault Coy (assault bn)', desc: 'Additional assault squads from the brigade\'s assault company.', kind: 'assault', men: 6, lp: 40, eta: 2, req: ['ua_inf_assault'], limit: 2 },
     { key: 'atgm', label: 'Stugna-P ATGM team', desc: 'Three-man team with a Stugna-P launcher and missiles in transport tubes.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 3 },
     { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with five FPV strike quadcopters.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
-    { key: 'fpv_plus', label: 'FPV team (unmanned systems company)', desc: 'Additional FPV strike-drone crews (five drones each) from the brigade\'s unmanned systems company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ua_dr_uas'], limit: 3 },
+    { key: 'fpv_plus', label: 'FPV team (unmanned systems company)', desc: 'Additional FPV strike-drone crews (ten drones each) from the brigade\'s unmanned systems company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ua_dr_uas'], limit: 3 },
     { key: 'spg', label: '155 mm self-propelled howitzer', desc: 'A 155 mm SP howitzer with its crew (M109 / 2S22 Bohdana class).', kind: 'spg', vehicle: 'spg', men: 5, lp: 100, eta: 4, req: ['ua_fire_spg'], limit: 1 },
   ],
   tech: TECH_UA,   // tech tree data: src/campaign/v2/tech.js (vehicle lines + upgrades, support branches)

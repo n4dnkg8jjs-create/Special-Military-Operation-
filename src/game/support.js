@@ -3,7 +3,7 @@ import { WEAPONS } from '../config.js';
 import { MAP } from '../world/city.js';
 import { trunkHit } from '../world/vegetation.js';
 
-// Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 5 drones).
+// Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 10 drones).
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
 const TUNING_EVADE_MISS = 0.26;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
 const UP = new THREE.Vector3(0, 1, 0);
@@ -295,15 +295,15 @@ export class AtgmTeam {
 }
 
 // ---------------------------------------------------------------- FPV team
-// pilot (goggles, controller) + helper who launches. FPV_DRONES (5) drones. A drone climbs, flies to the target at ~110 km/h
+// pilot (goggles, controller) + helper who launches. FPV_DRONES (10) drones. A drone climbs, flies to the target at ~110 km/h
 // and dives in; it can miss, be shot down (hard), or be dodged (rarely). Vehicles: top/engine-deck hits are the
 // most effective (often start a fire); anti-drone cages set many warheads off early.
 // v5 ("a tiny bit more effective", ~10-15 %): terminal-dive miss chances x0.85, jink-miss 0.3 -> 0.26, enemy EW jams x0.85,
 // ground fire brings it down x0.88 less often, and the pilot passes over caged hulls when there is a bare one about.
-export const FPV_DRONES = 5;
+export const FPV_DRONES = 10;
 const FPV_MISS = { moving: 0.17, parked: 0.068, inf: 0.10 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
 export class FpvTeam {
-  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 15 + Math.random() * 10; this.W = WEAPONS.fpv; }   // first sortie after the pilot has a picture
+  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 13 + Math.random() * 8; this.W = WEAPONS.fpv; }   // first sortie after the pilot has a picture
   status() { return this.drone ? (this.drone.phase === 'launch' ? 'LAUNCHING DRONE' : 'DRONE AIRBORNE') : !this.drones ? 'OUT OF DRONES' : this.scanT > 3 ? `PREPPING · ${this.drones} LEFT` : `${this.drones} DRONE${this.drones > 1 ? 'S' : ''} READY`; }
   capacity() { return this.drones + this.launched; }   // FPV_DRONES + campaign fpvDrones mods (campaignBattle adds to .drones)
   pilot() { return this.sq.effective[0]; }
@@ -446,7 +446,7 @@ export class FpvTeam {
     }
   }
   impact(d, at) {
-    const g = this.g; this.drone = null; this.scanT = 45 + Math.random() * 25;
+    const g = this.g; this.drone = null; this.scanT = 38 + Math.random() * 20;   // next drone prepped (battery, warhead armed): ~15 % quicker than v6
     g.scene.remove(d.mesh); d.snd?.stop();
     const t = d.target;
     if (t.type === 'vehicle') (g.fpvLog ||= []).push({ hit: d.phase === 'dive' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7, miss: !!d.miss, moving: Math.abs(t.speed || 0) > 2, evaded: !!t.evadeLog?.has(d), d: +at.distanceTo(t.pos).toFixed(1), phase: d.phase });
