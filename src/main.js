@@ -10,6 +10,7 @@ import { Campaign2 } from './campaign/v2/state.js';
 import { collectResult } from './game/campaignBattle.js';
 import { manifest } from './net/battle.js';
 import './ui/menu.js';
+import { DroneFeed, droneFeedEnabled } from './ui/droneFeed.js';
 
 const Q = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
@@ -22,6 +23,7 @@ async function start(opts) {
     await game.init((f, msg) => { window.__loadF = f; $('loadBar').style.width = `${Math.round(f * 100)}%`; $('loadText').textContent = msg; if ($('loadPct')) $('loadPct').textContent = `${Math.round(f * 100)}%`; });
   } catch (e) { console.error(e); $('loadText').textContent = 'Failed to start: ' + e.message; throw e; }
   const hud = new HUD(game); new Input(game, hud);
+  if (droneFeedEnabled()) try { new DroneFeed(game); } catch (e) { console.warn('drone view', e); }   // FPV drone view window (ui/droneFeed.js)
   if (opts.campaign && !opts.net) {   // campaign battle: briefing line + the option to break off the attack / give up the sector
     const C = opts.campaign, b = document.createElement('button');
     b.textContent = 'Withdraw'; b.title = 'Pull the task group out: the battle counts as lost, survivors are saved'; b.id = 'withdrawBtn'; b.className = 'btn btn-danger btn-s';
@@ -35,9 +37,18 @@ async function start(opts) {
   if (Q.has('sim')) { // headless test mode: simulate N seconds, render one frame, report
     window.__done = false;
     const total = +Q.get('sim'); game.noRender = true; const cam = Q.get('cam');
-    if (cam) { if (!/^(fight|atgm|fpv)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
+    if (cam) { if (!/^(fight|atgm|fpv|fpvtgt)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
     if (Q.get('sel')) hud.select([game.playerUnits[+Q.get('sel')]]);
     if (!Q.has('deploy')) game.startBattle();
+    if (Q.has('fpvfeed')) {   // drone-view test (ui/droneFeed.js): from fpvat=<s> the player's FPV team launches at the nearest enemy in reach (vehicles first); the sim stops at fpvfeed=mid (cruise, fpvt=<s> airborne) | dive (fpvd=<m> from the aim point) | lost (SIGNAL LOST)
+      const st = Q.get('fpvfeed') || 'mid', at = +(Q.get('fpvat') || 0), q = game.squads.find(s => s.side === 'player' && s.kind === 'fpv'), S = q?.support; let sent = false;
+      if (S) { S.scanT = 1e9; if (st !== 'lost') S.reactions = () => {}; }   // (screenshots of the flight: nobody shoots this one down)
+      const step0 = window.__replayStep;
+      window.__replayStep = t => { step0?.(t); if (sent || !S || t < at || S.drone) return; const p = S.pilot(); if (!p) return;
+        const foes = game.enemiesOf('player').filter(u => !u.destroyed && !(u.type === 'squad' && (u.mounted || u.building))).map(u => [u, (u.type === 'vehicle' ? u.pos : u.center()).distanceTo(p.pos)]).filter(([, d]) => d > 60 && d < 850).sort((a, b) => (b[0].type === 'vehicle') - (a[0].type === 'vehicle') || a[1] - b[1]);
+        if (foes.length) { sent = true; const u = foes[0][0]; (u.detect ||= {}).player = 1.6; (u.seenBy ||= {}).player = 0; u.spotted = true; S.launch(u); S.drone.t = 0; window.__fpvT = u; window.__fpvTarget = `${foes[0][0].name || foes[0][0].kind} ${Math.round(foes[0][1])} m`; } };
+      window.__simStop = () => { const d = S?.drone, F = game.droneFeed; return st === 'mid' ? d?.phase === 'cruise' && d.age > +(Q.get('fpvt') || 7) : st === 'dive' ? d?.phase === 'dive' && d.pos.distanceTo(d.aim) < +(Q.get('fpvd') || 14) : sent && F?.mode === 'lost' && F.lostT > 0.9; };
+    }
     if (Q.has('fire')) { const [fx, fz] = Q.get('fire').split(',').map(Number); game.fx.emitter(new THREE.Vector3(fx, 0, fz), 'fire', 1.3, 999); }
     if (Q.has('fireat')) { const [fx, fz] = Q.get('fireat').split(',').map(Number); for (const u of game.playerUnits) u.fireAt = { p: new THREE.Vector3(fx, 0, fz), until: 1e9 }; }
     if (Q.has('spgat')) { const [fx, fz] = Q.get('spgat').split(',').map(Number); for (const u of game.playerUnits) if (u.kind === 'spg') u.fireAt = { p: new THREE.Vector3(fx, 0, fz) }; }
@@ -80,12 +91,13 @@ async function start(opts) {
     if (Q.has('bail')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('bail')]; if (v.passengers) v.passengers.dismount(); v.burning = 0.01; v.bailAt = 0.2; v.firefight = false; if (Q.has('bailturret')) v.turretYaw = +Q.get('bailturret'); }   // (firefight: no fire-fighting attempt, bail at once)
     if (Q.has('collapse')) { const b = game.city.buildings[+Q.get('collapse')]; game.city.collapseSection(b, +(Q.get('sec') || 0), game); }
     const t0 = performance.now();
-    for (let t = 0; t < total; t += 0.05) { window.__replayStep?.(t); game.frame(0.05); if (game.over) break; }
+    for (let t = 0; t < total; t += 0.05) { window.__replayStep?.(t); game.frame(0.05); if (game.over || window.__simStop?.()) break; }
     if (cam === 'fight') { // frame the nearest firefight
       let best = null, bd = 1e9;
       for (const e of game.squads) if (e.side === 'enemy' && !e.mounted && !e.destroyed) for (const p of game.squads) if (p.side === 'player' && !p.mounted && !p.destroyed) { const d = e.center().distanceTo(p.center()); if (d < bd) { bd = d; best = [e.center(), p.center()]; } }
       if (best) { const m = best[0].clone().lerp(best[1], 0.35); game.cam.lookAt(m.x, m.z); game.cam.tDist = +(Q.get('dist') || 38); game.cam.tYaw = Math.atan2(best[1].x - best[0].x, best[1].z - best[0].z) + 0.5; game.cam.tPitch = 0.45; }
     }
+    if (cam === 'fpvtgt' && window.__fpvT) { const p = window.__fpvT.type === 'vehicle' ? window.__fpvT.pos : window.__fpvT.center(); game.cam.lookAt(p.x, p.z); game.cam.tDist = +(Q.get('dist') || 70); game.cam.tPitch = 0.6; }   // (drone-view test: the main view on its target)
     if (cam === 'atgm' || cam === 'fpv') { const q = game.squads.find(s => s.side === 'player' && s.kind === cam); if (q) { const c = (q.effective[0] || q.soldiers[0]).pos; game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 9); game.cam.tYaw = +(Q.get('yaw') || 2.8); game.cam.tPitch = 0.35; } }
     for (let i = 0; i < 40; i++) game.cam.update(0.05);
     if (Q.has('nofx')) { game.fx.smoke.mesh.visible = false; game.fx.glow.mesh.visible = false; }
@@ -101,6 +113,16 @@ async function start(opts) {
       player: game.stats.player, enemy: game.stats.enemy, squads: game.squads.map(s => `${s.side[0]}${s.effective.length}/${Math.round(s.morale)}${s.routing ? 'R' : ''}${s.mounted ? 'M' : ''}`).join(' '),
       vehicles: game.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}`).join(' '), missing: game.assets.missing.length, support: game.squads.filter(s => s.support).map(s => `${s.side[0]}:${s.name}:${s.effective.length}:${s.status()}`).join(' | '), slog: (game.supportLog || []).slice(-30), sdbg: game.squads.filter(s => s.kind === 'atgm' && s.side === 'player').map(q => { const sp = q.support; return { st: sp.state, crew: q.effective.map(m => [m.role.role, m.curName, +(m.cur?.time || 0).toFixed(2), m.kitObjs?.filter(o => o.userData.atgmFolded).map(o => o.visible)]), nodes: Object.entries(sp.nodes || {}).filter(([k]) => /tripod|tube|folded|control|cable/.test(k)).map(([k, n]) => k + ':' + (n.o.visible ? 1 : 0) + ':' + (n.o.parent?.name || n.o.parent?.type)) }; }), tt: globalThis.__tt ? (() => { const { T, es, ps } = globalThis.__tt, O = ps.order; return { T: [T.center.map(Math.round), T.slots.length, T.dugouts.length, T.lines.length], es: es.effective.length + '/' + es.soldiers.length + ' dug:' + es.soldiers.filter(s => s.dugout).length, ps: ps.effective.length + '/' + ps.soldiers.length, order: O?.type, phase: O?.phase, p: O?.p?.toFixed(1), tot: O?.route?.total?.toFixed(1), gren: ps.soldiers.map(s => s.grenades ?? 0).join(''), lead: O?.file?.[0] ? [O.file[0].pos.x, O.file[0].pos.z].map(Math.round) : null, entry: O?.route?.pts[0].map(Math.round), esc: [es.center().x, es.center().z].map(Math.round), pm: ps.soldiers.map(s => [s.pos.x.toFixed(1), s.pos.y.toFixed(2), s.pos.z.toFixed(1), s.stance, s.trenchSlot ? s.trenchSlot.kind : '-', game.city.trenchInfo(s.pos.x, s.pos.z)?.kind || 'no'].join(' ')), dug: T.dugouts.map(d => d.door.map(Math.round)) }; })() : null, trenchUse: ['player', 'enemy'].map(sd => game.squads.filter(q => q.side === sd).reduce((a, q) => a + q.soldiers.filter(m => m.trenchSlot && m.effective).length, 0) + '/' + game.squads.filter(q => q.side === sd && q.order?.type === 'clear').length + 'clr').join(' '), placed: Q.has('placed') ? Object.entries(PLACED.reduce((a, p) => { const k = p.template.name || p.template.type; a[k] = (a[k] || 0) + p.matrices.length; return a; }, {})).map(([k, v]) => k + ':' + v).join(' ') : undefined, camp: game.campaign ? collectResult(game) : undefined, ff: game.vehicles.filter(v => v.firefight != null).map(v => v.name + ':' + (v.firefight ? 'on ' + v.firefight.t.toFixed(1) : v.firefight)), netSent: window.__sent, netSnap: window.__snap, crushed: (game.city.crushables || []).filter(c => c.crushed).length + '/' + (game.city.crushables || []).length, particles: game.fx.smoke.p.length, glow: game.fx.glow.p.length, bigNear: game.fx.smoke.p.filter(o => o.size1 > 6 && Math.hypot(o.x - game.renderer.camera.position.x, o.z - game.renderer.camera.position.z) < 120).length };
     if (window.__treeTest) window.__info.trees = window.__treeTest();
+    if (game.droneFeed && Q.has('fpvfeed')) {   // drone view: state + frame cost with / without the window (paused, feed re-rendered every frame = worst case)
+      const F = game.droneFeed; window.__info.feed = { ...F.stats(), target: window.__fpvTarget };
+      if (Q.has('fpvbench')) { const N = +(Q.get('fpvbench') || 8), run = () => { gl.finish(); const a = performance.now(); for (let i = 0; i < N; i++) game.frame(1 / 30); gl.finish(); return +((performance.now() - a) / N).toFixed(1); };
+        if (Q.has('fpvbr')) { F.dbg = cam => { F.dbg = null; const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)), br = {}, sp = new THREE.Sphere();
+          game.scene.traverseVisible(o => { if (!o.isMesh) return; const g = o.geometry; if (!o.isInstancedMesh && o.frustumCulled !== false) { g.boundingSphere || g.computeBoundingSphere(); sp.copy(g.boundingSphere).applyMatrix4(o.matrixWorld); if (!fr.intersectsSphere(sp)) return; } if (o.isInstancedMesh && o.frustumCulled !== false) { o.boundingSphere || o.computeBoundingSphere?.(); if (o.boundingSphere) { sp.copy(o.boundingSphere).applyMatrix4(o.matrixWorld); if (!fr.intersectsSphere(sp)) return; } }
+            const t = (g.index ? g.index.count : g.attributes.position?.count || 0) / 3 * (o.isInstancedMesh ? o.count : 1), k = o.isSkinnedMesh ? 'soldier' : (o.isInstancedMesh ? 'inst:' : 'mesh:') + (o.name || o.parent?.name || '?').replace(/_(intact|damaged|holed|destroyed)$/, '').slice(0, 30); (br[k] ||= [0, 0]); br[k][0]++; br[k][1] += Math.round(t); });
+          window.__info.feedBr = Object.entries(br).sort((a, b) => b[1][1] - a[1][1]).slice(0, 18); }; F.acc = 1; game.frame(1 / 30); }
+        game.paused = true; const st0 = { ...F.st }; const on = run(), feedCpu = +((F.st.ms - st0.ms) / Math.max(1, F.st.n - st0.n)).toFixed(2); F.visible = false; const off = run(); F.visible = true; const on2 = run();
+        window.__info.feedBench = { frameMsWith: on, frameMsWithout: off, frameMsWith2: on2, feedCpuMs: feedCpu, scale: game.renderer.dyn?.scale ?? 1 }; F.visible = true; }
+    }
     window.__done = true; return;
   }
   let last = performance.now();

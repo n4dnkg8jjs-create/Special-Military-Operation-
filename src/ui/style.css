@@ -559,3 +559,33 @@ select option{background:#1b1e1d;color:var(--t-1)}
 .banner.rout .pole{background:rgba(226,87,74,.7)}
 @keyframes pinPulse{50%{opacity:.62}}
 @keyframes routPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1);box-shadow:0 0 0 1px rgba(255,140,128,.9),0 0 22px rgba(226,87,74,.9)}}
+
+/* ---- FPV drone view (src/ui/droneFeed.js). The feed itself is drawn into the main canvas under the transparent screen
+   area (viewport + scissor after the post chain): the screen must stay transparent, untransformed and integer-sized. */
+#dronefeed{position:absolute;right:calc(var(--edge) + 19rem + .6rem);bottom:calc(var(--edge) + 3.35rem + 16px);display:flex;flex-direction:column;pointer-events:auto;border:1px solid var(--line-2);border-radius:var(--r-2) var(--r-2) 0 0;box-shadow:0 6px 20px rgba(0,0,0,.35);animation:dfIn .25s ease both}
+#dronefeed.hidden{display:none}
+#dronefeed .df-bar{display:flex;align-items:center;gap:.35rem;height:1.45rem;padding:0 .3rem 0 .5rem;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:1px solid var(--line);font-family:var(--font-head);font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--t-1)}
+#dronefeed .df-live{flex:none;width:.45rem;height:.45rem;border-radius:50%;background:#d8483a;box-shadow:0 0 6px #d8483a;animation:dfBlink 1.2s steps(2) infinite}
+#dronefeed.lost .df-live{background:var(--t-3);box-shadow:none;animation:none}
+#dronefeed .df-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(var(--dfw, 360px) - 9.5rem)}
+#dronefeed .df-sp{flex:1}
+#dronefeed button{flex:none;height:1.1rem;padding:0 .4rem;border:1px solid var(--line);border-radius:var(--r-1);background:transparent;color:var(--t-2);font:inherit;font-size:.6rem;cursor:pointer}
+#dronefeed button b{color:var(--t-1)}
+#dronefeed button:hover:not(:disabled){color:var(--t-1);border-color:var(--line-2);background:rgba(255,255,255,.08)}
+#dronefeed button:disabled{opacity:.4;cursor:default}
+#dronefeed .df-auto.on{color:var(--accent);border-color:rgba(228,169,72,.6)}
+#dronefeed .df-x{font-size:.9rem;line-height:1;padding:0 .35rem}
+#dronefeed .df-scr{position:relative;cursor:pointer;background:transparent}
+#dronefeed .df-osd{position:absolute;inset:0;font-family:"DejaVu Sans Mono",Consolas,"Courier New",monospace;font-weight:700;font-size:calc(var(--dfw, 360px) * .034);line-height:1.2;color:#f0f0ea;text-shadow:1px 0 0 #000,-1px 0 0 #000,0 1px 0 #000,0 -1px 0 #000;pointer-events:none;letter-spacing:.03em;opacity:.92}
+#dronefeed .df-osd>span{position:absolute}
+#dronefeed .tl{left:5%;top:6%} #dronefeed .tr{right:5%;top:6%} #dronefeed .bl{left:5%;bottom:6%} #dronefeed .br{right:5%;bottom:6%;text-align:right}
+#dronefeed .cx{left:50%;top:50%;width:1.2em;height:1.2em;transform:translate(-50%,-50%);background:linear-gradient(#f0f0ea,#f0f0ea) center/100% 1px no-repeat,linear-gradient(#f0f0ea,#f0f0ea) center/1px 100% no-repeat;opacity:.6}
+#dronefeed .df-lost{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-family:"DejaVu Sans Mono",Consolas,monospace;font-weight:700;font-size:calc(var(--dfw, 360px) * .062);letter-spacing:.14em;color:#e6e6e0;text-shadow:0 0 3px #000;pointer-events:none}
+#dronefeed .df-lost.show{display:flex;animation:dfBlink 1s steps(2) infinite}
+@keyframes dfBlink{50%{opacity:.35}}
+@keyframes dfIn{from{opacity:0}}
+#dronefeed .df-min{font-size:.85rem;line-height:1;padding:0 .4rem}
+#dronefeedPill{position:absolute;right:calc(var(--edge) + 19rem + .6rem);bottom:calc(var(--edge) + 3.35rem + 16px);display:flex;align-items:center;gap:.35rem;height:1.6rem;padding:0 .65rem;pointer-events:auto;cursor:pointer;border:1px solid var(--line-2);border-radius:999px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);color:var(--t-1);font-family:var(--font-head);font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 4px 14px rgba(0,0,0,.3);animation:dfIn .25s ease both}
+#dronefeedPill.hidden{display:none}
+#dronefeedPill:hover{border-color:var(--accent);color:var(--accent)}
+#dronefeedPill .df-live{width:.45rem;height:.45rem;border-radius:50%;background:#d8483a;box-shadow:0 0 6px #d8483a;animation:dfBlink 1.2s steps(2) infinite}

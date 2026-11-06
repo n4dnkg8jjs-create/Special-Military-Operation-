@@ -40,6 +40,12 @@ if (q) {
   try { const v = localStorage.getItem('smo_quality'); if (v && [...q.options].some(o => o.value === v)) q.value = v; } catch { }
   q.addEventListener('change', () => { try { localStorage.setItem('smo_quality', q.value); } catch { } });
 }
+// FPV drone view auto-open (ui/droneFeed.js reads the same key; its window has the same toggle)
+const fa = $('fpvAuto');
+if (fa) {
+  try { fa.checked = localStorage.getItem('smo_fpvfeed_auto') !== '0'; } catch { }
+  fa.addEventListener('change', () => { try { localStorage.setItem('smo_fpvfeed_auto', fa.checked ? '1' : '0'); } catch { } });
+}
 
 // ---------------------------------------------------------------- skirmish detail: mirror the selected map card
 const pick = $('mapPick'), big = $('mapBig');

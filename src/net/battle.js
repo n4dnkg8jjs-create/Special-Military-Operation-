@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
 
+const DRONE_PHASE = ['launch', 'climb', 'cruise', 'dive', 'fall'];   // (= game/support.js FpvTeam drone phases)
 const STANCE = ['stand', 'crouch', 'prone'], STATE = ['ok', 'light', 'critical', 'stable', 'dead', 'evac'];
 const FX_EVENTS = ['light', 'muzzle', 'tracer', 'impact', 'blood', 'explosion', 'collapseDust', 'muzzleBlastTank', 'dustCloud', 'smokeScreen', 'emitter'];
 const r2 = v => Math.round(v * 100) / 100;
@@ -73,7 +74,7 @@ function snapshot(g) {
   })]);
   const v = g.vehicles.map(x => [x.id, r2(x.pos.x), r2(x.pos.y || 0), r2(x.pos.z), r2(x.heading), r2(x.pitch || 0), r2(x.roll || 0), r2(x.turretYaw), r2(x.gunPitch), Math.round(x.hp), (x.destroyed ? 1 : 0) | (x.burning > 0 ? 2 : 0) | (x.abandoned ? 4 : 0), r2(x.doorK || 0), r2(x.speed), x.side === 'player' ? seen(x) : 1, x.lidAnim ? 1 : 0, x.spg ? [x.spg.k, x.spg.state] : 0]);
   const pr = g.combat.projectiles.filter(p => p.mesh).map(p => [r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.target.x), r2(p.target.y), r2(p.target.z)]);
-  const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2)]); } }
+  const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); const t = d.target, tp = d.aim && d.phase === 'dive' ? d.aim : t ? (t.type === 'vehicle' ? t.pos : t.center()) : W; dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2), q.id, r2(tp.x), r2(tp.y), r2(tp.z), Math.max(0, DRONE_PHASE.indexOf(d.phase)), d.jam && d.phase === 'dive' ? 1 : 0, r2(d.age), q.support.launched || 0]); } }   // [7..]: squad, target point, phase, jammed, age, drone no. (the joiner's drone view, ui/droneFeed.js)
   // support teams: status line + every launcher prop (tripod, tube, guidance unit, spent tubes...) in world space
   const sp = g.squads.filter(q => q.support).map(q => { const S = q.support; return [q.id, S.status?.() || '', S.launcher ? 1 : 0, S.launcher ? Object.entries(S.nodes || {}).map(([k, n]) => { n.o.getWorldPosition(W); n.o.getWorldQuaternion(Q); return [k, n.o.visible && n.o.parent ? 1 : 0, r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(x => Math.round(x * 1000) / 1000)]; }) : 0]; });
   return { t: r2(g.time), ph: g.phase, o: g.objectives.map(o => [o.owner, r2(o.control), o.contested ? 1 : 0]), st: g.stats, sq, v, pr, dr, sp, mo: g.mortarsEnemy ?? 0, tk: g.tickets ? [r2(g.tickets.player), r2(g.tickets.enemy), g.tickets.max, g.ticketDrain?.player || 0, g.ticketDrain?.enemy || 0] : null, over: g.over ? g.result : null };
@@ -191,6 +192,14 @@ export function clientFrame(g, dt) {
   // rockets and drones (pooled meshes)
   g._rk ||= []; s.pr.forEach((q, i) => { const m = g._rk[i] ||= (() => { const mm = g.combat.rocketMesh(); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.lookAt(q[3], q[4], q[5]); }); for (let i = s.pr.length; i < g._rk.length; i++) g._rk[i].visible = false;
   g._dr ||= []; s.dr.forEach((q, i) => { const m = g._dr[i] ||= (() => { const t = g.assets.gltf.fpv_drone?.scene; const mm = t ? t.clone(true) : new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.4)); mm.scale.setScalar(1.3); g.scene.add(mm); return mm; })(); m.visible = true; m.position.set(q[0], q[1], q[2]); m.quaternion.set(q[3], q[4], q[5], q[6]); }); for (let i = s.dr.length; i < g._dr.length; i++) g._dr[i].visible = false;
+  { // the drones as the joiner's drone view needs them (ui/droneFeed.js: own side only); one per FPV team, gone = impact / lost
+    const M = g._netDrones ||= new Map(), now = performance.now(), live = new Set();
+    for (const q of s.dr) { const id = q[7]; if (id == null) continue; live.add(id); let e = M.get(id);
+      if (!e) M.set(id, e = { net: true, id, pos: new THREE.Vector3(q[0], q[1], q[2]), vel: new THREE.Vector3(), aim: new THREE.Vector3(), t: s.t, rt: now });
+      else { const ddt = s.t - e.t; if (ddt > 0.01) { e.vel.set((q[0] - e.pos.x) / ddt, (q[1] - e.pos.y) / ddt, (q[2] - e.pos.z) / ddt); e.pos.set(q[0], q[1], q[2]); e.t = s.t; e.rt = now; } }
+      e.aim.set(q[8], q[9], q[10]); e.phase = DRONE_PHASE[q[11]] || 'cruise'; e.jam = !!q[12]; e.age = q[13] || 0; e.num = q[14] || 0; e.sq = g.netMap.get(id); }
+    for (const k of [...M.keys()]) if (!live.has(k)) M.delete(k);
+  }
   if (s.over && !g.over) { g.over = true; const r = s.over; g.result = { ...r, win: !r.win, title: r.win ? 'DEFEAT' : 'VICTORY', why: r.why }; g.hud?.showEnd(g.result); }
   clientSmooth(g, dt);
 }

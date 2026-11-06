@@ -508,7 +508,8 @@ export class Game {
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }
     this.netTick?.(dt);
     this.hud?.update(dt);
-    if (!this.noRender) { this.renderer.dynFrame(performance.now() - f0); this.renderer.render(dt, this.time); }
+    this.droneFeed?.update(dt);   // FPV drone view (ui/droneFeed.js): drawn into its window after the main post chain; its CPU time counts as non-scalable work for the adaptive resolution
+    if (!this.noRender) { this.renderer.dynFrame(performance.now() - f0 + (this.droneFeed?.cpuMs || 0)); this.renderer.render(dt, this.time); this.droneFeed?.render(dt); }
   }
   mortarMarker(x, z) {
     const m = new THREE.Mesh(new THREE.RingGeometry(15, 16, 48), new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.6, depthWrite: false }));
