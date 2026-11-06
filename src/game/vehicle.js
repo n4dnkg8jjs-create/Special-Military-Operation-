@@ -12,40 +12,65 @@ import { applyVehicleKits, fieldCage } from './vehicleKit.js';
 let NEXT = 1000;
 const tmp = new THREE.Vector3();
 
-// Burnt-out look for wrecks: paint burnt off to charcoal and grey-white ash, heat-blued steel, only faint rust,
-// glowing embers while the fire is still going. Applied on top of whatever the wreck texture is.
-export function charMaterial(m, emberUniform = { value: 0 }) {
+// Fire damage look (v2). Burn spreads from the fire (B.fire: world point on the deck / engine) outward and faster
+// upward with time (B.burn 0..1): blistered, darkened paint at the front, then soot-black, paint burnt off to bare
+// heat-tinted steel, grey-white ash where it was hottest (top surfaces), vertical soot streaks on the sides, and - long
+// after - a brown-orange rust bloom (B.rust). Embers glow in the burnt parts while the fire is going (uEmber).
+// Without B (old callers) the whole model is fully burnt.
+export function charMaterial(m, emberUniform = { value: 0 }, B = null) {
   if (!m || m.userData?.charred) return m;
-  const n = m.clone(); n.userData = { charred: true }; n.roughness = 0.95; n.metalness = 0.12; if (n.color) n.color.setRGB(1, 1, 1);
+  B ||= { burn: { value: 1 }, fire: { value: new THREE.Vector3(0, -1e4, 0) }, rust: { value: 0 } };
+  const n = m.clone(); n.userData = { charred: true };
+  const r0 = n.roughness ?? 0.8, m0 = n.metalness ?? 0.2;
   n.emissive = new THREE.Color(0xff5a1a); n.emissiveIntensity = 1;
   n.onBeforeCompile = sh => {
-    sh.uniforms.uEmber = emberUniform;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCharP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharP = position;');
+    Object.assign(sh.uniforms, { uEmber: emberUniform, uBurn: B.burn, uFire: B.fire, uRust: B.rust });
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCharP; varying vec3 vCharW; varying vec3 vCharN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCharP = position;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvCharW = (modelMatrix * vec4(transformed, 1.0)).xyz; vCharN = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec3 vCharP; uniform float uEmber;
+      varying vec3 vCharP; varying vec3 vCharW; varying vec3 vCharN; uniform float uEmber, uBurn, uRust; uniform vec3 uFire;
+      float gBurnt = 0.0;
       float ch(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
       float cn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
         return mix(mix(mix(ch(i), ch(i+vec3(1,0,0)), f.x), mix(ch(i+vec3(0,1,0)), ch(i+vec3(1,1,0)), f.x), f.y),
                    mix(mix(ch(i+vec3(0,0,1)), ch(i+vec3(1,0,1)), f.x), mix(ch(i+vec3(0,1,1)), ch(i+vec3(1,1,1)), f.x), f.y), f.z); }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
-        float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-        float n1 = cn(vCharP * 2.2) * 0.65 + cn(vCharP * 7.0) * 0.35, n2 = cn(vCharP * 1.3 + 17.0), n3 = cn(vCharP * 9.0 + 5.0);
-        vec3 soot = vec3(0.05, 0.047, 0.044) * (0.7 + lum * 0.8);
-        vec3 ash = vec3(0.46, 0.45, 0.43) * (0.75 + 0.25 * n3);
-        vec3 steel = vec3(0.17, 0.18, 0.21);
-        vec3 rust = vec3(0.23, 0.12, 0.06);
-        vec3 c = soot;
-        c = mix(c, ash, smoothstep(0.6, 0.78, n1) * 0.85);
-        c = mix(c, steel, smoothstep(0.68, 0.82, n2) * 0.6);
-        c = mix(c, rust, smoothstep(0.82, 0.92, n3) * 0.35);
-        diffuseColor.rgb = c;`)
+        vec3 orig = diffuseColor.rgb;
+        float lum = dot(orig, vec3(0.3, 0.59, 0.11));
+        float n1 = cn(vCharW * 3.4) * 0.55 + cn(vCharW * 11.0) * 0.45, n2 = cn(vCharW * 2.1 + 17.0) * 0.6 + cn(vCharW * 8.0 + 3.0) * 0.4, n3 = cn(vCharW * 14.0 + 5.0);
+        float up = clamp(vCharN.y, 0.0, 1.0), side = 1.0 - abs(vCharN.y);
+        // burn front: distance from the fire, travelling faster upward, broken up by noise; uBurn 1 = all of it
+        vec3 rel = vCharW - uFire; float dist = length(vec3(rel.x, rel.y * 0.55, rel.z));
+        float front = uBurn * 9.0 - dist + (n1 - 0.5) * 2.4 + max(rel.y, 0.0) * 0.6;
+        float burnt = uBurn >= 0.999 ? 1.0 : smoothstep(-0.2, 0.9, front), edge = smoothstep(-1.6, -0.2, front) * (1.0 - burnt);
+        gBurnt = burnt;
+        // blistered / darkened paint just ahead of the burn
+        vec3 blister = orig * (0.38 + 0.25 * smoothstep(0.55, 0.75, n3)) + vec3(0.03, 0.015, 0.0);
+        // a burnt-out hull: paint gone to a dark red-brown oxide over black soot (the classic look within hours), bare
+        // heat-darkened steel on edges, light grey ash only in spots on the top surfaces, soot streaks up the sides
+        vec3 soot = vec3(0.05, 0.045, 0.04) * (0.8 + 0.4 * n3);
+        vec3 oxide = vec3(0.2, 0.1, 0.055) * (0.75 + 0.5 * n3);
+        vec3 ash = vec3(0.42, 0.41, 0.39) * (0.8 + 0.2 * n3);
+        vec3 steel = vec3(0.16, 0.155, 0.16);
+        vec3 c = mix(soot, oxide, smoothstep(0.35, 0.65, n2) * (0.45 + 0.4 * uRust));
+        c = mix(c, steel, smoothstep(0.72, 0.86, n1) * 0.4);
+        c = mix(c, ash, smoothstep(0.7, 0.86, n1 * 0.7 + n3 * 0.3 + up * 0.15) * up * 0.7);
+        float streak = cn(vec3(vCharW.x * 7.0, vCharW.y * 0.5, vCharW.z * 7.0)) * side;               // soot runs up the sides
+        c = mix(c, soot * 0.6, smoothstep(0.6, 0.88, streak) * 0.6);
+        c = mix(c, vec3(0.27, 0.13, 0.06) * (0.8 + 0.4 * n3), uRust * smoothstep(0.5, 0.8, cn(vCharW * 4.3 + 9.0)) * 0.6);
+        diffuseColor.rgb = mix(mix(orig, blister, edge), c, burnt);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, 0.95, gBurnt);`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+        metalnessFactor = mix(metalnessFactor, 0.12, gBurnt);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        totalEmissiveRadiance *= uEmber * smoothstep(0.78, 0.92, cn(vCharP * 4.0 + 3.0)) * (0.6 + 0.4 * sin(vCharP.x * 13.0 + vCharP.z * 7.0));`);
+        totalEmissiveRadiance *= uEmber * gBurnt * smoothstep(0.86, 0.97, cn(vCharW * 6.0 + 3.0)) * (0.5 + 0.5 * sin(vCharW.x * 13.0 + vCharW.z * 7.0)) * (0.4 + 0.6 * up);`);
   };
-  n.customProgramCacheKey = () => 'charred';
+  n.customProgramCacheKey = () => 'charred_v2';
   return n;
 }
-export function charObject(o, u) { const cache = new Map(), f = m => cache.get(m) || cache.set(m, charMaterial(m, u)).get(m); o.traverse(x => { if (x.isMesh) x.material = Array.isArray(x.material) ? x.material.map(f) : f(x.material); }); }
+export function charObject(o, u, B = null) { const cache = new Map(), f = m => cache.get(m) || cache.set(m, charMaterial(m, u, B)).get(m); o.traverse(x => { if (x.isMesh) x.material = Array.isArray(x.material) ? x.material.map(f) : f(x.material); }); }
 
 export class Vehicle {
   constructor(game, side, faction, kind) {
@@ -213,7 +238,8 @@ export class Vehicle {
     this.drive(dt);
     this.aimAndFire(dt);
     if (this.kind === 'ifv') this.animDoors(dt);
-    // fire progression
+    // fire progression: the paint starts to burn from the fire point on (charMaterial v2)
+    if (this.burning > 0) this.burnLook(dt);
     if (this.ember) this.ember.value = this.fire && !this.fire.dead ? Math.max(0.15, 1 - this.burning / 200) * (0.8 + 0.2 * Math.sin(this.burning * 5.3)) : Math.max(0, this.ember.value - dt * 0.02);
     // crew: a replacement takes the driver's seat after a while; the commander takes over a dead gunner's sight
     if (this.driverSwapT > 0 && (this.driverSwapT -= dt) <= 0 && this.crewList?.some(c => c.hp > 0)) { this.immob.driver = false; this.immobile = Object.values(this.immob).some(Boolean); if (this.side === 'player') this.game.hud?.alert(`${this.name}: crew swapped seats, mobile again`); }
@@ -572,13 +598,24 @@ export class Vehicle {
     for (const a of this.lidAnim) { a.t = Math.min(1, a.t + dt / 0.45); const e = 1 - (1 - a.t) ** 3; a.o.rotation[a.ax] = a.from + (a.to - a.from) * e; }
     this.lidAnim = this.lidAnim.filter(a => a.t < 1);
   }
+  // fire point (engine deck / hull top, a little off-centre) and the burn uniforms; the model takes the burn material once
+  burnLook(dt, full = false) {
+    const B = this.burnB ||= { burn: { value: 0 }, fire: { value: new THREE.Vector3() }, rust: { value: 0 }, lx: (Math.random() - 0.5) * 0.5, lz: -0.15 - Math.random() * 0.3 };
+    const L = this.def.length || 6, c = Math.cos(this.heading), s = Math.sin(this.heading), lx = B.lx * (this.def.width || 3), lz = B.lz * L;
+    B.fire.value.set(this.pos.x + s * lz + c * lx, (this.pos.y || 0) + (this.def.height || 2.2) * 0.85, this.pos.z + c * lz - s * lx);
+    if (!this.burnApplied && !this.destroyed) { this.burnApplied = true; charObject(this.model, this.ember ||= { value: 1 }, B); }
+    if (full) B.burn.value = Math.max(B.burn.value, 0.6);
+    B.burn.value = Math.min(1, B.burn.value + dt / (this.destroyed ? 90 : 150));   // ~2.5 min to burn through, faster as a wreck
+    if (this.destroyed && B.burn.value >= 1) B.rust.value = Math.min(0.55, B.rust.value + dt / 400);
+  }
   // swap the model to its wreck (also used by the versus joiner's puppet vehicles)
   showWreck() {
     if (this.wreckParts?.length) {
       if (this.hull && this.hull !== this.model) this.hull.visible = false;
       else this.model.traverse(o => { if (o.isMesh && !/_wreck/i.test(o.name) && !/_wreck/i.test(o.parent?.name || '')) o.visible = false; });
-      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }); }
-    } else charObject(this.model, this.ember ||= { value: 1 });
+      this.burnLook(0, true);
+      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }, this.burnB); }
+    } else { this.burnLook(0, true); if (this.burnApplied !== 'model') { this.model.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; if (ms.some(x => x?.userData?.charred)) this.burnApplied = 'model'; } }); if (this.burnApplied !== 'model') charObject(this.model, this.ember ||= { value: 1 }, this.burnB); } }
   }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
@@ -606,6 +643,7 @@ export class Vehicle {
     this.wreck = true;
   }
   updateWreck(dt) {
+    if (this.burnB && (this.burnB.burn.value < 1 || this.burnB.rust.value < 0.55)) this.burnLook(dt);
     const f = this.flyer;
     if (f && !f.rest) {
       f.v.y -= 9.8 * dt; f.obj.position.addScaledVector(f.v, dt); f.obj.rotation.x += f.w.x * dt; f.obj.rotation.z += f.w.z * dt; f.obj.rotation.y += f.w.y * dt;

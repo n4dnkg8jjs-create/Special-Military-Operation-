@@ -37,7 +37,7 @@ async function start(opts) {
   if (Q.has('sim')) { // headless test mode: simulate N seconds, render one frame, report
     window.__done = false;
     const total = +Q.get('sim'); game.noRender = true; const cam = Q.get('cam');
-    if (cam) { if (!/^(fight|atgm|fpv|fpvtgt)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
+    if (cam) { if (!/^(fight|atgm|fpv|fpvtgt|burn)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
     if (Q.get('sel')) hud.select([game.playerUnits[+Q.get('sel')]]);
     if (!Q.has('deploy')) game.startBattle();
     if (Q.has('fpvfeed')) {   // drone-view test (ui/droneFeed.js): from fpvat=<s> the player's FPV team launches at the nearest enemy in reach (vehicles first); the sim stops at fpvfeed=mid (cruise, fpvt=<s> airborne) | dive (fpvd=<m> from the aim point) | lost (SIGNAL LOST)
@@ -98,6 +98,7 @@ async function start(opts) {
       if (best) { const m = best[0].clone().lerp(best[1], 0.35); game.cam.lookAt(m.x, m.z); game.cam.tDist = +(Q.get('dist') || 38); game.cam.tYaw = Math.atan2(best[1].x - best[0].x, best[1].z - best[0].z) + 0.5; game.cam.tPitch = 0.45; }
     }
     if (cam === 'fpvtgt' && window.__fpvT) { const p = window.__fpvT.type === 'vehicle' ? window.__fpvT.pos : window.__fpvT.center(); game.cam.lookAt(p.x, p.z); game.cam.tDist = +(Q.get('dist') || 70); game.cam.tPitch = 0.6; }   // (drone-view test: the main view on its target)
+    if (cam === 'burn' && Q.has('burn')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('burn')]; if (v) { game.cam.lookAt(v.pos.x, v.pos.z); game.cam.tDist = +(Q.get('dist') || 16); game.cam.tYaw = +(Q.get('yaw') || 2.4); game.cam.tPitch = 0.42; } }   // (burn look test)
     if (cam === 'atgm' || cam === 'fpv') { const q = game.squads.find(s => s.side === 'player' && s.kind === cam); if (q) { const c = (q.effective[0] || q.soldiers[0]).pos; game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 9); game.cam.tYaw = +(Q.get('yaw') || 2.8); game.cam.tPitch = 0.35; } }
     for (let i = 0; i < 40; i++) game.cam.update(0.05);
     if (Q.has('nofx')) { game.fx.smoke.mesh.visible = false; game.fx.glow.mesh.visible = false; }
