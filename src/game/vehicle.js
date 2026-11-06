@@ -475,7 +475,7 @@ export class Vehicle {
     for (const m of this.trackMats) { m.map.offset.x = -d / (this.vman.track_link_pitch_m || 0.1416); if (m.normalMap) m.normalMap.offset.x = m.map.offset.x; if (m.alphaMap) m.alphaMap.offset.x = m.map.offset.x; }
     // LOD
     if (this.lod1?.length) { const far = this.game.camDist(this.pos) > 110; if (far !== this.far) { this.far = far; for (const o of this.lod1) o.visible = far && !this.destroyed; for (const o of this.lod0) o.visible = !far; } }
-    r.visible = true;   // enemy vehicles are always drawn; unidentified ones carry a "?" (ui/contactMarkers.js)
+    r.visible = this.side === 'player' || this.destroyed || !this.concealed;   // enemy vehicles are drawn (unidentified: a "?", ui/contactMarkers.js) unless hidden unseen in heavy foliage
   }
   // ------------------------------------------------------------ damage
   // surviving crew climb out of the hatches (hatch_exit) and fight on with pistols

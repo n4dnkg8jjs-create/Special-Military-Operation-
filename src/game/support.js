@@ -423,19 +423,56 @@ export class FpvTeam {
   }
   // defenders: men near the drone's path try to shoot it down (hard); the targeted man dives or fires at it
   reactions(d, dt) {
-    const g = this.g, enemy = d.target.side;
+    // Men under an FPV: they hear the buzz first (~100-200 m, sooner when it dives), react after a moment, and - as
+    // troops on both sides are drilled now - only the one or two nearest riflemen / the MG gunner engage it; everyone
+    // else breaks for overhead cover (trench, building, tree crowns) close by, or disperses away from his mates and the
+    // drone's track and goes flat. Fear: suppression and morale take a knock.
+    const g = this.g, enemy = d.target.side, hear = d.phase === 'dive' ? 170 : 130, C = g.city;
+    const covered = (x, z) => (C.concealAt && C.concealAt.call(C, x, z) < 0.45) || !!C.trenchInfo?.(x, z);
+    const aware = [];
     for (const sq of g.squads) {
       if (sq.side !== enemy || sq.destroyed || sq.mounted) continue;
+      let scared = false;
       for (const s of sq.effective) {
-        if (s.inside === 'btr' || s.inBuilding && Math.random() < 0.5) continue;
-        const dist = s.pos.distanceTo(d.pos); if (dist > 110) continue;
-        if (dist < 70 && !s.supportClip && !s.inBuilding) {
-          s.droneAlertT = 1.5; s.heading = Math.atan2(d.pos.x - s.pos.x, d.pos.z - s.pos.z);
-          if (s.weapon.type !== 'at' && Math.random() < dt * 4) { const mz = s.muzzleWorld(tmpB); g.fx.muzzle(mz, tmpA.subVectors(d.pos, mz).normalize(), 0.8); if (g.camDist(mz) < 120) g.sfx(s.weapon.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos, { gain: 0.7 }); }
-        }
-        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN;
-        if (Math.random() < p * dt * 4) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
+        if (s.inside === 'btr' || s.cellar || s.cqb) continue;
+        const dist = s.pos.distanceTo(d.pos); if (dist > hear) continue;
+        if (s.droneSeen !== d) { s.droneSeen = d; s.droneHeard = 0; s.droneShooter = false; s.droneMoved = false; }
+        s.droneHeard += dt * (dist < 50 ? 2.5 : 1) * (d.phase === 'dive' ? 2 : 1);
+        if (s.droneHeard < 1) continue;   // not noticed yet (battle noise, engines)
+        if (s.suppression < 70) s.suppression = Math.min(70, s.suppression + dt * (dist < 50 ? 28 : 10)); scared = true;   // (scared, not pinned: he can still run for cover)
+        aware.push([s, dist]);
       }
+      if (scared && Math.random() < dt * 0.5) sq.addMorale?.(-1);
+    }
+    // the designated shooters: nearest MG gunner / riflemen within 70 m, two at most (one if the drone is already diving on them)
+    const cand = aware.filter(([s, dist]) => dist < 70 && s.weapon.type !== 'at' && !s.supportClip && !s.dragging && s.state === 'ok')
+      .sort((a, b) => (b[0].weaponKey === 'pkm' ? 25 : 0) - (a[0].weaponKey === 'pkm' ? 25 : 0) + a[1] - b[1]);
+    const nShoot = d.phase === 'dive' ? 1 : 2;
+    for (let k = 0; k < cand.length; k++) cand[k][0].droneShooter = k < nShoot || cand[k][0].inBuilding;
+    for (const [s, dist] of aware) {
+      const sq = s.squad;
+      if (s.droneShooter) {
+        s.droneAlertT = 1.5; s.heading = Math.atan2(d.pos.x - s.pos.x, d.pos.z - s.pos.z);
+        if (!s.inBuilding && Math.random() < dt * 4) { const mz = s.muzzleWorld(tmpB); g.fx.muzzle(mz, tmpA.subVectors(d.pos, mz).normalize(), 0.8); if (g.camDist(mz) < 120) g.sfx(s.weapon.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos, { gain: 0.7 }); }
+        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN * (s.inBuilding ? 0.5 : 1);
+        if (Math.random() < p * dt * 8) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
+        continue;
+      }
+      s.droneHideT = g.time + 5;   // squad.think: flat / crouched while it is about
+      if (s.droneMoved || s.inBuilding || s.dragging || s.supportClip || covered(s.pos.x, s.pos.z) || dist > 90) continue;
+      s.droneMoved = true;
+      // overhead cover within ~14 m, else disperse 6-9 m away from the squad centre and off the drone's line
+      let best = null, bs = 1e9;
+      for (let r = 4; r <= 14; r += 5) for (let a = 0; a < 8; a++) {
+        const x = s.pos.x + Math.cos(a * 0.785) * r, z = s.pos.z + Math.sin(a * 0.785) * r, i = g.nav.idx(x, z);
+        if (i < 0 || !g.nav.passable(i, 0.35) || !covered(x, z)) continue;
+        const sc = r - Math.hypot(x - d.pos.x, z - d.pos.z) * 0.05; if (sc < bs) { bs = sc; best = [x, z]; }
+      }
+      if (!best) {
+        const c = sq.center(), ax = s.pos.x - c.x + (s.pos.x - d.pos.x) * 0.3, az = s.pos.z - c.z + (s.pos.z - d.pos.z) * 0.3, L = Math.hypot(ax, az) || 1, r = 6 + Math.random() * 3;
+        const x = s.pos.x + ax / L * r, z = s.pos.z + az / L * r, i = g.nav.idx(x, z); if (i >= 0 && g.nav.passable(i, 0.35)) best = [x, z];
+      }
+      if (best) { s.path = [best]; s.pathI = 0; }
     }
     // the targeted soldier sees it coming in the last seconds
     if (d.phase === 'dive' && d.man && d.man.effective && !d.reacted && d.pos.distanceTo(d.aim) < 22) {

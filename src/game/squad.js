@@ -738,14 +738,21 @@ export class Squad {
         if (this.side === 'player') this.game.sfx('hatch', v.pos);
       }
     }
-    // pending wounded -> assign a buddy to drag them to cover / the carrier
+    // pending wounded -> assign a buddy to drag them to cover / the carrier. "Care under fire": win the firefight
+    // first - a man only goes for a casualty when he himself is not under direct fire and the casualty is not lying in
+    // a known enemy's line of fire; otherwise he keeps fighting from cover and the casualty waits
     if (!this.routing) for (const w of this.soldiers) {
       if (w.state !== 'critical' || w.dragger) continue;
-      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)));   // (not the men clearing a building)
+      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && this.safeToHelp(s));   // (not the men clearing a building)
       if (!helpers.length) break;
+      if (this.casualtyExposed(w)) continue;
       helpers.sort((a, b) => (b.role.medic ? 20 : 0) - (a.role.medic ? 20 : 0) + a.pos.distanceTo(w.pos) - b.pos.distanceTo(w.pos));
       const h = helpers[0]; if (h.pos.distanceTo(w.pos) > 60) continue;
       h.dragging = w; h.dragPhase = 'reach'; h.goal = [w.pos.x, w.pos.z]; this.game.requestPath(h, h.pos.x, h.pos.z, w.pos.x, w.pos.z, 0.45);
+    }
+    // a man on his way to a casualty who comes under fire himself goes to ground and fights; someone retries later
+    for (const h of this.effective) if (h.dragging && h.dragPhase === 'reach' && !this.safeToHelp(h, 40)) {
+      h.dragging = null; h.dragPhase = null; h.path = null; h.goal = null; h.stance = 'prone';
     }
     this.seekCover();
     // stance from situation
@@ -756,6 +763,7 @@ export class Squad {
       if (s.aboard) continue;
       if (s.rampWalk) { s.stance = 'crouch'; continue; }   // bent double through the low troop compartment and down the ramp
       if (kneelTeam) { s.stance = (s.suppression > 70 || this.pinned) && !s.supportClip && !(s.path && s.pathI < s.path.length) ? 'prone' : 'crouch'; continue; }
+      if ((s.droneHideT ?? 0) > this.game.time && !s.droneShooter) { s.stance = s.inBuilding || (s.path && s.pathI < s.path.length) ? 'crouch' : 'prone'; continue; }   // FPV about: down (support.js reactions)
       if (s.inBuilding) { s.stance = s.suppression > 45 || (this.underFireT < 2 && !s.target) ? 'crouch' : 'stand'; continue; }   // v7: up at the window watching (seen / seeing), down below the sill under fire
       const moving = s.path && s.pathI < s.path.length;
       // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
@@ -921,8 +929,9 @@ export class Squad {
     if (moving) {
       const wp = s.path[s.pathI];
       const dx = wp[0] - s.pos.x, dz = wp[1] - s.pos.z, d = Math.hypot(dx, dz);
-      let base = this.run || this.routing ? TUNING.run : TUNING.walk;
-      if (s.stance === 'crouch') base = Math.min(base, this.run ? TUNING.crouchRun : TUNING.crouchWalk);
+      const dash = s.droneMoved && (s.droneHideT ?? 0) > this.game.time;   // breaking for cover from an FPV (support.js reactions)
+      let base = this.run || this.routing || dash ? TUNING.run : TUNING.walk;
+      if (s.stance === 'crouch') base = Math.min(base, this.run || dash ? TUNING.crouchRun : TUNING.crouchWalk);
       if (s.stance === 'prone') base = !s.crawl && (s.suppression || 0) < 80 ? (TUNING.highCrawl || 0.7) : TUNING.crawl;   // v5: high crawl on a bound unless the fire is heavy; low crawl when creeping / heavily suppressed
       if (this.assault) base *= 1.06;
       if (s.state === 'light' && s.legWound) base *= 0.55;
@@ -1028,6 +1037,22 @@ export class Squad {
       if (ti && firing && ti.fireY > y) y = ti.fireY;
     }
     s.pos.y = Math.abs(s.pos.y - y) > 2.5 ? y : THREE.MathUtils.lerp(s.pos.y, y, Math.min(1, dt * 7));
+  }
+  // not pinned down: little suppression and no rounds cracking past him in the last few seconds
+  safeToHelp(s, supMax = 25) { return s.suppression < supMax && this.game.time - (s.nearMissT ?? -99) > 5; }
+  // the casualty lies where a spotted enemy (seen in the last 15 s, within direct-fire range) can see him
+  casualtyExposed(w) {
+    if (w.inBuilding || w.pos.y < -0.8) return false;   // inside / down in the trench: can be reached under cover
+    const g = this.game, me = this.side, near = [];
+    for (const u of g.enemiesOf(me)) {
+      if (u.destroyed || u.type === 'squad' && (u.mounted || !u.effective.length)) continue;
+      const t = u.seenBy?.[me]; if (t == null || g.time - t > 15) continue;
+      const p = u.type === 'vehicle' ? u.pos : u.center(), d = p.distanceTo(w.pos);
+      if (d < (u.type === 'vehicle' ? 1100 : 500)) near.push([p, d, u.type === 'vehicle' ? 2.2 : 1.4]);
+    }
+    near.sort((a, b) => a[1] - b[1]);
+    for (const [p, , h] of near.slice(0, 6)) if (g.combat.los(p.x, p.y + h, p.z, w.pos.x, w.pos.y + 0.4, w.pos.z, null, null)) return true;
+    return false;
   }
   dragStep(s, dt) {
     const w = s.dragging, g = this.game;

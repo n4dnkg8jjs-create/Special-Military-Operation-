@@ -409,8 +409,8 @@ export class HUD {
     };
     // unconfirmed contacts: a faint hollow diamond, no men, no type
     x.strokeStyle = 'rgba(234,90,75,.55)'; x.lineWidth = 1;
-    for (const u of g.squads) if (u.side === 'enemy' && !u.spotted && !u.destroyed && !u.mounted && !u.medevac) { const c = (u.leader?.alive ? u.leader : u.soldiers.find(s => s.alive))?.pos; if (c) { const px = P(c.x), pz = P(c.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); } }
-    for (const v of g.vehicles) if (v.side === 'enemy' && !v.spotted && !v.destroyed) { const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
+    for (const u of g.squads) if (u.side === 'enemy' && !u.spotted && !u.concealed && !u.destroyed && !u.mounted && !u.medevac) { const c = (u.leader?.alive ? u.leader : u.soldiers.find(s => s.alive))?.pos; if (c) { const px = P(c.x), pz = P(c.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); } }
+    for (const v of g.vehicles) if (v.side === 'enemy' && !v.spotted && !v.concealed && !v.destroyed) { const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
       const friend = sq.side === 'player';

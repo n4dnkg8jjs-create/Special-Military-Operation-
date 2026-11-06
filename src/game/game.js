@@ -21,6 +21,7 @@ import { Commander, AutoDefender } from './ai.js';
 import { setupMedevac } from './medevac.js';
 import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
+import { ContactMarkers } from '../ui/contactMarkers.js';
 
 const Q = new URLSearchParams(location.search);
 
@@ -356,8 +357,10 @@ export class Game {
         const was = !!u.spotted;
         u.spotted = (u.seenBy.player != null && this.time - u.seenBy.player < 3) || (was && u.detect.player > 0.25);
         if (was && !u.spotted && !u.destroyed) this.lastKnown(u); else if (u.spotted && u.lkm) this.dropLastKnown(u);
-        // enemies are always drawn (an unidentified one under a "?": ui/contactMarkers.js); men down in a cellar are not
-        if (u.type === 'squad') for (const s of u.soldiers) s.visible = !s.cellar || s.state === 'dead';
+        // enemies are drawn (an unidentified one under a "?": ui/contactMarkers.js) unless they are holed up unseen in
+        // a building or heavy foliage (ContactMarkers.concealed: no model, no "?"); men down in a cellar are not
+        u.concealed = ContactMarkers.concealed(u, this);
+        if (u.type === 'squad') for (const s of u.soldiers) s.visible = s.state === 'dead' || !s.cellar && !u.concealed;
       }
     }
   }

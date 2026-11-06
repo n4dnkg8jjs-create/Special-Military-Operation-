@@ -5,6 +5,7 @@
 // an event stream. On the joiner the sides are swapped locally so its own units are 'player' (HUD, input, fog).
 import * as THREE from 'three';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
+import { ContactMarkers } from '../ui/contactMarkers.js';
 
 const DRONE_PHASE = ['launch', 'climb', 'cruise', 'dive', 'fall'];   // (= game/support.js FpvTeam drone phases)
 const STANCE = ['stand', 'crouch', 'prone'], STATE = ['ok', 'light', 'critical', 'stable', 'dead', 'evac'];
@@ -168,14 +169,16 @@ export function clientFrame(g, dt) {
       if (kit && so.kitObjs && kit !== so._kit) { so._kit = kit; for (let ki = 0; ki < so.kitObjs.length; ki++) so.kitObjs[ki].visible = kit[ki] === '1'; }
       const state = STATE[stt] || 'ok';
       if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
-      so.visible = true;   // the host's units are always drawn; unidentified ones (vis 0) carry a "?" (ui/contactMarkers.js)
     }
+    // the host's units are drawn (unidentified ones, vis 0, carry a "?") unless holed up unseen in a building / heavy foliage
+    sq.concealed = ContactMarkers.concealed(sq, g);
+    for (const so of sq.soldiers) so.visible = so.state === 'dead' || !sq.concealed;
   }
   for (const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis] of s.v) {
     const v = g.netMap.get(id); if (!v) continue;
     v._np ||= new THREE.Vector3(x, y, z); v._np.set(x, y, z); if (v.pos.distanceTo(v._np) > 10) v.pos.copy(v._np);
     v._nh = h; v.pitch = p; v.roll = r; v.turretYaw = ty; v.gunPitch = gp; v.hp = hp; v.speed = sp;
-    v.spotted = v.side === 'player' || !!vis;
+    v.spotted = v.side === 'player' || !!vis; v.concealed = ContactMarkers.concealed(v, g);
     // knocked out: the wreck model; the explosion and the fire come with the host's event stream (no second set here)
     if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); }
     v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : v.burning; v.abandoned = !!(fl & 4); v.doorK = dk;

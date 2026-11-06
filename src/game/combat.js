@@ -176,7 +176,7 @@ export class Combat {
       if (sq.side === side || sq.destroyed || sq.mounted) continue;
       for (const o of sq.effective) {
         const dd = o.pos.distanceTo(end); if (dd > 6) continue;
-        o.suppression = Math.min(100, o.suppression + (W.suppress || 1) * 7 * (1 - dd / 7)); sq.underFireT = 0;
+        o.suppression = Math.min(100, o.suppression + (W.suppress || 1) * 7 * (1 - dd / 7)); sq.underFireT = 0; o.nearMissT = g.time;
         if (dd < 1.6 && Math.random() < (o.inBuilding ? (this.windowExposed(o) ? 0.05 : 0.004) : o.stance === 'prone' ? 0.02 : 0.05)) this.hitSoldier(o, W, from, false, shooter || owner);
       }
     }

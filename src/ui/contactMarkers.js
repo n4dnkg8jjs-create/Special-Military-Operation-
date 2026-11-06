@@ -63,9 +63,20 @@ export class ContactMarkers {
   }
   // is u an enemy the player sees only as an unconfirmed contact right now?
   static unconfirmed(u) {
-    if (u.side === 'player' || u.destroyed || u.spotted) return false;
+    if (u.side === 'player' || u.destroyed || u.spotted || u.concealed) return false;
     if (u.type === 'squad') return !u.mounted && !u.medevac;
     return u.mstate !== 'away';
+  }
+  // an unspotted unit holed up in a building / cellar or in heavy foliage (forest, dense treeline belt: conceal < 0.45)
+  // gives nothing away: not drawn at all and no "?" until it is spotted (or shows itself by firing). Used by the host
+  // (game.spotFor) and the multiplayer joiner (net/battle.js).
+  static concealed(u, g) {
+    if (u.side === 'player' || u.destroyed || u.spotted) return false;
+    const C = g.city, ca = C?.concealAt, heavy = (x, z) => !!ca && ca.call(C, x, z) < 0.45;
+    if (u.type === 'vehicle') return heavy(u.pos.x, u.pos.z);
+    let n = 0, hid = 0;
+    for (const s of u.soldiers) { if (!s.alive || s.state === 'dead' || s.inside === 'btr') continue; n++; if (s.inBuilding || s.cellar || heavy(s.pos.x, s.pos.z)) hid++; }
+    return n > 0 && hid >= n * 0.75;
   }
   // where the marker sits: above the squad leader / first man still standing, above a vehicle's roof
   anchor(u, out) {
