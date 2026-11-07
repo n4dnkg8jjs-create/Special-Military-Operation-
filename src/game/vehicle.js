@@ -87,7 +87,7 @@ export class Vehicle {
       ? [{ key: this.def.main, ammo: this.def.mainAmmo, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2200, cd: 0, burst: 0, coax: true }]
       : kind === 'btr'
       ? [{ key: faction.id === 'RU' ? 'a72' : 'kpvt', ammo: 0, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }]
-      : [{ key: 'a46', ammo: 39, ap: 15, he: 24, cd: 0, loaded: true }, { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }];
+      : [{ key: 'a46', ammo: 45, ap: 18, he: 27, cd: 0, loaded: true }, /* (T-72B / AV: 45 rounds, 22 in the carousel) */ { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }];
     if (kind === 'btr') this.weapons[0].ammo = WEAPONS[this.weapons[0].key].mag;
     if (kind === 'ifv') { this.atgm = { key: this.def.atgm, ammo: this.def.atgmAmmo, cd: 0 }; if (this.def.gun100) this.gun100 = { ammo: this.def.gun100, cd: 0 }; }
     this.supply = this.def.supply ? { ...this.def.supply } : null;
@@ -204,7 +204,7 @@ export class Vehicle {
     return this.pos.clone().addScaledVector(r, side * w).addScaledVector(f, this.kind === 'btr' ? -0.6 - (i >> 1) * 0.7 : -3);
   }
   orderMove(x, z, facing = null, fast = false, rev = null) {
-    if (this.destroyed || this.immobile) return;
+    if (this.destroyed || this.immobile || this.abandoned) return;   // (no crew: nobody to drive it)
     // reverse gear is chosen automatically (rev === null): a short hop to a point behind the hull, or pulling back
     // with a known enemy ahead, is done backing up so the front armour stays toward the threat (and the crew ends
     // facing it); a long or winding route behind is driven nose-first
@@ -229,11 +229,12 @@ export class Vehicle {
     return false;
   }
   orderAttack(t) { this.focus = t; this.order = { type: 'attack', target: t }; const d = this.pos.distanceTo(t.center ? t.center() : t.pos); if (d > 400) { const p = this.pos.clone().lerp(t.center ? t.center() : t.pos, 1 - 350 / d); this.orderMove(p.x, p.z); } }
-  halt() { this.path = null; this.order = null; this.goal = null; this.reverseT = 0; this.revDrive = false; this.fireAt = null; if (this.spg) this.spg.mission = null; }
+  halt() { this.path = null; this.pathReq = null; this.order = null; this.goal = null; this.reverseT = 0; this.revDrive = false; this.fireAt = null; if (this.spg) this.spg.mission = null; }
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     this.animLids(dt);
     if (this.destroyed) { this.updateWreck(dt); return; }
+    if (this.hp <= 0) { this.knockOut(false); this.updateWreck(dt); return; }   // (blast / ricochet / stopped-hit damage paths only lower hp)
     this.drive(dt);
     this.aimAndFire(dt);
     if (this.kind === 'ifv') this.animDoors(dt);
@@ -414,7 +415,7 @@ export class Vehicle {
         const round = vsArmor && main.ap > 0 ? 'ap' : main.he > 0 ? 'he' : 'ap';
         if (main[round] <= 0) return;
         main[round]--; main.ammo--;
-        main.cd = (W.reload + (this.crew < 3 ? 6 : 0)) * (main.ammo < 17 ? 1.0 : 1.0) + (main.ammo === 17 ? 15 : 0);
+        main.cd = (W.reload + (this.crew < 3 ? 6 : 0)) + (main.ammo === 23 ? 15 : 0);   // carousel (22) empty: refilled by hand from the hull racks
         this.game.combat.fireTankGun(this, t, round);
         this.recoil = 1;
       }

@@ -430,11 +430,11 @@ export class Combat {
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut) * (1 + (g.mods?.[sq.side]?.medevac || 0)); t.target = null; t.path = null;
         if (t.dragging) { if (t.dragging.dragger === t) t.dragging.dragger = null; if (t.dragging.dragAssist === t) t.dragging.dragAssist = null; t.dragging = null; }
-        if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; if (t.inBuilding) { t.inside = null; } }
+        if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; }   // (keeps lying in his room: inside stays set -- cleared, he was slid out through the wall to the street)
         sq.onCasualty(t, false); g.stats[sq.side].wia++;
         if (g.camDist(t.pos) < 80) g.sfx('pain', t.pos);
         if (shooter) (shooter.squad || shooter).stats.kills += 0.5;
-      } else { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
+      } else { t.wasDown = true; t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }   // (already counted as a casualty when he went down)
     } else if (t.hp < (TUNING.wound?.lightHp ?? 55) && t.state === 'ok') {
       t.state = 'light'; t.hitT = 0.6; if (g.camDist(t.pos) < 60) g.sfx('pain', t.pos, { gain: 0.7 });
       sq.addMorale(-3);
@@ -613,6 +613,9 @@ export class Combat {
         g.fx.explosion(at, 0.7); g.sfx('explosion_small', at); return;
       }
       if (p.t && p.t.type === 'vehicle' && p.kind === 'he30' && p.hit) { this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ke', p.owner); g.fx.impact(at, 'metal', 1); g.fx.light(at, 0xffaa55, 8, 6, 0.05); return; }
+      // a direct HE hit on a vehicle (BMP-3 2A70, tank HE-Frag): the shell bursts on the hull -- its own (small) penetration
+      // and full damage against the hit armour, not just the 20 hp of blast splash
+      if (p.t && p.t.type === 'vehicle' && p.kind === 'he' && p.hit !== false && at.distanceTo(p.t.pos) < p.t.def.length * 0.6) this.hitVehicle(p.t, p.weapon, p.owner.pos, 'ce', p.owner, false, at);
       const power = p.kind === 'he' ? 2.0 : p.kind === 'rpg' ? 0.8 : 0.35;
       this.explode(at, power, p.owner, p.kind === 'he' ? [120, 300] : p.kind === 'rpg' ? [60, 160] : [40, 110], p.kind === 'he' ? 9 : p.kind === 'rpg' ? 5 : 3);
     }
@@ -751,7 +754,7 @@ export class Combat {
     }
     // an FPV warhead on the engine deck: engine wrecked, fuel and oil very often catch
     if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.65) { v.burning = 0.01; msgs.push('engine on fire'); }
-    const crewHit = role => { const c = v.crewList.find(m => m.role === role && m.hp > 0); if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
+    const crewHit = role => { const c = v.crewList.find(m => (m.role === role || (role === 'gun_crew' && m.role === 'loader')) && m.hp > 0); /* (Bohdana rear: the gun crew = its loaders) */ if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
     for (const e of fx) {
       const part = v.parts.find(p => p.name === e); if (!part) continue;
       if (part.crew) crewHit(part.crew);

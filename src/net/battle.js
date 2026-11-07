@@ -115,8 +115,8 @@ function applyCommand(game, byId, c) {
   const ref = x => (x && x.unit != null ? byId(x.unit) : x && x.hse != null ? game.houses?.list[x.hse] : x && x.bld != null ? game.city.buildings[x.bld] : x && x.trench != null ? game.city.trenchSystems?.[x.trench] : x);
   switch (c.m) {
     case 'set': if (['holdFire', 'run'].includes(c.k)) u[c.k] = c.v; else if (c.k === 'fireAt') u.fireAt = c.v ? { p: new THREE.Vector3(...c.v.p), until: game.time + 30 } : null; break;
-    case 'place': game.deployPlace(u, a[0], a[1], a[2], 'enemy'); break;
-    default: if (typeof u[c.m] === 'function') u[c.m](...a.map(ref));
+    case 'place': if (game.phase === 'deploy') game.deployPlace(u, a[0], a[1], a[2], 'enemy'); break;   // (no redeploying once the battle has started)
+    default: if (CMDS.includes(c.m) && typeof u[c.m] === 'function') u[c.m](...a.map(ref));   // only the joiner's order methods, nothing else on the unit
   }
 }
 

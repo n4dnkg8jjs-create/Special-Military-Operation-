@@ -112,7 +112,7 @@ export class Game {
     const N = Math.PI, S = 0; // facing north (−Z) / south (+Z)
     const pf = this.playerFaction, B = this.city.buildings;
     if (this.opts.net?.role === 'client') return clientBattle(this, this.opts.net.peer);   // versus joiner: puppet units from the host
-    if (this.campaign) { deployCampaign(this); if (this.opts.net?.role === 'host') deployCampaign(this, 'enemy', this.opts.net.enemyForce, this.opts.net.enemyMods); return; }   // the brigade's persistent task group (+ the versus opponent's)
+    if (this.campaign) { this.reinforced = true; /* (campaign: only the task group's own units, no scripted free reinforcement) */ deployCampaign(this); if (this.opts.net?.role === 'host') deployCampaign(this, 'enemy', this.opts.net.enemyForce, this.opts.net.enemyMods); return; }   // the brigade's persistent task group (+ the versus opponent's)
     // --- player: motorized rifle company riding on armour at the southern edge
     const lineup = MAP.lineup;
     this.playerUnits = [];
@@ -206,9 +206,12 @@ export class Game {
   // ---------------------------------------------------------------- casualties / events
   onDeath(s, killer, bledOut) {
     const sq = s.squad;
-    if (!bledOut) sq.onCasualty(s, true); else { sq.addMorale(-4); sq.stats.kia++; this.stats[sq.side].wia = Math.max(0, this.stats[sq.side].wia - 1); }
+    // a man already down (critical / stable) who dies: no second casualty shock for the squad, WIA becomes KIA, and the
+    // killer gets the other half of the kill (the half went to whoever wounded him)
+    const down = bledOut || s.wasDown;
+    if (!down) sq.onCasualty(s, true); else { sq.addMorale(-4); sq.stats.kia++; this.stats[sq.side].wia = Math.max(0, this.stats[sq.side].wia - 1); }
     this.stats[sq.side].kia++;
-    if (killer && killer.squad) killer.squad.stats.kills++; else if (killer && killer.stats) killer.stats.kills++;
+    const kc = down ? 0.5 : 1; if (killer && killer.squad) killer.squad.stats.kills += kc; else if (killer && killer.stats) killer.stats.kills += kc;
     if (this.camDist(s.pos) < 60) { this.sfx('body_fall', s.pos); if (Math.random() < 0.3) this.sfx('death', s.pos, { gain: 0.6 }); }
     if (s.slotRef) { s.slotRef.occupant = null; s.slotRef = null; }
     if (s.trenchSlot) { s.trenchSlot.occupant = null; s.trenchSlot = null; }
@@ -397,16 +400,17 @@ export class Game {
         if (sq.mounted || sq.routing || sq.destroyed || sq.noncombat) continue;
         for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr' && Math.hypot(s.pos.x - o.x, s.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (sq.side === 'player') p++; else e++; }
       }
-      for (const v of this.vehicles) if (!v.destroyed && !v.noncombat && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (v.side === 'player') p += 1.5; else e += 1.5; }
+      for (const v of this.vehicles) if (!v.destroyed && !v.noncombat && !v.abandoned && v.crew > 0 && Math.hypot(v.pos.x - o.x, v.pos.z - o.z) < (o.r ?? TUNING.captureRadius)) { if (v.side === 'player') p += 1.5; else e += 1.5; }
       o.contested = p > 0 && e > 0; o.p = p; o.e = e;
       const rate = TUNING.captureRate;
       if (e > 0 && p === 0) o.control -= rate * Math.min(6, e) * dt;
       else if (p > 0 && e === 0) o.control += rate * Math.min(6, p) * dt;
       else if (e > p * 2.5) o.control -= rate * 0.5 * dt;
+      else if (this.opts.net && p > e * 2.5) o.control += rate * 0.5 * dt;   // (versus: same rules for both sides)
       o.control = THREE.MathUtils.clamp(o.control, -100, 100);
       const prev = o.owner;
       if (o.control < -25 || (o.owner === 'player' && o.control < 0)) o.owner = 'enemy';
-      else if (o.control > 25 || (o.owner === 'enemy' && o.control > 0 && false)) o.owner = 'player';
+      else if (o.control > 25 || (o.owner === 'enemy' && o.control > 0 && this.opts.net)) o.owner = 'player';   // (single player: the enemy's hold is stickier -- difficulty)
       if (prev !== o.owner) {
         o.holdT = 0;
         if (o.owner === 'enemy') { this.hud?.alert(o.captured ? `Objective ${o.id} — ${o.name} LOST! The enemy holding it bleeds our tickets` : `Enemy has seized ${o.name} — every minute they hold it costs us tickets`, 'bad'); this.sfx('ui_alert'); }
@@ -447,7 +451,7 @@ export class Game {
   // ---------------------------------------------------------------- loop
   update(dt) {
     if (this.netClient) { if (!this.paused) clientFrame(this, dt); return; }
-    if (this.phase === 'deploy') { for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(0.05, true); else for (const s of sq.soldiers) { s.animate(0.05, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
+    if (this.phase === 'deploy') { const ad = Math.min(dt, 0.05); for (const sq of this.squads) { if (sq.mounted) sq.updateRiders(ad, true); else for (const s of sq.soldiers) { s.animate(ad, this.camDist(s.pos)); s.sync(); } } for (const v of this.vehicles) v.sync(); return; }
     if (this.paused || this.over) { this.servicePaths(4); return; }
     dt = Math.min(dt, 0.05) * this.timeScale;
     this.time += dt; globalThis.__gameTime = this.time;
@@ -462,6 +466,9 @@ export class Game {
       else if (!sq.medevac) for (const s of sq.soldiers) if ((s.state === 'dead' && !s.corpseDone) || s.onBed) { s.vel.set(0, 0, 0); s.animate(dt, this.camDist(s.pos)); s.sync(); }
     }
     for (const v of this.vehicles) v.update(dt);
+    // deck riders follow their vehicle's NEW position (squads update before the vehicles: placed against last frame's hull
+    // they hung ~0.4 m behind their seats at speed)
+    for (const sq of this.squads) if (sq.mounted && sq.carrier && !sq.carrier.destroyed) for (const s of sq.soldiers) if (s.inside === 'ride' && s.seat && s.effective) { const w = sq.carrier.seatWorld(s.seat.i); s.pos.copy(w.pos); s.sync(); }
     this.combat.update(dt);
     this.updateStrikes(); this.fires?.update();
     this.commander.update(dt);

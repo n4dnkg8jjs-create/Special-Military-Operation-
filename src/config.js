@@ -22,9 +22,9 @@ export const WEAPONS = {
   rpg22:  { name: 'RPG-22 Netto', type: 'at', range: 160, rof: 1, mag: 1, reload: 0, dmg: [70, 110], pen: 390, blast: 3, spread: 8, sound: 'rpg', projectile: { speed: 133, gravity: 3 } },
   ak12:   { name: 'AK-12 (optic)', type: 'rifle', range: 330, rof: 700, burst: [1, 3], burstGap: [0.35, 1.0], mag: 30, reload: 2.4, dmg: [30, 70], pen: 4, spread: 2.0, sound: 'rifle', tracerEvery: 4, optic: true },
   ak74o:  { name: 'AK-74M (optic)', type: 'rifle', range: 330, rof: 600, burst: [1, 3], burstGap: [0.35, 1.0], mag: 30, reload: 2.5, dmg: [30, 70], pen: 4, spread: 2.0, sound: 'rifle', tracerEvery: 4, optic: true },
-  rpg7:   { name: 'RPG-7 (PG-7VL)', type: 'at', range: 200, rof: 1, mag: 1, reload: 6, dmg: [80, 120], pen: 500, blast: 4, spread: 7, sound: 'rpg', projectile: { speed: 120, gravity: 2.5 } },
+  rpg7:   { name: 'RPG-7 (PG-7VL)', type: 'at', range: 300, rof: 1, mag: 1, reload: 6, dmg: [80, 120], pen: 500, blast: 4, spread: 7, sound: 'rpg', projectile: { speed: 120, gravity: 2.5 } },
   // vehicle weapons
-  a72:    { name: '2A72 30 mm', type: 'autocannon', range: 900, rof: 330, burst: [3, 6], burstGap: [0.9, 1.8], mag: 300, reload: 0, dmg: [90, 140], pen: 30, blast: 2.2, spread: 1.6, sound: 'cannon30', tracerEvery: 1 },
+  a72:    { name: '2A72 30 mm', type: 'autocannon', range: 900, rof: 330, burst: [3, 6], burstGap: [0.9, 1.8], mag: 300, reload: 0, dmg: [90, 140], pen: 55, blast: 2.2, spread: 1.6, sound: 'cannon30', tracerEvery: 1 },
   kpvt:   { name: 'KPVT 14.5 mm', type: 'hmg', range: 800, rof: 600, burst: [4, 8], burstGap: [0.8, 1.6], mag: 500, reload: 0, dmg: [70, 120], pen: 30, spread: 2.0, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
   pkt:    { name: 'PKT 7.62 mm', type: 'mg', range: 600, rof: 700, burst: [6, 14], burstGap: [0.6, 1.4], mag: 2000, reload: 0, dmg: [35, 80], pen: 8, spread: 2.8, sound: 'mg', tracerEvery: 3, suppress: 2.0 },
   kord:   { name: 'Kord 12.7 mm (remote mount)', type: 'hmg', range: 900, rof: 650, burst: [4, 8], burstGap: [0.8, 1.6], mag: 300, reload: 0, dmg: [70, 120], pen: 20, spread: 2.2, sound: 'hmg', tracerEvery: 2, suppress: 2.5 },
@@ -33,15 +33,15 @@ export const WEAPONS = {
   b155:   { name: '155 mm L/52 howitzer', type: 'howitzer', range: 42000, rof: 5, dmg: [170, 420], pen: 60, blast: 15 },
   pm:     { name: 'PM 9 mm (pistol)', type: 'pistol', range: 60, rof: 140, burst: [1, 2], burstGap: [0.35, 0.9], mag: 8, reload: 2.2, dmg: [22, 50], pen: 2, spread: 5, sound: 'rifle', tracerEvery: 99 },
   // ATGM teams (tripod, SACLOS): tandem HEAT, long range. FPV: RPG-7 warhead strapped to a quadcopter.
-  kornet: { name: '9M133 Kornet', type: 'atgm', range: 1300, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
-  stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 1200, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 1000, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
-  fpv:    { name: 'FPV drone (PG-7VL warhead)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [170, 290], pen: 420, blast: 4, spread: 0, sound: 'rpg' },
+  kornet: { name: '9M133 Kornet', type: 'atgm', range: 5500, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 1100, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 260, gravity: 0 } },
+  stugna: { name: 'Stugna-P (RK-2S)', type: 'atgm', range: 5000, rof: 1, mag: 1, reload: 8, dmg: [170, 300], pen: 850, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 220, gravity: 0 } },
+  fpv:    { name: 'FPV drone (PG-7VL warhead, improvised fuze)', type: 'atgm', range: 900, rof: 1, mag: 1, reload: 0, dmg: [170, 290], pen: 420,   /* (below the RPG-7's 500: crush fuze, no proper standoff, poor impact angles) */ blast: 4, spread: 0, sound: 'rpg' },
   // IFV weapons (BMP-3 / M2A2 Bradley)
   m242:   { name: 'M242 Bushmaster 25 mm', type: 'autocannon', range: 900, rof: 200, burst: [2, 5], burstGap: [0.8, 1.6], mag: 300, reload: 0, dmg: [80, 130], pen: 55, blast: 1.8, spread: 1.4, sound: 'cannon30', tracerEvery: 1 },
   a70:    { name: '2A70 100 mm (HE-Frag)', type: 'tankgun', range: 1200, rof: 10, mag: 40, reload: 6, dmg: [180, 320], pen: 40, blast: 6, spread: 0.6, sound: 'tankgun', projectile: { speed: 250, gravity: 0 } },
-  m9m117: { name: '9M117M1 Arkan (gun-launched ATGM)', type: 'atgm', range: 1500, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 750, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 300, gravity: 0 } },
-  tow2:   { name: 'BGM-71 TOW-2A', type: 'atgm', range: 1500, rof: 1, mag: 2, reload: 25, dmg: [190, 330], pen: 900, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 280, gravity: 0 } },
-  a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 39, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
+  m9m117: { name: '9M117M1 Arkan (gun-launched ATGM)', type: 'atgm', range: 5500, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 750, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 300, gravity: 0 } },
+  tow2:   { name: 'BGM-71 TOW-2A', type: 'atgm', range: 3750, rof: 1, mag: 2, reload: 25, dmg: [190, 330], pen: 900, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 280, gravity: 0 } },
+  a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 45, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
 };
 
 export const SQUAD_ROLES = [

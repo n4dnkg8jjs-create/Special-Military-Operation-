@@ -112,7 +112,7 @@ export function resolveHit(v, W, fromPos, kind, at = null, dist = 0) {
     if (cov > 0 && Math.random() < cov) { eraHit = true; v.eraLeft[key] = Math.max(0, cov - 0.12); armor += kind === 'ke' ? a.era.ke : (W.tandem ? a.era.ce * 0.15 : a.era.ce); } }
   // small-calibre KE loses penetration with range
   let pen = (W.pen || 0) * (0.88 + Math.random() * 0.24);
-  if (kind === 'ke' && (W.pen || 0) < 100) pen *= Math.max(0.35, 1 - dist / 1400);
+  if (kind === 'ke' && (W.pen || 0) < 100) pen *= Math.max(0.35, 1 - dist / 4000);   // (APDS / AP: ~-35 % at 1.5 km)
   const hitLocal = [o[0] + d[0] * r[0], o[1] + d[1] * r[0], o[2] + d[2] * r[0]];
   const res = { zone: z.name, face, armor: Math.round(armor), pen: Math.round(pen), era: eraHit, local: hitLocal, effects: [] };
   // running gear: tracks / wheels break even without penetrating the hull

@@ -64,9 +64,9 @@ export class Squad {
     const e = this.effective.length ? this.effective : this.alive; if (!e.length) return out.copy(this.lastPos);
     out.set(0, 0, 0); for (const s of e) out.add(s.pos); out.multiplyScalar(1 / e.length); this.lastPos.copy(out); return out;
   }
-  ammoFrac() {
+  ammoFrac(arms = false) {   // arms: small arms only (an ATGM / FPV team out of missiles or drones is not out of ammunition)
     const sp = this.support;
-    if (sp) return sp.drones != null ? (sp.drones + (sp.drone ? 1 : 0)) / (sp.capacity?.() || 5) : sp.abandoned ? 0 : (sp.ammo + (sp.loaded ? 1 : 0)) / 5;
+    if (sp && !arms) return sp.drones != null ? (sp.drones + (sp.drone ? 1 : 0)) / (sp.capacity?.() || 5) : sp.abandoned ? 0 : (sp.ammo + (sp.loaded ? 1 : 0)) / 5;
     let have = 0, max = 0;
     for (const s of this.effective) { const w = s.weapon; have += s.mags * w.mag + s.inMag; max += (s.role.mags + 1) * w.mag; }
     return max ? have / max : 0;
@@ -523,7 +523,9 @@ export class Squad {
     let room = v.def.asset === 'bradley_ua' ? v.def.passengers : 0;
     for (const s of this.soldiers) {
       if (s.state === 'dead' || s.state === 'evac' || s.aboard) continue;
-      if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
+      // casualties: only those lying at the hull are loaded; one further off stays for a mate's drag or the medevac
+      // (mounting used to lift every wounded man on the map into the carrier at once)
+      if (s.state === 'critical' || s.state === 'stable') { if (s.pos.distanceTo(v.pos) < v.def.radius + 3) this.evacuate(s); continue; }
       if (room > 0) { room--; s.inside = 'btr'; }
       else if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
       else { s.inside = 'btr'; }
@@ -543,7 +545,7 @@ export class Squad {
     if (d > range) { const p = c.clone().lerp(tc, 1 - range * 0.85 / d); this.orderMove(p.x, p.z, Math.atan2(tc.x - p.x, tc.z - p.z), 18, this.run); this.order.attack = target; }
     this.focus = target;
   }
-  halt() { this.leaveTrench(); this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.goal = null; } }
+  halt() { this.leaveTrench(); this.order = null; this.fireAt = null; for (const s of this.alive) { s.path = null; s.pathReq = null; s.goal = null; } }   // (pathReq: a route still queued would be installed after the halt)
   // ------------------------------------------------------------ cellar (private houses, world/houses.js)
   // the men at the windows climb down the hatch: no firing, nothing seen, shells and drones barely reach them; up again to fight
   toCellar() {
@@ -601,7 +603,7 @@ export class Squad {
     this.underFireT += dt;
     let d = 0;
     d -= supp * TUNING.moraleSuppDrain;
-    if (this.ammoFrac() < 0.15) d -= 0.6;
+    if (this.ammoFrac(true) < 0.15) d -= 0.6;
     if (this.flankDirs.length >= 2) { const a = this.flankDirs; let spread = 0; for (let i = 1; i < a.length; i++) { let x = Math.abs(a[i] - a[0]) % (Math.PI * 2); if (x > Math.PI) x = Math.PI * 2 - x; spread = Math.max(spread, x); } if (spread > 1.6) d -= 0.9; }
     this.flankDirs.length = 0;
     // PINNED: sustained heavy fire on most of the squad
@@ -653,7 +655,7 @@ export class Squad {
   }
   // ------------------------------------------------------------ per-frame
   update(dt) {
-    if (this.medevac) return this.medevac.updateCrew(dt);   // medevac pickup crew: driven by its truck (game/medevac.js)
+    if (this.medevac) { this.flankDirs.length = 0; return this.medevac.updateCrew(dt); }   // medevac pickup crew: driven by its truck (game/medevac.js); (flankDirs: emptied by updateMorale, which the crew never runs)
     if (this.routDeferred && !this.soldiers.some(s => s.alive && (s.aboard || s.dmWait != null || s.jumpT > 0))) { this.routDeferred = false; if (this.routing) this.routMove(); }
     this.support?.update(dt);
     if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
@@ -749,9 +751,16 @@ export class Squad {
     // first - a man only goes for a casualty when he himself is not under direct fire and the casualty is not lying in
     // a known enemy's line of fire; otherwise he keeps fighting from cover and the casualty waits
     if (!this.routing) for (const w of this.soldiers) {
-      if (w.state !== 'critical') continue;
+      if (w.state !== 'critical' || (w.noReachT ?? 0) > this.game.time) continue;
       // one man goes for him; a second one close by joins in for a two-man drag (faster), never more than two
       const onIt = this.effective.filter(s => s.dragging === w);
+      // hit at a window / clearing a house / down in a cellar: no drag across the floors -- a mate in the same house
+      // patches him up where he lies (he is carried out with the others when the squad leaves: leaveBuilding)
+      if (w.inBuilding || w.cqb || w.cellar || w.cellarMove) {
+        const m = !onIt.length && w.inBuilding && this.effective.find(s => !s.dragging && s.inBuilding && s.bld === w.bld && !s.cqb && !s.cellar);
+        if (m) { m.dragging = w; m.dragPhase = 'treat'; m.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, this.game.mods?.[this.side]?.medTreat || 0)); w.dragger = m; }
+        continue;
+      }
       if (onIt.length >= 2 || (onIt.length && onIt[0].dragPhase === 'treat') || (w.dragger && !onIt.length)) continue;
       const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && this.safeToHelp(s) && (!onIt.length || s.pos.distanceTo(w.pos) < 20));   // (not the men clearing a building)
       if (!helpers.length) { if (onIt.length) continue; break; }
@@ -762,7 +771,7 @@ export class Squad {
     }
     // a man on his way to a casualty who comes under fire himself goes to ground and fights; someone retries later
     for (const h of this.effective) if (h.dragging && h.dragPhase === 'reach' && !this.safeToHelp(h, 40)) {
-      h.dragging = null; h.dragPhase = null; h.path = null; h.goal = null; h.stance = 'prone';
+      h.dragging = null; h.dragPhase = null; h.path = null; h.goal = null; h.stance = 'prone'; h.goProneT = this.game.time + 4;
     }
     this.seekCover();
     // stance from situation
@@ -776,6 +785,7 @@ export class Squad {
       if ((s.droneHideT ?? 0) > this.game.time && !s.droneShooter) { s.stance = s.inBuilding || (s.path && s.pathI < s.path.length) ? 'crouch' : 'prone'; continue; }   // FPV about: down (support.js reactions)
       if (s.inBuilding) { s.stance = s.suppression > 45 || (this.underFireT < 2 && !s.target) ? 'crouch' : 'stand'; continue; }   // v7: up at the window watching (seen / seeing), down below the sill under fire
       const moving = s.path && s.pathI < s.path.length;
+      if (!moving && (s.goProneT ?? 0) > this.game.time) { s.stance = 'prone'; continue; }   // (gave up going for a casualty under fire: stays down)
       // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
       // instead of popping up into a crouch-walk after the first metre; he gets up (prone_up) once it eases
       if (moving && s.stance === 'prone' && !this.run && !this.routing && ((s.crawl && (s.suppression > 25 || this.pinned)) || s.suppression > 50)) s.stance = 'prone';
@@ -824,11 +834,19 @@ export class Squad {
     const v = this.carrier && !this.carrier.destroyed ? this.carrier : null; if (!v || !v.supply) return;
     const near = this.mounted || this.center().distanceTo(v.pos) < 25; if (!near) return;
     this.resupT = (this.resupT || 0) + dt; if (this.resupT < 1.2) return; this.resupT = 0;
+    // every rifle (AK-74M, optic AK-74, AK-12), the PKM and the RPG-7 -- also while a grenadier has his rifle out (his
+    // rockets are in origWeapon then, the rifle magazines in mags)
+    const give = (key, has, max) => {
+      if (has >= max) return 0; const t = WEAPONS[key]?.type;
+      if (t === 'rifle' && v.supply.rifle >= 30) { v.supply.rifle -= 30; return 1; }
+      if (t === 'mg' && v.supply.mg >= 100) { v.supply.mg -= 100; return 1; }
+      if (key === 'rpg7' && v.supply.rpg > 0) { v.supply.rpg--; return 1; }
+      return 0;
+    };
     for (const s of this.effective) {
-      if (s.weaponKey === 'ak74m' && s.mags < s.role.mags && v.supply.rifle >= 30) { s.mags++; v.supply.rifle -= 30; }
-      if (s.weaponKey === 'pkm' && s.mags < s.role.mags && v.supply.mg >= 100) { s.mags++; v.supply.mg -= 100; }
-      if (s.weaponKey === 'rpg7' && s.mags < s.role.mags && v.supply.rpg > 0) { s.mags++; v.supply.rpg--; }
-      if (s.sideKey && s.sideMags < (s.role.sideMags || 0) && v.supply.rifle >= 30) { s.sideMags++; v.supply.rifle -= 30; }
+      const o = s.origWeapon;
+      if (o) { o.mags += give(o.key, o.mags, s.role.mags); s.mags += give(s.weaponKey, s.mags, s.role.sideMags || 0); }
+      else { s.mags += give(s.weaponKey, s.mags, s.role.mags); if (s.sideKey) s.sideMags += give(s.sideKey, s.sideMags, s.role.sideMags || 0); }
     }
   }
   updateSoldier(s, dt) {
@@ -970,11 +988,11 @@ export class Squad {
         if (side) { const sx = V.x + V.z * side, sz = V.z - V.x * side, sl = Math.hypot(sx, sz) || 1; V.set(sx / sl, 0, sz / sl); }
         s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6));
       }
-    } else s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));
-    // separation from squadmates & vehicles (never shoves anyone into a wall)
+    } else if (s.dragPhase !== 'assist') s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));   // (second man of a two-man drag: dragStep sets his pace)
+    // separation from squadmates & vehicles (never shoves anyone into a wall; drag partners are not pushed apart)
     const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
     const sepK = s.vehFrom ? 0.3 : 1;   // men who just landed side by side drift apart slowly (they walk off anyway), not shoved
-    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
+    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0 || o.dragging === s || (s.dragging && (o === s.dragging || o.dragging === s.dragging))) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
     if (s.vehFrom && (g.time > s.vehFromT || s.vehFrom.pos.distanceToSquared(s.pos) > 64)) s.vehFrom = null;
     // vehicles: kept out of the real hull footprint (oriented box) - a live vehicle is not in the nav grid, so a path may run
     // straight through it; the old round push (radius + 0.9, far shorter than the hull) let men walk through its bow / stern and
@@ -1070,7 +1088,11 @@ export class Squad {
     const w = s.dragging, g = this.game;
     if (!w.alive || w.state === 'evac') { s.dragging = null; return; }
     if (s.dragPhase === 'reach') {
-      if (s.pos.distanceTo(w.pos) < 1.4) {
+      // can't get to him (no route ends at him, blocked, cut off): give up after a while, nobody retries for 30 s
+      s.reachT = (s.reachT || 0) + dt;
+      if (s.reachT > 25) { s.reachT = 0; w.noReachT = g.time + 30; s.dragging = null; s.dragPhase = null; s.path = null; s.goal = null; return; }
+      if (Math.hypot(s.pos.x - w.pos.x, s.pos.z - w.pos.z) < 1.4) {
+        s.reachT = 0;
         s.dragPhase = 'drag'; w.dragger = s;
         if (w.dragger && w.dragger !== s && w.dragger.dragging === w) {   // a mate already has him: take the other shoulder strap
           if (w.dragger.dragPhase === 'drag' && !(w.dragAssist?.dragging === w)) { s.dragPhase = 'assist'; w.dragAssist = s; s.path = null; s.goal = null; }
@@ -1100,7 +1122,7 @@ export class Squad {
       if (!d || d.dragging !== w || d.dragPhase !== 'drag' || !d.alive) { s.dragging = null; s.dragPhase = null; if (w.dragAssist === s) w.dragAssist = null; s.vel.set(0, 0, 0); return; }
       const sx = Math.cos(d.heading), sz = -Math.sin(d.heading), tx = d.pos.x + sx * 0.75, tz = d.pos.z + sz * 0.75;
       const dx = tx - s.pos.x, dz = tz - s.pos.z, dd = Math.hypot(dx, dz), v = Math.min(dd / Math.max(dt, 1e-3), TUNING.run) * (dd > 0.05 ? 1 : 0);
-      s.vel.set(dd > 1e-4 ? dx / dd * v : 0, 0, dd > 1e-4 ? dz / dd * v : 0); s.pos.x += s.vel.x * dt; s.pos.z += s.vel.z * dt; s.stance = 'crouch';
+      s.vel.set(dd > 1e-4 ? dx / dd * v : 0, 0, dd > 1e-4 ? dz / dd * v : 0); s.stance = 'crouch';   // (moveStep integrates it)
       if (dd < 0.3) s.vel.copy(d.vel);
       s.treatT -= dt; s.vel.set(0, 0, 0); s.stance = 'crouch';
       if (s.treatT <= 0) { w.state = 'stable'; w.dragger = null; s.dragging = null; s.dragPhase = null; }
