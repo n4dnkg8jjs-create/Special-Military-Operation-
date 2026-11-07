@@ -5,6 +5,7 @@ import { instance, trs, farLod } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
+import { battlefieldDetail, treeFate } from './battlefieldDetail.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
 // two villages strung along their roads, a kolkhoz farm, cratered everywhere.
@@ -40,6 +41,7 @@ export class Farmland extends City {
     step('flush', () => this.flush());
     step('craters', () => this.craters());
     step('paint', () => this.paintGround());
+    step('detail', () => battlefieldDetail(this));   // razor wire, war debris, scorched patches (battlefieldDetail.js)
     step('skyline', () => this.skyline());
     step('crush', () => this.buildCrushables());
     step('nav', () => this.nav.finalize());
@@ -532,9 +534,9 @@ export class Farmland extends City {
         for (const off of [-3.4, 0.2, 3.6]) {
           const o2 = off + (R() - .5) * 1.4, px = cx + nx * o2 + ux * (R() - .5) * 2, pz = cz + nz * o2 + uz * (R() - .5) * 2;
           if (this.terrain.cutSDF(px, pz) < 1.6 || this.teethNear(px, pz) || this.solidHit(px, pz, 0.45, 0.45, 0, 0.3)) continue;
-          if (off === 0.2 || R() < 0.12) { if (R() < (burntB ? 0.3 : 0.75)) { const b = R() < 0.5 ? 'bush_a' : 'bush_b'; this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 90, cullDist: 700, lodShadows: false } }); } continue; }
+          if (off === 0.2 || R() < 0.12) { if (R() < (burntB ? 0.3 : 0.75)) { const b = treeFate(this, R() < 0.5 ? 'bush_a' : 'bush_b', px, pz); this.put(b, px, pz, R() * 6, { s: 0.8 + R() * 0.6, circle: 1.1, cost: 4, check: false, lod: lodOf(b), inst: { lodDist: 90, cullDist: 700, lodShadows: false } }); } continue; }
           if (burntB && R() < 0.22) continue;                                   // trees felled by the shelling
-          const n = burntB && R() < 0.72 ? 'tree_acacia_shelled' : pick(); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 210, cullDist: 1500 } })) continue;
+          const n = treeFate(this, burntB && R() < 0.72 ? 'tree_acacia_shelled' : pick(), px, pz); if (!this.put(n, px, pz, R() * 6, { s: 0.8 + R() * 0.4, circle: 0.45, check: false, lod: lodOf(n), inst: { lodDist: 210, cullDist: 1500 } })) continue;
         }
         // undergrowth litter & fallen limbs
         if (R() < (burntB ? 0.16 : 0.05)) this.put('fallen_trunk', cx + nx * (R() - .5) * 8, cz + nz * (R() - .5) * 8, R() * 6, { cost: 5, low: true, check: false, trench: true, inst: { cullDist: 420 } });

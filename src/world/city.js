@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { MAPS } from './maps.js';
 import { markStatic } from '../engine/renderer.js';
+import { battlefieldDetail } from './battlefieldDetail.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 
@@ -145,7 +146,7 @@ export class City {
     this.fortifications();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.flushTrees(); this.defences(); this.cityWrecks();
-    this.craters(); this.paintGround(); this.skyline();
+    this.craters(); this.paintGround(); battlefieldDetail(this); this.skyline();
     this.nav.finalize();
   }
   // ---------------------------------------------------------------- ground

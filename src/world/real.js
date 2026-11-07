@@ -24,6 +24,7 @@ import { instance, trs, LODS, treeLod } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv } from './wear.js';
+import { battlefieldDetail } from './battlefieldDetail.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
 import AVDIIVKA from './real/avdiivka_osm.js';
@@ -844,6 +845,7 @@ export class RealRural extends Farmland {
     step('flush', () => { this.flush(); this.moundsFlush(); });
     step('craters', () => this.craters());
     step('paint', () => this.paintGround());
+    step('detail', () => battlefieldDetail(this));   // razor wire, war debris, scorched patches (battlefieldDetail.js)
     step('skyline', () => this.skyline());
     step('crush', () => this.buildCrushables());
     step('nav', () => this.nav.finalize());
@@ -1085,6 +1087,7 @@ export class RealUrban extends City {
     step('flush', () => { this.flush(); this.moundsFlush(); });
     step('craters', () => this.craters());
     step('paint', () => this.paintGround());
+    step('detail', () => battlefieldDetail(this));   // razor wire, war debris, scorched patches (battlefieldDetail.js)
     step('skyline', () => this.skylineReal());
     step('crush', () => this.buildCrushables());
     step('nav', () => this.nav.finalize());
