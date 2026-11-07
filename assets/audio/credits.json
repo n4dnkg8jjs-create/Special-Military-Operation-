@@ -4049,51 +4049,45 @@
  "explosions/incoming_whistle_01.mp3": {
   "sources": [
    {
-    "source": "OpenGameArt.org",
-    "title": "Drop Bomb Pack Sounds",
-    "author": "Tiao Ferreira",
-    "url": "https://opengameart.org/content/drop-bomb-pack-sounds",
-    "license": "CC-BY-SA 3.0",
-    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
-    "file": "dropbomb-2seconds.mp3",
-    "notice": "Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!"
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 2.578,
+  "dur": 1.45,
   "channels": 1,
   "processed": true
  },
  "explosions/incoming_whistle_02.mp3": {
   "sources": [
    {
-    "source": "OpenGameArt.org",
-    "title": "Drop Bomb Pack Sounds",
-    "author": "Tiao Ferreira",
-    "url": "https://opengameart.org/content/drop-bomb-pack-sounds",
-    "license": "CC-BY-SA 3.0",
-    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
-    "file": "dropbomb-3seconds.mp3",
-    "notice": "Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!"
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 2.974,
+  "dur": 1.45,
   "channels": 1,
   "processed": true
  },
  "explosions/incoming_whistle_03.mp3": {
   "sources": [
    {
-    "source": "OpenGameArt.org",
-    "title": "Drop Bomb Pack Sounds",
-    "author": "Tiao Ferreira",
-    "url": "https://opengameart.org/content/drop-bomb-pack-sounds",
-    "license": "CC-BY-SA 3.0",
-    "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
-    "file": "dropbomb-4seconds.mp3",
-    "notice": "Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!"
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 4.425,
+  "dur": 1.45,
   "channels": 1,
   "processed": true
  },
@@ -8391,6 +8385,1601 @@
   ],
   "dur": 2.345,
   "channels": 2,
+  "processed": true
+ },
+ "weapons/mg_shot_near_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun very near",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160772/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun very near",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160772/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun very near",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160772/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun very near",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160772/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 0.967,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun very near",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160772/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.166,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_09.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_10.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun3.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417686/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.2,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_11.mp3": {
+  "sources": [
+   {
+    "source": "The Free Firearm Sound Library (mirrored on OpenGameArt.org)",
+    "title": "The Free Firearm Sound Library",
+    "author": "Ben Jaszczak et al.",
+    "url": "https://opengameart.org/content/the-free-firearm-sound-library",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "Mosin Nagant/M_21P.wav"
+   }
+  ],
+  "dur": 0.568,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_near_12.mp3": {
+  "sources": [
+   {
+    "source": "The Free Firearm Sound Library (mirrored on OpenGameArt.org)",
+    "title": "The Free Firearm Sound Library",
+    "author": "Ben Jaszczak et al.",
+    "url": "https://opengameart.org/content/the-free-firearm-sound-library",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "Mosin Nagant/M_21P.wav"
+   }
+  ],
+  "dur": 0.624,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mg_shot_far_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Maxim Russian machinegun",
+    "author": "poissonmort",
+    "url": "https://freesound.org/s/160773/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "LightMachineGun1.wav",
+    "author": "SuperPhat",
+    "url": "https://freesound.org/s/417688/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.411,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.509,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.411,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.509,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.411,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.509,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.411,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.509,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_09.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.411,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_10.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.509,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "50 Cal MG",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239138/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "50 Cal MG",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239138/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "50 Cal MG",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239138/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "50 Cal MG",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239138/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "50 Cal MG",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239138/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_09.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_10.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.909,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Mk 46 30mm gun - single shot",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/162258/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.106,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Mk 46 30mm gun - single shot",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/162258/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.106,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/bullet_crack_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.35,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/bullet_crack_02.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.35,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/bullet_crack_03.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.35,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/bullet_crack_04.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.35,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/bullet_crack_05.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.35,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/sub_thump_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.4,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/sub_thump_02.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.4,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/sub_thump_03.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.4,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/sub_thump_04.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.4,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_incoming_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.45,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_incoming_02.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.45,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_incoming_03.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.45,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_incoming_04.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.45,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/incoming_whistle_04.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.45,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/drone_buzz_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.5,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/atgm_motor_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.9,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/track_squeal_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 5.7,
+  "channels": 1,
+  "processed": true
+ },
+ "synth/tyre_roll_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 5.7,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/crickets_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 11.5,
+  "channels": 2,
+  "processed": true
+ },
+ "ambience/bird_01.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.285,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_02.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.546,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_03.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.522,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_04.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.641,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_05.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.057,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_06.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.271,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_07.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.434,
+  "channels": 1,
+  "processed": true
+ },
+ "ambience/bird_08.mp3": {
+  "sources": [
+   {
+    "source": "Procedurally generated (tools/audio/build_v3.py)",
+    "title": "SMO procedural sound",
+    "author": "Special Military Operation project",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.416,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/howitzer_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "xm360_canon_shot_1.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67524/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 7.439,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/howitzer_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "xm360_canon_shot_2_less_echo.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67527/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 7.471,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/howitzer_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Tank fire Mixed.wav",
+    "author": "Cyberkineticfilms",
+    "url": "https://freesound.org/s/127845/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 8.382,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/howitzer_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Cannon Shot",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/187767/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 7.749,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/hmg_shot_far_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/160355/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Big Machine Gun",
+    "author": "JarAxe",
+    "url": "https://freesound.org/s/238677/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.0,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_2.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67580/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/ac_shot_far_08.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "m242_chain_gun_slow_burst_3.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/67581/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Guns & Explosions Album - Autocannon - Shot 1.wav",
+    "author": "OGsoundFX",
+    "url": "https://freesound.org/s/423108/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 2.4,
+  "channels": 1,
   "processed": true
  }
 }

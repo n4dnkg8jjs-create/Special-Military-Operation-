@@ -487,7 +487,8 @@ export class Vehicle {
       this.engine.set(this.pos, 0.8 * (1 - s * 0.6), 1 + s * 0.15);
       this.engineDrive?.set(this.pos, s * 0.9 + (this.turretSlewing ? 0.05 : 0), 0.85 + s * 0.3);
       this.tracks?.set(this.pos, Math.min(1, s * 1.4), 0.7 + s * 0.6);
-      if (g.camDist(this.pos) > 320) { this.engine.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.engine = this.engineDrive = this.tracks = null; }
+      (this.traverseSnd ||= g.audio.loop('turret_traverse', this.pos, 0))?.set(this.pos, this.turretSlewing ? 0.7 : 0, 1);   // turret drive whine (audio/sfx.js)
+      if (g.camDist(this.pos) > 320) { this.engine.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.traverseSnd?.stop(); this.engine = this.engineDrive = this.tracks = this.traverseSnd = null; }
     }
   }
   sync() {
@@ -642,7 +643,7 @@ export class Vehicle {
     g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 0.3, 255); g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 1.2, 7, true);
     g.nav.rect(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 255, 0.15);   // the whole hull (the circle missed bow and stern: paths ran through the wreck)
     g.nav.addOccluder(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 2.2, this);
-    this.engine?.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.engine = null;
+    this.engine?.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.traverseSnd?.stop(); this.engine = this.traverseSnd = null;
     this.wreck = true;
   }
   updateWreck(dt) {

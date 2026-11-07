@@ -1,168 +1,316 @@
-// WebAudio mixer driven by assets/audio/manifest.json, with procedural fallbacks for any missing event.
-// Positional panning, air-absorption low-pass, speed-of-sound delay for distant events, urban reverb,
-// near/far variant selection and per-event voice limits.
-const SPEED_OF_SOUND = 343;
-const LIMITS = { rifle_near: 14, rifle_far: 10, mg_near: 6, mg_far: 6, bullet_crack: 8, impact_concrete: 8, impact_dirt: 8, impact_metal: 6, ricochet: 4, footstep_rubble: 6, pain: 3, wounded: 3, shout: 3 };
+// WebAudio mixer driven by assets/audio/manifest.json (procedural fallbacks for any event whose files are missing).
+//
+// Graph:  voice: src -> gain -> air-absorption low-pass -> StereoPanner -> group bus      (+ send -> environment reverb)
+//         groups weapons/explosions/ballistics/vehicles/foley -> world (ducked under call-outs) \
+//         voice, ambience, ui, reverb return ------------------------------------------------- -> glue comp -> limiter -> soft clip -> out
+// Levels come from the MIX table below (dB at the reference distance r0, inverse-distance beyond it, extra ground loss
+// far out), not from the source files, which are all loudness-normalised to the same level by tools/audio/build*.py.
+// Distance: speed-of-sound start delay, air-absorption low-pass, near/far recording swap, far rumble + close sub-thump
+// layers for blasts, supersonic crack ahead of the report for some distant small-arms rounds.
+// Voices: per-key / per-group / global caps; a new voice steals the quietest one (short fade) or is dropped if it would
+// be the quietest. Automatic weapons play one single-shot sample per ROUND with a per-emitter choke (previous round's
+// tail fades as the next one fires), so a 10-round burst never stacks ten long tails.
+// Loops (engines, tracks, drone, fire): one chain each, updated <= 20 Hz, disconnected while inaudible, loudest N kept.
+// Ambience: environment beds, field crickets / birds and crows in quiet moments, distant artillery and firefights.
+const SOS = 343;
+const DB = d => Math.pow(10, d / 20);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+// key: [level dB at r0, r0 m, group]
+const MIX = {
+  rifle_near: [0, 10, 'weapons'], rifle_far: [0, 10, 'weapons'], rifle_burst_near: [0, 10, 'weapons'], rifle_burst_far: [-1, 10, 'weapons'],
+  dmr_near: [1, 10, 'weapons'], dmr_far: [1, 10, 'weapons'],
+  mg_shot_near: [1, 10, 'weapons'], mg_shot_far: [1, 10, 'weapons'], mg_near: [-2, 10, 'weapons'], mg_far: [-2, 10, 'weapons'],
+  hmg_shot: [4, 12, 'weapons'], hmg_shot_far: [4, 12, 'weapons'], hmg: [1, 12, 'weapons'], hmg_far: [1, 12, 'weapons'],
+  ac_shot: [6, 14, 'weapons'], ac_shot_far: [6, 14, 'weapons'], cannon30: [3, 14, 'weapons'], cannon30_far: [3, 14, 'weapons'],
+  tankgun: [10, 16, 'weapons'], tankgun_far: [10, 16, 'weapons'], howitzer: [11, 20, 'weapons'], mortar_launch: [5, 12, 'weapons'],
+  rpg_launch: [4, 12, 'weapons'], rpg_flight: [-4, 8, 'weapons'], atgm_motor: [-2, 10, 'weapons'], drone_buzz: [-5, 10, 'weapons'],
+  artillery_far: [-14, 10, 'amb'],
+  grenade_pin: [-14, 4, 'foley'], grenade_throw: [-12, 4, 'foley'], reload: [-14, 4, 'foley'], bolt: [-14, 4, 'foley'], dryfire: [-16, 4, 'foley'],
+  bullet_crack: [-11, 6, 'ballistics'], bullet_whizz: [-6, 4, 'ballistics'], ricochet: [-9, 6, 'ballistics'],
+  impact_concrete: [-10, 5, 'ballistics'], impact_dirt: [-12, 5, 'ballistics'], impact_metal: [-9, 5, 'ballistics'], impact_glass: [-10, 5, 'ballistics'],
+  impact_flesh: [-12, 4, 'ballistics'], impact_armor: [-2, 8, 'ballistics'], shell_casing: [-18, 3, 'ballistics'],
+  explosion_small: [6, 15, 'explosions'], explosion_medium: [9, 18, 'explosions'], explosion_large: [12, 20, 'explosions'],
+  explosion_far: [6, 30, 'explosions'], collapse: [6, 20, 'explosions'], debris: [-6, 10, 'explosions'], glass_break: [-6, 8, 'explosions'],
+  shell_incoming: [-1, 30, 'explosions'], incoming_whistle: [-3, 25, 'explosions'], sub_thump: [4, 25, 'explosions'],
+  btr_engine_idle: [0, 12, 'vehicles'], btr_engine_drive: [2, 12, 'vehicles'], btr_engine_drive_b: [2, 12, 'vehicles'],
+  tank_engine_idle: [1, 12, 'vehicles'], tank_engine_drive: [3, 14, 'vehicles'], tank_engine_drive_fast: [3, 14, 'vehicles'],
+  engine_start: [0, 12, 'vehicles'], track_clank: [0, 10, 'vehicles'], track_squeal: [-4, 10, 'vehicles'], tyre_roll: [-3, 10, 'vehicles'],
+  turret_traverse: [-6, 6, 'vehicles'], servo_stop: [-13, 5, 'vehicles'], hatch: [-11, 5, 'vehicles'],
+  fire_vehicle_loop: [-9, 8, 'vehicles'], fire_loop: [-12, 6, 'vehicles'], fire_loop_b: [-12, 6, 'vehicles'],
+  footstep_rubble: [-19, 3, 'foley'], footstep_concrete: [-19, 3, 'foley'], footstep_gravel: [-19, 3, 'foley'], gear_rattle: [-21, 3, 'foley'], body_fall: [-12, 5, 'foley'],
+  pain: [-2, 10, 'voice'], death: [-2, 10, 'voice'], wounded: [-6, 8, 'voice'], shout: [-1, 12, 'voice'], curse_ru: [-4, 10, 'voice'], radio: [-6, 10, 'voice'],
+  ambience_city: [-11, 10, 'amb'], ambience_wind: [-13, 10, 'amb'], ambience_wind_gusty: [-14, 10, 'amb'], ambience_battle: [-15, 10, 'amb'],
+  crickets: [-13, 10, 'amb'], bird: [-12, 20, 'amb'], crow: [-10, 25, 'amb'], siren_air_raid: [-16, 10, 'amb'], radio_static: [-18, 3, 'amb'],
+  ui_click: [-8, 1, 'ui'], ui_select: [-9, 1, 'ui'], ui_order: [-8, 1, 'ui'], ui_hover: [-14, 1, 'ui'], ui_alert: [-6, 1, 'ui'], ui_error: [-8, 1, 'ui'],
+  victory: [-4, 1, 'ui'], defeat: [-4, 1, 'ui'],
+};
+const CAT_GROUP = { weapons: 'weapons', ballistics: 'ballistics', explosions: 'explosions', vehicles: 'vehicles', foley: 'foley', human: 'voice', ambience: 'amb', ui: 'ui' };
+const GROUP_CAP = { weapons: 28, explosions: 12, ballistics: 10, vehicles: 8, foley: 8, voice: 4, amb: 8, ui: 4 };
+const TOTAL_CAP = 64;
+const KEY_CAP = { bullet_crack: 3, bullet_whizz: 3, ricochet: 3, impact_concrete: 5, impact_dirt: 5, impact_metal: 4, footstep_rubble: 3, footstep_gravel: 3, pain: 2, death: 2, wounded: 2, shout: 2, sub_thump: 3, explosion_far: 5, shell_incoming: 4, incoming_whistle: 4, debris: 4, radio: 1 };
+// random variation per group: [rate +-, gain dB +-]
+const VAR = { weapons: [0.035, 1.5], explosions: [0.07, 2], ballistics: [0.09, 3], vehicles: [0.05, 1.5], foley: [0.08, 3], voice: [0.04, 1.5], amb: [0.06, 2], ui: [0.01, 0] };
+const REVERB_SEND = { weapons: 1, explosions: 1, ballistics: 0.55, vehicles: 0.35, foley: 0.3, voice: 0.45, amb: 0.5, ui: 0 };
+// game key -> per-round sample set (if built), near->far swaps [far key, distance m]
+const ALIAS = { mg_near: 'mg_shot_near', mg_far: 'mg_shot_far', hmg: 'hmg_shot', hmg_far: 'hmg_shot_far', cannon30: 'ac_shot', cannon30_far: 'ac_shot_far' };
+const FAR = { rifle_near: ['rifle_far', 110], dmr_near: ['dmr_far', 140], mg_shot_near: ['mg_shot_far', 130], hmg_shot: ['hmg_shot_far', 170], ac_shot: ['ac_shot_far', 190], tankgun: ['tankgun_far', 320], rifle_burst_near: ['rifle_burst_far', 120], mg_near: ['mg_far', 130], hmg: ['hmg_far', 170], cannon30: ['cannon30_far', 190] };
+// per-emitter choke families: [family, fade time-constant s, supersonic-crack chance for distant rounds]
+const CHOKE = { rifle_near: ['r', 0.05, 0.1], rifle_far: ['r', 0.05, 0.1], dmr_near: ['d', 0.08, 0.3], dmr_far: ['d', 0.08, 0.3], mg_shot_near: ['m', 0.035, 0.12], mg_shot_far: ['m', 0.035, 0.12], hmg_shot: ['h', 0.05, 0.2], hmg_shot_far: ['h', 0.05, 0.2], ac_shot: ['a', 0.08, 0], ac_shot_far: ['a', 0.08, 0] };
+const BLAST = { explosion_small: 0.55, explosion_medium: 0.8, explosion_large: 1, collapse: 0.7 };
+const LOOP_LAYERS = { track_clank: [['track_squeal', 1]], btr_engine_drive: [['tyre_roll', 1]] };
+const LOOP_CAP = { vehicles: 14, weapons: 6 };
 
 export class Audio {
-  constructor() { this.ok = false; this.buffers = {}; this.manifest = {}; this.voices = new Map(); this.loops = new Set(); this.listener = { x: 0, y: 0, z: 0 }; }
-  async init(progress) {
-    try { if (localStorage.getItem('smo_noaudio') === '1') return; } catch { }   // headless multi-instance tests
-    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-    const ctx = this.ctx = new AC({ latencyHint: 'interactive' });
+  constructor() { this.ok = false; this.manifest = {}; this.act = []; this.loops = new Set(); this.beds = new Map(); this.emit = new Map(); this.last = {}; this.listener = { x: 0, y: 0, z: 0 }; this.fwd = { x: 0, z: -1 }; this.heat = 0; this.tickT = 0; this.env = null; this.crackT = 0; this.amb = { art: 8, fire: 5, bird: 3, crow: 12 }; }
+  // opts.context: an (Offline)AudioContext to render into (previews); opts.env: 'city' | 'field'
+  async init(progress, opts = {}) {
+    if (!opts.context) { try { if (localStorage.getItem('smo_noaudio') === '1') return; } catch { } }   // headless multi-instance tests
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC && !opts.context) return;
+    const ctx = this.ctx = opts.context || new AC({ latencyHint: 'interactive' });
     // resume() stays pending until the user clicks (always the case in the versus battle iframe): never block loading
     // on it — wait at most 300 ms, then resume on the first click / key press
-    if (ctx.state === 'suspended') {
+    if (ctx.state === 'suspended' && !opts.context) {
       await Promise.race([ctx.resume().catch(() => {}), new Promise(r => setTimeout(r, 300))]);
       if (ctx.state === 'suspended') { const kick = () => { ctx.resume().catch(() => {}); if (ctx.state === 'running') for (const e of ['pointerdown', 'keydown']) removeEventListener(e, kick, true); }; for (const e of ['pointerdown', 'keydown']) addEventListener(e, kick, true); }
     }
-    this.master = ctx.createGain(); this.master.gain.value = 0.9;
-    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.25;
-    this.master.connect(comp).connect(ctx.destination);
-    this.sfx = ctx.createGain(); this.sfx.connect(this.master);
-    this.amb = ctx.createGain(); this.amb.gain.value = 0.55; this.amb.connect(this.master);
-    this.ui = ctx.createGain(); this.ui.gain.value = 0.5; this.ui.connect(this.master);
-    this.reverb = ctx.createConvolver(); this.reverb.buffer = this.makeIR(2.6); const rv = ctx.createGain(); rv.gain.value = 0.32; this.reverb.connect(rv).connect(this.master);
-    try { const r = await fetch('assets/audio/manifest.json'); if (r.ok) this.manifest = await r.json(); } catch {}
+    this.buildGraph();
+    try { const r = await fetch(opts.base ? opts.base + 'assets/audio/manifest.json' : 'assets/audio/manifest.json'); if (r.ok) this.manifest = await r.json(); } catch {}
     const keys = Object.keys(this.manifest); let done = 0;
     await Promise.all(keys.map(async k => {
       const e = this.manifest[k]; e.buffers = [];
       await Promise.all((e.files || []).map(async f => {
-        try { const url = f.startsWith('assets/') ? f : `assets/audio/${f}`; const ab = await (await fetch(url)).arrayBuffer(); e.buffers.push(await ctx.decodeAudioData(ab)); } catch (err) { /* skip bad file */ }
+        try { const url = (opts.base || '') + (f.startsWith('assets/') ? f : `assets/audio/${f}`); const ab = await (await fetch(url)).arrayBuffer(); e.buffers.push(await ctx.decodeAudioData(ab)); } catch (err) { /* skip bad file */ }
       }));
       progress && progress(++done / keys.length);
     }));
-    this.synthFallbacks();
+    this.fallbacks();
+    this.setEnvironment(opts.env || 'city');
     this.ok = true;
   }
-  makeIR(sec) {
-    // urban canyon: sparse early reflections off facades + diffuse tail
-    const ctx = this.ctx, n = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, n, ctx.sampleRate);
+  buildGraph() {
+    const ctx = this.ctx, G = n => { const g = ctx.createGain(); g.gain.value = n; return g; };
+    // master chain: gentle glue compression, then a fast high-ratio limiter, then a soft clipper as the last safety
+    // (the compressor nodes add their own make-up gain, which the trim in front of them accounts for)
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -12; comp.knee.value = 6; comp.ratio.value = 2; comp.attack.value = 0.01; comp.release.value = 0.2;
+    const lim = ctx.createDynamicsCompressor(); lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.12;
+    const clip = ctx.createWaveShaper(); const n = 2048, cv = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x); cv[i] = Math.sign(x) * (a < 0.8 ? a : 0.8 + 0.19 * Math.tanh((a - 0.8) / 0.19)); }
+    clip.curve = cv;
+    this.master = G(1); this.trim = G(DB(1));
+    this.master.connect(this.trim).connect(comp).connect(lim).connect(clip).connect(ctx.destination);
+    this.world = G(1); this.world.connect(this.master);   // ducked under voice call-outs
+    this.bus = {};
+    for (const k of ['weapons', 'explosions', 'ballistics', 'vehicles', 'foley']) { this.bus[k] = G(1); this.bus[k].connect(this.world); }
+    this.bus.voice = G(DB(1)); this.bus.voice.connect(this.master);
+    this.bus.amb = G(1); const ahp = ctx.createBiquadFilter(); ahp.type = 'highpass'; ahp.frequency.value = 45; this.bus.amb.connect(ahp).connect(this.master);
+    this.bus.ui = G(DB(-2)); this.bus.ui.connect(this.master);
+    // environment reverb: mono send (pre-pan) -> high-pass -> convolver -> return
+    this.revIn = G(1); const rhp = ctx.createBiquadFilter(); rhp.type = 'highpass'; rhp.frequency.value = 140;
+    this.reverb = ctx.createConvolver(); this.revOut = G(0.5);
+    this.revIn.connect(rhp).connect(this.reverb).connect(this.revOut).connect(this.world);
+  }
+  // 'city': dense facade reflections + flutter between blocks; 'field': sparse late echoes off tree lines, dark long tail
+  setEnvironment(env) {
+    if (!this.ctx || env === this.env) return; this.env = env;
+    const ctx = this.ctx, sr = ctx.sampleRate, city = env === 'city', sec = city ? 2.4 : 3.4, len = Math.floor(sr * sec), b = ctx.createBuffer(2, len, sr);
+    let seed = city ? 7 : 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 * 2 - 1; };
     for (let c = 0; c < 2; c++) {
-      const d = b.getChannelData(c);
-      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2) * 0.35;
-      for (let k = 0; k < 14; k++) { const t = Math.floor((0.02 + Math.random() * 0.35) * ctx.sampleRate); const a = (0.6 - k * 0.035) * (Math.random() < .5 ? -1 : 1); for (let j = 0; j < 200; j++) d[t + j] += a * Math.exp(-j / 40) * (Math.random() * 2 - 1); }
+      const d = b.getChannelData(c), rt = city ? 1.7 : 2.6, t0 = city ? 0.018 : 0.06;
+      let lpS = 0;
+      for (let i = Math.floor(t0 * sr); i < len; i++) {
+        const t = i / sr, k = 0.55 * Math.exp(-(t - t0) * (city ? 2.2 : 3.0));   // the tail darkens as it decays
+        lpS += (rnd() - lpS) * (k + 0.05); d[i] = lpS * Math.exp(-6.9 * t / rt) * (city ? 0.5 : 0.32) * Math.min(1, (t - t0) / 0.04);
+      }
+      const tap = (t, a, w, dark) => { const i0 = Math.floor(t * sr); let s = 0; for (let j = 0; j < w && i0 + j < len; j++) { s += (rnd() - s) * dark; d[i0 + j] += a * s * Math.exp(-j / (w / 4)); } };
+      if (city) {
+        for (let k = 0; k < 26; k++) tap(0.006 + Math.pow(Math.abs(rnd()), 1.6) * 0.12, (0.9 - k * 0.025) * (rnd() < 0 ? -1 : 1), 90, 0.6);
+        for (let k = 0; k < 5; k++) tap(0.14 + Math.abs(rnd()) * 0.36, 0.35 * (rnd() < 0 ? -1 : 1), 260, 0.25);
+      } else {
+        for (let k = 0; k < 6; k++) tap(0.01 + Math.abs(rnd()) * 0.05, 0.25, 60, 0.4);
+        for (let k = 0; k < 6; k++) tap(0.25 + Math.abs(rnd()) * 0.9, 0.3 + 0.15 * rnd(), 1800, 0.06);   // tree lines / hamlets
+      }
     }
-    return b;
+    this.reverb.buffer = b; this.revOut.gain.value = city ? 0.55 : 0.45;
   }
-  has(k) { const e = this.manifest[k]; return e && e.buffers && e.buffers.length; }
-  // ---------------------------------------------------------------- synthesis
-  synthFallbacks() {
-    const sr = this.ctx.sampleRate;
-    const buf = (sec, fn, ch = 1) => { const b = this.ctx.createBuffer(ch, Math.floor(sr * sec), sr); for (let c = 0; c < ch; c++) { const d = b.getChannelData(c); let st = { a: 0, b: 0, c: 0 }; for (let i = 0; i < d.length; i++) d[i] = fn(i / sr, st, i); } return b; };
-    const lp = (st, x, k) => (st.a += (x - st.a) * k);
-    const noise = () => Math.random() * 2 - 1;
-    const def = (k, opts, makers) => { if (this.has(k)) return; this.manifest[k] = { gain: 1, spatial: true, refDistance: 8, maxDistance: 900, ...opts, buffers: makers.map(m => m()), synth: true }; };
-    const shot = (body, tail, low, crackAmt) => () => buf(tail + 0.05, (t, st) => { const e = Math.exp(-t / body), e2 = Math.exp(-t / tail); const n = noise(); const thump = Math.sin(2 * Math.PI * low * t * (1 - t * 2)) * Math.exp(-t / 0.03); return (lp(st, n, 0.35 + Math.random() * 0.1) * e * 1.4 + n * crackAmt * Math.exp(-t / 0.004) + thump * 0.9) * 0.8 + lp({ a: st.b }, n, 0.05) * e2 * 0.25; });
-    def('rifle_near', { gain: 0.55, refDistance: 6 }, [shot(0.018, 0.35, 120, 0.8), shot(0.022, 0.4, 100, 0.7), shot(0.016, 0.3, 140, 0.9)]);
-    def('rifle_far', { gain: 0.5, refDistance: 30 }, [() => buf(0.6, (t, st) => lp(st, noise(), 0.06) * Math.exp(-t / 0.08) * 2 + lp({ a: st.b }, noise(), 0.02) * Math.exp(-t / 0.3))]);
-    def('mg_near', { gain: 0.6, refDistance: 8 }, [shot(0.02, 0.4, 90, 0.7), shot(0.025, 0.45, 80, 0.6)]);
-    def('mg_far', { gain: 0.5, refDistance: 30 }, [() => buf(0.6, (t, st) => lp(st, noise(), 0.05) * Math.exp(-t / 0.1) * 2)]);
-    def('hmg', { gain: 0.75, refDistance: 12 }, [shot(0.03, 0.6, 60, 0.6)]);
-    def('cannon30', { gain: 0.8, refDistance: 14 }, [shot(0.04, 0.8, 50, 0.5)]);
-    def('tankgun', { gain: 1, refDistance: 25 }, [() => buf(2.5, (t, st) => { const n = noise(); return lp(st, n, 0.08) * Math.exp(-t / 0.15) * 3 + Math.sin(2 * Math.PI * 38 * t) * Math.exp(-t / 0.25) * 1.2 + lp({ a: st.b }, n, 0.01) * Math.exp(-t / 0.8) * 2; })]);
-    const boom = (dec, low) => () => buf(dec * 4, (t, st) => { const n = noise(); st.b += (n - st.b) * 0.02; return (lp(st, n, 0.12) * Math.exp(-t / (dec * 0.25)) * 2.2 + st.b * Math.exp(-t / dec) * 6 + Math.sin(2 * Math.PI * low * t) * Math.exp(-t / (dec * 0.4)) * 1.4) * 0.7; });
-    // FPV drone: 7-inch quad motor whine (looped), and a missile motor roar for ATGMs
-    // FPV quad: four slightly detuned motors (integer Hz so the 1 s loop is seamless) -> beating, band-limited saw harmonics,
-    // two-blade prop pass flutter, a hiss of prop wash on top. The game raises playbackRate with throttle / dive.
-    def('drone_buzz', { gain: 0.55, refDistance: 16, loop: true }, [() => buf(1.0, (t, st) => {
-      let v = 0;
-      for (const [f, a] of [[372, 1], [377, 0.9], [369, 0.85], [383, 0.8]]) { for (let h = 1; h <= 9; h++) v += a * Math.sin(2 * Math.PI * f * h * t + h * 1.7) / (h * 1.15); }
-      const flutter = 0.78 + 0.22 * Math.sin(2 * Math.PI * 41 * t) * Math.sin(2 * Math.PI * 3 * t);
-      st.hp = (st.hp || 0) * 0.6 + noise() * 0.4; const hiss = noise() - st.hp;
-      return Math.tanh(v * 0.16 * flutter) * 0.85 + hiss * 0.18;
-    })]);
-    def('atgm_motor', { gain: 0.6, refDistance: 14, loop: true }, [() => buf(1.0, (t, st) => lp(st, noise(), 0.25) * 0.9 + Math.sin(2 * Math.PI * 95 * t) * 0.15)]);
-    def('explosion_small', { gain: 0.9, refDistance: 14 }, [boom(0.4, 55), boom(0.5, 48)]);
-    def('explosion_medium', { gain: 1, refDistance: 22 }, [boom(0.8, 40), boom(0.9, 35)]);
-    def('explosion_large', { gain: 1, refDistance: 35 }, [boom(1.6, 28)]);
-    def('rpg_launch', { gain: 0.8, refDistance: 12 }, [() => buf(1.2, (t, st) => lp(st, noise(), 0.3) * (Math.exp(-t / 0.05) * 2 + Math.exp(-t / 0.5) * 0.5))]);
-    def('bullet_crack', { gain: 0.35, refDistance: 4, spatial: true }, [() => buf(0.08, (t) => noise() * Math.exp(-t / 0.002) * 1.5 + Math.sin(t * 9000) * Math.exp(-t / 0.01) * 0.3)]);
-    def('ricochet', { gain: 0.25, refDistance: 5 }, [() => buf(0.6, (t) => Math.sin(2 * Math.PI * (2600 - 1800 * t) * t) * Math.exp(-t / 0.15) * 0.6)]);
-    for (const k of ['impact_concrete', 'impact_dirt', 'impact_metal']) def(k, { gain: 0.35, refDistance: 4 }, [() => buf(0.15, (t, st) => (k === 'impact_metal' ? Math.sin(2 * Math.PI * 1900 * t) * 0.5 : 0) * Math.exp(-t / 0.03) + lp(st, noise(), k === 'impact_dirt' ? 0.1 : 0.4) * Math.exp(-t / 0.02))]);
-    const engine = (f0, rough) => () => buf(2, (t, st) => { const ph = 2 * Math.PI * f0 * t; return (Math.sin(ph) * 0.4 + Math.sin(ph * 2.01) * 0.25 + Math.sin(ph * 0.5) * 0.3 + lp(st, noise(), 0.05) * rough) * (0.8 + 0.2 * Math.sin(2 * Math.PI * f0 / 4 * t)); });
-    def('btr_engine_idle', { gain: 0.35, loop: true, refDistance: 10 }, [engine(32, 1.2)]);
-    def('btr_engine_drive', { gain: 0.45, loop: true, refDistance: 12 }, [engine(46, 1.5)]);
-    def('tank_engine_idle', { gain: 0.45, loop: true, refDistance: 12 }, [engine(26, 1.6)]);
-    def('tank_engine_drive', { gain: 0.55, loop: true, refDistance: 14 }, [engine(38, 2)]);
-    def('track_clank', { gain: 0.3, loop: true, refDistance: 10 }, [() => buf(1, (t) => { const ph = (t * 9) % 1; return noise() * Math.exp(-ph / 0.02) * 0.9; })]);
-    def('turret_traverse', { gain: 0.2, loop: true, refDistance: 6 }, [() => buf(1, (t) => Math.sin(2 * Math.PI * 180 * t) * 0.3 + Math.sin(2 * Math.PI * 360 * t) * 0.15)]);
-    def('fire_loop', { gain: 0.3, loop: true, refDistance: 8 }, [() => buf(3, (t, st) => lp(st, noise(), 0.08) * 0.8 + (Math.random() < 0.002 ? 1 : 0))]);
-    // 152/155 mm howitzer: a deep, long concussion with a rolling echo; heard across the whole map
-    def('howitzer', { gain: 1, refDistance: 60 }, [() => buf(4.5, (t, st) => { const n = noise(); st.b = (st.b || 0) + (n - (st.b || 0)) * 0.006; return lp(st, n, 0.06) * Math.exp(-t / 0.12) * 3.2 + Math.sin(2 * Math.PI * 27 * t) * Math.exp(-t / 0.35) * 1.6 + st.b * Math.exp(-t / 1.4) * 14 + st.b * Math.exp(-Math.max(0, t - 1.1) / 0.9) * (t > 1.1 ? 6 : 0); })]);
-    def('shell_incoming', { gain: 0.55, refDistance: 60 }, [() => buf(2.4, (t) => { const f = 900 - 420 * t; return (Math.sin(2 * Math.PI * f * t) * 0.25 + (Math.random() * 2 - 1) * 0.35) * Math.min(1, t * 1.5) * (0.4 + t * 0.3); })]);
-    def('incoming_whistle', { gain: 0.45, refDistance: 40 }, [() => buf(1.6, (t) => Math.sin(2 * Math.PI * (1400 - 600 * t) * t) * Math.min(1, t * 2) * 0.4)]);
-    def('collapse', { gain: 0.9, refDistance: 30 }, [boom(2.5, 25)]);
-    def('debris', { gain: 0.4, refDistance: 12 }, [() => buf(1.5, (t, st) => (Math.random() < 0.02 ? noise() : 0) * Math.exp(-t / 0.8) + lp(st, noise(), 0.1) * Math.exp(-t / 0.5) * 0.3)]);
-    def('glass_break', { gain: 0.3, refDistance: 8 }, [() => buf(0.8, (t) => noise() * (Math.random() < 0.15 ? 1 : 0.2) * Math.exp(-t / 0.2) * Math.sin(2 * Math.PI * 4000 * t))]);
-    def('reload', { gain: 0.25, refDistance: 3 }, [() => buf(0.5, (t) => (Math.abs(t - 0.1) < 0.01 || Math.abs(t - 0.35) < 0.01 ? noise() : 0))]);
-    def('body_fall', { gain: 0.3, refDistance: 4 }, [() => buf(0.4, (t, st) => lp(st, noise(), 0.05) * Math.exp(-t / 0.08) * 2)]);
-    def('ambience_city', { gain: 0.35, loop: true, spatial: false }, [() => buf(8, (t, st) => { const n = noise(); st.b += (n - st.b) * 0.004; return st.b * 4 + lp(st, n, 0.01) * 0.3; }, 2)]);
-    def('ui_click', { gain: 0.4, spatial: false }, [() => buf(0.05, (t) => Math.sin(2 * Math.PI * 1800 * t) * Math.exp(-t / 0.008))]);
-    def('ui_select', { gain: 0.4, spatial: false }, [() => buf(0.12, (t) => Math.sin(2 * Math.PI * (900 + 900 * t * 8) * t) * Math.exp(-t / 0.04) * 0.6)]);
-    def('ui_order', { gain: 0.4, spatial: false }, [() => buf(0.15, (t) => Math.sin(2 * Math.PI * 600 * t) * Math.exp(-t / 0.05) * 0.6 + Math.sin(2 * Math.PI * 1200 * t) * Math.exp(-t / 0.03) * 0.3)]);
-    def('ui_alert', { gain: 0.5, spatial: false }, [() => buf(0.5, (t) => Math.sin(2 * Math.PI * (t < 0.2 ? 700 : 520) * t) * Math.exp(-((t % 0.2)) / 0.12) * 0.5)]);
-    def('radio', { gain: 0.3, spatial: false }, [() => buf(0.6, (t, st) => lp(st, noise(), 0.6) * 0.25 * (t < 0.08 || t > 0.5 ? 1 : 0.4))]);
-    for (const k of ['victory', 'defeat']) def(k, { gain: 0.5, spatial: false }, [() => buf(3, (t) => { const f = k === 'victory' ? [262, 330, 392] : [220, 262, 311]; return f.reduce((a, fr, i) => a + Math.sin(2 * Math.PI * fr * t) * Math.exp(-Math.max(0, t - i * 0.25) / 1.2) * (t > i * 0.25 ? 0.2 : 0), 0); })]);
+  has(k) { const e = this.manifest[k]; return !!(e && e.buffers && e.buffers.length); }
+  // ---------------------------------------------------------------- fallbacks for events with no files (keeps the game audible on a bad install)
+  fallbacks() {
+    const sr = this.ctx.sampleRate, ctx = this.ctx;
+    const mk = (sec, f) => { const b = ctx.createBuffer(1, Math.floor(sr * sec), sr), d = b.getChannelData(0); let s = 0; for (let i = 0; i < d.length; i++) { const t = i / sr; s += ((Math.random() * 2 - 1) - s) * f(t, 'k'); d[i] = s * f(t, 'a'); } return b; };
+    const optional = new Set([...Object.values(ALIAS), ...Object.values(FAR).map(f => f[0]), 'sub_thump', 'explosion_far', 'bullet_crack', 'track_squeal', 'tyre_roll', 'crickets', 'bird', 'crow', 'artillery_far']);
+    for (const k of Object.keys(MIX)) {
+      if (this.has(k) || optional.has(k)) continue;
+      const g = MIX[k][2], loop = /loop|engine|clank|squeal|tyre|buzz|motor|traverse|ambience|crickets|static|siren/.test(k) && !/start/.test(k);
+      const dec = g === 'explosions' ? 0.6 : g === 'weapons' ? 0.12 : g === 'ui' ? 0.03 : 0.08;
+      const b = loop ? mk(2, (t, w) => w === 'k' ? 0.06 : 0.6) : mk(dec * 5, (t, w) => w === 'k' ? (g === 'explosions' ? 0.05 : 0.4) : Math.exp(-t / dec) * 1.5);
+      this.manifest[k] = { ...(this.manifest[k] || {}), loop, spatial: g !== 'ui' && g !== 'amb', buffers: [b], synth: true };
+    }
   }
-  // ---------------------------------------------------------------- playback
+  // ---------------------------------------------------------------- listener / bookkeeping
   setListener(pos, fwd) {
-    this.listener = pos; if (!this.ok) return;
-    const L = this.ctx.listener, t = this.ctx.currentTime;
-    if (L.positionX) { L.positionX.setTargetAtTime(pos.x, t, 0.05); L.positionY.setTargetAtTime(pos.y, t, 0.05); L.positionZ.setTargetAtTime(pos.z, t, 0.05); L.forwardX.setTargetAtTime(fwd.x, t, 0.05); L.forwardY.setTargetAtTime(0, t, 0.05); L.forwardZ.setTargetAtTime(fwd.z, t, 0.05); L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
-    else { L.setPosition(pos.x, pos.y, pos.z); L.setOrientation(fwd.x, 0, fwd.z, 0, 1, 0); }
+    this.listener = pos; if (fwd) { const l = Math.hypot(fwd.x, fwd.z) || 1; this.fwd = { x: fwd.x / l, z: fwd.z / l }; }
+    if (this.ok) this.tick();
   }
   dist(pos) { return pos ? Math.hypot(pos.x - this.listener.x, (pos.y || 0) - this.listener.y, pos.z - this.listener.z) : 0; }
-  pick(key, pos) {
-    // prefer a *_far variant beyond 120 m when it exists
-    const d = this.dist(pos);
-    if (key.endsWith('_near') && d > 120) { const f = key.replace('_near', '_far'); if (this.has(f)) key = f; }
-    return [key, this.manifest[key], d];
-  }
-  play(key0, pos = null, { gain = 1, rate = 1, delay = true, bus = null } = {}) {
+  // level (linear) at distance d for a MIX entry: flat inside r0, inverse distance beyond, + ground/excess loss far out
+  att(d, r0) { return d <= r0 ? 1 : (r0 / d) * (d > 200 ? DB(-(d - 200) * 0.004) : 1); }
+  pan(pos, d) { const L = this.listener, dx = pos.x - L.x, dz = pos.z - L.z; return clamp((dx * -this.fwd.z + dz * this.fwd.x) / Math.max(d, 1), -1, 1) * 0.85; }
+  lpf(d, pos) { let f = 18000 / (1 + d / 110); if (pos && ((pos.x - this.listener.x) * this.fwd.x + (pos.z - this.listener.z) * this.fwd.z) < -10) f *= 0.75; return clamp(f, 320, 18000); }
+  mix(key, e) { return MIX[key] || [20 * Math.log10(Math.max(1e-3, e?.gain ?? 1)) - 6, e?.refDistance || 8, CAT_GROUP[e?.category] || 'weapons']; }
+  pickBuf(key, e) { const n = e.buffers.length; let i = Math.floor(Math.random() * n); if (n > 2 && i === this.last[key]) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n; this.last[key] = i; return e.buffers[i]; }
+  prune(now) { if (this.act.length > 24 || Math.random() < 0.1) this.act = this.act.filter(v => v.end > now); }
+  // ---------------------------------------------------------------- one-shots
+  play(key0, pos = null, { gain = 1, rate = 1, delay = true, bus = null, pan = null, dist = null } = {}) {
     if (!this.ok) return null;
-    const [key, e, d] = this.pick(key0, pos); if (!e || !e.buffers?.length) return null;
-    const maxD = e.maxDistance || 900; if (pos && d > maxD) return null;
-    const lim = LIMITS[key] || 8; const list = this.voices.get(key) || []; this.voices.set(key, list);
-    const now = this.ctx.currentTime;
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].end < now) list.splice(i, 1);
-    if (list.length >= lim) { list.sort((a, b) => b.d - a.d); if (list[0].d < d) return null; try { list[0].src.stop(); } catch {} list.shift(); }
-    const ctx = this.ctx, src = ctx.createBufferSource();
-    src.buffer = e.buffers[Math.floor(Math.random() * e.buffers.length)];
-    src.playbackRate.value = rate * (0.94 + Math.random() * 0.12);
-    const g = ctx.createGain(); g.gain.value = (e.gain ?? 1) * gain;
-    let node = src.connect(g), pn = null;
-    if (pos && e.spatial !== false) {
-      const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = Math.max(700, 18000 / (1 + d / 60));
-      const p = pn = ctx.createPanner(); p.panningModel = 'equalpower'; p.distanceModel = 'inverse';
-      p.refDistance = e.refDistance || 8; p.maxDistance = maxD; p.rolloffFactor = 1.1;
-      if (p.positionX) { p.positionX.value = pos.x; p.positionY.value = pos.y || 0; p.positionZ.value = pos.z; } else p.setPosition(pos.x, pos.y || 0, pos.z);
-      node = g.connect(lpf).connect(p);
-      const send = ctx.createGain(); send.gain.value = Math.min(1, 0.25 + d / 250); p.connect(send).connect(this.reverb);
+    let key = ALIAS[key0] && this.has(ALIAS[key0]) ? ALIAS[key0] : key0;
+    let e = this.manifest[key]; if (!e || !e.buffers?.length) return null;
+    if (e.loop && e.spatial === false && !pos) return this.bed(key, gain);
+    const spatial = !!pos && e.spatial !== false;
+    const d = dist ?? (spatial ? this.dist(pos) : 0);
+    const far = FAR[key]; if (spatial && far && this.has(far[0]) && d > far[1] * (0.8 + 0.4 * (((pos.x * 0.37 + pos.z * 0.71) % 1 + 1) % 1))) { key = far[0]; e = this.manifest[key]; }   // jitter fixed per spot: a gun's rounds never flip between the two
+    const [lv, r0, group] = this.mix(key, e);
+    if (spatial && d > (Math.max(e.maxDistance || 900, 900))) return null;
+    const ctx = this.ctx, now = ctx.currentTime;
+    const t0 = now + (delay && spatial ? Math.min(3.5, Math.max(0, d - 40) / SOS) : 0);
+    const [vr, vg] = VAR[group] || VAR.weapons;
+    // a world sound with no position (own mortar / battery firing feedback) is heard as if ~60 m off, not in your ear
+    const w2d = !spatial && (group === 'weapons' || group === 'explosions');
+    const level = DB(lv + (Math.random() * 2 - 1) * vg) * gain * (spatial ? this.att(d, r0) : w2d ? this.att(60, r0) : 1);
+    if (level < 3e-4) return null;   // under ~-70 dB: not worth a voice
+    // ---- caps: drop if it would be the quietest, else steal the quietest
+    this.prune(now);
+    const live = this.act.filter(v => v.end > now);
+    const cnt = (f) => { let n = 0, lo = null; for (const v of live) if (f(v)) { n++; if (!lo || v.prio < lo.prio) lo = v; } return [n, lo]; };
+    for (const [f, cap] of [[v => v.key === key, KEY_CAP[key] || 10], [v => v.group === group, GROUP_CAP[group] || 8], [() => true, TOTAL_CAP]]) {
+      const [n, lo] = cnt(f);
+      if (n >= cap) { if (!lo || lo.prio >= level) return null; this.kill(lo, now); }
     }
-    node.connect(bus || (e.category === 'ui' || key.startsWith('ui_') ? this.ui : (e.loop && e.spatial === false ? this.amb : this.sfx)));
-    const t0 = now + (delay && pos ? Math.min(2.5, d / SPEED_OF_SOUND) : 0);
-    if (e.loop) { src.loop = true; if (e.loopStart != null) { src.loopStart = e.loopStart; src.loopEnd = e.loopEnd; } }
-    src.start(t0);
-    const v = { src, g, panner: pn, end: e.loop ? Infinity : t0 + src.buffer.duration / src.playbackRate.value, d, key };
-    list.push(v);
+    // ---- automatic fire: one sample per round, the previous round from the same gun fades as this one fires
+    const ch = CHOKE[key];
+    if (ch && spatial) {
+      const ek = ch[0] + ((pos.x / 2.5) | 0) + ',' + ((pos.z / 2.5) | 0), prev = this.emit.get(ek);
+      if (prev && prev.end > t0) { try { prev.g.gain.setTargetAtTime(0, Math.max(t0, prev.t0), ch[1]); prev.src.stop(Math.max(t0, prev.t0) + ch[1] * 7); } catch { } prev.end = Math.max(t0, prev.t0) + ch[1] * 7; }
+      if (ch[2] && d > 70 && d < 700 && now > this.crackT && Math.random() < ch[2]) {   // the round's crack outruns its report
+        this.crackT = now + 0.06;
+        this.voice('bullet_crack', this.manifest.bullet_crack, now + d / 850, DB(MIX.bullet_crack[0] - 4 - Math.random() * 8), 'ballistics', 0.92 + Math.random() * 0.16, 6 + Math.random() * 20, (Math.random() * 2 - 1) * 0.7, 0.6);
+      }
+    }
+    const v = this.voice(key, e, t0, level, group, rate * (1 + (Math.random() * 2 - 1) * vr), spatial ? d : 0, spatial ? (pan ?? this.pan(pos, d)) : (pan ?? 0), 1, bus, spatial ? this.lpf(d, pos) : w2d ? this.lpf(60) : null);
+    if (!v) return null;
+    if (ch && spatial) this.emit.set(ch[0] + ((pos.x / 2.5) | 0) + ',' + ((pos.z / 2.5) | 0), v);
+    // ---- blast layers: pressure thump close, rolling rumble far
+    const bl = BLAST[key];
+    if (bl && spatial) {
+      if (d < 160 && this.has('sub_thump') && cnt(x => x.key === 'sub_thump')[0] < KEY_CAP.sub_thump) this.voice('sub_thump', this.manifest.sub_thump, t0, DB(MIX.sub_thump[0]) * bl * gain * this.att(d, MIX.sub_thump[1]), 'explosions', 0.9 + Math.random() * 0.2 + (1 - bl) * 0.3, d, v.panV * 0.5, 0);
+      if (d > 220 && this.has('explosion_far') && cnt(x => x.key === 'explosion_far')[0] < KEY_CAP.explosion_far) this.voice('explosion_far', this.manifest.explosion_far, t0 + 0.03, DB(MIX.explosion_far[0]) * bl * gain * this.att(d, MIX.explosion_far[1]) * clamp((d - 220) / 300, 0.15, 1), 'explosions', 0.92 + Math.random() * 0.16, d, v.panV, 1, null, this.lpf(d * 0.7, pos));
+    }
+    if (group === 'weapons' || group === 'explosions') this.heat = Math.min(3, this.heat + level * (group === 'explosions' ? 0.6 : 0.25));
+    if (key === 'radio' || ((key === 'shout' || key === 'death') && level > 0.2)) this.duck(t0, v.dur);   // call-outs read over the gunfire
     return v;
   }
-  // looping positional sound attached to a moving object
-  loop(key, pos, gain = 1) {
-    const v = this.play(key, pos, { gain, delay: false }); if (!v) return null;
-    const h = {
-      v, set: (p, g = gain, rate = 1) => {
-        if (!this.ok) return; const t = this.ctx.currentTime;
-        const node = v.g; node.gain.setTargetAtTime((this.manifest[v.key]?.gain ?? 1) * g, t, 0.15);
-        v.src.playbackRate.setTargetAtTime(rate, t, 0.2);
-        // walk the graph to the panner
-        h.p = v.panner;
-        if (h.p) { if (h.p.positionX) { h.p.positionX.setTargetAtTime(p.x, t, 0.05); h.p.positionY.setTargetAtTime(p.y || 0, t, 0.05); h.p.positionZ.setTargetAtTime(p.z, t, 0.05); } else h.p.setPosition(p.x, p.y || 0, p.z); }
-      },
-      stop: () => { try { v.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3); v.src.stop(this.ctx.currentTime + 1.2); } catch {} this.loops.delete(h); },
-    };
-    this.loops.add(h); return h;
+  voice(key, e, t0, level, group, rate = 1, d = 0, panV = 0, send = 1, bus = null, lp = null) {
+    if (!e?.buffers?.length) return null;
+    const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.pickBuf(key, e); src.playbackRate.value = rate;
+    const g = ctx.createGain(); g.gain.value = level;
+    let n = src.connect(g);
+    if (lp && lp < 17000) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; f.Q.value = 0.5; n = n.connect(f); }
+    const ws = (REVERB_SEND[group] ?? 0.5) * send;
+    if (ws > 0 && d > 0) { const s = ctx.createGain(); s.gain.value = ws * clamp(0.14 + d / 450, 0.14, 0.75); n.connect(s).connect(this.revIn); }
+    if (panV) { const p = ctx.createStereoPanner(); p.pan.value = panV; n = n.connect(p); }
+    n.connect(bus || this.bus[group] || this.bus.weapons);
+    src.start(t0);
+    const dur = src.buffer.duration / rate;
+    const v = { src, g, key, group, prio: level, t0, end: t0 + dur, dur, panV };
+    src.onended = () => { try { g.disconnect(); } catch { } };
+    this.act.push(v);
+    return v;
+  }
+  kill(v, now) { try { v.g.gain.setTargetAtTime(0, Math.max(now, v.t0), 0.012); v.src.stop(Math.max(now, v.t0) + 0.08); } catch { } v.end = now; }
+  duck(t0, dur) {
+    const p = this.world.gain, now = this.ctx.currentTime;
+    p.cancelScheduledValues(now); p.setTargetAtTime(DB(-3.5), Math.max(now, t0 - 0.03), 0.05); p.setTargetAtTime(1, t0 + Math.max(0.35, Math.min(dur, 2.5)), 0.4);
   }
   ui(key) { return this.play(key, null); }
+  // ---------------------------------------------------------------- ambience beds (non-positional loops)
+  bed(key, gain = 1) {
+    if (this.beds.has(key)) return this.beds.get(key);
+    if (!this.envSet) { this.envSet = true; const kind = globalThis.game?.map?.kind; this.setEnvironment(kind ? (kind === 'rural' ? 'field' : 'city') : key === 'ambience_city' ? 'city' : 'field'); if (this.env === 'field' && this.has('crickets')) this.bed('crickets', 0); }
+    const e = this.manifest[key], ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.pickBuf(key, e); src.loop = true;
+    if (e.loopStart != null) { src.loopStart = e.loopStart; src.loopEnd = e.loopEnd; }
+    const g = ctx.createGain(), lv = DB(this.mix(key, e)[0]) * gain; g.gain.value = 0; g.gain.setTargetAtTime(lv, ctx.currentTime, 1.5);
+    src.connect(g).connect(this.bus.amb); src.start(ctx.currentTime, Math.random() * Math.max(0, (e.loopEnd || src.buffer.duration) - 1));
+    const b = { src, g, lv, key }; this.beds.set(key, b); return b;
+  }
+  // ~4 Hz: battle intensity, quiet-moment wildlife, distant war, loop culling
+  tick(force) {
+    const now = this.ctx.currentTime, dt = now - this.tickT; if (!force && dt < 0.25) return; this.tickT = now;
+    this.heat *= Math.exp(-Math.min(dt, 1) / 7);
+    const quiet = clamp(1 - this.heat * 1.4, 0, 1), field = this.env === 'field', L = this.listener;
+    const cr = this.beds.get('crickets'); if (cr) cr.g.gain.setTargetAtTime(cr.lv === 0 ? DB(MIX.crickets[0]) * quiet * quiet : cr.lv * quiet * quiet, now, 2.5);
+    if (this.beds.size && dt < 2) {
+      const A = this.amb, around = (r0, r1) => { const a = Math.random() * 6.283, r = r0 + Math.random() * (r1 - r0); return { x: L.x + Math.cos(a) * r, y: 0, z: L.z + Math.sin(a) * r }; };
+      if ((A.art -= dt) < 0) {   // distant artillery / impacts, all battle long
+        A.art = 6 + Math.random() * 16;
+        const k = Math.random() < 0.55 ? 'artillery_far' : 'explosion_far', n = Math.random() < 0.3 ? 2 + (Math.random() * 3 | 0) : 1, p = (Math.random() * 2 - 1) * 0.8;
+        for (let i = 0; i < n; i++) { const e = this.manifest[k]; if (e?.buffers?.length) this.voice(k, e, now + i * (0.6 + Math.random() * 1.4), DB(-24 - Math.random() * 12), 'amb', 0.9 + Math.random() * 0.2, 600, p + (Math.random() - 0.5) * 0.25, 0.8, null, 900 + Math.random() * 900); }
+      }
+      if ((A.fire -= dt) < 0) {   // a firefight somewhere beyond the map edge
+        A.fire = 4 + Math.random() * 12;
+        const k = ['rifle_burst_far', 'mg_far', 'rifle_burst_far', 'hmg_far', 'cannon30_far'][Math.random() * 5 | 0];
+        if (this.has(k)) this.voice(k, this.manifest[k], now + Math.random() * 0.3, DB(-24 - Math.random() * 10), 'amb', 0.95 + Math.random() * 0.1, 500, (Math.random() * 2 - 1) * 0.9, 1, null, 1800 + Math.random() * 1500);
+      }
+      if ((A.bird -= dt) < 0) { A.bird = 2 + Math.random() * 5; if (field && quiet > 0.4 && Math.random() < quiet) this.play('bird', around(30, 140), { gain: quiet, delay: false }); }
+      if ((A.crow -= dt) < 0) { A.crow = 9 + Math.random() * 20; if (quiet > 0.3 && Math.random() < 0.7) this.play('crow', around(40, 180), { gain: 0.6 + quiet * 0.6, delay: false }); }
+    }
+    // loudest N loops per group stay connected; inaudible / culled ones are disconnected (no processing cost)
+    const byG = {};
+    for (const h of this.loops) (byG[h.group] ||= []).push(h);
+    for (const g in byG) { const a = byG[g].sort((x, y) => y.lvl - x.lvl), cap = LOOP_CAP[g] || 8; a.forEach((h, i) => h.cull(i >= cap)); }
+    if (this.emit.size > 150) for (const [k, v] of this.emit) if (v.end < now) this.emit.delete(k);
+  }
+  // ---------------------------------------------------------------- positional loops attached to moving objects
+  loop(key, pos, gain = 1) {
+    if (!this.ok) return null;
+    const e = this.manifest[key]; if (!e?.buffers?.length) return null;
+    const ctx = this.ctx, [lv, r0, group] = this.mix(key, e);
+    const src = ctx.createBufferSource(); src.buffer = this.pickBuf(key, e); src.loop = true;
+    if (e.loopStart != null) { src.loopStart = e.loopStart; src.loopEnd = e.loopEnd; }
+    const g = ctx.createGain(); g.gain.value = 0;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.5; f.frequency.value = 12000;
+    const p = ctx.createStereoPanner();
+    src.connect(g).connect(f).connect(p);
+    const send = ctx.createGain(); send.gain.value = (REVERB_SEND[group] ?? 0.3) * 0.5; f.connect(send);
+    src.start(ctx.currentTime, Math.random() * Math.max(0, (e.loopEnd || src.buffer.duration) - 0.5));
+    const self = this, out = this.bus[group] || this.bus.vehicles;
+    let on = false, culled = false, offT = 0, lastT = -1, tg = gain, tr = 1, tp = pos, sq = 0.5;
+    const conn = c => { if (c === on) return; on = c; try { if (c) { p.connect(out); send.connect(self.revIn); } else { p.disconnect(); send.disconnect(); } } catch { } };
+    const layers = (LOOP_LAYERS[key] || []).filter(([k]) => this.has(k)).map(([k, m]) => [this.loop(k, pos, 0), m, k]);
+    const h = {
+      group, lvl: 0, key,
+      set(pp, gg = gain, rate = 1) {
+        if (!self.ok || !pp) return; tp = pp; tg = gg; tr = rate;
+        const t = ctx.currentTime; if (t - lastT < 0.05) return; lastT = t;
+        const d = self.dist(pp), lvl = DB(lv) * gg * self.att(d, r0);
+        h.lvl = lvl;
+        const target = culled ? 0 : lvl;
+        if (target > 2e-4) { conn(true); offT = 0; } else if (on && !offT) offT = t + 0.6; else if (offT && t > offT) conn(false);
+        g.gain.setTargetAtTime(target, t, 0.08);
+        src.playbackRate.setTargetAtTime(rate, t, 0.2);
+        f.frequency.setTargetAtTime(self.lpf(d, pp), t, 0.1);
+        p.pan.setTargetAtTime(self.pan(pp, d), t, 0.08);
+        for (const [L, m, k] of layers) {
+          if (k === 'track_squeal') { sq = clamp(sq + (Math.random() - 0.5) * 0.25, 0.15, 1); L.set(pp, gg * m * sq, 0.9 + 0.1 * rate); }
+          else L.set(pp, gg * m, rate * 0.9);
+        }
+      },
+      cull(c) { if (c !== culled) { culled = c; lastT = -1; h.set(tp, tg, tr); } },
+      stop() {
+        const t = ctx.currentTime; try { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.3); src.stop(t + 1.5); } catch { }
+        src.onended = () => { conn(false); try { g.disconnect(); } catch { } };
+        self.loops.delete(h); for (const [L] of layers) L.stop();
+      },
+    };
+    this.loops.add(h); h.set(pos, gain, 1);
+    return h;
+  }
 }

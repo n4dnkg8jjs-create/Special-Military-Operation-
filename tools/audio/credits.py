@@ -31,6 +31,11 @@ w("Sources: OpenGameArt.org submissions (licence as stated on each submission pa
   "obtained through the FSD50K dataset (Fonseca et al., 2021, https://zenodo.org/records/4060432; only clips whose "
   "per-clip licence is CC0 or CC-BY 3.0 were used - CC-BY-NC and Sampling+ clips were excluded), and The Free "
   "Firearm Sound Library (CC0).\n")
+w("Audio pass v3 (`tools/audio/build_v3.py`, no downloads): per-round gunshots for the automatic weapons "
+  "(`weapons/*_shot*`) are cut from the burst recordings above and keep their sources' licences; the files under "
+  "`synth/` plus `explosions/shell_incoming_*`, `explosions/incoming_whistle_*`, `ambience/crickets_*` and "
+  "`ambience/bird_*` are procedurally generated for this project and released as CC0; `weapons/howitzer_*` are "
+  "the CC0 tank-gun recordings pitched down and layered with a procedural sub-bass and echo.\n")
 w("FSD50K compilation credit (dataset licence CC BY 4.0): E. Fonseca, X. Favory, J. Pons, F. Font, X. Serra, "
   "\"FSD50K: an Open Dataset of Human-Labeled Sound Events\", IEEE/ACM TASLP 30, 2022. Clips retrieved from the "
   "Hugging Face mirror https://huggingface.co/datasets/Fhrozen/FSD50k. The individual Freesound authors and "

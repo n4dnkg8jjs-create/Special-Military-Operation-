@@ -4,15 +4,17 @@ All sounds in `assets/audio/` are derived from openly licensed recordings. **No 
 
 Sources: OpenGameArt.org submissions (licence as stated on each submission page), Freesound.org clips obtained through the FSD50K dataset (Fonseca et al., 2021, https://zenodo.org/records/4060432; only clips whose per-clip licence is CC0 or CC-BY 3.0 were used - CC-BY-NC and Sampling+ clips were excluded), and The Free Firearm Sound Library (CC0).
 
+Audio pass v3 (`tools/audio/build_v3.py`, no downloads): per-round gunshots for the automatic weapons (`weapons/*_shot*`) are cut from the burst recordings above and keep their sources' licences; the files under `synth/` plus `explosions/shell_incoming_*`, `explosions/incoming_whistle_*`, `ambience/crickets_*` and `ambience/bird_*` are procedurally generated for this project and released as CC0; `weapons/howitzer_*` are the CC0 tank-gun recordings pitched down and layered with a procedural sub-bass and echo.
+
 FSD50K compilation credit (dataset licence CC BY 4.0): E. Fonseca, X. Favory, J. Pons, F. Font, X. Serra, "FSD50K: an Open Dataset of Human-Labeled Sound Events", IEEE/ACM TASLP 30, 2022. Clips retrieved from the Hugging Face mirror https://huggingface.co/datasets/Fhrozen/FSD50k. The individual Freesound authors and per-clip licences are listed below.
 
 ## Licence summary
 
 | Licence | files using it | terms |
 |---|---|---|
-| CC0 | 405 | Public domain dedication - no attribution required (credited anyway). |
-| CC-BY 3.0 | 123 | Attribution required. Licence: https://creativecommons.org/licenses/by/3.0/ |
-| CC-BY-SA 3.0 | 27 | Attribution + ShareAlike (applies to the sound files themselves and modified versions of them, not to the game code). Licence: https://creativecommons.org/licenses/by-sa/3.0/ |
+| CC0 | 497 | Public domain dedication - no attribution required (credited anyway). |
+| CC-BY 3.0 | 157 | Attribution required. Licence: https://creativecommons.org/licenses/by/3.0/ |
+| CC-BY-SA 3.0 | 24 | Attribution + ShareAlike (applies to the sound files themselves and modified versions of them, not to the game code). Licence: https://creativecommons.org/licenses/by-sa/3.0/ |
 | CC-BY 4.0 | 3 | Attribution required. Licence: https://creativecommons.org/licenses/by/4.0/ |
 
 ## Attribution by source
@@ -39,12 +41,6 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
   - Author's notice: see included readme.txt
 - *Red Eclipse sounds* (file `sounds/sfx/shell3.ogg`) by **Red Eclipse** - CC-BY-SA 3.0 - <https://opengameart.org/content/red-eclipse-sounds> - OpenGameArt.org. Used in: `ballistics/shell_casing_17.mp3`
   - Author's notice: see included readme.txt
-- *Drop Bomb Pack Sounds* (file `dropbomb-2seconds.mp3`) by **Tiao Ferreira** - CC-BY-SA 3.0 - <https://opengameart.org/content/drop-bomb-pack-sounds> - OpenGameArt.org. Used in: `explosions/incoming_whistle_01.mp3`
-  - Author's notice: Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!
-- *Drop Bomb Pack Sounds* (file `dropbomb-3seconds.mp3`) by **Tiao Ferreira** - CC-BY-SA 3.0 - <https://opengameart.org/content/drop-bomb-pack-sounds> - OpenGameArt.org. Used in: `explosions/incoming_whistle_02.mp3`
-  - Author's notice: Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!
-- *Drop Bomb Pack Sounds* (file `dropbomb-4seconds.mp3`) by **Tiao Ferreira** - CC-BY-SA 3.0 - <https://opengameart.org/content/drop-bomb-pack-sounds> - OpenGameArt.org. Used in: `explosions/incoming_whistle_03.mp3`
-  - Author's notice: Tião Ferreira 2017 - Natal/RN - Brazil. Make your name; Make a good game!
 
 ### CC-BY 3.0
 
@@ -80,7 +76,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *FPS Placeholder Sounds* (file `gun_outofammo_01.wav`) by **Jack Menhorn** - CC-BY 3.0 - <https://opengameart.org/content/fps-placeholder-sounds> - OpenGameArt.org. Used in: `weapons/dryfire_02.mp3`
 - *FPS Placeholder Sounds* (file `gun_load_01.wav`) by **Jack Menhorn** - CC-BY 3.0 - <https://opengameart.org/content/fps-placeholder-sounds> - OpenGameArt.org. Used in: `weapons/reload_09.mp3`
 - *FPS Placeholder Sounds* (file `gun_load_02.wav`) by **Jack Menhorn** - CC-BY 3.0 - <https://opengameart.org/content/fps-placeholder-sounds> - OpenGameArt.org. Used in: `weapons/reload_10.mp3`
-- *Big Machine Gun* by **JarAxe** - CC-BY 3.0 - <https://freesound.org/s/238677/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_03.mp3`, `weapons/hmg_04.mp3`, `weapons/hmg_far_03.mp3`
+- *Big Machine Gun* by **JarAxe** - CC-BY 3.0 - <https://freesound.org/s/238677/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_03.mp3`, `weapons/hmg_04.mp3`, `weapons/hmg_far_03.mp3`, `weapons/hmg_shot_01.mp3`, `weapons/hmg_shot_03.mp3`, `weapons/hmg_shot_05.mp3`, `weapons/hmg_shot_07.mp3`, `weapons/hmg_shot_09.mp3`, `weapons/hmg_shot_far_06.mp3`, `weapons/hmg_shot_far_08.mp3`
 - *The Chaos Has Risen* (file `The Chaos Has Risen.wav`) by **jdagenet** - CC-BY 3.0 - <https://opengameart.org/content/the-chaos-has-risen> - OpenGameArt.org. Used in: `ui/defeat_01.mp3`
   - Author's notice: Please credit me as jdagenet or Jason Dagenet.
 - *warcry.wav* by **JPolito** - CC-BY 3.0 - <https://freesound.org/s/144337/> - Freesound (via FSD50K dataset). Used in: `human/shout_08.mp3`
@@ -121,9 +117,9 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *Engine-loop heavy vehicle/tank* (file `engine-loop-heavy-pack/WAV/faster_speeds/engine_heavy_fast_loop.wav`) by **Nayckron** - CC-BY 3.0 - <https://opengameart.org/content/engine-loop-heavy-vehicletank> - OpenGameArt.org. Used in: `vehicles/tank_engine_drive_fast_01.mp3`
 - *Transmission* (file `transmissionStart.wav`) by **needforbleed** - CC-BY 3.0 - <https://opengameart.org/content/transmission> - OpenGameArt.org. Used in: `ambience/radio_01.mp3`
 - *Transmission* (file `transmissionEnd.wav`) by **needforbleed** - CC-BY 3.0 - <https://opengameart.org/content/transmission> - OpenGameArt.org. Used in: `ambience/radio_02.mp3`
-- *Guns & Explosions Album - Autocannon - Shot 1.wav* by **OGsoundFX** - CC-BY 3.0 - <https://freesound.org/s/423108/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_06.mp3`
-- *Maxim Russian machinegun* by **poissonmort** - CC-BY 3.0 - <https://freesound.org/s/160773/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/mg_far_01.mp3`, `weapons/mg_far_02.mp3`, `weapons/mg_far_03.mp3`, `weapons/mg_far_04.mp3`
-- *Maxim Russian machinegun very near* by **poissonmort** - CC-BY 3.0 - <https://freesound.org/s/160772/> - Freesound (via FSD50K dataset). Used in: `weapons/mg_near_04.mp3`, `weapons/mg_near_05.mp3`, `weapons/mg_near_06.mp3`, `weapons/mg_near_07.mp3`
+- *Guns & Explosions Album - Autocannon - Shot 1.wav* by **OGsoundFX** - CC-BY 3.0 - <https://freesound.org/s/423108/> - Freesound (via FSD50K dataset). Used in: `weapons/ac_shot_01.mp3`, `weapons/ac_shot_02.mp3`, `weapons/ac_shot_03.mp3`, `weapons/ac_shot_04.mp3`, `weapons/ac_shot_05.mp3`, `weapons/ac_shot_06.mp3`, `weapons/ac_shot_07.mp3`, `weapons/ac_shot_08.mp3`, `weapons/ac_shot_09.mp3`, `weapons/ac_shot_10.mp3`, `weapons/ac_shot_far_03.mp3`, `weapons/ac_shot_far_04.mp3`, `weapons/ac_shot_far_05.mp3`, `weapons/ac_shot_far_06.mp3`, `weapons/ac_shot_far_07.mp3`, `weapons/ac_shot_far_08.mp3`, `weapons/cannon30_06.mp3`
+- *Maxim Russian machinegun* by **poissonmort** - CC-BY 3.0 - <https://freesound.org/s/160773/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/mg_far_01.mp3`, `weapons/mg_far_02.mp3`, `weapons/mg_far_03.mp3`, `weapons/mg_far_04.mp3`, `weapons/mg_shot_far_01.mp3`, `weapons/mg_shot_far_02.mp3`, `weapons/mg_shot_far_05.mp3`, `weapons/mg_shot_far_06.mp3`, `weapons/mg_shot_far_07.mp3`, `weapons/mg_shot_far_08.mp3`
+- *Maxim Russian machinegun very near* by **poissonmort** - CC-BY 3.0 - <https://freesound.org/s/160772/> - Freesound (via FSD50K dataset). Used in: `weapons/mg_near_04.mp3`, `weapons/mg_near_05.mp3`, `weapons/mg_near_06.mp3`, `weapons/mg_near_07.mp3`, `weapons/mg_shot_near_02.mp3`, `weapons/mg_shot_near_04.mp3`, `weapons/mg_shot_near_05.mp3`, `weapons/mg_shot_near_06.mp3`, `weapons/mg_shot_near_07.mp3`
 - *Dying Breath* by **qubodup** - CC-BY 3.0 - <https://freesound.org/s/169747/> - Freesound (via FSD50K dataset). Used in: `human/death_04.mp3`
 - *Fire Loop* (file `qubodupFireLoop.flac`) by **qubodup** - CC-BY 3.0 - <https://opengameart.org/content/fire-loop> - OpenGameArt.org. Used in: `ambience/fire_loop_b_01.mp3`
 - *Glass Shatter 1* by **qubodup** - CC-BY 3.0 - <https://freesound.org/s/219846/> - Freesound (via FSD50K dataset). Used in: `explosions/glass_break_01.mp3`
@@ -176,7 +172,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *The Free Firearm Sound Library* (file `AK-47/C_34P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/rifle_burst_far_01.mp3`, `weapons/rifle_burst_far_02.mp3`, `weapons/rifle_burst_far_03.mp3`, `weapons/rifle_burst_far_04.mp3`, `weapons/rifle_burst_far_05.mp3`, `weapons/rifle_burst_far_06.mp3`, `weapons/rifle_burst_far_07.mp3`
 - *The Free Firearm Sound Library* (file `SKS/U_19P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/rifle_far_03.mp3`, `weapons/rifle_far_04.mp3`, `weapons/rifle_far_05.mp3`
 - *The Free Firearm Sound Library* (file `Mosin Nagant/M_26P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/dmr_far_01.mp3`, `weapons/dmr_far_02.mp3`, `weapons/dmr_far_03.mp3`
-- *The Free Firearm Sound Library* (file `Mosin Nagant/M_21P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/dmr_near_01.mp3`, `weapons/dmr_near_02.mp3`, `weapons/dmr_near_03.mp3`, `weapons/dmr_near_04.mp3`
+- *The Free Firearm Sound Library* (file `Mosin Nagant/M_21P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/dmr_near_01.mp3`, `weapons/dmr_near_02.mp3`, `weapons/dmr_near_03.mp3`, `weapons/dmr_near_04.mp3`, `weapons/mg_shot_near_11.mp3`, `weapons/mg_shot_near_12.mp3`
 - *The Free Firearm Sound Library* (file `AK-47/C_36P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/rifle_burst_far_08.mp3`, `weapons/rifle_burst_far_09.mp3`, `weapons/rifle_burst_far_10.mp3`
 - *The Free Firearm Sound Library* (file `AK-47/C_29P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/rifle_burst_near_01.mp3`, `weapons/rifle_burst_near_02.mp3`
 - *The Free Firearm Sound Library* (file `AK-47/C_27P.wav`) by **Ben Jaszczak et al.** - CC0 - <https://opengameart.org/content/the-free-firearm-sound-library> - The Free Firearm Sound Library (mirrored on OpenGameArt.org). Used in: `weapons/rifle_burst_near_03.mp3`, `weapons/rifle_burst_near_04.mp3`
@@ -203,7 +199,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *Explosion and Rubble/Debris* by **CkSned** - CC0 - <https://freesound.org/s/132929/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_08.mp3`
 - *Bullet Hit Metal* by **coolguy244e** - CC0 - <https://freesound.org/s/267893/> - Freesound (via FSD50K dataset). Used in: `ballistics/impact_metal_01.mp3`
 - *Bullet hit* by **coolguy244e** - CC0 - <https://freesound.org/s/267341/> - Freesound (via FSD50K dataset). Used in: `ballistics/impact_concrete_10.mp3`
-- *Tank fire Mixed.wav* by **Cyberkineticfilms** - CC0 - <https://freesound.org/s/127845/> - Freesound (via FSD50K dataset). Used in: `weapons/tankgun_03.mp3`
+- *Tank fire Mixed.wav* by **Cyberkineticfilms** - CC0 - <https://freesound.org/s/127845/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_03.mp3`, `weapons/tankgun_03.mp3`
 - *crow1.wav* by **davidworksonline** - CC0 - <https://freesound.org/s/54973/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `ambience/crow_10.mp3`
 - *Impacts/Gun/sfx* (file `Impacts/Impact Gun 1.wav`) by **Eldritch Grim** - CC0 - <https://opengameart.org/content/impactsgunsfx> - OpenGameArt.org. Used in: `ballistics/impact_dirt_01.mp3`, `ballistics/impact_dirt_02.mp3`, `ballistics/impact_dirt_03.mp3`
   - Author's notice: Not necessary, I wouldn't say these are high quality anyways.
@@ -307,12 +303,12 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
   - Author's notice: [optional] qubodup
 - *15 vocal male strain/hurt/pain/jump sounds* (file `slightscream-15.flac`) by **qubodup** - CC0 - <https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds> - OpenGameArt.org. Used in: `human/pain_15.mp3`
   - Author's notice: [optional] qubodup
-- *50 Cal MG* by **qubodup** - CC0 - <https://freesound.org/s/239138/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_01.mp3`, `weapons/hmg_02.mp3`, `weapons/hmg_far_01.mp3`, `weapons/hmg_far_02.mp3`
+- *50 Cal MG* by **qubodup** - CC0 - <https://freesound.org/s/239138/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_01.mp3`, `weapons/hmg_02.mp3`, `weapons/hmg_far_01.mp3`, `weapons/hmg_far_02.mp3`, `weapons/hmg_shot_far_01.mp3`, `weapons/hmg_shot_far_02.mp3`, `weapons/hmg_shot_far_03.mp3`, `weapons/hmg_shot_far_04.mp3`, `weapons/hmg_shot_far_05.mp3`
 - *6 user interface ding clicks* (file `dingClicks/dingCling-negative.ogg`) by **qubodup** - CC0 - <https://opengameart.org/content/6-user-interface-ding-clicks> - OpenGameArt.org. Used in: `ui/ui_alert_01.mp3`
-- *Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac* by **qubodup** - CC0 - <https://freesound.org/s/160355/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_05.mp3`, `weapons/hmg_06.mp3`
+- *Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac* by **qubodup** - CC0 - <https://freesound.org/s/160355/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_05.mp3`, `weapons/hmg_06.mp3`, `weapons/hmg_shot_01.mp3`, `weapons/hmg_shot_02.mp3`, `weapons/hmg_shot_03.mp3`, `weapons/hmg_shot_04.mp3`, `weapons/hmg_shot_05.mp3`, `weapons/hmg_shot_06.mp3`, `weapons/hmg_shot_07.mp3`, `weapons/hmg_shot_08.mp3`, `weapons/hmg_shot_09.mp3`, `weapons/hmg_shot_10.mp3`, `weapons/hmg_shot_far_06.mp3`, `weapons/hmg_shot_far_07.mp3`, `weapons/hmg_shot_far_08.mp3`
 - *Artillery Gunfire* by **qubodup** - CC0 - <https://freesound.org/s/239137/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_01.mp3`, `weapons/artillery_far_02.mp3`
 - *Bus Motor/Engine Sound Loop* by **qubodup** - CC0 - <https://freesound.org/s/54909/> - Freesound (via FSD50K dataset). Used in: `vehicles/btr_engine_drive_b_01.mp3`
-- *Cannon Shot* by **qubodup** - CC0 - <https://freesound.org/s/187767/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_03.mp3`, `weapons/tankgun_04.mp3`
+- *Cannon Shot* by **qubodup** - CC0 - <https://freesound.org/s/187767/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_03.mp3`, `weapons/howitzer_04.mp3`, `weapons/tankgun_04.mp3`
 - *Distant Tank Shots.flac* by **qubodup** - CC0 - <https://freesound.org/s/184275/> - Freesound (via FSD50K dataset). Used in: `weapons/tankgun_far_01.mp3`, `weapons/tankgun_far_02.mp3`, `weapons/tankgun_far_03.mp3`, `weapons/tankgun_far_04.mp3`
 - *Driving Tank Engine.flac* by **qubodup** - CC0 - <https://freesound.org/s/187676/> - Freesound (via FSD50K dataset). Used in: `vehicles/tank_engine_drive_01.mp3`
 - *Explosion* by **qubodup** - CC0 - <https://freesound.org/s/182429/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_02.mp3`
@@ -324,15 +320,15 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *Howitzer Artillery Gun Shot Sound Effect 01* by **qubodup** - CC0 - <https://freesound.org/s/161343/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_05.mp3`
 - *Howitzer Artillery Gun Shot Sound Effect 02* by **qubodup** - CC0 - <https://freesound.org/s/161342/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_04.mp3`
 - *Launching/Shooting Propelled Grenade* by **qubodup** - CC0 - <https://freesound.org/s/162361/> - Freesound (via FSD50K dataset). Used in: `weapons/rpg_launch_01.mp3`
-- *Mk 46 30mm gun - single shot* by **qubodup** - CC0 - <https://freesound.org/s/162258/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_05.mp3`, `weapons/cannon30_far_05.mp3`
+- *Mk 46 30mm gun - single shot* by **qubodup** - CC0 - <https://freesound.org/s/162258/> - Freesound (via FSD50K dataset). Used in: `weapons/ac_shot_far_01.mp3`, `weapons/ac_shot_far_02.mp3`, `weapons/cannon30_05.mp3`, `weapons/cannon30_far_05.mp3`
 - *Rocket launch* (file `launch/launch.wav`) by **qubodup** - CC0 - <https://opengameart.org/content/rocket-launch> - OpenGameArt.org. Used in: `weapons/rpg_flight_01.mp3`
 - *U.S. National Park Service - American Crow.flac* by **qubodup** - CC0 - <https://freesound.org/s/182090/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `ambience/crow_01.mp3`, `ambience/crow_02.mp3`, `ambience/crow_03.mp3`, `ambience/crow_04.mp3`, `ambience/crow_05.mp3`, `ambience/crow_06.mp3`, `ambience/crow_07.mp3`, `ambience/crow_08.mp3`, `ambience/crow_09.mp3`
-- *m242_chain_gun_slow_burst_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67580/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_01.mp3`, `weapons/cannon30_02.mp3`, `weapons/cannon30_far_01.mp3`, `weapons/cannon30_far_02.mp3`
-- *m242_chain_gun_slow_burst_3.flac* by **qubodup** - CC0 - <https://freesound.org/s/67581/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_03.mp3`, `weapons/cannon30_04.mp3`, `weapons/cannon30_far_03.mp3`, `weapons/cannon30_far_04.mp3`
+- *m242_chain_gun_slow_burst_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67580/> - Freesound (via FSD50K dataset). Used in: `weapons/ac_shot_01.mp3`, `weapons/ac_shot_04.mp3`, `weapons/ac_shot_05.mp3`, `weapons/ac_shot_08.mp3`, `weapons/ac_shot_far_03.mp3`, `weapons/ac_shot_far_06.mp3`, `weapons/ac_shot_far_07.mp3`, `weapons/cannon30_01.mp3`, `weapons/cannon30_02.mp3`, `weapons/cannon30_far_01.mp3`, `weapons/cannon30_far_02.mp3`
+- *m242_chain_gun_slow_burst_3.flac* by **qubodup** - CC0 - <https://freesound.org/s/67581/> - Freesound (via FSD50K dataset). Used in: `weapons/ac_shot_02.mp3`, `weapons/ac_shot_03.mp3`, `weapons/ac_shot_06.mp3`, `weapons/ac_shot_09.mp3`, `weapons/ac_shot_10.mp3`, `weapons/ac_shot_far_02.mp3`, `weapons/ac_shot_far_04.mp3`, `weapons/ac_shot_far_05.mp3`, `weapons/ac_shot_far_08.mp3`, `weapons/cannon30_03.mp3`, `weapons/cannon30_04.mp3`, `weapons/cannon30_far_03.mp3`, `weapons/cannon30_far_04.mp3`
 - *m67_fragmentation_grenade_explosion_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67470/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_07.mp3`
 - *m67_fragmentation_grenade_explosion_4.flac* by **qubodup** - CC0 - <https://freesound.org/s/67474/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_06.mp3`
-- *xm360_canon_shot_1.flac* by **qubodup** - CC0 - <https://freesound.org/s/67524/> - Freesound (via FSD50K dataset). Used in: `weapons/tankgun_01.mp3`
-- *xm360_canon_shot_2_less_echo.flac* by **qubodup** - CC0 - <https://freesound.org/s/67527/> - Freesound (via FSD50K dataset). Used in: `weapons/tankgun_02.mp3`
+- *xm360_canon_shot_1.flac* by **qubodup** - CC0 - <https://freesound.org/s/67524/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_01.mp3`, `weapons/tankgun_01.mp3`
+- *xm360_canon_shot_2_less_echo.flac* by **qubodup** - CC0 - <https://freesound.org/s/67527/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_02.mp3`, `weapons/tankgun_02.mp3`
 - *tractor-engine-start.wav* by **radwoc** - CC0 - <https://freesound.org/s/256808/> - Freesound (via FSD50K dataset). Used in: `vehicles/engine_start_01.mp3`
 - *Russian swears male voice pack* (file `Russian Swears Voice Pack/ru_swears_0001_fail_блять!.mp3`) by **Reactorcore** - CC0 - <https://opengameart.org/content/russian-swears-male-voice-pack> - OpenGameArt.org. Used in: `human/curse_ru_01.mp3`
 - *Russian swears male voice pack* (file `Russian Swears Voice Pack/ru_swears_0006_fail_сука!.mp3`) by **Reactorcore** - CC0 - <https://opengameart.org/content/russian-swears-male-voice-pack> - OpenGameArt.org. Used in: `human/curse_ru_02.mp3`
@@ -369,6 +365,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_06.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_06.mp3`
 - *ClothingEquip.mp3* by **SoundEffEcks** - CC0 - <https://freesound.org/s/396429/> - Freesound (via FSD50K dataset). Used in: `foley/gear_rattle_09.mp3`
 - *breaking glass.wav* by **Spankous** - CC0 - <https://freesound.org/s/245410/> - Freesound (via FSD50K dataset). Used in: `explosions/glass_break_06.mp3`
+- *SMO procedural sound* by **Special Military Operation project** - CC0 - <https://creativecommons.org/publicdomain/zero/1.0/> - Procedurally generated (tools/audio/build_v3.py). Used in: `ambience/bird_01.mp3`, `ambience/bird_02.mp3`, `ambience/bird_03.mp3`, `ambience/bird_04.mp3`, `ambience/bird_05.mp3`, `ambience/bird_06.mp3`, `ambience/bird_07.mp3`, `ambience/bird_08.mp3`, `ambience/crickets_01.mp3`, `explosions/incoming_whistle_01.mp3`, `explosions/incoming_whistle_02.mp3`, `explosions/incoming_whistle_03.mp3`, `explosions/incoming_whistle_04.mp3`, `explosions/shell_incoming_01.mp3`, `explosions/shell_incoming_02.mp3`, `explosions/shell_incoming_03.mp3`, `explosions/shell_incoming_04.mp3`, `synth/atgm_motor_01.mp3`, `synth/bullet_crack_01.mp3`, `synth/bullet_crack_02.mp3`, `synth/bullet_crack_03.mp3`, `synth/bullet_crack_04.mp3`, `synth/bullet_crack_05.mp3`, `synth/drone_buzz_01.mp3`, `synth/sub_thump_01.mp3`, `synth/sub_thump_02.mp3`, `synth/sub_thump_03.mp3`, `synth/sub_thump_04.mp3`, `synth/track_squeal_01.mp3`, `synth/tyre_roll_01.mp3`
 - *Battlecry.wav* by **spookymodem** - CC0 - <https://freesound.org/s/249807/> - Freesound (via FSD50K dataset). Used in: `human/shout_07.mp3`
 - *Gun reload sounds* (file `assaultriflereload1_0.wav`) by **SpringySpringo** - CC0 - <https://opengameart.org/content/gun-reload-sounds> - OpenGameArt.org. Used in: `weapons/reload_01.mp3`
   - Author's notice: Credit isn't required, but appreciated. If you use this in any project shoot me a link in the comments!
@@ -383,8 +380,8 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *paving_18c_trekkingboots_run.wav* by **sturmankin** - CC0 - <https://freesound.org/s/273117/> - Freesound (via FSD50K dataset). Used in: `foley/footstep_concrete_01.mp3`, `foley/footstep_concrete_02.mp3`, `foley/footstep_concrete_03.mp3`, `foley/footstep_concrete_04.mp3`, `foley/footstep_concrete_05.mp3`, `foley/footstep_concrete_06.mp3`, `foley/footstep_concrete_07.mp3`, `foley/footstep_concrete_08.mp3`, `foley/footstep_concrete_09.mp3`, `foley/footstep_concrete_10.mp3`, `foley/footstep_concrete_11.mp3`, `foley/footstep_concrete_12.mp3`
 - *AssaultRifle1.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/404562/> - Freesound (via FSD50K dataset). Used in: `weapons/rifle_near_11.mp3`
 - *AssaultRifle2.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/404561/> - Freesound (via FSD50K dataset). Used in: `weapons/rifle_near_10.mp3`
-- *LightMachineGun1.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/417688/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/mg_far_05.mp3`, `weapons/mg_far_06.mp3`, `weapons/mg_far_07.mp3`, `weapons/mg_near_01.mp3`, `weapons/mg_near_02.mp3`, `weapons/mg_near_03.mp3`
-- *LightMachineGun3.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/417686/> - Freesound (via FSD50K dataset). Used in: `weapons/mg_near_08.mp3`
+- *LightMachineGun1.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/417688/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `weapons/mg_far_05.mp3`, `weapons/mg_far_06.mp3`, `weapons/mg_far_07.mp3`, `weapons/mg_near_01.mp3`, `weapons/mg_near_02.mp3`, `weapons/mg_near_03.mp3`, `weapons/mg_shot_far_01.mp3`, `weapons/mg_shot_far_02.mp3`, `weapons/mg_shot_far_03.mp3`, `weapons/mg_shot_far_04.mp3`, `weapons/mg_shot_far_05.mp3`, `weapons/mg_shot_far_06.mp3`, `weapons/mg_shot_far_07.mp3`, `weapons/mg_shot_far_08.mp3`, `weapons/mg_shot_near_01.mp3`, `weapons/mg_shot_near_02.mp3`, `weapons/mg_shot_near_03.mp3`, `weapons/mg_shot_near_09.mp3`, `weapons/mg_shot_near_10.mp3`
+- *LightMachineGun3.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/417686/> - Freesound (via FSD50K dataset). Used in: `weapons/mg_near_08.mp3`, `weapons/mg_shot_near_01.mp3`, `weapons/mg_shot_near_03.mp3`, `weapons/mg_shot_near_04.mp3`, `weapons/mg_shot_near_05.mp3`, `weapons/mg_shot_near_07.mp3`, `weapons/mg_shot_near_08.mp3`, `weapons/mg_shot_near_10.mp3`
 - *MachineGunloop.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/397657/> - Freesound (via FSD50K dataset). Used in: `weapons/mg_near_09.mp3`
 - *grunts of male death and pain* (file `death pain grunts.wav`) by **thebardofblasphemy** - CC0 - <https://opengameart.org/content/grunts-male-death-and-pain> - OpenGameArt.org. Used in: `human/wounded_10.mp3`, `human/wounded_11.mp3`, `human/wounded_12.mp3`, `human/wounded_13.mp3`, `human/wounded_14.mp3`, `human/wounded_15.mp3`
 - *Glass Break* (file `glass_breaking.wav`) by **Till Behrend** - CC0 - <https://opengameart.org/content/glass-break> - OpenGameArt.org. Used in: `explosions/glass_break_10.mp3`
@@ -412,6 +409,15 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `ambience/ambience_city_01.mp3` | ambience_city | [DISTANT EXPLOSION 01.wav](https://freesound.org/s/86291/); [Distant explosion.wav](https://freesound.org/s/108640/); [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/); [Medium Far Explosion](https://freesound.org/s/156499/); [Mild Wind Background Noise](https://opengameart.org/content/mild-wind-background-noise); [The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library); [U.S. National Park Service - American Crow.flac](https://freesound.org/s/182090/); [Winter Winds](https://freesound.org/s/400992/); [crow1.wav](https://freesound.org/s/54973/); [explosion02.wav](https://freesound.org/s/434425/); [explosion04.wav](https://freesound.org/s/434423/); [explosion05.wav](https://freesound.org/s/434430/); [explosion08.wav](https://freesound.org/s/434427/) | Bashar3A; Ben Jaszczak et al.; SuperPhat; UrsaDaBear; V-ktor; davidworksonline; juskiddink; poissonmort; qubodup; sandyrb; unfa | CC-BY 3.0; CC0 |
 | `ambience/ambience_wind_01.mp3` | ambience_wind | [Mild Wind Background Noise](https://opengameart.org/content/mild-wind-background-noise) | Bashar3A | CC0 |
 | `ambience/ambience_wind_gusty_01.mp3` | ambience_wind_gusty | [Winter Winds](https://freesound.org/s/400992/) | UrsaDaBear | CC0 |
+| `ambience/bird_01.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_02.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_03.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_04.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_05.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_06.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_07.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/bird_08.mp3` | bird | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `ambience/crickets_01.mp3` | crickets | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
 | `ambience/crow_01.mp3` | crow | [U.S. National Park Service - American Crow.flac](https://freesound.org/s/182090/) | qubodup | CC0 |
 | `ambience/crow_02.mp3` | crow | [U.S. National Park Service - American Crow.flac](https://freesound.org/s/182090/) | qubodup | CC0 |
 | `ambience/crow_03.mp3` | crow | [U.S. National Park Service - American Crow.flac](https://freesound.org/s/182090/) | qubodup | CC0 |
@@ -587,9 +593,14 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `explosions/glass_break_08.mp3` | glass_break | [Breaking Glass 14.mp3](https://freesound.org/s/390706/) | FunWithSound | CC-BY 3.0 |
 | `explosions/glass_break_09.mp3` | glass_break | [Breaking Glass 2.mp3](https://freesound.org/s/390721/) | FunWithSound | CC-BY 3.0 |
 | `explosions/glass_break_10.mp3` | glass_break | [Glass Break](https://opengameart.org/content/glass-break) | Till Behrend | CC0 |
-| `explosions/incoming_whistle_01.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
-| `explosions/incoming_whistle_02.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
-| `explosions/incoming_whistle_03.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
+| `explosions/incoming_whistle_01.mp3` | incoming_whistle | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/incoming_whistle_02.mp3` | incoming_whistle | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/incoming_whistle_03.mp3` | incoming_whistle | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/incoming_whistle_04.mp3` | incoming_whistle | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/shell_incoming_01.mp3` | shell_incoming | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/shell_incoming_02.mp3` | shell_incoming | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/shell_incoming_03.mp3` | shell_incoming | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `explosions/shell_incoming_04.mp3` | shell_incoming | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
 | `foley/body_fall_01.mp3` | body_fall | [Body fall_04.wav](https://freesound.org/s/346692/) | Adam_N | CC0 |
 | `foley/body_fall_02.mp3` | body_fall | [Body fall_03.wav](https://freesound.org/s/346693/) | Adam_N | CC0 |
 | `foley/body_fall_03.mp3` | body_fall | [Body fall_02.wav](https://freesound.org/s/346694/) | Adam_N | CC0 |
@@ -713,6 +724,19 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `human/wounded_13.mp3` | wounded | [grunts of male death and pain](https://opengameart.org/content/grunts-male-death-and-pain) | thebardofblasphemy | CC0 |
 | `human/wounded_14.mp3` | wounded | [grunts of male death and pain](https://opengameart.org/content/grunts-male-death-and-pain) | thebardofblasphemy | CC0 |
 | `human/wounded_15.mp3` | wounded | [grunts of male death and pain](https://opengameart.org/content/grunts-male-death-and-pain) | thebardofblasphemy | CC0 |
+| `synth/atgm_motor_01.mp3` | atgm_motor | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/bullet_crack_01.mp3` | bullet_crack | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/bullet_crack_02.mp3` | bullet_crack | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/bullet_crack_03.mp3` | bullet_crack | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/bullet_crack_04.mp3` | bullet_crack | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/bullet_crack_05.mp3` | bullet_crack | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/drone_buzz_01.mp3` | drone_buzz | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/sub_thump_01.mp3` | sub_thump | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/sub_thump_02.mp3` | sub_thump | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/sub_thump_03.mp3` | sub_thump | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/sub_thump_04.mp3` | sub_thump | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/track_squeal_01.mp3` | track_squeal | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
+| `synth/tyre_roll_01.mp3` | tyre_roll | [SMO procedural sound](https://creativecommons.org/publicdomain/zero/1.0/) | Special Military Operation project | CC0 |
 | `ui/defeat_01.mp3` | defeat | [The Chaos Has Risen](https://opengameart.org/content/the-chaos-has-risen) | jdagenet | CC-BY 3.0 |
 | `ui/defeat_02.mp3` | defeat | [Realization](https://opengameart.org/content/realization) | jdagenet | CC-BY-SA 3.0 |
 | `ui/ui_alert_01.mp3` | ui_alert | [6 user interface ding clicks](https://opengameart.org/content/6-user-interface-ding-clicks) | qubodup | CC0 |
@@ -764,6 +788,24 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `vehicles/tank_engine_idle_01.mp3` | tank_engine_idle | [Tank Engine Loop.flac](https://freesound.org/s/200303/) | qubodup | CC-BY 3.0 |
 | `vehicles/track_clank_01.mp3` | track_clank | [100 CC0 metal and wood SFX](https://opengameart.org/content/100-cc0-metal-and-wood-sfx); [Chain winch sounds](https://opengameart.org/content/chain-winch-sounds); [Metal Impact Sounds](https://opengameart.org/content/metal-impact-sounds) | BMacZero; bart; rubberduck | CC0 |
 | `vehicles/turret_traverse_01.mp3` | turret_traverse | [JCB_Hydraulic_Power_Steering.wav](https://freesound.org/s/340686/) | mickyman5000 | CC0 |
+| `weapons/ac_shot_01.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_02.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_03.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_04.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_05.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_06.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_07.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/) | OGsoundFX | CC-BY 3.0 |
+| `weapons/ac_shot_08.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_09.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_10.mp3` | ac_shot | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_01.mp3` | ac_shot_far | [Mk 46 30mm gun - single shot](https://freesound.org/s/162258/) | qubodup | CC0 |
+| `weapons/ac_shot_far_02.mp3` | ac_shot_far | [Mk 46 30mm gun - single shot](https://freesound.org/s/162258/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | qubodup | CC0 |
+| `weapons/ac_shot_far_03.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_04.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_05.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_06.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_07.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_2.flac](https://freesound.org/s/67580/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
+| `weapons/ac_shot_far_08.mp3` | ac_shot_far | [Guns & Explosions Album - Autocannon - Shot 1.wav](https://freesound.org/s/423108/); [m242_chain_gun_slow_burst_3.flac](https://freesound.org/s/67581/) | OGsoundFX; qubodup | CC-BY 3.0; CC0 |
 | `weapons/artillery_far_01.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
 | `weapons/artillery_far_02.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
 | `weapons/artillery_far_03.mp3` | artillery_far | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
@@ -818,6 +860,28 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `weapons/hmg_far_01.mp3` | hmg_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
 | `weapons/hmg_far_02.mp3` | hmg_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
 | `weapons/hmg_far_03.mp3` | hmg_far | [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe | CC-BY 3.0 |
+| `weapons/hmg_shot_01.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_02.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_03.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_04.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_05.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_06.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_07.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_08.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_09.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_10.mp3` | hmg_shot | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_01.mp3` | hmg_shot_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_02.mp3` | hmg_shot_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_03.mp3` | hmg_shot_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_04.mp3` | hmg_shot_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_05.mp3` | hmg_shot_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_06.mp3` | hmg_shot_far | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/hmg_shot_far_07.mp3` | hmg_shot_far | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/) | qubodup | CC0 |
+| `weapons/hmg_shot_far_08.mp3` | hmg_shot_far | [Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac](https://freesound.org/s/160355/); [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe; qubodup | CC-BY 3.0; CC0 |
+| `weapons/howitzer_01.mp3` | howitzer | [xm360_canon_shot_1.flac](https://freesound.org/s/67524/) | qubodup | CC0 |
+| `weapons/howitzer_02.mp3` | howitzer | [xm360_canon_shot_2_less_echo.flac](https://freesound.org/s/67527/) | qubodup | CC0 |
+| `weapons/howitzer_03.mp3` | howitzer | [Tank fire Mixed.wav](https://freesound.org/s/127845/) | Cyberkineticfilms | CC0 |
+| `weapons/howitzer_04.mp3` | howitzer | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
 | `weapons/mg_far_01.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
 | `weapons/mg_far_02.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
 | `weapons/mg_far_03.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
@@ -834,6 +898,26 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `weapons/mg_near_07.mp3` | mg_near | [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | poissonmort | CC-BY 3.0 |
 | `weapons/mg_near_08.mp3` | mg_near | [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
 | `weapons/mg_near_09.mp3` | mg_near | [MachineGunloop.wav](https://freesound.org/s/397657/) | SuperPhat | CC0 |
+| `weapons/mg_shot_far_01.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_far_02.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_far_03.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/) | SuperPhat | CC0 |
+| `weapons/mg_shot_far_04.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/) | SuperPhat | CC0 |
+| `weapons/mg_shot_far_05.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_far_06.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_far_07.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_far_08.mp3` | mg_shot_far | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun](https://freesound.org/s/160773/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_near_01.mp3` | mg_shot_near | [LightMachineGun1.wav](https://freesound.org/s/417688/); [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
+| `weapons/mg_shot_near_02.mp3` | mg_shot_near | [LightMachineGun1.wav](https://freesound.org/s/417688/); [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_near_03.mp3` | mg_shot_near | [LightMachineGun1.wav](https://freesound.org/s/417688/); [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
+| `weapons/mg_shot_near_04.mp3` | mg_shot_near | [LightMachineGun3.wav](https://freesound.org/s/417686/); [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_near_05.mp3` | mg_shot_near | [LightMachineGun3.wav](https://freesound.org/s/417686/); [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_near_06.mp3` | mg_shot_near | [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | poissonmort | CC-BY 3.0 |
+| `weapons/mg_shot_near_07.mp3` | mg_shot_near | [LightMachineGun3.wav](https://freesound.org/s/417686/); [Maxim Russian machinegun very near](https://freesound.org/s/160772/) | SuperPhat; poissonmort | CC-BY 3.0; CC0 |
+| `weapons/mg_shot_near_08.mp3` | mg_shot_near | [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
+| `weapons/mg_shot_near_09.mp3` | mg_shot_near | [LightMachineGun1.wav](https://freesound.org/s/417688/) | SuperPhat | CC0 |
+| `weapons/mg_shot_near_10.mp3` | mg_shot_near | [LightMachineGun1.wav](https://freesound.org/s/417688/); [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
+| `weapons/mg_shot_near_11.mp3` | mg_shot_near | [The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) | Ben Jaszczak et al. | CC0 |
+| `weapons/mg_shot_near_12.mp3` | mg_shot_near | [The Free Firearm Sound Library](https://opengameart.org/content/the-free-firearm-sound-library) | Ben Jaszczak et al. | CC0 |
 | `weapons/mortar_launch_01.mp3` | mortar_launch | [M224 Mortar Firing Close 03](https://freesound.org/s/426161/) | Nanashi | CC-BY 3.0 |
 | `weapons/mortar_launch_02.mp3` | mortar_launch | [M224 Mortar Firing Close 02](https://freesound.org/s/426162/) | Nanashi | CC-BY 3.0 |
 | `weapons/mortar_launch_03.mp3` | mortar_launch | [Firing Mortar at Shooting Range](https://freesound.org/s/161970/) | qubodup | CC0 |
