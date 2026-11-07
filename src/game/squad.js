@@ -289,7 +289,7 @@ export class Squad {
     if (this.mounted && this.carrier) { this.carrier.orderMove(x, z, facing, run); return; }
     this.order = { type: 'move', x, z, facing, width, run };
     this.run = run; this.facing = facing;
-    if (this.pinned && this.side === 'player') this.game.hud?.alert(`${this.name} is pinned down — will move when the fire slackens`, 'bad');
+    if (this.pinned && this.side === 'player') this.game.hud?.alert(`${this.name} is pinned down — crawling`, 'bad');
     const thr = this.threatPoint();
     const slots = this.formationSlots(x, z, facing, width, { thr });
     // assign slots by lateral order to avoid crossing
@@ -303,6 +303,7 @@ export class Squad {
       // a re-issued order to about the same place (the AI re-orders): keep walking the old route until the new one is ready
       const keep = s.path && s.pathI < s.path.length && s.goal && Math.hypot(s.goal[0] - ss[i][0], s.goal[1] - ss[i][1]) < 20;
       s.goal = ss[i]; s.goalHeading = facing; if (!keep) s.path = null; s.pathReq = null; s.resumeGoal = false;
+      s.crawl = false;   // (a crawl from an earlier dash to cover used to stick: the whole new route was crawled)
       // individual pace and reaction time so the squad doesn't move in lockstep
       s.speedMul = 0.86 + Math.random() * 0.24; s.startDelay = keep ? 0 : s.role.leader ? 0 : 0.15 + Math.random() * 0.9;
       // fire-team bounding: team B (odd) covers and waits until team A has reached its positions
@@ -774,7 +775,7 @@ export class Squad {
       const moving = s.path && s.pathI < s.path.length;
       // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
       // instead of popping up into a crouch-walk after the first metre; he gets up (prone_up) once it eases
-      if (moving && s.stance === 'prone' && !this.run && !this.routing && (s.crawl || s.suppression > 50)) s.stance = 'prone';
+      if (moving && s.stance === 'prone' && !this.run && !this.routing && ((s.crawl && (s.suppression > 25 || this.pinned)) || s.suppression > 50)) s.stance = 'prone';
       else if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
       else {
         const threat = s.target ? s.target.pos : null;
@@ -929,7 +930,9 @@ export class Squad {
     if (s.jumpEnded) { const es = clipEvents(s.jumpEnded).end_speed_mps; s.jumpEnded = null; if (es > 0 && moving) s.vel.set(Math.sin(s.heading) * es, 0, Math.cos(s.heading) * es); }
     let speed = 0;
     // pinned down: nobody gets up and moves (except to drag a wounded mate)
-    const pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
+    // (the player's own move order under fire: they crawl there on their bellies instead of freezing where they are)
+    let pinned = (this.pinned || s.suppression > 88) && !s.dragging && s.state !== 'critical';
+    if (pinned && moving && this.side === 'player' && this.order?.type === 'move' && !this.routing) { pinned = false; s.stance = 'prone'; s.crawl = true; }
     if (s.aimStopT > 0) s.aimStopT -= dt;
     if (moving && (pinned || s.aimStopT > 0 || (s.startDelay > 0 && (s.startDelay -= dt) > 0))) { s.vel.multiplyScalar(Math.max(0, 1 - dt * 8)); s.wdT = 0; s.wdP = null; this.groundY(s, dt, false); return; }
     if (moving) {

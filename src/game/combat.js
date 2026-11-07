@@ -126,7 +126,9 @@ export class Combat {
       if (d < (s.assault ? 34 : 28) && d > 7 && Math.random() < (s.assault ? 0.8 : 0.55) && !s.inside) { s.throwWindow = !!t.inBuilding; this.throwGrenade(s, t); return; }
     }
     // nobody fires from the hip on the move: a walking man pauses, shoulders the weapon and shoots; runners don't
-    if (s.vel.lengthSq() > 0.5) { if (!sq.run && !sq.routing && !s.dragging && !s.waitTeam && (s.aimStopT || 0) <= 0 && Math.random() < 0.35) s.aimStopT = 1.2 + Math.random() * 1.3; return; }
+    // (pauses at least 4-8 s of walking apart: back to back they kept a squad with targets about standing still - "they don't go
+    // where they're told")
+    if (s.vel.lengthSq() > 0.5) { if (!sq.run && !sq.routing && !s.dragging && !s.waitTeam && (s.aimStopT || 0) <= 0 && this.g.time > (s.nextAimStop || 0) && Math.random() < 0.35) { s.aimStopT = 1.2 + Math.random() * 1.3; s.nextAimStop = this.g.time + s.aimStopT + 4 + Math.random() * 4; } return; }
     // facing check
     const want = Math.atan2(t.pos.x - s.pos.x, t.pos.z - s.pos.z);
     if (Math.abs(angDiff(want, s.heading)) > 0.3) return;
