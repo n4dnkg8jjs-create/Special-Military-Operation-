@@ -437,6 +437,8 @@ function lobbyCss() {
   if (document.getElementById('vs-css')) return;
   document.head.appendChild(Object.assign(document.createElement('style'), { id: 'vs-css', textContent: `
 #campaign .vs-lobby{max-width:62rem;margin:5vh auto;max-height:90vh;overflow-y:auto;font-family:var(--font-ui);color:var(--t-1)}
+.vs-lobby h1,.vs-lobby h2{font-family:var(--font-head);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.vs-col.panel{padding:0 var(--sp-4) var(--sp-4)}.vs-col.panel>h3:first-child{margin:0 calc(-1 * var(--sp-4));padding:.4rem var(--sp-4);background:var(--s-2);border-bottom:1px solid var(--line-2)}
 .vs-lobby .brief{color:var(--t-2);font-size:var(--fs-m);max-width:44rem}
 .vs-cols{display:flex;gap:var(--sp-4);margin:var(--sp-5) 0 var(--sp-3);flex-wrap:wrap}
 .vs-col{flex:1 1 20rem;padding:var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-3)}
@@ -454,7 +456,7 @@ function lobbyCss() {
 .vs-link{font-size:var(--fs-xs)!important;color:var(--t-2)!important;padding:.3rem .5rem!important}
 .vs-hint{color:var(--t-3);font-size:var(--fs-s);margin:0}
 .vs-status{display:flex;align-items:center;gap:var(--sp-2);min-height:1.6rem;padding:var(--sp-2) var(--sp-3);border:1px solid var(--line);border-radius:var(--r-2);background:var(--s-3);color:var(--t-2);font-size:var(--fs-m);margin-bottom:var(--sp-3)}
-.vs-dot{flex:none;width:.55rem;height:.55rem;border-radius:50%;background:var(--t-3)}
+.vs-dot{flex:none;width:.5rem;height:.5rem;background:var(--t-3)}
 .vs-status[data-kind=busy] .vs-dot{background:var(--accent);animation:vsPulse 1.1s ease-in-out infinite}
 .vs-status[data-kind=ok]{color:var(--t-1)}.vs-status[data-kind=ok] .vs-dot{background:var(--ok)}
 .vs-status[data-kind=warn] .vs-dot{background:var(--warn)}

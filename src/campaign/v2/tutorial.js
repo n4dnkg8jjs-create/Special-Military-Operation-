@@ -208,14 +208,14 @@ function injectTutCss() {
 .c2-tut{position:absolute;inset:0;z-index:40;pointer-events:none;font-family:var(--font-ui,"Barlow SC",sans-serif);opacity:0;transition:opacity .35s ease}
 .c2-tut.on{opacity:1}.c2-tut.off{opacity:0}
 .c2-tut-blk{position:absolute;pointer-events:auto;background:transparent;cursor:default}
-.c2-tut-hole{position:absolute;border-radius:6px;pointer-events:none;box-shadow:0 0 0 200vmax rgba(6,9,7,.66)}
+.c2-tut-hole{position:absolute;border-radius:0;pointer-events:none;box-shadow:0 0 0 200vmax rgba(6,8,10,.66)}
 .c2-tut.glide .c2-tut-hole{transition:left .5s cubic-bezier(.2,.8,.2,1),top .5s cubic-bezier(.2,.8,.2,1),width .5s cubic-bezier(.2,.8,.2,1),height .5s cubic-bezier(.2,.8,.2,1),border-radius .5s}
-.c2-tut-hole::before{content:"";position:absolute;inset:-2px;border-radius:8px;border:2px solid var(--accent,#e9a93b);box-shadow:0 0 18px rgba(233,169,59,.45),inset 0 0 12px rgba(233,169,59,.12)}
-.c2-tut-hole i{position:absolute;inset:-2px;border-radius:8px;border:2px solid var(--accent,#e9a93b);animation:c2tutPing 1.8s cubic-bezier(.2,.7,.3,1) infinite}
+.c2-tut-hole::before{content:"";position:absolute;inset:-2px;border-radius:0;border:2px solid var(--accent,#e9a93b);box-shadow:none}
+.c2-tut-hole i{position:absolute;inset:-2px;border-radius:0;border:2px solid var(--accent,#e9a93b);animation:c2tutPing 1.8s cubic-bezier(.2,.7,.3,1) infinite}
 .c2-tut-hole.none::before,.c2-tut-hole.none i{display:none}
 .c2-tut.interactive .c2-tut-hole i{animation-duration:1.1s}
 @keyframes c2tutPing{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.08)}}
-.c2-tut-card{position:absolute;left:0;top:0;width:min(22rem,92vw);padding:var(--sp-4,16px) var(--sp-4,16px) var(--sp-3,12px);pointer-events:auto;background:linear-gradient(180deg,rgba(28,36,31,.97),rgba(16,22,19,.97));border:1px solid var(--line-2,rgba(196,212,192,.28));border-top:3px solid var(--accent,#e9a93b);box-shadow:0 18px 50px rgba(0,0,0,.55);}
+.c2-tut-card{position:absolute;left:0;top:0;width:min(22rem,92vw);padding:var(--sp-4,16px) var(--sp-4,16px) var(--sp-3,12px);pointer-events:auto;background:rgba(23,27,31,.98);border:1px solid var(--line-2,rgba(196,212,192,.28));border-top:3px solid var(--accent,#e9a93b);box-shadow:0 18px 50px rgba(0,0,0,.55);}
 .c2-tut.glide .c2-tut-card{transition:transform .5s cubic-bezier(.2,.8,.2,1)}
 .c2-tut-card>*{transition:opacity .28s ease,transform .28s ease}
 .c2-tut-card:not(.in) .c2-tut-k,.c2-tut-card:not(.in) .c2-tut-t,.c2-tut-card:not(.in) .c2-tut-b{opacity:0;transform:translateY(6px)}
@@ -224,9 +224,9 @@ function injectTutCss() {
 .c2-tut-k{margin-bottom:var(--sp-1,4px)}
 .c2-tut-t{font-family:var(--font-display,sans-serif);font-size:var(--fs-xl,24px);font-weight:800;text-transform:uppercase;letter-spacing:.02em;line-height:1;color:var(--t-1,#dfe4d6);margin-bottom:var(--sp-2,8px)}
 .c2-tut-b{font-size:var(--fs-m,15px);line-height:1.45;color:var(--t-2,#98a395)}.c2-tut-b b{color:var(--t-1,#dfe4d6);font-weight:600}
-.c2-tut-b .sw{display:inline-block;width:.8em;height:.8em;margin:0 .3em -.05em 0;border-radius:2px;border:1px solid rgba(0,0,0,.4)}.c2-tut-b .sw.own{background:#4f8fe0}.c2-tut-b .sw.en{background:#e0503f}
+.c2-tut-b .sw{display:inline-block;width:.8em;height:.8em;margin:0 .3em -.05em 0;border:1px solid rgba(0,0,0,.4)}.c2-tut-b .sw.own{background:#4f8fe0}.c2-tut-b .sw.en{background:#e0503f}
 .c2-tut-foot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-3,12px);margin-top:var(--sp-4,16px);padding-top:var(--sp-3,12px);border-top:1px solid var(--line,rgba(196,212,192,.13))}
-.c2-tut-dots{display:flex;gap:5px;flex:1 1 100%}.c2-tut-dots i{width:6px;height:6px;border-radius:3px;background:var(--line-2,rgba(196,212,192,.28));transition:width .35s cubic-bezier(.2,.8,.2,1),background .35s}
+.c2-tut-dots{display:flex;gap:5px;flex:1 1 100%}.c2-tut-dots i{width:6px;height:6px;background:var(--line-2,rgba(196,212,192,.28));transition:width .35s cubic-bezier(.2,.8,.2,1),background .35s}
 .c2-tut-dots i.past{background:rgba(233,169,59,.45)}.c2-tut-dots i.on{width:18px;background:var(--accent,#e9a93b)}
 .c2-tut-btns{display:flex;gap:var(--sp-2,8px);flex:none;margin-left:auto}
 .c2-tut .hidden{display:none!important}

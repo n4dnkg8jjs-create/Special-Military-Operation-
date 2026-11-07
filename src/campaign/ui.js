@@ -217,12 +217,12 @@ export class CampaignUI {
 export function injectCss() {
   if (document.getElementById('cp-css')) return;
   const css = `
-#campaign{position:fixed;inset:0;background:#191b16;color:#e6e2d3;z-index:50;display:flex;flex-direction:column;font-family:inherit;overflow:hidden}
+#campaign{position:fixed;inset:0;background:#0f1215;color:#e6e8e9;z-index:50;display:flex;flex-direction:column;font-family:inherit;overflow:hidden}
 #campaign.hidden{display:none}
 .cp-choose{max-width:900px;margin:8vh auto;padding:0 20px}.cp-choose h1{margin:4px 0 10px}.cp-sides{display:flex;gap:16px;margin:24px 0}
 .cp-side{flex:1;text-align:left;background:#24271f;border:1px solid #3a3d33;color:#e6e2d3;padding:18px;cursor:pointer;border-radius:4px}.cp-side:hover{border-color:#d0a24a}
 .cp-side-k{font-size:11px;letter-spacing:2px;color:#d0a24a}.cp-side-t{font-size:20px;font-weight:700;margin:6px 0}.cp-side-s,.cp-side-r{font-size:13px;color:#a9a593}
-.cp-back,.cp-menu{background:none;border:1px solid #4a4d42;color:#bdb8a5;padding:6px 12px;cursor:pointer;border-radius:3px;margin-left:8px}
+.cp-back,.cp-menu{background:rgba(23,27,31,.95);border:1px solid #48525c;color:#a1aab2;padding:6px 12px;cursor:pointer;margin-left:8px;font-family:var(--font-head);font-weight:700;letter-spacing:.1em;text-transform:uppercase}
 .cp-top{display:flex;align-items:center;gap:18px;padding:10px 18px;border-bottom:1px solid #33362d;background:#1f211b}.cp-top h2{margin:2px 0 0;font-size:20px}
 .cp-stats{display:flex;gap:18px;margin-left:auto}.cp-stats div{display:flex;flex-direction:column;align-items:flex-end}.cp-stats span{font-size:10px;letter-spacing:1.5px;color:#8a877a}.cp-stats b{font-size:18px}.cp-stats .lp{color:#e8c870}
 .cp-end{margin-left:10px}.cp-vs{font-size:12px;color:#c9c4b0;max-width:220px}

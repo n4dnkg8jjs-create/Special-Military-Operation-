@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { WEAPONS } from '../config.js';
 import { ROADS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
-import { unitSymbol, unitKindOf, unitPortrait, UNIT_TYPE_NAME, ORDER_ICONS, ARM_CODE } from './symbols.js';
+import { unitSymbol, unitKindOf, UNIT_TYPE_NAME, ORDER_ICONS, ARM_CODE } from './symbols.js';
+import { portraitHTML, warmPortraits } from './portraits.js';
 import { ContactMarkers } from './contactMarkers.js';
 
 // Battle HUD (look modelled on WARNO: score bar, deck of unit cards along the bottom, unit card + command grid, NATO
@@ -46,6 +47,7 @@ export class HUD {
     for (const b of document.querySelectorAll('#orders button')) { this.orderBtns[b.dataset.o] = b; if (!b.querySelector('.ico') && ORDER_ICONS[b.dataset.o]) b.insertAdjacentHTML('afterbegin', ORDER_ICONS[b.dataset.o]); }
     this.mortarEl = document.getElementById('mortarCount'); this.artyEl = document.getElementById('artyCount');
     this.contacts = new ContactMarkers(game);   // "?" over enemy units not identified yet
+    warmPortraits(game);   // card art: each kind of unit's models rendered once, side on (portraits.js)
     this.rings(); this.sizeMinimap(); this.drawMinimapBase(); this.rebuildCards();
     addEventListener('resize', () => { this.sizeMinimap(); });
     this.mm.addEventListener('mousedown', e => { if (e.button !== 0) return; this.mmDrag = true; this.minimapClick(e); });
@@ -142,7 +144,7 @@ export class HUD {
     const card = (u, nested) => {
       const el = document.createElement('div'); el.className = 'uc' + (nested ? ' nest' : '');
       const kind = unitKindOf(u);
-      el.innerHTML = `<div class="uc-top"><span class="g"></span><span class="ic">${unitSymbol(kind, 'friend')}</span><span class="mn"></span></div><div class="uc-pt">${unitPortrait(kind, u)}</div><div class="uc-nm">${esc(u.name)}</div><div class="st"></div><div class="uc-bars"><i class="hp"><b></b></i><i class="mo"><b></b></i><i class="am"><b></b></i></div>`;
+      el.innerHTML = `<div class="uc-top"><span class="g"></span><span class="ic">${unitSymbol(kind, 'friend')}</span><span class="mn"></span></div><div class="uc-pt">${portraitHTML(this.g, u)}</div><div class="uc-nm">${esc(u.name)}</div><div class="st"></div><div class="uc-bars"><i class="hp"><b></b></i><i class="mo"><b></b></i><i class="am"><b></b></i></div>`;
       el.title = `${u.name} · ${UNIT_TYPE_NAME[kind] || ''}`;
       el.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; this.select([u], e.shiftKey); this.g.sfx('ui_select'); });
       el.addEventListener('dblclick', () => { const c = u.center(); this.g.cam.lookAt(c.x, c.z); });
@@ -298,7 +300,7 @@ export class HUD {
       }
     }
     const head = `<div class="ui-head"><span class="ui-tab ${own ? 'f' : 'h'}">${unitSymbol(kind, aff)}</span><div class="tt"><h4>${own ? '' : 'Enemy '}${esc(u.name)}</h4><div class="sub">${UNIT_TYPE_NAME[kind] || ''}${u.faction?.name ? ` · ${esc(u.faction.name)}` : ''}</div></div>${chip}</div>`;
-    return `${head}<div class="ui-body"><div class="ui-pt">${unitPortrait(kind, u)}</div><div class="ui-meters">${meters}</div></div>`
+    return `${head}<div class="ui-body"><div class="ui-pt">${portraitHTML(this.g, u)}</div><div class="ui-meters">${meters}</div></div>`
       + (wpn.length ? `<table class="ui-wpn"><thead><tr><th>Weapon</th><th>Range</th><th>Ammo</th></tr></thead><tbody>${wpn.join('')}</tbody></table>` : '')
       + (rows ? `<div class="kv">${rows}</div>` : '');
   }
