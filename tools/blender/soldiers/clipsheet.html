@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden;font:12px sans-serif}
+.l{position:absolute;color:#fff;background:rgba(0,0,0,.55);padding:1px 4px;white-space:nowrap}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{console.error(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{console.error(String(e.reason));window.__done=true});</script>
+<script type="module">
+// Multi-clip contact sheet (one browser launch for many clips):
+//   anims= glb with clips   glb= soldier glb   cells= clip:t[:az[:r[:cy[:weapon[:fz]]]]];...  (fz = look-at offset forward of the hips, +Z)   (t = 0..1 normalised; t>1 = seconds-1000)
+//   cols=  W= H=  title=   weapon default ak74m; 'pkm' / 'none' per cell.  The magazine sits on mag_socket_L between the clip's
+//   mag_out / mag_in events (manifest), as in the game (soldier.magTick).  Camera looks at the hips (x/z) at height cy.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('W') || 1400), H = +(q.get('H') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.4); sun.position.set(6, 10, 5); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); scene.add(sun);
+scene.add(sun.target); scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+sun.shadow.camera.left = sun.shadow.camera.bottom = -3; sun.shadow.camera.right = sun.shadow.camera.top = 3;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader();
+const gltf = await loader.loadAsync(q.get('glb') || '/assets/soldiers/soldier_ru.glb');
+const root = gltf.scene; scene.add(root);
+root.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.frustumCulled = false; const nm = o.parent && o.parent.type === 'Group' ? o.parent.name : o.name;
+  o.visible = !(/_LOD1/.test(nm) || /_LOD1/.test(o.name)) && !(o.userData?.default_visible === false || o.parent?.userData?.default_visible === false); } });
+const clips = (await loader.loadAsync(q.get('anims') || '/assets/soldiers/soldier_anims.glb')).animations;
+const man = await (await fetch('/assets/soldiers/manifest.json')).json();
+const EV = man.soldier_anims?.clips || {};
+const sock = root.getObjectByName('weapon_socket'), magSock = root.getObjectByName('mag_socket_L');
+const weapons = {};
+for (const k of ['ak74m', 'pkm']) { const g = await loader.loadAsync(`/assets/soldiers/${k}.glb`); g.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; if (/_LOD1/i.test(o.name)) o.visible = false; } }); weapons[k] = g.scene; }
+const mixer = new THREE.AnimationMixer(root), hips = root.getObjectByName('Hips');
+const cells = (q.get('cells') || '').split(';').filter(Boolean).map(s => s.split(':'));
+const cols = +(q.get('cols') || 6), rows = Math.ceil(cells.length / cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 32), (W / cols) / (H / rows), 0.01, 200);
+renderer.setScissorTest(true); renderer.autoClear = false; renderer.clear();
+const hp = new THREE.Vector3(), info = [];
+for (let i = 0; i < cells.length; i++) {
+  const [name, ts, az = '60', r = '3.0', cy = '', wk = 'ak74m', fz = '0'] = cells[i];
+  const clip = clips.find(c => c.name === name);
+  mixer.stopAllAction(); mixer.uncacheRoot(root);
+  for (const k in weapons) weapons[k].removeFromParent();
+  const wobj = weapons[wk]; if (wobj && sock) sock.add(wobj);
+  let t = 0;
+  if (clip) { const a = mixer.clipAction(clip); a.play(); t = +ts > 1 ? +ts - 1000 : clip.duration * +ts; mixer.setTime(Math.min(t, clip.duration - 1e-4)); }
+  // magazine on the left hand between mag_out and mag_in
+  const mag = wobj ? (wobj.userData.mag ||= wobj.getObjectByName('magazine')) : null; if (mag) { mag.userData.home ||= { p: mag.parent, pos: mag.position.clone(), q: mag.quaternion.clone() }; const h = mag.userData.home, ev = EV[name]?.events || {};
+    const out = ev.mag_out != null && t >= ev.mag_out && t < ev.mag_in;
+    if (out && magSock && q.get('magmode') === 'attach') { h.p.add(mag); mag.position.copy(h.pos); mag.quaternion.copy(h.q); mixer.setTime(ev.mag_out); root.updateMatrixWorld(true); magSock.attach(mag); mixer.setTime(Math.min(t, clip.duration - 1e-4)); }
+    else if (out && magSock) { magSock.add(mag); mag.position.set(0, 0, 0); mag.quaternion.identity(); } else { h.p.add(mag); mag.position.copy(h.pos); mag.quaternion.copy(h.q); } }
+  root.updateMatrixWorld(true); hips.getWorldPosition(hp); hp.z += +fz;
+  const a = +az * Math.PI / 180, e = 12 * Math.PI / 180, R = +r, y = cy === '' ? Math.max(0.35, hp.y) : +cy;
+  cam.position.set(hp.x + R * Math.cos(e) * Math.sin(a), y + R * Math.sin(e), hp.z + R * Math.cos(e) * Math.cos(a)); cam.lookAt(hp.x, y, hp.z);
+  sun.position.set(hp.x + 6, 10, hp.z + 5); sun.target.position.set(hp.x, 0, hp.z);
+  const x = (i % cols) * W / cols, yy = (rows - 1 - Math.floor(i / cols)) * H / rows;
+  renderer.setViewport(x, yy, W / cols, H / rows); renderer.setScissor(x, yy, W / cols, H / rows); renderer.clear(); renderer.render(scene, cam);
+  const l = document.createElement('div'); l.className = 'l'; l.style.left = (x + 2) + 'px'; l.style.top = (Math.floor(i / cols) * H / rows + 2) + 'px';
+  l.textContent = clip ? `${name} ${t.toFixed(2)}s` : `${name} (missing)`; document.body.appendChild(l);
+  let extra = '';
+  if (mag && clip) { root.updateMatrixWorld(true); const mw = mag.getWorldPosition(new THREE.Vector3()), lh = root.getObjectByName('LeftHand').getWorldPosition(new THREE.Vector3()), wb = wobj.getWorldPosition(new THREE.Vector3()); extra = ` mag-lhand ${mw.distanceTo(lh).toFixed(3)} mag-gun ${mw.distanceTo(wb).toFixed(3)} parent ${mag.parent.name}`; }
+  info.push((clip ? name + ':' + clip.duration.toFixed(2) : name + ':missing') + extra);
+}
+if (q.get('title')) { const l = document.createElement('div'); l.className = 'l'; l.style.right = '2px'; l.style.bottom = '2px'; l.style.fontSize = '14px'; l.textContent = q.get('title'); document.body.appendChild(l); }
+window.__info = info; window.__done = true;
+</script></body></html>

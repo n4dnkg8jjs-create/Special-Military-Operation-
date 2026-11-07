@@ -74,7 +74,7 @@ TCELL = 2        # tiling-camo region = TCELL x TCELL repeats of the tile
 # tile region size (px) per tiling material: one 0.5 m repeat. 1024 = the per-part material's own resolution
 TILE_PX = {'emr_gear': 640, 'multicam_gear': 640, 'mm14_gear': 640, 'coyote_webbing': 192, 'ranger_gear': 192}
 # texel-density targets (scale relative to each source texture, before the global fit multiplier)
-SRC_SCALE = {'camo': 1.0, 'multicam': 0.8, 'skin_': 0.5, 'hands_skin': 0.7, 'eye': 0.5}
+SRC_SCALE = {'camo': 1.0, 'multicam': 0.8, 'skin_': 0.5, 'hands_skin': 0.7, 'eye': 0.5, 'pack_': 1.0}   # pack_: soldiers_v9 painted packs (packs.PXM)
 GEAR_PX_PER_M = 1229.0   # = uniform texel density at 2048^2 (0.81 mm/texel)
 
 

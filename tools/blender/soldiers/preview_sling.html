@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<script>window.addEventListener('error',e=>{console.error(e.message);window.__done=true});window.addEventListener('unhandledrejection',e=>{console.error(String(e.reason));window.__done=true});</script>
+<script type="module">
+// Kit / slung-weapon check with the game's own Soldier class (src/game/soldier.js): presets forced per man, weapon slung exactly as the
+// game does (weaponTo / side weapon / ATGM kit).
+//  L= lineup: fac:roleset+idx:clip:t:preset[:extra] ; ...   roleset S squad, A assault, C crew, T atgm, F fpv
+//     extra: rpg22 (raise the RPG-22), side (RPG gunner swapped to his rifle)
+//  az= list of camera azimuths (deg, 180 = from behind) -> one row per az;  dist= el= ty= fov= w= h=  each=1: one view per man
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { FACTIONS, SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES } from '/src/config.js';
+import { Soldier, prepareSoldierAssets } from '/src/game/soldier.js';
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 1400), H = +(q.get('h') || 800);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setScissorTest(true); document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa3ab);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.5;
+const sun = new THREE.DirectionalLight(0xfff1dd, 2.6); sun.position.set(4, 7, 5); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 }); sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.02; scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xcfd8e0, 0x3a3328, 0.6));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x6b6458, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const loader = new GLTFLoader(), assets = { gltf: {}, manifest: {} };
+const files = ['soldier_ua', 'soldier_ru', 'soldier_anims', 'ak74m', 'ak12', 'ak74m_optic', 'pkm', 'rpg7', 'rpg22', 'pm', 'kornet', 'stugna', 'atgm_tube_carried'];
+const sdir = q.get('sdir');   // sdir=<dir>: soldier_ua / soldier_ru from a build cache instead of assets/
+await Promise.all(files.map(async f => { try { assets.gltf[f] = await loader.loadAsync(sdir && /^soldier_(ua|ru)$/.test(f) ? `${sdir}/${f}.glb` : `/assets/soldiers/${f}.glb`); } catch (e) { } }));
+assets.manifest.soldiers = await (await fetch('/assets/soldiers/manifest.json')).json();
+prepareSoldierAssets(assets);
+const SETS = { S: SQUAD_ROLES, A: ASSAULT_ROLES, C: CREW_ROLES, T: ATGM_ROLES, F: FPV_ROLES };
+const lineup = (q.get('L') || 'UA:S2:idle_rifle:0.3:combo_1').split(';');
+const dx = +(q.get('dx') || 1.2), n = lineup.length, men = [];
+lineup.forEach((spec, i) => {
+  const [fid, rk, clip0, t, preset, extra] = spec.split(':');
+  const role = SETS[rk[0]][+rk.slice(1)];
+  const sq = { assault: rk[0] === 'A', crew: rk[0] === 'C', forceCombo: preset || undefined };
+  const s = new Soldier(sq, i, role, FACTIONS[fid], scene);
+  s.pos.set((i - (n - 1) / 2) * dx, 0, 0); s.heading = +(q.get('heading') || 0); s.sync();
+  let clip = clip0;
+  if (extra === 'rpg22') { s.raiseLauncher(); }
+  if (extra === 'side' && s.sideKey) { s.origWeapon = { key: s.weaponKey }; s.weaponKey = s.sideKey; s.showHeld?.(); }
+  s.play(clip, 0); const a = s.cur; if (a) { a.time = a.getClip().duration * (+t || 0); s.mixer.update(0); }
+  s.magTick?.(); s.stowLod?.(false);
+  if (s.lods) for (const o of s.lods) o.visible = o.userData.variantOn && o.userData.lod === 0;
+  men.push(s);
+});
+scene.updateMatrixWorld(true);
+const azs = (q.get('az') || '180').split(',').map(Number), each = !!q.get('each');
+const views = each ? azs.length * n : azs.length, cols = Math.min(views, +(q.get('cols') || (each ? n : 1))), rows = Math.ceil(views / cols);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 30), (W / cols) / (H / rows), 0.05, 200);
+const d = +(q.get('dist') || (each ? 2.6 : 7)), el = (+(q.get('el') || 12)) * Math.PI / 180;
+let v = 0;
+for (const azd of azs) for (let k = 0; k < (each ? n : 1); k++, v++) {
+  const az = azd * Math.PI / 180;
+  const tgt = each ? new THREE.Vector3(men[k].pos.x, +(q.get('ty') || 1.1), 0) : new THREE.Vector3(+(q.get('tx') || 0), +(q.get('ty') || 1.1), 0);
+  if (each && q.get('bone')) { const b = men[k].model.getObjectByName(q.get('bone')); if (b) b.getWorldPosition(tgt); }
+  cam.position.set(tgt.x + d * Math.cos(el) * Math.sin(az), tgt.y + d * Math.sin(el), tgt.z + d * Math.cos(el) * Math.cos(az)); cam.lookAt(tgt);
+  const c = v % cols, r = Math.floor(v / cols), vw = W / cols, vh = H / rows;
+  renderer.setViewport(c * vw, (rows - 1 - r) * vh, vw, vh); renderer.setScissor(c * vw, (rows - 1 - r) * vh, vw, vh);
+  renderer.render(scene, cam);
+}
+window.__info = { soldiers: n, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, men: men.map(s => ({ w: s.weaponKey, sock: s.wSock, sling: !!s.slingOn, combo: s.comboName })) };
+window.__done = true;
+</script></body></html>

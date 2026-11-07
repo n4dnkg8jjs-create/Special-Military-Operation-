@@ -103,7 +103,15 @@ export class Combat {
     let t = s.target;
     s.groundAim = false;
     if (t && s.fireGuard && s.fireGuard(t)) { s.target = t = null; }   // v6: a mark too near own men (trench clearing: the fire group)
-    if (!t) { if ((sq.fireAt || s.fireAt) && !sq.holdFire) this.fireAtGround(s, dt); return; }
+    s.lullT = t ? 0 : (s.lullT || 0) + dt;
+    if (!t) {
+      if ((sq.fireAt || s.fireAt) && !sq.holdFire) this.fireAtGround(s, dt);
+      // v8 tactical reload: a lull (no target for 3 s, standing still, magazine under a third) - he tops up before the next contact;
+      // the part-used magazine is kept (finishReload), unlike the emergency reload when the rifle runs dry
+      else if (s.lullT > 3 && (s.weapon.type === 'rifle' || s.weapon.type === 'pistol') && s.inMag > 0 && s.inMag < s.weapon.mag / 3 && s.mags > 0 &&
+        !(s.reloadT > 0) && s.vel.lengthSq() < 0.05 && !s.noRifle && !s.supportClip && !s.dragging && !s.aboard && s.effective) this.startReload(s);
+      return;
+    }
     if (s.noRifle || s.supportClip) return;                          // busy on the launcher / drone controls
     if (sq.holdFire && !(sq.order?.type === 'attack')) return;
     if (s.ducking && s.inside !== 'ride') return;                     // head down behind cover
@@ -243,7 +251,11 @@ export class Combat {
     s.reloadT = s.weapon.reload * (s.state === 'light' ? 1.4 : 1) * rf(0.9, 1.2);
     if (this.g.camDist(s.pos) < 40) this.g.sfx('reload', s.pos);
   }
-  finishReload(s) { if (s.mags > 0) { s.mags--; s.inMag = s.weapon.mag; } s.outOfAmmo = false; }
+  finishReload(s) {
+    // v8: a tactical reload keeps the part-used magazine: its rounds are pooled and make up a full one again
+    if (s.inMag > 0 && s.mags > 0) { s.looseRounds = (s.looseRounds || 0) + s.inMag; if (s.looseRounds >= s.weapon.mag) { s.looseRounds -= s.weapon.mag; s.mags++; } }
+    if (s.mags > 0) { s.mags--; s.inMag = s.weapon.mag; } s.outOfAmmo = false;
+  }
   hitChance(s, t, W, d) {
     let p = W.type === 'mg' ? 0.32 : 0.42;
     // aimed fire falls off steeply with range (wind, holdover, a man-sized target is tiny at 300 m)

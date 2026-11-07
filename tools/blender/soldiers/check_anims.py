@@ -44,7 +44,8 @@ AIM_BUTT.update(aim_prone=POCKET_PRONE, fire_prone=POCKET_PRONE)
 STAND = ['idle_rifle', 'aim_stand', 'fire_stand', 'peek_left', 'peek_right', 'fire_peek_left', 'fire_peek_right', 'reload_stand', 'hit_react',
          'aim_launcher', 'cqb_stack', 'cover_duck']
 KNEEL = ['crouch_idle', 'aim_crouch', 'fire_crouch', 'suppressed_cower', 'reload_crouch', 'peek_crouch_left', 'peek_crouch_right',
-         'fire_peek_crouch_left', 'fire_peek_crouch_right', 'aim_launcher_kneel', 'launcher_raise_kneel', 'fire_launcher_kneel', 'treat_wounded']
+         'fire_peek_crouch_left', 'fire_peek_crouch_right', 'aim_launcher_kneel', 'launcher_raise_kneel', 'fire_launcher_kneel', 'treat_wounded',
+         'reload_mg_crouch']
 # partially planted: (clip, foot, list of (t0, t1) windows when that foot is planted)
 PARTIAL = {'throw_grenade_window': {'Right': [(0, 9)], 'Left': [(0, 0.5), (0.85, 9)]},
            'launcher_raise': {'Left': [(0, 0.12), (0.5, 9)], 'Right': [(0.6, 9)]},
@@ -55,7 +56,8 @@ DEATHS = ['death_crumple', 'death_front', 'death_back']
 import clips_death as _CD                       # deaths v2 (clips_death.py): window clips rest against the wall, not only on the floor
 DEATHS += [n for n in _CD.CLIPS]
 _DEATH_SNAP = _CD.SNAP
-LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone', 'wounded_crawl', 'wounded_ground']   # trunk rests on the ground
+LYING = ['aim_prone', 'fire_prone', 'prone_idle', 'prone_crawl', 'pinned_prone', 'wounded_crawl', 'wounded_ground',
+         'reload_prone', 'reload_mg_prone']   # trunk rests on the ground (v8: prone reloads)
 # deliberate fast moves where > 25 deg/frame is allowed (clip -> (t0, t1, limit deg))
 SNAP = {'hit_react': (0.0, 0.15, 40.0), 'throw_grenade_window': [(0.40, 0.70, 30.0), (0.70, 0.95, 45.0)], 'death_front': (0.75, 0.95, 40.0), 'death_back': (0.0, 9, 40.0), 'throw_grenade': (0.0, 9, 40.0),
         'death_crumple': (0.25, 1.4, 35.0)}
@@ -221,6 +223,13 @@ def left_spec(name, F):
         m = (t <= 0.22) | (t >= 2.47); tg[m] = GRIP_L; rot[m] = True
         for te in (0.70, 1.80):
             tg[int(round(te * FPS))] = [0.032, -0.055, 0.112]
+    elif name == 'reload_prone':          # v8 (clips_v8.py): prone grip spot at both ends, same palm pose at mag_out / mag_in
+        m = (t <= 0.25) | (t >= 2.75); tg[m] = GRIP_L + [0, 0, -0.09]; rot[m] = True
+        for te in (0.78, 2.05):
+            tg[int(round(te * FPS))] = [0.032, -0.055, 0.112]
+    elif name in ('reload_mg_prone', 'reload_mg_crouch'):   # v8 PKM belt change: the aim clips' support-hand spot at both ends
+        pr = name == 'reload_mg_prone'
+        m = (t <= 0.12 + 1e-6) | (t >= t[-1] - (0.45 if pr else 0.5) + 1e-6); tg[m] = GRIP_L + ([0, 0, -0.09] if pr else [0, 0, 0]); rot[m] = True
     elif name in VEH and VCHECK(name).get('grip'):
         m = np.zeros(F, bool)
         for a, b in VCHECK(name)['grip']:
@@ -757,6 +766,8 @@ def main():
              ('launcher_raise_kneel', -1, 'aim_launcher_kneel', 0), ('fire_launcher', 0, 'aim_launcher', 0), ('fire_launcher_kneel', 0, 'aim_launcher_kneel', 0),
              ('reload_stand', 0, 'aim_stand', 0), ('reload_stand', -1, 'aim_stand', 0), ('reload_crouch', 0, 'aim_crouch', 0), ('reload_crouch', -1, 'aim_crouch', 0),
              ('pistol_fire', 0, 'pistol_aim', 0), ('pistol_fire', -1, 'pistol_aim', 0),
+             ('reload_prone', 0, 'aim_prone', 0), ('reload_prone', -1, 'aim_prone', 0), ('reload_mg_prone', 0, 'aim_prone', 0),
+             ('reload_mg_prone', -1, 'aim_prone', 0), ('reload_mg_crouch', 0, 'aim_crouch', 0), ('reload_mg_crouch', -1, 'aim_crouch', 0),
              ('atgm_fire', 0, 'atgm_aim', 0), ('atgm_fire', -1, 'atgm_aim', 0), ('atgm_setup', -1, 'atgm_aim', 0), ('atgm_setup_stugna', -1, 'atgm_aim', 0),
              ('atgm_pack', 0, 'atgm_aim', 0), ('atgm_pack_stugna', 0, 'atgm_aim', 0), ('dodge_dive', -1, 'prone_idle', 0), ('dodge_dive_R', -1, 'prone_idle', 0),
              ('dodge_dive_L', -1, 'prone_idle', 0)]

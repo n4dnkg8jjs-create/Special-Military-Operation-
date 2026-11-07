@@ -4,6 +4,8 @@ import * as Fallback from '../engine/fallback.js';
 import { WEAPONS, TUNING, ARMOR } from '../config.js';
 import { Ragdoll, samplePose, ragdollSlot } from './ragdoll.js';
 import { DamageSkin, damageTick } from './soldierDamage.js';
+import { poseInit, poseTick, poseDeath } from './soldierPose.js';   // v8: per-shot recoil, support-hand IK, death perturbation
+import { swayInit, swayPre, swayPost } from './weaponSway.js';   // v9 sway: held-weapon inertia (turn lag, start / stop, gait bob)
 
 export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22', pm: 'pm' };
 // a crewman with a pistol uses the pistol clips when they exist, otherwise the rifle ones
@@ -32,6 +34,15 @@ export function hasClip(name) { return !!SHARED?.clips[name]; }
 export function clipEvents(name) { return SHARED_EVENTS[name] || {}; }
 
 function pick(arr, r) { return arr[Math.floor(r * arr.length) % arr.length]; }
+// v8: empty magazines let go in emergency reloads: they fall (~0.3 s, ticked by the man who dropped them) onto the ground and lie
+// there for a minute (at most 60 in the world, oldest removed first)
+const DROPPED_MAGS = [];
+function disposeMag(d) { d?.o?.parent?.remove(d.o); }
+function fallMag(d, dt) {
+  d.t += dt; const k = Math.min(1, d.t / 0.32);
+  d.o.position.y = d.y0 + (d.gy - d.y0) * k * k; d.o.quaternion.slerpQuaternions(d.q0, d.q1, Math.min(1, d.t / 0.3)); d.o.updateMatrixWorld(true);
+  return k >= 1;
+}
 
 export class Soldier {
   constructor(squad, idx, role, faction, scene) {
@@ -66,7 +77,8 @@ export class Soldier {
       const combos = []; m.traverse(o => { const mm = o.name.match(/^((?:assault_|crew_)?combo_\d+)$/); if (mm) combos.push(mm[1]); });
       const pre = this.squad.crew && combos.some(c => c.startsWith('crew_')) ? 'crew_' : this.assault && combos.some(c => c.startsWith('assault_')) ? 'assault_' : '';
       const pool = combos.filter(c => (c.match(/^(assault_|crew_)/)?.[1] || '') === pre);
-      const combo = pool.length ? pool[Math.floor(r() * pool.length)] : null;
+      const combo = pool.length ? (pool.includes(this.squad.forceCombo) ? this.squad.forceCombo : pool[Math.floor(r() * pool.length)]) : null;   // (forceCombo: preview pages)
+      this.comboName = combo;
       const gloves = this.assault || r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : this.assault ? 0.7 : 0.3), knee = this.assault || r() < 0.45;
       const legL = this.faction.id === 'UA' ? r() < 0.35 : r() < 0.15;
       const vis = core => {
@@ -108,8 +120,10 @@ export class Soldier {
       this.attachWeapon();
       this.attachSupportKit();
       if (A.gltf.rpg22 && this.rpg22) this.rpg22Tpl = A.gltf.rpg22.scene;
-      if (this.sideKey && A.gltf[this.sideKey]) { const back = m.getObjectByName('weapon_socket_back'); if (back) back.add(A.gltf[this.sideKey].scene.clone()); }
+      if (this.sideKey && A.gltf[WEAPON_ASSET[this.sideKey]]) this.stowSide();   // v9 slung: the RPG gunner's AK on its sling on his back (was loose on weapon_socket_back)
       this.play('idle_rifle', 0);
+      poseInit(this);   // v8 procedural pose layer (soldierPose.js)
+      swayInit(this);   // v9 sway
     } else {
       const fb = Fallback.soldier(this.faction.tape); root.add(fb); this.model = fb; this.fallback = true;
     }
@@ -133,13 +147,38 @@ export class Soldier {
     if (this._heldKey === k) return;
     if (this.weaponObj) {
       S[this._heldKey] = [this.weaponObj, this.muzzleObj, this.mag, this.magHome, this.wLod];
-      const back = this.slingSock || this.sockets.back;
-      if (back) { back.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); } else this.weaponObj.visible = false;
+      this.stow(this.weaponObj, this._heldKey);   // v9 slung: on its sling on his back (RPG-7 along the sling line, pistol holstered)
     }
     const e = S[k];
     if (e) { [this.weaponObj, this.muzzleObj, this.mag, this.magHome, this.wLod] = e; this.sockets.R.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.weaponObj.visible = true; this.wSock = 'R'; this.far = undefined; }
     else this.attachWeapon();
     this._heldKey = k; this.curName = null;
+    this.slingUpdate();   // v9 slung
+  }
+  // v9 slung: a weapon not in his hands hangs on its sling on his back - the preset's sling socket (Spine1 child, measured onto the
+  // outer surface of that preset's back gear: plate carrier / hydration + dump pouch / assault pack / rucksack), rigid with the chest,
+  // the sling strap (one small skinned mesh per preset) shown while anything hangs there. RPG-7: along the same sling line, optic out;
+  // pistol: in the holster (hidden). Without a sling socket (per-part fallback): weapon_socket_back as before.
+  stow(o, key) {
+    if (!o) return;
+    const sock = this.slingSock || this.sockets?.back;
+    if (!sock || key === 'pm') { o.visible = false; o.parent?.remove(o); this.slingUpdate(); return; }
+    sock.add(o); o.visible = true; this._stowFar = undefined;
+    if (key === 'rpg7' && this.slingSock) { o.position.set(0, 0.16, 0.18); o.quaternion.set(0, 0, 1, 0); } else { o.position.set(0, 0, 0); o.quaternion.identity(); }
+    if (this.backKitDepth && sock === this.slingSock) o.position.x -= this.backKitDepth;   // over the TLC / tripod (sling socket +X = toward the body)
+    this.slingUpdate();
+  }
+  slingUpdate() { this.showSling(!!this.slingSock && this.slingSock.children.some(c => c.visible !== false)); }
+  stowSide() {   // v9 slung: the side arm's model, kept in showHeld's set so a swap brings this one to his hands
+    const g = SHARED.assets.gltf[WEAPON_ASSET[this.sideKey]], w = g.scene.clone(), lod = [[], []];
+    w.traverse(o => { if (o.isMesh) { o.castShadow = true; (/_LOD1$/i.test(o.name) ? lod[1] : lod[0]).push(o); } }); for (const o of lod[1]) o.visible = false;
+    const mag = w.getObjectByName('magazine');
+    (this._wSet ||= {})[this.sideKey] = [w, w.getObjectByName('muzzle'), mag, mag ? { parent: mag.parent, pos: mag.position.clone(), quat: mag.quaternion.clone() } : null, lod[1].length ? lod : null];
+    this.stow(w, this.sideKey);
+  }
+  stowLod(far) {   // v9 slung: LOD of whatever hangs on the sling (the held weapon's LOD is switched with the body's)
+    if (far === this._stowFar || !this.slingSock) return; this._stowFar = far;
+    for (const c of this.slingSock.children) c.traverse(o => { if (o.isMesh) o.visible = /_LOD1$/i.test(o.name) ? far : !far; });
   }
   // swap the carried weapon (ATGM survivor leaving the launcher and drawing his Makarov)
   setWeapon(wk) {
@@ -181,6 +220,22 @@ export class Soldier {
       }
       this.fpvController = put(ctl, this.sockets.R, [0, 0, 0], [0, 0, 0], 'fpvKit'); if (this.fpvController) this.fpvController.visible = false;
     }
+    this.fitBackKit();   // v9 slung
+  }
+  // v9 slung: the TLC / folded tripod (authored in the weapon_socket_back frame, one placement for every preset) floated up to 16 cm
+  // off a bare plate carrier and sank into a rucksack. Move this man's weapon_socket_back (and so everything authored in its frame,
+  // support.js props included) along the chest axis so the kit's inner side rests on his preset's back gear (outer surface = the sling
+  // socket's rifle footprint); a rifle slung over it (drag / wounded clips) lies on the kit, not through it.
+  fitBackKit() {
+    const back = this.sockets?.back, kit = (this.kitObjs || []).filter(o => o.userData.atgmKit || o.userData.atgmFolded);
+    if (!back || !kit.length || !this.slingSock || back.parent !== this.slingSock.parent) return;
+    const sp = back.parent; this.model.updateWorldMatrix(true, true);
+    const inv = sp.matrixWorld.clone().invert(), v = new THREE.Vector3(); let zin = -1e9, zout = 1e9;
+    for (const o of kit) o.traverse(x => { if (!x.isMesh || /_LOD1$/i.test(x.name)) return; const P = x.geometry.attributes.position, M = new THREE.Matrix4().multiplyMatrices(inv, x.matrixWorld);
+      for (let i = 0; i < P.count; i += 3) { v.fromBufferAttribute(P, i).applyMatrix4(M); if (Math.abs(v.x) < 0.2) { zin = Math.max(zin, v.z); zout = Math.min(zout, v.z); } } });
+    if (zin < -1e8) return;
+    const dz = this.slingSock.position.z + 0.039 - 0.004 - zin;   // (sling socket: rifle origin 39 mm out from the gear surface)
+    back.position.z += dz; this.backKitDepth = zin - zout;
   }
   tubeStandIn() { const g = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 1.2, 10), new THREE.MeshStandardMaterial({ color: 0x4b5039, roughness: 0.8 })); g.rotation.x = 0; return g; }
   // ------------------------------------------------------------ animation
@@ -210,11 +265,12 @@ export class Soldier {
     a.play(); this.cur = a; this.curName = name;
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
-      if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000));
-      else if (name === 'fpv_pilot' && SHARED_EVENTS.fpv_pilot?.rifle_ground?.t && this.weaponObj) {
-        const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground'; this.showSling(false);
+      if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000 / (this.deathTs || 1)));
+      else if ((name === 'fpv_pilot' || /^atgm_/.test(asked)) && SHARED_EVENTS.fpv_pilot?.rifle_ground?.t && this.weaponObj) {   // v9 slung: ATGM crew lay it down too (TLC / tripod on the back, kneeling)
+        const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground'; this.slingUpdate();
+        if (name !== 'fpv_pilot') this.weaponObj.position.set(-0.5, rg.t[1], -0.3);   // (beside and behind him: clear of the launcher in front)
       }
-      else this.weaponTo(/^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
+      else this.weaponTo(this.launcherObj ? 'back' : /^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
     }
   }
   // v7: the grenade in the right hand (weapon_socket) from the throw clip's pin pull to its release (events); combat.startThrow /
@@ -232,7 +288,7 @@ export class Soldier {
   raiseLauncher() {
     if (!this.rpg22Tpl || this.launcherObj) return;
     this.launcherObj = this.rpg22Tpl.clone(); this.launcherObj.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    if (this.weaponObj) this.weaponObj.visible = false;
+    if (this.weaponObj && !this.dropped) this.weaponTo('back');   // v9 slung: the rifle on its sling while he fires (was hidden)
     (this.sockets?.R || this.root).add(this.launcherObj);
     this.muzzleObjSaved = this.muzzleObj; this.muzzleObj = this.launcherObj.getObjectByName('muzzle') || this.muzzleObj;
   }
@@ -240,24 +296,24 @@ export class Soldier {
     const l = this.launcherObj; if (!l) return; this.launcherObj = null;
     const p = l.getWorldPosition(new THREE.Vector3()); this.scene.add(l);
     l.position.set(p.x + (Math.random() - .5), 0.05, p.z + (Math.random() - .5)); l.rotation.set(0, Math.random() * 6.28, Math.PI / 2); l.updateMatrixWorld(true);
-    if (this.weaponObj) this.weaponObj.visible = true; this.muzzleObj = this.muzzleObjSaved || this.muzzleObj;
+    if (this.weaponObj && !this.dropped) { this.weaponObj.visible = true; this.weaponTo('R'); } this.muzzleObj = this.muzzleObjSaved || this.muzzleObj;   // v9 slung: back into his hands
   }
   weaponTo(k) {
     if (this.wSock === k || !this.sockets[k]) return;
     // slung on the back: the rifle hangs on its sling (preset-specific socket over whatever gear is on the back) and the sling shows
-    let sock = this.sockets[k];
-    if (k === 'back' && this.slingSock) sock = this.slingSock;
-    sock.add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.wSock = k;
-    this.showSling(k === 'back' && !!this.slingSock);
+    if (k === 'back') { this.stow(this.weaponObj, this.weaponKey); this.wSock = k; return; }   // v9 slung
+    this.sockets[k].add(this.weaponObj); this.weaponObj.position.set(0, 0, 0); this.weaponObj.quaternion.identity(); this.wSock = k;
+    if (this.weaponKey === 'pm') this.weaponObj.visible = true;   // (out of the holster)
+    this.slingUpdate();
   }
   showSling(on) { if (this.slingNode && this.slingOn !== on) { this.slingOn = on; this.slingNode.traverse(o => { if (o.isMesh) o.visible = on; }); } }
   dropWeapon() {
-    if (this.dropped || !this.weaponObj) return; this.dropped = true; this.showSling(false);
+    if (this.dropped || !this.weaponObj) return; this.dropped = true;
     const w = this.weaponObj; const p = w.getWorldPosition(new THREE.Vector3());
     const gh = this.squad?.game?.city?.groundHeight, wx = p.x + (Math.random() - .5) * 0.6, wz = p.z + (Math.random() - .5) * 0.6;
     this.scene.add(w); w.position.set(wx, (this.inBuilding || !gh ? this.pos.y : gh(wx, wz)) + 0.04, wz);
     w.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2 * (Math.random() < .5 ? 1 : -1)); w.updateMatrixWorld(true);
-    this.droppedWeapon = w;
+    this.droppedWeapon = w; this.slingUpdate();   // v9 slung (a slung side arm stays on his back)
   }
   magTick() {
     if (!this.mag || !this.sockets.mag || !this.cur) return;
@@ -265,9 +321,34 @@ export class Soldier {
     const out = ev && ev.mag_out != null && t >= ev.mag_out && t < ev.mag_in;
     if (out && this.mag.parent !== this.sockets.mag) { this.sockets.mag.add(this.mag); this.mag.position.set(0, 0, 0); this.mag.quaternion.identity(); }
     else if (!out && this.mag.parent !== this.magHome.parent) { this.magHome.parent.add(this.mag); this.mag.position.copy(this.magHome.pos); this.mag.quaternion.copy(this.magHome.quat); }
+    // v8 emergency reload (the magazine ran dry): the empty is let go as it comes out of the well (it falls to the ground and stays
+    // there a while), the hand goes to the pouch empty and comes back with the fresh one; a tactical reload (topping up in a lull)
+    // keeps the clip's retention - the part-used magazine goes back into the pouch
+    const pz = ev?.pouch;
+    if (out && this.reloadEmpty && pz) {
+      if (t >= ev.mag_out + 0.1 && t < pz[0] && !this.magDropped) { this.magDropped = true; this.dropMag(); }
+      const vis = !this.magDropped || t >= pz[0] + 0.05;
+      if (this.mag.visible !== vis) this.mag.visible = vis;
+    } else if (!this.mag.visible) this.mag.visible = true;
+  }
+  dropMag() {
+    const m = this.mag, scene = this.scene; if (!m || !scene) return;
+    m.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3());
+    if (!isFinite(c.x)) return;
+    const piv = new THREE.Group(); piv.position.copy(c); scene.add(piv); piv.updateMatrixWorld(true);
+    const o = m.clone(); o.visible = true; o.traverse(x => { if (x.isMesh) { x.castShadow = true; x.visible = !/_LOD1$/i.test(x.name); } });
+    m.getWorldPosition(o.position); m.getWorldQuaternion(o.quaternion); m.getWorldScale(o.scale); scene.add(o); piv.attach(o);
+    const gh = this.squad?.game?.city?.groundHeight, gy = (this.inStructure() || !gh ? this.pos.y : gh(c.x, c.z)) + 0.025;
+    const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), Math.random() * Math.PI * 2, 0, 'YXZ'));
+    // (lying on its side: the magazine's own geometry spans ~±0.1 m about this pivot; resting pose = a random turn of it)
+    const d = { o: piv, q0: piv.quaternion.clone(), q1, y0: c.y, gy: Math.min(gy, c.y), t: 0, born: performance.now() };
+    (this.fallMags ||= []).push(d); DROPPED_MAGS.push(d);
+    while (DROPPED_MAGS.length > 60 || (DROPPED_MAGS.length && performance.now() - DROPPED_MAGS[0].born > 60000)) disposeMag(DROPPED_MAGS.shift());
   }
   animate(dt, camDist) {
     damageTick(this, dt);
+    if (this.fallMags?.length) this.fallMags = this.fallMags.filter(d => !fallMag(d, this.state === 'dead' ? 1 : dt));   // v8 dropped magazine on its way down
     if (this.state === 'dead' && this.deathTick(dt, camDist)) return;
     const sp = this.vel.length();
     const st = this.stance;
@@ -319,12 +400,21 @@ export class Soldier {
       else if (this.state === 'light' && this.legWound) clip = 'limp_walk';
       else if (st === 'crouch' && sp < 2.2) clip = 'crouch_walk';
       else if (sp > 2.4) clip = 'run_rifle'; else clip = 'walk_rifle';
-      ts = THREE.MathUtils.clamp(sp / (CLIP_SPEED[clip] || 1.4), 0.5, 1.8);
+      ts = THREE.MathUtils.clamp(sp / (CLIP_SPEED[clip] || 1.4), 0.3, 1.8);   // v8: down to 0.3 (was 0.5: men easing to a halt skated)
       alt.push('walk_rifle');
-    } else if (this.reloadT > 0) { clip = st === 'stand' ? 'reload_stand' : 'reload_crouch'; alt = ['reload_stand', 'aim_crouch']; }
+    } else if (this.reloadT > 0) {
+      // v8: reload matched to stance and weapon (prone: reload_prone - the kneeling clip popped a prone man onto his knee; PKM: belt-box
+      // change), time-scaled so the clip ends back on the aim pose as the reload finishes (it froze on its last frame or was cut short)
+      const mg = this.weapon?.type === 'mg';
+      clip = mg && st !== 'stand' ? (st === 'prone' ? 'reload_mg_prone' : 'reload_mg_crouch') : st === 'prone' ? 'reload_prone' : st === 'stand' ? 'reload_stand' : 'reload_crouch';
+      alt = st === 'prone' ? ['aim_prone'] : ['reload_stand', 'aim_crouch'];
+      if (!/^reload/.test(this.curName || '') || this.reloadSpan == null) { this.reloadSpan = this.reloadT; this.reloadEmpty = this.inMag <= 0; this.magDropped = false; }
+      ts = THREE.MathUtils.clamp(clipDuration(clip, 2.6) / Math.max(0.5, this.reloadSpan), 0.6, 1.6);
+    }
     else if (this.ducking) { if (st === 'prone') { clip = 'pinned_prone'; alt = ['prone_idle']; } else { clip = 'cover_duck'; alt = ['suppressed_cower', 'crouch_idle']; } }
-    else if (this.peek && this.target) { const L = this.peek < 0 ? 'left' : 'right', c = st === 'stand' ? '' : 'crouch_'; clip = (this.firingT > 0 ? 'fire_peek_' : 'peek_') + c + L; alt = this.firingT > 0 ? ['peek_' + c + L, st === 'stand' ? 'aim_stand' : 'aim_crouch'] : [st === 'stand' ? 'aim_stand' : 'aim_crouch']; }
-    else if ((this.target || this.groundAim) && this.firingT > 0) { clip = st === 'prone' ? 'fire_prone' : st === 'crouch' ? 'fire_crouch' : 'fire_stand'; alt = [st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand']; }
+    // v8: firing keeps the aim / peek clip; each round kicks the procedural recoil (soldierPose.js) in step with the real rate of fire
+    // (the looping fire_* cycles ran at 7.5 Hz whatever was fired and cross-faded aim <-> fire every burst)
+    else if (this.peek && this.target) { const L = this.peek < 0 ? 'left' : 'right', c = st === 'stand' ? '' : 'crouch_'; clip = 'peek_' + c + L; alt = [st === 'stand' ? 'aim_stand' : 'aim_crouch']; }
     else if (this.target || this.groundAim) { clip = st === 'prone' ? 'aim_prone' : st === 'crouch' ? 'aim_crouch' : 'aim_stand'; alt = ['aim_stand', 'idle_rifle']; }
     else { clip = st === 'prone' ? 'prone_idle' : st === 'crouch' ? 'crouch_idle' : 'idle_rifle'; alt = ['idle_rifle']; }
     // v5: a man lying on a slope lies along it (pitch the model about the hips to the ground under head and feet) instead of
@@ -339,15 +429,24 @@ export class Soldier {
     }
     if (this.netClip && this.state !== 'dead') { clip = this.netClip; alt = ['idle_rifle']; ts = this.netTs || 1; }   // versus joiner: the host's exact clip
     if (this.mixer) {
-      this.play(clip, this.state === 'dead' ? 0.12 : 0.3, ts, alt);
+      // v8 blend times: snappy into / out of the aim, reload and hit clips, softer between gaits and stances
+      const fade = this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
+      if (this.state === 'dead') ts = this.deathTs || 1;
+      this.play(clip, fade, ts, alt);
       if (this.netClip && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
       // (not drawn - off screen, or an enemy nobody has spotted / a man in a cellar - is the same as off screen)
       const every = this.inView === false || this.visible === false ? 0.5 : camDist > 160 ? 0.12 : camDist > 90 ? 0.06 : 0;
-      if (this.animAcc >= every) { const adv = this.animAcc; this.mixer.update(adv); this.animAcc = 0; if (camDist < 60) this.magTick(); if (this.state === 'dead') this.deathSample(adv); }
-      // recoil kick (procedural additive on spine)
-      if (this.kick > 0 && this.spine) { this.spine.rotation.x -= this.kick * 0.06; this.kick = Math.max(0, this.kick - dt * 12); }
+      let mixed = false;
+      let adv = 0;
+      if (this.animAcc >= every) { adv = this.animAcc; this.mixer.update(adv); this.animAcc = 0; mixed = true; if (camDist < 60) this.magTick(); }
+      // v8: procedural recoil / support-hand IK / death perturbation on top of the clip (soldierPose.js; replaces the spine 'kick'
+      // that was subtracted every frame - on the frames the LOD skipped the mixer it piled up)
+      swayPre(this, mixed);   // v9 sway: clean clip pose back on Spine1 / Neck before the recoil layer
+      poseTick(this, dt, mixed, camDist < 90 && this.inView !== false && this.visible !== false);
+      if (mixed && this.state === 'dead') this.deathSample(adv);   // v8: sampled after the pose layer - the ragdoll hand-off velocity comes from the pose drawn
+      swayPost(this, dt, camDist < 60 && this.inView !== false && this.visible !== false); this.stowLod(camDist > 70);   // v9 sway / slung LOD
       if (this.throwT > 0 || this.handGrenade) this.handGrenadeTick();
       if (this.lods) { const far = camDist > 70; if (far !== this.far) { this.far = far; for (const o of this.lods) o.visible = o.userData.variantOn && o.userData.lod === (far ? 1 : 0); if (this.wLod) { for (const o of this.wLod[0]) o.visible = !far; for (const o of this.wLod[1]) o.visible = far; } } }
     } else {
@@ -359,6 +458,7 @@ export class Soldier {
       else { m.rotation.x = 0; m.position.y = sp > 0.1 ? Math.abs(Math.sin(performance.now() * 0.012 * sp)) * 0.06 : 0; }
     }
     this.firingT = Math.max(0, (this.firingT || 0) - dt);
+    if (!(this.reloadT > 0)) this.reloadSpan = null;   // v8 (reload clip time-scaling)
     // corner peek cycle: lean out, fire, lean back into cover, repeat
     if (this.peek && this.target && this.state !== 'dead') { this.peekT = (this.peekT ?? 0) - dt; if (this.peekT <= 0) { this.peekOut = !this.peekOut; this.peekT = this.peekOut ? 1.5 + Math.random() * 1.5 : 0.9 + Math.random() * 1.3; } }
     else { this.peekOut = false; if (!this.target || this.vel.lengthSq() > 0.2) this.peek = 0; }
@@ -404,8 +504,13 @@ export class Soldier {
     this.deathRide = this.inside === 'ride' ? this.pos.y : null;   // deck height: squad.updateRiders drops him beside the vehicle
     this.deathInfo = { ...(info || {}), from: info?.from?.clone?.() || null }; this.deathT = 0; this.corpseDone = false; this.ragdoll = null; this._pp0 = this._pp1 = null;
     { const gh = this.squad?.game?.city?.groundHeight; if (gh && !this.inside && this.squad.game.city.trenchInfo?.(this.pos.x, this.pos.z)) this.alignTrench(gh); }
+    this.deathRel = null;
     this.deathClip = this.pickDeath(kind, this.deathInfo, wasDown, speed);
     const ev = SHARED_EVENTS[this.deathClip] || {};
+    // v8: no two deaths alike - each plays at its own pace (+-12 %) with a procedural hit jolt / loose flail / head turn on top
+    // (soldierPose.js; transient offsets die out before the body lands, so the clip's ground contact is kept)
+    this.deathTs = /^death_(window|bleedout|blast)/.test(this.deathClip) || this.deathInfo.blast ? 1 : 0.88 + Math.random() * 0.24;   // (blasts: the ragdoll hand-off keeps the authored launch)
+    if (!/^death_(window|bleedout)/.test(this.deathClip) && !this.deathInfo.blast) poseDeath(this, this.deathRel, this.deathInfo.power, ev.body_ground);   // (blasts: the ragdoll takes over at 0.12 s)
     this.ragdollAt = ev.ragdoll != null && ev.ragdoll >= 0 ? ev.ragdoll : null;
     if (this.deathInfo.blast && this.ragdollAt != null) this.ragdollAt = Math.min(this.ragdollAt, 0.12);
     // v7: killed while a medic has him on the shoulder / is sliding him onto the pickup bed (the casualty clips put the body up to
@@ -422,10 +527,14 @@ export class Soldier {
     const f = info.from;
     let rel = null;      // bearing of the hit relative to his facing: 0 = from the front, +PI/2 = from his left
     if (f && Math.hypot(f.x - this.pos.x, f.z - this.pos.z) > 0.2) { rel = Math.atan2(f.x - this.pos.x, f.z - this.pos.z) - this.heading; rel = Math.atan2(Math.sin(rel), Math.cos(rel)); }
+    this.deathRel = rel;
     if (this.inBuilding) return info.blast || r < 0.5 ? 'death_window_back' : 'death_window_slump';
     if (this.inside === 'ride') return 'death_headshot';
     if (info.blast) {
-      if (rel == null || Math.abs(rel) < 0.9) { if (rel != null) this.heading += rel; return 'death_blast'; }   // turned to face it: thrown back, away from it
+      // v8: a blast knocks a man down, it rarely throws him: only a big close burst (power >= 130) lifts one facing it off his feet
+      // (death_blast); otherwise he is bowled over away from it (ragdoll impulse near the camera, see startRagdoll)
+      const big = (info.power || 80) >= 130;
+      if (rel == null || Math.abs(rel) < 0.9) { if (big) { if (rel != null) this.heading += rel; this.deathRel = 0; return 'death_blast'; } return r < 0.7 ? 'death_fall_back' : 'death_crumple'; }   // (death_blast: turned to face it, thrown back away from it)
       if (Math.abs(rel) > 2.3) return 'death_fall_forward';
       return rel > 0 ? 'death_spin_L' : 'death_spin_R';
     }
@@ -433,9 +542,13 @@ export class Soldier {
     if (this.stance === 'crouch') return 'death_crouch';
     if (info.head) return 'death_headshot';
     if (speed > 2.4) return 'death_run';
+    // v8: where he was hit and how he was moving - legs shot away: the knees go first; walking: the momentum carries him forward
+    const region = info.region || this.lastHit?.region;
+    if (region === 'leg') return r < 0.6 ? 'death_knees' : 'death_crumple';
+    if (speed > 0.9) return rel != null && Math.abs(rel) < 0.85 && r < 0.3 ? 'death_crumple' : r < 0.65 ? 'death_fall_forward' : 'death_knees';
     if (rel == null) return pick(['death_fall_back', 'death_sit_slump', 'death_knees', 'death_fall_forward', 'death_crumple'], r);
     const ar = Math.abs(rel);
-    if (ar < 0.85) return r < 0.45 ? 'death_fall_back' : r < 0.75 ? 'death_sit_slump' : r < 0.9 ? 'death_knees' : 'death_crumple';
+    if (ar < 0.85) return region === 'limb' ? (r < 0.6 ? 'death_crumple' : 'death_fall_back') : r < 0.45 ? 'death_fall_back' : r < 0.75 ? 'death_sit_slump' : r < 0.9 ? 'death_knees' : 'death_crumple';
     if (ar > 2.3) return r < 0.75 ? 'death_fall_forward' : 'death_knees';
     return rel > 0 ? 'death_spin_L' : 'death_spin_R';
   }
@@ -444,7 +557,7 @@ export class Soldier {
     if (this.corpseDone) { this.lodTick(camDist); return true; }
     if (this.ragdoll) { this.ragdoll.update(dt); return true; }
     if (!this.mixer) return false;
-    this.deathT += dt;
+    this.deathT += dt * (this.deathTs || 1);   // (clip time: the death clip plays at deathTs)
     const gh = this.squad?.game?.city?.groundHeight;
     if (this.carriedDeath) {
       const from = this.carriedDeath; this.carriedDeath = null;
@@ -535,8 +648,9 @@ export class Soldier {
       const k = THREE.MathUtils.clamp((info.power || 80) / 140, 0.3, 1.2);
       // death_blast is itself the launch (the clip's velocity carries on): the damage only adds / takes off a little; the other clips
       // (blast from a side / behind) barely move at the hand-off: the impulse throws them
-      opt.impulse = this.deathClip === 'death_blast' ? away.clone().multiplyScalar((k - 0.6) * 2).setY((k - 0.6) * 0.8) : away.clone().multiplyScalar(1.0 + 2.0 * k).setY(0.4 + 1.0 * k);
-      opt.spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), away).multiplyScalar((this.deathClip === 'death_blast' ? 0.8 : 3) * k);   // tumble away from it: omega x up = away, the head goes over backwards (death_blast already rotates)
+      // v8: thrown modestly (<= ~2.3 m/s out, <= ~0.9 m/s up, slower tumble): bowled over and rolled, not launched
+      opt.impulse = this.deathClip === 'death_blast' ? away.clone().multiplyScalar((k - 0.6) * 2).setY((k - 0.6) * 0.8) : away.clone().multiplyScalar(0.7 + 1.3 * k).setY(0.25 + 0.55 * k);   // (death_blast as before: its launch is the clip's own)
+      opt.spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), away).multiplyScalar((this.deathClip === 'death_blast' ? 0.8 : 2) * k);   // tumble away from it: omega x up = away, the head goes over backwards (death_blast already rotates)
       opt.drive = 0.015;
     } else if (info.from) opt.push = away.clone().multiplyScalar(0.9);
     if (this.dropFrom) {   // v7: off the medic's shoulder / the tailgate, away from him / the truck

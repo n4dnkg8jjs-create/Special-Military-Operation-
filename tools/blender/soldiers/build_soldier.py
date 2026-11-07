@@ -14,6 +14,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils import Vector
 import gear as G, kit as K, assemble as AS, gltfw, meshutil as MU, body as BD, anim as A, bl
 import boots as BT, assault as AT, combo as CB, pouches as PO
+import packs as PK                               # soldiers_v9 packs (painted charts)
 from qmath import qmul, qinv, qrot, qeuler
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../..'))
@@ -202,12 +203,13 @@ def make_gear(R, fac, env, which=None):
             q['group'] = 'kneepads'; parts.append(q)
         p = K.tape_band(env.trees, J(sd + 'UpLeg'), J(sd + 'Leg'), 0.2, np.array([sx, 0, 0.0]), width=0.05, seed=5 + sx)
         p['group'] = 'legband_' + sd[0]; parts.append(p)
-    parts += K.backpack(env, mm, fac)
+    parts += PK.ruck(env, mm, fac)              # soldiers_v9 (packs.py; was kit.backpack)
+    parts += PK.vest_tube(env, fac)             # soldiers_v9: hydration tube of the back carrier (pouches_back) over the left strap
     # ---- assault trooper kit
     parts += AT.armour(env, R, fac)
     parts += AT.assault_pouches(env, fac)
     parts += AT.elbowpads(env, R, fac)
-    parts += AT.assault_backpack(env, fac)
+    parts += PK.assault(env, fac)               # soldiers_v9 (packs.py; was assault.assault_backpack)
     hA2, hB2 = ('6b47', 'altyn') if fac == 'ru' else ('fast_hc', 'mich')
     amm = dict(mm, fabric='altyn_steel', webbing='altyn_steel') if fac == 'ru' else mm
     for kind, nm, ms in ((hA2, 'helmet_assault_A', mm), (hB2, 'helmet_assault_B', amm if fac == 'ru' else mm)):
@@ -627,7 +629,7 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
                 p['pos'] = p['pos'] + np.array([0, 0, dz])
             print(f'{grp}: moved {dz * 100:.1f} cm onto the plate carrier')
     ref_pos = R['variants']['A']['uniform_pos']; ref_W = R['uniform']['W']
-    parts = [G.box_uv(p, 2.0) if 'local' in p else p for p in parts]
+    parts = [PK.finish_uv(p) if ('charts' in p or 'pack_end' in p) else G.box_uv(p, 2.0) if 'local' in p else p for p in parts]   # v9: pack charts
     for p in parts:
         if p['nrm'] is None:
             p['nrm'] = MU.vertex_normals(p['pos'], p['tri'])

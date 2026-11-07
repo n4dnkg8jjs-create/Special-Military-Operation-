@@ -385,6 +385,16 @@ def build_all(rig, R, only=None):
     import clips_medevac as CMV
     if any(want(n) for n in CMV.CLIPS):
         out.update(CMV.medevac_clips(rig, lm, want, built=out))
+    # ---------------- v8 (clips_v8.py): prone AK magazine change, PKM belt-box changes (prone / kneeling)
+    import clips_v8 as C8
+    if any(want(n) for n in C8.CLIPS):
+        _b8 = {}
+
+        def _base8(k):
+            if k not in _b8:
+                _b8[k] = CC.base_prone(rig, lm, prone) if k == 'prone' else CC.base_crouch(rig, lm, kneel, kneel_legs)
+            return _b8[k]
+        out.update(C8.v8_clips(rig, lm, want, _base8))
     return out
 
 

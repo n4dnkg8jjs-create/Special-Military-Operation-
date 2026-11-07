@@ -553,7 +553,7 @@ def reload_v2(rig, name, base, dur=2.6):
                          f'e.g. THREE Object3D.attach), down to the front pouch (1.04-1.26 s) and back, front lug in and rocked home (mag_in 1.80 s: '
                          f'the left palm is at the same rifle-relative pose as at mag_out, so restoring the home transform is seamless; rifle dips with '
                          f'the slap), racks the charging handle over the top (2.05-2.2 s), back on the shoulder at 2.55 s; ik err {ik_err(err)}',
-                   events={'mag_out': 0.70, 'mag_in': 1.80, 'charging_handle': 2.10})
+                   events={'mag_out': 0.70, 'mag_in': 1.80, 'charging_handle': 2.10, 'pouch': [1.04, 1.26]})   # (v8: pouch - emergency reloads drop the empty before it)
 
 
 # ------------------------------------------------------------------ cover duck (heavily suppressed behind a low wall)

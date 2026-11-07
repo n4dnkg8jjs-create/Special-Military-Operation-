@@ -144,6 +144,9 @@ SOLIDS = {
     'helmet_hardware': ('#262624', 0.5, 0.2), 'boot_sole': ('#151514', 0.9, 0.0),
     'kneepad_shell': ('#2b2c28', 0.55, 0.0),
     'altyn_steel': ('#4d5240', 0.45, 0.25), 'balaclava_ru': ('#2a2b26', 0.95, 0.0), 'balaclava_ua': ('#4a4a3b', 0.95, 0.0),
+    # soldiers_v9 packs (packs.PACK_SOLIDS): karimat foam, MPL-50 entrenching tool, hydration tube
+    'mat_foam_ua': ('#5c5f45', 0.95, 0.0), 'mat_foam_ru': ('#4b5140', 0.95, 0.0),
+    'shovel_paint': ('#474b38', 0.6, 0.25), 'shovel_wood': ('#6b5034', 0.75, 0.0), 'hydro_tube': ('#2d2f2a', 0.55, 0.0),
 }
 
 
@@ -160,6 +163,12 @@ class Mats:
             a, n = _tile(t)
             col = (1, 1, 1, 1)     # factor 1 like the uniforms (see build_soldier.write_body; the 0.5 default darkened UA gear)
             i = g.material(name, color=col, base_tex=g.image(a, key='a_' + t), normal_tex=g.image(n, 'PNG', key='n_' + t), roughness=0.93, normal_scale=0.8)
+        elif name.startswith('pack_'):
+            # soldiers_v9: painted pack bodies / pockets (packs.py): faction gear camo + zips, webbing, seams, velcro, flag
+            import packs as PK
+            a, n = _tile('multicam' if self.fac == 'ua' else 'emr')
+            alb, nrm = PK.texture(self.fac, a, n, {'ua': SOLIDS['mat_foam_ua'][0], 'ru': SOLIDS['mat_foam_ru'][0]})
+            i = g.material(name, color=(1, 1, 1, 1), base_tex=g.image(alb, quality=88), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
         elif name == 'tape':
             col = '#e9e9e4' if self.fac == 'ru' else '#e8c31c'
             i = g.material('tape', color=TX.hexc(col).tolist() + [1], roughness=0.32, extras={'recolourable': True})
