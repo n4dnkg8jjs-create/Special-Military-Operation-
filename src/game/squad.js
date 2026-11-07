@@ -639,6 +639,11 @@ export class Squad {
     this.routing = true; this.leaveBuilding();
     if (this.side === 'player') { this.game.hud?.alert(`${this.name} is ROUTING!`, 'bad'); this.game.sfx('ui_alert'); }
     for (const o of this.game.unitsOf(this.side)) if (o !== this && o.type === 'squad' && o.center().distanceTo(this.center()) < 45) o.addMorale(-6);
+    // riding on a carrier's deck: they jump off and run (men inside a closed hull stay in it); the run starts once all are down
+    if (this.mounted && this.carrier && this.soldiers.some(s => s.inside === 'ride')) { this.dismount(); this.routDeferred = true; this.order = { type: 'rout' }; return; }
+    this.routMove();
+  }
+  routMove() {
     const sp = this.game.rallyPoint(this.side);
     const c = this.center(); const f = Math.atan2(c.x - sp[0], c.z - sp[1]);
     const slots = this.formationSlots(sp[0], sp[1], f, 14);
@@ -648,6 +653,7 @@ export class Squad {
   // ------------------------------------------------------------ per-frame
   update(dt) {
     if (this.medevac) return this.medevac.updateCrew(dt);   // medevac pickup crew: driven by its truck (game/medevac.js)
+    if (this.routDeferred && !this.soldiers.some(s => s.alive && (s.aboard || s.dmWait != null || s.jumpT > 0))) { this.routDeferred = false; if (this.routing) this.routMove(); }
     this.support?.update(dt);
     if (this.mounted) { this.updateRiders(dt); this.updateMorale(dt); this.resupplyTick(dt); return; }
     this.updateMorale(dt);
