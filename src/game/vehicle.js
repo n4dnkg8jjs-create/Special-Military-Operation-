@@ -3,7 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { VEHICLES, WEAPONS, TUNING } from '../config.js';
 import { angDiff, Squad } from './squad.js';
 import { initArmor } from './armor.js';
-import { hasClip, clipEvents } from './soldier.js';
+import { hasClip, clipEvents, clipDuration } from './soldier.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CREW_ROLES } from '../config.js';
 import { SpgMixin } from './artillery.js';
@@ -233,6 +233,7 @@ export class Vehicle {
   update(dt) {
     this.firedT = (this.firedT ?? 99) + dt;
     this.animLids(dt);
+    const cm = this.crewMove; if (cm && this.game.time >= cm.at) { this.crewMove = null; if (!cm.sq.destroyed) cm.sq.orderMove(cm.x, cm.z, this.heading, 8, true); }   // bailed-out crew: off to cover
     if (this.destroyed) { this.updateWreck(dt); return; }
     if (this.hp <= 0) { this.knockOut(false); this.updateWreck(dt); return; }   // (blast / ricochet / stopped-hit damage paths only lower hp)
     this.drive(dt);
@@ -250,7 +251,7 @@ export class Vehicle {
     if (this.burning > 0) {
       this.burning += dt;
       this.hp -= dt * (this.kind === 'tank' ? 10 : this.kind === 'ifv' ? 18 : 25) * (this.firefight ? 0.3 : 1);
-      if (this.burning > 3 && this.passengers) this.game.bailOut(this, 0.25);
+      if (this.passengers) this.game.bailOut(this, 0.15);   // the men in / on it get off at once, some burnt or hurt (the one rule: squad.updateRiders leaves it to this)
       if (this.hp <= 0 || (this.kind === 'tank' && this.burning > 25 && Math.random() < dt * 0.1)) this.knockOut(this.kind === 'tank' && Math.random() < 0.6);
     }
     this.fx(dt);
@@ -476,6 +477,7 @@ export class Vehicle {
     if (w.burst > 0 && w.cd <= 0) { w.burst--; w.ammo--; w.cd = w.burst === 0 ? THREE.MathUtils.randFloat(...W.burstGap) : 60 / W.rof; this.game.combat.fireVehicleGun(this, w, t, true); }
   }
   fx(dt) {
+    if (this.fire && !(this.burning > 0)) { this.fire.kill = true; this.fire = null; }   // fire put out: the flames die down
     const g = this.game, ex = this.exhaustN ? this.exhaustN.getWorldPosition(tmp) : tmp.set(this.pos.x - Math.sin(this.heading) * this.def.length * 0.45, 1.6, this.pos.z - Math.cos(this.heading) * this.def.length * 0.45);
     const load = Math.min(1, Math.abs(this.speed) / this.def.speed + (this.speed > (this.lastSpeed2 || 0) ? 0.3 : 0)); this.lastSpeed2 = this.speed;
     g.fx.exhaust(ex, load);
@@ -567,7 +569,7 @@ export class Vehicle {
     g.squads.push(sq);
     // move away from the burning hulk to cover
     const away = this.pos.clone().addScaledVector(fwd, -12);
-    setTimeout(() => { if (!sq.destroyed) sq.orderMove(away.x, away.z, this.heading, 8, true); }, 2200);
+    this.crewMove = { sq, x: away.x, z: away.z, at: g.time + 2.2 };   // (game time, update(): a setTimeout ran on while paused / after the end)
     if (this.side === 'player') { g.playerUnits?.push(sq); g.hud?.rebuildCards(); g.hud?.alert(`${this.name}: ${out.length} crew bailed out`, 'bad'); }
     else g.commander?.adoptCrew?.(sq);
   }
@@ -592,6 +594,10 @@ export class Vehicle {
   // swing a hatch lid open (manifest hatch_lids: hinge node, local axis, open angle)
   openLid(name, L) {
     const o = this.model.getObjectByName(name); if (!o) return;
+    // a wreck: the hull (the lids with it) is hidden for the wreck mesh - the lid he pushes open goes over onto the wreck
+    if (this.destroyed && this.wreckParts?.length && this.hull !== this.model && o.parent !== this.root) {
+      this.root.updateMatrixWorld(true); this.root.attach(o); o.rotation.setFromQuaternion(o.quaternion, 'YXZ'); charObject(o, this.ember ||= { value: 1 }, this.burnB);
+    }
     (this.lidAnim ||= []).push({ o, ax: L.axis || 'x', from: o.rotation[L.axis || 'x'], to: L.open, t: 0 });
   }
   animLids(dt) {
@@ -601,12 +607,64 @@ export class Vehicle {
   }
   // fire point (engine deck / hull top, a little off-centre) and the burn uniforms; the model takes the burn material once
   burnLook(dt, full = false) {
-    const B = this.burnB ||= { burn: { value: 0 }, fire: { value: new THREE.Vector3() }, rust: { value: 0 }, lx: (Math.random() - 0.5) * 0.5, lz: -0.15 - Math.random() * 0.3 };
+    // (the fire sits over the engine: near the exhaust empty, pulled inboard - the Bradley's is front right, the others' at the back)
+    const B = this.burnB ||= (() => { const ex = this.exhaustN?.position, W = this.def.width || 3, L = this.def.length || 6;
+      return { burn: { value: 0 }, fire: { value: new THREE.Vector3() }, rust: { value: 0 }, lx: ex ? ex.x * 0.4 / W + (Math.random() - 0.5) * 0.1 : (Math.random() - 0.5) * 0.5, lz: ex ? (ex.z - Math.sign(ex.z) * 0.9) / L : -0.15 - Math.random() * 0.3 }; })();
     const L = this.def.length || 6, c = Math.cos(this.heading), s = Math.sin(this.heading), lx = B.lx * (this.def.width || 3), lz = B.lz * L;
     B.fire.value.set(this.pos.x + s * lz + c * lx, (this.pos.y || 0) + (this.def.height || 2.2) * 0.85, this.pos.z + c * lz - s * lx);
     if (!this.burnApplied && !this.destroyed) { this.burnApplied = true; charObject(this.model, this.ember ||= { value: 1 }, B); }
     if (full) B.burn.value = Math.max(B.burn.value, 0.6);
     B.burn.value = Math.min(1, B.burn.value + dt / (this.destroyed ? 90 : 150));   // ~2.5 min to burn through, faster as a wreck
+    if (!this.destroyed && !full) this.fireFx(dt);
+  }
+  // fire effects (fx.vehFire, local on host and versus joiner alike, not a net event): flames out of the engine deck and a smoke
+  // column - grey-white while the crew fights it, dense black diesel smoke once it is out of control
+  fireFx(dt) {
+    const g = this.game, B = this.burnB; if (!B || !g.fx.vehFire) return;
+    const e = this.fire ||= g.fx.vehFire(B.fire.value, this.kind === 'tank' ? 1.4 : 1.2), F = this.firefight;
+    e.target = F ? 0.4 : Math.min(1, 0.5 + this.burning / 30);
+    e.white += ((F ? 0.8 : 0) - e.white) * Math.min(1, dt * 0.8);
+    e.pos.copy(B.fire.value).y -= 0.35;
+  }
+  // the wreck burns: full fire on the deck, flames out of the open hatches - or, after an ammunition cook-off (turret thrown off),
+  // out of the turret ring with a roaring jet of burning propellant for the first seconds. (knockOut on the host; the versus
+  // joiner lights it from updateWreck)
+  wreckFire(cook) {
+    const g = this.game; if (this.wreckLit || !g.fx.vehFire) return; this.wreckLit = true;
+    this.burnLook(0, true);
+    const s = this.kind === 'tank' ? 1.5 : 1.25, e = this.fire && !this.fire.dead ? this.fire : (this.fire = g.fx.vehFire(this.burnB.fire.value, s));
+    e.target = 1; e.power = Math.max(e.power, 0.7); e.white = 0; e.life = e.t + 120 + Math.random() * 120; e.pos.copy(this.burnB.fire.value).y -= 0.35;
+    this.root.updateMatrixWorld(true); const P = new THREE.Vector3();
+    if (cook && this.turret) { this.turret.getWorldPosition(P); P.y += 0.1; g.fx.fireVent(e, P, s * 0.75); g.fx.fireVent(e, P, s * 0.8, true); e.cook = 6 + Math.random() * 6; }
+    else { let n = 0; for (const r of ['commander', 'driver', 'gunner']) { const h = this.model.getObjectByName('hatch_' + r); if (!h || n >= 2) continue; h.getWorldPosition(P); g.fx.fireVent(e, P, s * 0.4); n++; } }
+  }
+  // knocked-out Bradley, a man from the troop compartment (squad.exitCarrier): the ramp has no power, he gets out through the door
+  // in it - dismount_rear from the troop floor over the sill (the clip's floor is 0.50 m, this sill 0.68 m: an offset on the root
+  // that fades as he steps down), one after another (knockOut staggers them); the wreck gets the door (rampDoorOpen)
+  rampDoorExit(s) {
+    if (!this.destroyed || this.def.asset !== 'bradley_ua' || !hasClip('dismount_rear')) return false;
+    const g = this.game, D = this.rampDoor || this.rampDoorOpen(); if (!D) return false;
+    D.t0 = Math.min(D.t0, g.time - 0.45);   // (swung open before he is through)
+    const c = Math.cos(this.heading), sn = Math.sin(this.heading), lx = D.x, lz = D.z - 0.55;   // root: sill + 0.55 m out, on the ground
+    const x = this.pos.x + sn * lz + c * lx, z = this.pos.z + c * lz - sn * lx, gy = g.city?.groundHeight ? g.city.groundHeight(x, z) : 0;
+    s.inside = null; s.seat = null; s.stance = 'crouch'; s.heading = this.heading + Math.PI; s.vel.set(0, 0, 0);
+    s.jumpClip = 'dismount_rear'; s.jumpT = clipDuration('dismount_rear', 1.3);
+    s.jumpFix = { x, y: gy, z, ox: 0, oy: (this.pos.y || 0) + D.sill - gy - 0.5, oz: 0, t0: g.time + 0.25, T: 0.4 };
+    s.pos.set(x, gy + s.jumpFix.oy, z);
+    if (s.mixer) { s.play('dismount_rear', 0, 1, ['crouch_walk', 'crouch_idle']); s.mixer.update(0); }
+    s.sync(); return true;
+  }
+  // the door in the Bradley's ramp on the wreck (the wreck mesh has the ramp shut): a dark opening on the ramp face (vision-block
+  // side, +X) and the burnt door panel, hinged on its outer edge, swinging out (updateWreck)
+  rampDoorOpen() {
+    const W = 0.56, H = 1.12, x0 = 0.03, y0 = 0.68, zf = -3.40;
+    const hole = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshBasicMaterial({ color: 0x060504 }));
+    hole.position.set(x0 + W / 2, y0 + H / 2, zf - 0.025); hole.rotation.y = Math.PI;
+    const piv = new THREE.Group(); piv.position.set(x0 + W, y0, zf - 0.03);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(W, H, 0.05), new THREE.MeshStandardMaterial({ color: 0x24201c, roughness: 0.92, metalness: 0.15 }));   // (burnt steel)
+    door.position.set(-W / 2, H / 2, -0.025); door.castShadow = door.receiveShadow = true; piv.add(door);
+    this.root.add(hole, piv);
+    return this.rampDoor = { piv, k: 0, t0: this.game.time, open: -1.9, x: x0 + W / 2, z: zf, sill: y0 };
   }
   // swap the model to its wreck (also used by the versus joiner's puppet vehicles)
   showWreck() {
@@ -614,7 +672,7 @@ export class Vehicle {
       if (this.hull && this.hull !== this.model) this.hull.visible = false;
       else this.model.traverse(o => { if (o.isMesh && !/_wreck/i.test(o.name) && !/_wreck/i.test(o.parent?.name || '')) o.visible = false; });
       this.burnLook(0, true);
-      for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }, this.burnB); }
+      for (const w of this.wreckParts) { if (/turret/i.test(w.name) && !this.flyer) w.rotation.y = (w.userData.rotY0 ??= w.rotation.y) + this.turretYaw; w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }, this.burnB); }
     } else { this.burnLook(0, true); if (this.burnApplied !== 'model') { this.model.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; if (ms.some(x => x?.userData?.charred)) this.burnApplied = 'model'; } }); if (this.burnApplied !== 'model') charObject(this.model, this.ember ||= { value: 1 }, this.burnB); } }
   }
   // ammunition cook-off: the turret thrown into the air (updateWreck lets it fall); also the versus joiner's puppets
@@ -631,14 +689,21 @@ export class Vehicle {
     if (!catastrophic && !this.abandoned) this.bailCrew(crewSurv); else this.abandoned = true;
     this.destroyed = true; this.target = null; this.path = null; this.speed = 0; this.burning = Math.max(this.burning, 0.01); this.bannerNote = null;
     const g = this.game;
+    const pax = this.passengers;
     if (this.passengers) g.passengersOnKill(this, crewSurv, catastrophic);
+    // Bradley: the ramp has no power now - the men in the back come out through the door in it, one at a time (rampDoorExit)
+    if (pax && this.def.asset === 'bradley_ua' && hasClip('dismount_rear')) {
+      let k = 0; const t0 = pax.soldiers.some(s => s.dmKind === 'jump' && s.dmWait != null) ? 2.4 : 1.2;   // (after the stern riders jumped clear)
+      for (const s of pax.soldiers) if (s.dmWait != null && s.dmKind === 'door') s.dmWait = t0 + k++ * 1.35 + Math.random() * 0.15;
+      if (k) this.rampDoorAt = g.time + t0 - 0.8;   // the door swings open just before the first man comes
+    }
     g.onVehicleLost(this);
     this.showWreck();
     if (catastrophic && this.turret) {
       this.tossTurret();
       g.fx.explosion(this.pos.clone().setY(1.5), 2.6); g.sfx('explosion_large', this.pos); g.cam.addShake(Math.max(0, 1 - g.camDist(this.pos) / 200));
     } else { g.fx.explosion(this.pos.clone().setY(1.2), 1.2); g.sfx('explosion_medium', this.pos); }
-    this.fire = g.fx.emitter(this.pos.clone().setY(1.6), 'fire', this.kind === 'tank' ? 1.5 : 1.2, 120 + Math.random() * 120);
+    this.wreckFire(!!this.flyer);
     this.fireSound = g.audio.ok ? g.audio.loop('fire_vehicle_loop', this.pos, 0.8) || g.audio.loop('fire_loop', this.pos, 0.8) : null;
     g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 0.3, 255); g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 1.2, 7, true);
     g.nav.rect(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 255, 0.15);   // the whole hull (the circle missed bow and stern: paths ran through the wreck)
@@ -647,6 +712,9 @@ export class Vehicle {
     this.wreck = true;
   }
   updateWreck(dt) {
+    if (!this.wreckLit) this.wreckFire(!!this.flyer);
+    if (this.rampDoorAt != null && !this.rampDoor && this.game.time >= this.rampDoorAt) this.rampDoorOpen();
+    const D = this.rampDoor; if (D && D.k < 1) { D.k = Math.min(1, Math.max(0, (this.game.time - D.t0) / 0.7)); D.piv.rotation.y = D.open * D.k * D.k * (3 - 2 * D.k); }
     if (this.burnB && this.burnB.burn.value < 1) this.burnLook(dt);
     const f = this.flyer;
     if (f && !f.rest) {

@@ -146,7 +146,7 @@ class System {
     }
     this.geo.instanceCount = P.length;
     // upload only the live part of the instance buffers (they are sized for the cap: 3500 x 14 floats for smoke)
-    for (const a of [this.aPos, this.aCol, this.aMisc, this.aVel]) { a.clearUpdateRanges(); a.addUpdateRange(0, Math.max(1, P.length) * a.itemSize); a.needsUpdate = true; }
+    for (const a of this.attrs ||= [this.aPos, this.aCol, this.aMisc, this.aVel]) { a.clearUpdateRanges(); a.addUpdateRange(0, Math.max(1, P.length) * a.itemSize); a.needsUpdate = true; }
   }
 }
 
@@ -208,7 +208,7 @@ export class FX {
     this.glow.additive = true;
     // billowing fire (additive, uses the puff atlas so flames have texture instead of soft blobs)
     this.fire = new System(scene, Math.round(1600 * mul), true, puffAtlas(), sunDir, true); this.fire.additive = true;
-    this.flames = new Flames(scene, quality === 'low' ? 96 : 256); this.time = 0;
+    this.flames = new Flames(scene, quality === 'low' ? 96 : 256); this.time = 0; this._lp = new THREE.Vector3();
     // ground shockwave rings
     this.rings = [];
     const rg = new THREE.RingGeometry(0.85, 1, 48); rg.rotateX(-Math.PI / 2);
@@ -301,8 +301,14 @@ export class FX {
   smokeScreen(pos, life = 35) {
     for (let i = 0; i < 26; i++) this.smoke.spawn({ x: pos.x + (Math.random() - .5) * 3, y: 0.5 + Math.random() * 2, z: pos.z + (Math.random() - .5) * 3, vx: (Math.random() - .5) * 3, vy: 0.4 + Math.random() * 0.6, vz: (Math.random() - .5) * 3, life: life * (0.6 + Math.random() * 0.4), size0: 2, size1: 10 + Math.random() * 5, r: 0.86, g: 0.86, b: 0.84, a0: 0.75, a1: 0, drag: 0.6, wind: [this.wind[0] * 0.4, this.wind[1] * 0.4], fadeIn: 1.5 });
   }
-  // persistent emitters: fire (burning wreck/building), plume (distant columns), smoulder
-  emitter(pos, kind, scale = 1, life = Infinity, attach = null) { const e = { pos: pos.clone(), kind, scale, acc: 0, life, t: 0, attach }; if (kind === 'fire') e.flame = this.flames.add(pos, scale); this.emitters.push(e); return e; }
+  // persistent emitters: fire (burning building / ground fire), plume (distant columns), smoulder
+  emitter(pos, kind, scale = 1, life = Infinity, attach = null) { const e = { pos: pos.clone(), kind, scale, acc: 0, acc2: 0, acc3: 0, life, t: 0, attach }; if (kind === 'fire') e.flame = this.flames.add(e.pos, scale); this.emitters.push(e); return e; }
+  // a burning vehicle (vehicle.js fireFx). Not a recorded net event: the vehicle drives it on the host and the versus joiner
+  // alike. e.pos follows the engine deck; the vehicle sets e.target (0..1, power eases toward it), e.white (0..1: grey-white
+  // smoke while the crew fights the fire), e.cook (seconds of ammunition cook-off jet left) and e.kill (burn down and go);
+  // fireVent adds flames out of an open hatch / the turret ring
+  vehFire(pos, scale) { const e = { pos: pos.clone(), kind: 'vfire', scale, acc: 0, acc2: 0, acc3: 0, life: Infinity, t: 0, power: 0, target: 0.5, white: 0, vents: [], cook: 0, jet: null }; e.flame = this.flames.add(e.pos, scale, { n: 3 }); e.flame.intensity = 0; this.emitters.push(e); return e; }
+  fireVent(e, pos, scale, jet = false) { const f = this.flames.add(pos.clone(), scale, { n: jet ? 2 : 1, kind: jet ? 1 : 0 }); f.intensity = 0; if (jet) e.jet = f; else e.vents.push(f); return f; }
   // move an emitter whose support is gone down onto the rubble
   drop(e, y = 0.4) {
     if (e.dropped) return; e.dropped = true; e.attach = null; e.pos.y = y;
@@ -324,18 +330,55 @@ export class FX {
       r0: R() * 6.28, r1: R() * 6.28, r2: R() * 6.28, w0: (R() - .5) * (kind === 'shard' ? 40 : 14), w1: (R() - .5) * (kind === 'shard' ? 40 : 14), t: 0, rest: false });
   }
   update(dt, camPos) {
-    for (const e of this.emitters) {
-      e.t += dt; if (e.t > e.life) { e.dead = true; continue; }
+    // fires (v2): flames are the instanced shader tongues (flames.js); the particles only add the smoke column and, near the
+    // camera, a little billowing fire at the base and embers. Per fire about half the smoke puffs of v1 (bigger, denser ones,
+    // underlit orange by the flames for their first second), fewer still far off or when the smoke system is filling up;
+    // one flickering light for the nearest big fire instead of every fire grabbing a pooled light at random
+    const R = Math.random, E = this.emitters, cx = camPos ? camPos.x : 0, cz = camPos ? camPos.z : 0;
+    const load = this.smoke.p.length / this.smoke.max, thin = load > 0.85 ? 3 : load > 0.65 ? 1.7 : 1;
+    let lit = null, litD = 150, w = 0;
+    for (let i = 0; i < E.length; i++) {
+      const e = E[i]; e.t += dt;
+      if (e.dead || e.t > e.life) { e.dead = true; if (e.flame) e.flame.dead = true; if (e.vents) { for (const f of e.vents) f.dead = true; if (e.jet) e.jet.dead = true; } continue; }
+      E[w++] = e;
       e.acc += dt; const s = e.scale, fade = e.life < Infinity ? Math.max(0, 1 - e.t / e.life) : 1;
-      if (e.kind === 'fire') {
-        if (e.flame) e.flame.intensity = Math.min(1, fade * 1.5);
-        while (e.acc > 0.06) { e.acc -= 0.06;
-          // a little textured fire at the base for volume, embers, and a thick smoke column
-          if (Math.random() < 0.5) this.fire.spawn({ x: e.pos.x + (Math.random() - .5) * s, y: e.pos.y + Math.random() * 0.3, z: e.pos.z + (Math.random() - .5) * s, vx: 0, vy: 1.4 + Math.random(), vz: 0, life: 0.45 + Math.random() * 0.3, size0: 1.0 * s, size1: 0.5 * s, r: 1, g: 0.5, b: 0.15, r1: 0.8, g1: 0.18, b1: 0.03, cool: 0.7, a0: 0.55 * fade, a1: 0, drag: 0.6 });
-          if (Math.random() < 0.35) this.glow.spawn({ x: e.pos.x + (Math.random() - .5) * s, y: e.pos.y + 0.6 * s, z: e.pos.z + (Math.random() - .5) * s, vx: (Math.random() - .5) * 1.5, vy: 2.5 + Math.random() * 3, vz: (Math.random() - .5) * 1.5, life: 1.2 + Math.random() * 1.6, size0: 0.05, size1: 0.03, r: 1, g: 0.55, b: 0.18, a0: 2.2 * fade, a1: 0, drag: 0.4, wind: this.wind });
-          if (Math.random() < 0.6) this.smoke.spawn({ x: e.pos.x + (Math.random() - .5) * 0.6 * s, y: e.pos.y + 2.2 * s, z: e.pos.z + (Math.random() - .5) * 0.6 * s, vx: (Math.random() - .5), vy: 3 + Math.random() * 2.5, vz: (Math.random() - .5), life: 11 + Math.random() * 7, size0: 1.2 * s, size1: 8.5 * s, r: 0.085, g: 0.08, b: 0.075, a0: 0.7 * fade, a1: 0, drag: 0.3, wind: this.wind, fadeIn: 0.5 });
+      if (e.kind === 'fire' || e.kind === 'vfire') {
+        const veh = e.kind === 'vfire', d = camPos ? Math.hypot(e.pos.x - cx, e.pos.z - cz) : 0;
+        let p;
+        if (veh) { const tg = e.kill ? 0 : e.target * Math.min(1, fade * 3); e.power += Math.max(-dt * 0.35, Math.min(dt * 0.5, tg - e.power)); p = e.power; if (e.kill && p < 0.02) e.life = 0; }
+        else p = Math.min(1, fade * 1.5);
+        if (e.flame) e.flame.intensity = p;
+        if (veh) {
+          for (const f of e.vents) f.intensity = p * 0.85;
+          if (e.jet) { e.jet.intensity = e.cook > 0 ? Math.min(1, e.cook / 1.5) * (0.8 + 0.4 * R()) : 0;
+            if (e.cook > 0) { e.cook -= dt; const J = e.jet.anchor;   // burning propellant: a roaring jet throwing sparks
+              if (d < 450 && R() < dt * 9) for (let k = 0; k < 2; k++) this.glow.spawn({ x: J.x, y: J.y + 0.6, z: J.z, vx: (R() - .5) * 10, vy: 7 + R() * 10, vz: (R() - .5) * 10, life: 0.5 + R() * 0.8, size0: 0.07, size1: 0.04, stretch: 0.5, r: 1, g: 0.75, b: 0.4, a0: 3, a1: 0, grav: 9.8, drag: 0.4 }); } }
         }
-        if (Math.random() < 0.12) this.light(new THREE.Vector3(e.pos.x, e.pos.y + 1.5 * s, e.pos.z), 0xff7a2a, 9 * s * fade, 14 * s, 0.25);
+        // smoke: diesel / ammunition fire = dense black, a crew fighting it = grey-white, a building = dark brown-grey. Two layers: a
+        // dense core of small puffs boiling off the flames (short-lived, underlit orange by the fire for their first moment) and a few
+        // big long-lived puffs carrying the column up and downwind (v1: ~140 uniform big puffs per fire)
+        const far = d > 320, k = thin / Math.max(0.35, p), wh = veh ? e.white : 0, c = veh ? 0.05 + wh * 0.45 : 0.1, y0 = e.pos.y + (veh ? 0.9 : 1.3) * s * Math.max(0.4, p);
+        e.acc2 = (e.acc2 || 0) + dt;   // (core)
+        const ivc = (veh ? 0.12 : 0.18) * k * (far ? 2.5 : 1);
+        while (e.acc2 > ivc) { e.acc2 -= ivc;
+          this.smoke.spawn({ x: e.pos.x + (R() - .5) * 0.6 * s, y: y0, z: e.pos.z + (R() - .5) * 0.6 * s, vx: (R() - .5) * 0.6, vy: 2.8 + R() * 1.8 * p, vz: (R() - .5) * 0.6,
+            life: 3 + R() * 1.5, size0: 0.9 * s, size1: (3 + R()) * s, r: 0.55 * p + c, g: 0.22 * p + c, b: 0.06 * p + c, r1: c, g1: c * 0.95, b1: c * 0.9, cool: 0.25,
+            a0: 0.95 * Math.min(1, p + 0.3), a1: 0, drag: 0.5, wind: this.wind, fadeIn: 0.2 });
+        }
+        const iv = (veh ? 0.42 : 0.6) * k * (far ? 1.6 : 1), big = far ? 1.25 : 1;
+        while (e.acc > iv) { e.acc -= iv;
+          this.smoke.spawn({ x: e.pos.x + (R() - .5) * 0.8 * s, y: y0 + 2.5 * s, z: e.pos.z + (R() - .5) * 0.8 * s, vx: (R() - .5) * 0.8, vy: 3 + R() * 1.5 * p, vz: (R() - .5) * 0.8,
+            life: (veh ? 13 : 11) + R() * 4, size0: 2.2 * s * big, size1: (veh ? 9.5 + R() * 2 : 8 + R() * 2) * s * big, r: c, g: c * 0.95, b: c * 0.9,
+            a0: 0.75 * Math.min(1, p + 0.3), a1: 0, drag: 0.3, wind: this.wind, fadeIn: 0.8 });
+        }
+        if (d < 160 && p > 0.05) {   // close up: billowing fire at the base, embers
+          e.acc3 = (e.acc3 || 0) + dt;
+          while (e.acc3 > 0.14) { e.acc3 -= 0.14;
+            this.fire.spawn({ x: e.pos.x + (R() - .5) * s, y: e.pos.y + R() * 0.3, z: e.pos.z + (R() - .5) * s, vx: 0, vy: 1.4 + R(), vz: 0, life: 0.45 + R() * 0.3, size0: 1.0 * s, size1: 0.5 * s, r: 1, g: 0.5, b: 0.15, r1: 0.8, g1: 0.18, b1: 0.03, cool: 0.7, a0: 0.5 * p, a1: 0, drag: 0.6 });
+            if (R() < 0.45) this.glow.spawn({ x: e.pos.x + (R() - .5) * s, y: e.pos.y + 0.6 * s, z: e.pos.z + (R() - .5) * s, vx: (R() - .5) * 1.5, vy: 2.5 + R() * 3, vz: (R() - .5) * 1.5, life: 1.2 + R() * 1.6, size0: 0.05, size1: 0.03, r: 1, g: 0.55, b: 0.18, a0: 2.2 * p, a1: 0, drag: 0.4, wind: this.wind });
+          }
+        } else e.acc3 = 0;
+        if (s >= 1 && p > 0.3 && d < litD) { lit = e; litD = d; }
       } else if (e.kind === 'plume') {
         while (e.acc > 0.35) { e.acc -= 0.35;
           this.smoke.spawn({ x: e.pos.x + (Math.random() - .5) * 4, y: e.pos.y, z: e.pos.z + (Math.random() - .5) * 4, vx: 0, vy: 4 + Math.random() * 2, vz: 0, life: 30 + Math.random() * 10, size0: 6 * s, size1: 38 * s, r: 0.13, g: 0.125, b: 0.12, a0: 0.55, a1: 0, drag: 0.08, wind: [this.wind[0] * 1.5, this.wind[1] * 1.5], fadeIn: 2 });
@@ -344,7 +387,11 @@ export class FX {
         while (e.acc > 0.4) { e.acc -= 0.4; this.smoke.spawn({ x: e.pos.x + (Math.random() - .5) * 2 * s, y: e.pos.y, z: e.pos.z + (Math.random() - .5) * 2 * s, vy: 1 + Math.random(), life: 7, size0: 0.8 * s, size1: 3.5 * s, r: 0.3, g: 0.29, b: 0.27, a0: 0.22 * fade, a1: 0, drag: 0.3, wind: this.wind, fadeIn: 1 }); }
       }
     }
-    this.emitters = this.emitters.filter(e => !e.dead);
+    E.length = w;
+    if (lit && (this.litT = (this.litT || 0) - dt) <= 0) {
+      const s = lit.scale, q = lit.kind === 'vfire' ? lit.power : 1, ck = lit.cook > 0 ? 2.2 : 1; this.litT = 0.11;
+      this.light(this._lp.set(lit.pos.x, lit.pos.y + 1.5 * s, lit.pos.z), lit.cook > 0 ? 0xffa050 : 0xff7a2a, 9 * s * q * ck * (0.75 + 0.5 * R()), 16 * s, 0.16);
+    }
     for (const L of this.lights) { if (L.l.intensity <= 0) continue; L.t += dt; L.l.intensity = L.t > L.life ? 0 : L.i0 * (1 - L.t / L.life); }
     // fragments: fly, tumble, bounce, lie for a while (20 s), then go
     const m = this._fm ||= new THREE.Matrix4(), q = this._fq ||= new THREE.Quaternion(), e = this._fe ||= new THREE.Euler(), v = this._fv ||= new THREE.Vector3(), sc = this._fs ||= new THREE.Vector3();
@@ -362,7 +409,7 @@ export class FX {
     }
     for (const r of this.rings) { r.t += dt; const f = r.t / r.life; r.m.scale.setScalar(0.5 + f * r.r); r.m.material.opacity = 0.35 * (1 - f); if (f >= 1) { this.scene.remove(r.m); r.m.material.dispose(); r.dead = true; } }
     this.rings = this.rings.filter(r => !r.dead);
-    this.time += dt; this.flames.update(dt, this.time); if (camPos) this.tracers.update(dt, camPos);
+    this.time += dt; this.flames.update(dt, this.time, camPos, this.scene.fog?.density); if (camPos) this.tracers.update(dt, camPos);
     this.smoke.update(dt, camPos); this.glow.update(dt, null); this.fire.update(dt, null);
     this.onUpdate?.(dt);   // (world/treeDamage.js: leaves / wood fragments / falling tops)
   }

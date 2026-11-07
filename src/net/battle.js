@@ -235,7 +235,7 @@ export function clientFrame(g, dt) {
     if (shots > (v._shots ?? shots)) v.recoil = Math.max(v.recoil || 0, shotK || 1); v._shots = shots;   // a round fired since the last snapshot: the gun kicks
     if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); if (toss) v.tossTurret?.();
       const cs = v.crewSq; if (cs?.medevac) { cs.medevac = null; cs.noncombat = false; cs.name = `${v.name} crew`; if (cs.side === 'player') { g.netWire?.(cs); g.playerUnits?.push(cs); g.hud?.rebuildCards(); } } }
-    v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : v.burning; v.abandoned = !!(fl & 4); v.doorK = dk;
+    v.burning = fl & 2 ? Math.max(v.burning || 0, 0.01) : 0; v.abandoned = !!(fl & 4); v.doorK = dk;
   }
   // medevac pickups: run state, load, trip timer, doors; an 'away' truck is off the map
   for (const [id, ms, n, trip, saved, dk, out] of s.md || []) {

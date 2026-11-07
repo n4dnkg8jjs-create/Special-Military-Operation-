@@ -485,7 +485,7 @@ export class Squad {
       // the root jumped from the seat to the landing point: switch to frame 0 of the clip at once (no cross-fade from the seated pose)
       if (s.mixer) { s.play(clip, 0, 1, ['dismount_jump', 'crouch_idle']); s.mixer.update(0); }
       s.sync();
-    } else {
+    } else if (!v.rampDoorExit?.(s)) {   // (a knocked-out Bradley: through the door in the ramp, vehicle.js)
       const d = v.doorPos(s.dmI ?? 0, true); s.pos.set(d.x, gH(d.x, d.z), d.z); s.inside = null; s.seat = null;
       const rear = v.kind !== 'btr', ramp = v.def.asset === 'bradley_ua';   // the Bradley ramp is a slope: they just walk down it
       s.heading = rear ? v.heading + Math.PI : v.heading + ((s.dmI ?? 0) % 2 ? 1.57 : -1.57);
@@ -504,7 +504,7 @@ export class Squad {
       sl = slots[i % slots.length]; s.goal = sl; s.goalHeading = this.dmFacing ?? v.heading;
     }
     // Bradley: he starts inside the troop compartment and walks out down the lowered ramp
-    const ex = v.def.asset === 'bradley_ua' && s.dmKind !== 'jump' && v.model.getObjectByName('exit_rear');
+    const ex = v.def.asset === 'bradley_ua' && s.dmKind !== 'jump' && !s.jumpFix && v.model.getObjectByName('exit_rear');
     if (ex) {
       v.root.updateMatrixWorld(true);
       const E = ex.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(Math.sin(v.heading), 0, Math.cos(v.heading)), r = new THREE.Vector3(f.z, 0, -f.x), lat = (((s.dmI ?? 0) % 3) - 1) * 0.35;
@@ -697,8 +697,8 @@ export class Squad {
       if (s.inside === 'ride') { s.animate(dt, g.camDist(s.pos)); s.sync(); }
       else this.updateSoldier(s, dt);
     }
-    // whole squad jumps off when the vehicle is hit hard or brews up
-    if (!frozen && v && (v.destroyed || v.burning > 0)) this.dismount(v.heading + Math.PI);
+    // whole squad jumps off when the vehicle is knocked out (on fire: vehicle.update bails them out at once, game.bailOut - some hurt)
+    if (!frozen && v && v.destroyed) this.dismount(v.heading + Math.PI);
     this.underFireT += dt;
   }
   // v7: a man with somewhere to go but no route (no path found - pathFail -, or the path dropped by an interruption and never
@@ -876,7 +876,7 @@ export class Squad {
           s.target = null; s.vel.set(0, 0, 0); s.animate(dt, g.camDist(s.pos));
         }
         else if (s.inside === 'btr') s.pos.copy(v.pos);
-        if ((s.dmWait <= 0 && settled) || (v.destroyed && (settled || s.dmWait < -0.6))) this.exitCarrier(s);
+        if ((s.dmWait <= 0 && settled) || (v.destroyed && v.rampDoorAt == null && (settled || s.dmWait < -0.6))) this.exitCarrier(s);   // (Bradley ramp door: one at a time, vehicle.knockOut)
         else { s.sync(); return; }
       }
     }
