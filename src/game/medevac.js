@@ -605,7 +605,7 @@ export class Medevac {
       const b = document.createElement('button'); b.dataset.o = 'evacuate'; b.dataset.k = 'H';
       b.dataset.tip = 'Evacuate: the medevac pickup drives the wounded down the road off the map to the aid station and comes back';
       b.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z"/></svg><span class="ol">Evacuate</span>';
-      const halt = bar.querySelector('[data-o="halt"]'); bar.insertBefore(b, halt || null);
+      (bar.querySelector('[data-o="resupply"]')?.parentNode || bar).appendChild(b);   // the Support column of the order panel (index.html)
       b.addEventListener('click', () => this.evacuate());
       this.btn = b;
     }

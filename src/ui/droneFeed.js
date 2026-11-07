@@ -134,8 +134,8 @@ export class DroneFeed {
     const w = Math.round(Math.min(560, Math.max(288, innerWidth * 0.215))), h = Math.round(w * 9 / 16);
     if (w !== this._w || h !== this._h) { this._w = w; this._h = h; this.scr.style.width = w + 'px'; this.scr.style.height = h + 'px'; this.el.style.setProperty('--dfw', w + 'px'); }
     this.osdC.size(w, h, Math.min(2, devicePixelRatio || 1));
-    // top right, under the system cluster (fps / withdraw), clear of the message log (top left) and the dock (bottom)
-    if (this.visible) { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, top = Math.round(Math.max(8, rem * 2.4)); if (top !== this._top) { this._top = top; this.el.style.top = top + 'px'; } }
+    // top right, under the minimap + force table (style.css --df-top), clear of the message feed and the orders (bottom right)
+    if (this.visible) { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, fz = document.getElementById('forces')?.getBoundingClientRect(), top = Math.round(fz?.height ? fz.bottom + rem * 0.35 : Math.max(8, rem * 2.4)); if (top !== this._top) { this._top = top; this.el.style.top = top + 'px'; } }
     this.rectT = 0;
   }
   readRect() {

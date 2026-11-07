@@ -6,8 +6,9 @@ import { unitSymbol, unitKindOf, UNIT_TYPE_NAME, ORDER_ICONS, ARM_CODE } from '.
 import { portraitHTML, warmPortraits } from './portraits.js';
 import { ContactMarkers } from './contactMarkers.js';
 
-// Battle HUD (look modelled on WARNO: score bar, deck of unit cards along the bottom, unit card + command grid, NATO
-// labels over units). Look & tokens: src/ui/style.css "Battle HUD v5". All per-frame DOM writes are change-guarded
+// Battle HUD (look modelled on WARNO, previews/ui_warno/RESEARCH.md: teal top strip + score box, deck of unit cards top
+// left, minimap top right, unit panel bottom centre, orders bottom right, NATO labels over units). Look & tokens:
+// src/ui/style.css "Battle HUD v6". All per-frame DOM writes are change-guarded
 // (each element remembers what it last showed), slow panels refresh at 4 Hz.
 const C = { friend: '#4d93dc', hostile: '#d9473d', neutral: '#9aa1a7', accent: '#e8b03c', ok: '#78b84a', t1: '#e6e8e9' };   // = style.css --w-* tokens
 const rng = m => m >= 1000 ? `${(m / 1000).toFixed(m % 1000 ? 1 : 0)} km` : `${m} m`;
@@ -151,19 +152,19 @@ export class HUD {
       const q = s => el.querySelector(s);
       this.cardEls.set(u, { el, g: q('.g'), st: q('.st'), mn: q('.mn'), hp: q('.hp b'), am: q('.am b'), mo: q('.mo b'), moI: q('.mo') }); return el;
     };
-    let first = true;
+    // one column per arm (WARNO: a header tab over the arm's cards, stacked three deep, then the next column)
+    let col = null;
     for (const G of groups) {
       const shown = this.deckTab === 'ALL' || this.deckTab === G.grp;
       if (!shown) { for (const u of G.all) this.cardEls.set(u, null); continue; }
-      if (this.deckTab === 'ALL') { const spine = document.createElement('div'); spine.className = 'dk-spine' + (first ? ' first' : ''); spine.innerHTML = `<span>${ARM_CODE[G.grp] || G.grp}</span>`; strip.appendChild(spine); }
-      first = false;
+      const c = document.createElement('div'); c.className = 'dk-col'; c.innerHTML = `<div class="dk-ch">${G.grp}</div><div class="dk-cc"></div>`; strip.appendChild(c); col = c.lastChild;
       for (const u of G.members) {
-        strip.appendChild(card(u, false));
-        if (u.type === 'vehicle') for (const q of carried(u)) strip.appendChild(card(q, true));
+        col.appendChild(card(u, false));
+        if (u.type === 'vehicle') for (const q of carried(u)) col.appendChild(card(q, true));
       }
     }
     // squads whose carrier is gone and that weren't placed yet
-    for (const u of units) if (!this.cardEls.has(u)) strip.appendChild(card(u, false));
+    for (const u of units) if (!this.cardEls.has(u)) (col || strip).appendChild(card(u, false));
     this.rosterUnits = units;
     this.updateCards();
   }
@@ -237,7 +238,7 @@ export class HUD {
       html = `<div class="ui-head"><div class="tt"><h4>${sel.length} units</h4><div class="sub">${[men ? `${men} men` : '', veh ? `${veh} vehicle${veh > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} · right-drag: form a line</div></div></div><div class="ui-multi">${sel.slice(0, 12).map(tile).join('')}${sel.length > 12 ? `<div class="mt more">+${sel.length - 12}</div>` : ''}</div>`;
     }
     if (html !== this.infoHTML) { this.infoHTML = html; this.info.innerHTML = html; }
-    setS(this.info, 'display', html ? 'block' : 'none');
+    setS(this.info, 'display', html ? 'flex' : 'none');
     tog(this.info, 'enemy', u && u.side !== 'player');
   }
   // WARNO-style unit card: side-coloured head with the NATO symbol, portrait + cell gauges, weapon table (range, ammo), notes
@@ -248,7 +249,7 @@ export class HUD {
     const row = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
     const meter = (label, f, val, cls, cells = 10) => `<span>${label}</span><div class="meter ${cls}" style="--n:${cells}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
     const wpn = [];   // [name, range m | text, ammo]
-    const W = (name, r, ammo) => wpn.push(`<tr><td>${name}</td><td>${typeof r === 'number' ? rng(r) : r}</td><td>${ammo}</td></tr>`);
+    const W = (name, r, ammo) => wpn.push(`<div class="wc"><div class="wc-n">${name}</div><div class="wc-a">${ammo}</div><div class="wc-r">${typeof r === 'number' ? rng(r) : r}</div></div>`);   // WARNO weapon card: name, ammo, range
     let chip = '', meters = '', rows = '';
     if (u.type === 'squad') {
       const s = u.soldiers, eff = u.effective, ms = u.moraleState(), am = u.ammoFrac();
@@ -300,8 +301,9 @@ export class HUD {
       }
     }
     const head = `<div class="ui-head"><span class="ui-tab ${own ? 'f' : 'h'}">${unitSymbol(kind, aff)}</span><div class="tt"><h4>${own ? '' : 'Enemy '}${esc(u.name)}</h4><div class="sub">${UNIT_TYPE_NAME[kind] || ''}${u.faction?.name ? ` · ${esc(u.faction.name)}` : ''}</div></div>${chip}</div>`;
-    return `${head}<div class="ui-body"><div class="ui-pt">${portraitHTML(this.g, u)}</div><div class="ui-meters">${meters}</div></div>`
-      + (wpn.length ? `<table class="ui-wpn"><thead><tr><th>Weapon</th><th>Range</th><th>Ammo</th></tr></thead><tbody>${wpn.join('')}</tbody></table>` : '')
+    // one horizontal strip (WARNO unit panel): [name + portrait + gauges] [a card per weapon] [notes]
+    return `<div class="ui-a">${head}<div class="ui-body"><div class="ui-pt">${portraitHTML(this.g, u)}</div><div class="ui-meters">${meters}</div></div></div>`
+      + (wpn.length ? `<div class="ui-wpn">${wpn.join('')}</div>` : '')
       + (rows ? `<div class="kv">${rows}</div>` : '');
   }
   // ------------------------------------------------------------ labels (world-anchored)
