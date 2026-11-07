@@ -393,7 +393,7 @@ export class Soldier {
       else { clip = aim; alt = ['aim_launcher', 'aim_stand']; }
     }
     else if (this.dragging && this.dragPhase === 'treat') { clip = 'treat_wounded'; alt = ['crouch_idle']; }
-    else if (this.dragging && this.dragPhase === 'drag') { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
+    else if (this.dragging && (this.dragPhase === 'drag' || this.dragPhase === 'assist')) { clip = 'drag_wounded'; ts = Math.max(0.3, sp / CLIP_SPEED.drag_wounded); alt = ['crouch_walk', 'walk_rifle']; }
     else if (this.hitT > 0) { clip = 'hit_react'; }
     else if (this.throwT > 0) { clip = this.throwClip || (this.throwWindow ? 'throw_grenade_window' : 'throw_grenade_over'); alt = ['throw_grenade_over', 'throw_grenade']; }   // v7: combat.startThrow picks the clip
     else if (this.stackT > 0) { clip = 'cqb_stack'; alt = ['crouch_idle']; }
@@ -526,7 +526,7 @@ export class Soldier {
     // v7: killed while a medic has him on the shoulder / is sliding him onto the pickup bed (the casualty clips put the body up to
     // 1.6 m above his root): he falls off (ragdoll from that pose) instead of the lying death clip snapping him to the medic's feet
     this.carriedDeath = /^(wounded_lifted|wounded_carry_walk|wounded_load_bed)/.test(this.curName || '') && !this.inBuilding ? (this.dragger?.squad?.medevac?.pos || this.dragger?.pos || this.pos).clone() : null;
-    if (this.dragging) { this.dragging.dragger = null; this.dragging = null; }
+    if (this.dragging) { if (this.dragging.dragger === this) this.dragging.dragger = null; if (this.dragging.dragAssist === this) this.dragging.dragAssist = null; this.dragging = null; }
     if (this.dragger) { this.dragger.dragging = null; this.dragger = null; }
   }
   pickDeath(kind, info, wasDown, speed) {

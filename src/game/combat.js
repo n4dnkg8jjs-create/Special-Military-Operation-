@@ -429,7 +429,7 @@ export class Combat {
       if (head || t.hp < (heavy ? (WT.overkillHeavy ?? -95) : (WT.overkill ?? -95)) || (blast && Math.random() < (WT.blastKill ?? 0.25))) { t.die(null, { from: fromPos, blast: blast || W.type === 'blast', power: dmg, head }); g.onDeath(t, shooter, false); }
       else if (t.state !== 'critical' && t.state !== 'stable') {
         t.state = 'critical'; t.bleed = rf(...TUNING.bleedOut) * (1 + (g.mods?.[sq.side]?.medevac || 0)); t.target = null; t.path = null;
-        if (t.dragging) { t.dragging.dragger = null; t.dragging = null; }
+        if (t.dragging) { if (t.dragging.dragger === t) t.dragging.dragger = null; if (t.dragging.dragAssist === t) t.dragging.dragAssist = null; t.dragging = null; }
         if (t.slotRef) { t.slotRef.occupant = null; t.slotRef = null; if (t.inBuilding) { t.inside = null; } }
         sq.onCasualty(t, false); g.stats[sq.side].wia++;
         if (g.camDist(t.pos) < 80) g.sfx('pain', t.pos);

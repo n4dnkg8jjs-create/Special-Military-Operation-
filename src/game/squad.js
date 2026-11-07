@@ -749,9 +749,12 @@ export class Squad {
     // first - a man only goes for a casualty when he himself is not under direct fire and the casualty is not lying in
     // a known enemy's line of fire; otherwise he keeps fighting from cover and the casualty waits
     if (!this.routing) for (const w of this.soldiers) {
-      if (w.state !== 'critical' || w.dragger) continue;
-      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && this.safeToHelp(s));   // (not the men clearing a building)
-      if (!helpers.length) break;
+      if (w.state !== 'critical') continue;
+      // one man goes for him; a second one close by joins in for a two-man drag (faster), never more than two
+      const onIt = this.effective.filter(s => s.dragging === w);
+      if (onIt.length >= 2 || (onIt.length && onIt[0].dragPhase === 'treat') || (w.dragger && !onIt.length)) continue;
+      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && this.safeToHelp(s) && (!onIt.length || s.pos.distanceTo(w.pos) < 20));   // (not the men clearing a building)
+      if (!helpers.length) { if (onIt.length) continue; break; }
       if (this.casualtyExposed(w)) continue;
       helpers.sort((a, b) => (b.role.medic ? 20 : 0) - (a.role.medic ? 20 : 0) + a.pos.distanceTo(w.pos) - b.pos.distanceTo(w.pos));
       const h = helpers[0]; if (h.pos.distanceTo(w.pos) > 60) continue;
@@ -912,7 +915,7 @@ export class Squad {
     else if (s.groundAim && s.aimPoint) want = Math.atan2(s.aimPoint.x - s.pos.x, s.aimPoint.z - s.pos.z);
     else if (s.goalHeading != null) want = s.goalHeading;
     if (s.inBuilding && (s.target || s.groundAim)) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
-    if (s.dragging && s.dragPhase === 'drag') want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
+    if (s.dragging && (s.dragPhase === 'drag' || s.dragPhase === 'assist')) want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
     if (s.throwT > 0 && s.throwYaw != null) want = s.throwYaw;   // v7: faces his grenade throw (combat.startThrow)
     if (!(s.jumpT > 0)) s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);   // root-motion exit clips: heading fixed
     // combat
@@ -945,7 +948,7 @@ export class Squad {
       if (this.assault) base *= 1.06;
       if (s.state === 'light' && s.legWound) base *= 0.55;
       if (s.state === 'critical') base = 0.3;
-      if (s.dragging && s.dragPhase === 'drag') base = TUNING.dragSpeed;
+      if (s.dragging && s.dragPhase === 'drag') base = TUNING.dragSpeed * (s.dragging.dragAssist?.dragging === s.dragging && s.dragging.dragAssist.dragPhase === 'assist' && s.dragging.dragAssist.pos.distanceToSquared(s.pos) < 4 ? 1.5 : 1);   // two-man drag: ~1.5x
       else base *= s.speedMul || 1;
       const ci = g.nav.idx(s.pos.x, s.pos.z); if (ci >= 0 && g.nav.cost[ci] > 2 && g.nav.cost[ci] < 255) base *= 0.7;
       // cohesion: don't outrun the squad too much
@@ -1069,6 +1072,11 @@ export class Squad {
     if (s.dragPhase === 'reach') {
       if (s.pos.distanceTo(w.pos) < 1.4) {
         s.dragPhase = 'drag'; w.dragger = s;
+        if (w.dragger && w.dragger !== s && w.dragger.dragging === w) {   // a mate already has him: take the other shoulder strap
+          if (w.dragger.dragPhase === 'drag' && !(w.dragAssist?.dragging === w)) { s.dragPhase = 'assist'; w.dragAssist = s; s.path = null; s.goal = null; }
+          else { s.dragging = null; s.dragPhase = null; s.path = null; s.goal = null; }
+          return;
+        }
         // destination: carrier if close, else nearest cover away from the enemy
         const v = this.carrier && !this.carrier.destroyed && this.carrier.pos.distanceTo(s.pos) < 70 ? this.carrier : null;
         let dest;
@@ -1086,6 +1094,14 @@ export class Squad {
         else { s.dragPhase = 'treat'; s.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, this.game.mods?.[this.side]?.medTreat || 0)); }   // campaign tech: combat-lifesaver training (tech.js Medical)
       }
     } else if (s.dragPhase === 'treat') {
+    } else if (s.dragPhase === 'assist') {
+      // second man of a two-man drag: beside the casualty's shoulder, opposite the first, walking backwards with him
+      const d = w.dragger;
+      if (!d || d.dragging !== w || d.dragPhase !== 'drag' || !d.alive) { s.dragging = null; s.dragPhase = null; if (w.dragAssist === s) w.dragAssist = null; s.vel.set(0, 0, 0); return; }
+      const sx = Math.cos(d.heading), sz = -Math.sin(d.heading), tx = d.pos.x + sx * 0.75, tz = d.pos.z + sz * 0.75;
+      const dx = tx - s.pos.x, dz = tz - s.pos.z, dd = Math.hypot(dx, dz), v = Math.min(dd / Math.max(dt, 1e-3), TUNING.run) * (dd > 0.05 ? 1 : 0);
+      s.vel.set(dd > 1e-4 ? dx / dd * v : 0, 0, dd > 1e-4 ? dz / dd * v : 0); s.pos.x += s.vel.x * dt; s.pos.z += s.vel.z * dt; s.stance = 'crouch';
+      if (dd < 0.3) s.vel.copy(d.vel);
       s.treatT -= dt; s.vel.set(0, 0, 0); s.stance = 'crouch';
       if (s.treatT <= 0) { w.state = 'stable'; w.dragger = null; s.dragging = null; s.dragPhase = null; }
     }
