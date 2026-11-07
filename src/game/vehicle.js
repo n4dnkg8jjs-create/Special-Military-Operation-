@@ -97,6 +97,12 @@ export class Vehicle {
     if (kind === 'tank') this.cage = 0.55;
     else if (kind === 'btr' && !this.fallback && this.turret && Math.random() < 0.35) this.addCage();
     this.immob = {}; initArmor(this);
+    // campaign: the anti-drone cage some models carry built in (T-72B3, BMP-3, Msta-S) is the tech-tree upgrade -- without
+    // the side's 'cage' kit for this kind it is not there (no mesh, no effect); with it, vehicleKit dresses it with netting
+    if (game.campaign || game.opts?.net?.manifest?.campaign) {
+      const cc = this.model?.getObjectByName?.('cope_cage');
+      if (cc && !(game.mods?.[side]?.kits?.[kind] || []).includes('cage')) { cc.visible = false; if (kind === 'tank') this.cage = 0; }
+    }
     applyVehicleKits(this);   // campaign tech-tree upgrades (cope cage, ERA, ...) on vehicles spawned mid-battle; deployCampaign's are fitted in applyMods
     if (kind === 'spg') { this.spgInit(); if (this.crewList && this.def.crew > 3) this.crewList.push({ role: 'loader', hp: 100 }, { role: 'loader', hp: 100 }); this.crew = this.crewList?.length ?? 3; }
     this.thinkT = Math.random();

@@ -135,6 +135,7 @@ export function clientBattle(game, peer) {
     v.hp = vm.hp; v.netId = vm.id; game.netMap.set(vm.id, v);
     // the host's campaign kits (cope cages, ERA, the casevac pickup's net ...): the same meshes on the joiner's copy (the
     // effects are the host's: it resolves every hit)
+    if (vm.kits?.includes('cage')) { const cc = v.model?.getObjectByName?.('cope_cage'); if (cc) cc.visible = true; }   // (the host fitted the cage upgrade: the model's own cage is back)
     if (vm.kits?.length && !v.fallback && !v.kitDone) { v.kitDone = true; v.kits = [...vm.kits]; v.cageMesh = null; try { attachKits(v.model, vm.kits, { wheeled: !!v.def?.wheeled || v.kind === 'btr', kind: v.kind }); } catch (e) { console.warn('joiner kits', e); } }
   }
   for (const sm of M.squads) {
