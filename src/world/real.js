@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary } from './city.js';
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
-import { instance, trs, LODS, treeLod } from './instancer.js';
+import { instance, instanceRuns, trs, LODS, treeLod } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv } from './wear.js';
@@ -325,7 +325,7 @@ const Real = {
     const add = (buf, mat, ro = 0) => { const g = buf.geometry(); if (!g) return; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = ro; this.scene.add(m); return m; };
     add(B.walk, walkM); add(B.asphalt, asphalt); add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
     if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
-    if (curbs.length) { const curbMat = T.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 }); instance(this.scene, new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.2, 0.22), curbMat), curbs, { cell: 320, cullDist: 520 }); }
+    if (curbs.length) { const curbMat = T.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 }); instanceRuns(this.scene, Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.2, 0.22), curbMat), { name: 'curb' }), curbs, { cell: 160, lodDist: 100, cullDist: 520 }); }   // (far: merged straight runs)
   },
   // ---------------------------------------------------------------- buildings from footprints
   // kit rows (panel blocks, schools, civic) for City.placeBuildings, the rest queued for templates / halls / garages
@@ -692,8 +692,12 @@ const Real = {
     }
     const bm = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, (x, w, h) => { for (let i = 0; i < 900; i++) { const v = 80 + Math.random() * 70; x.fillStyle = `rgb(${v + 8},${v + 2},${v - 6})`; x.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 2 + Math.random() * 3); } }), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const g = ballast.geometry(); if (g) { const m = new THREE.Mesh(g, bm); m.receiveShadow = true; this.scene.add(m); }
-    const sg = new THREE.BoxGeometry(2.6, 0.12, 0.24);
-    instance(this.scene, new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x4a3e33, roughness: 1 })), sleepers, { cell: 320, cullDist: 420, shadows: false });
+    const sg = new THREE.BoxGeometry(2.6, 0.12, 0.24), sm = new THREE.MeshStandardMaterial({ color: 0x4a3e33, roughness: 1 });
+    // beyond ~60 m: the same sleeper without its bottom and its 12 x 24 cm end faces (6 triangles instead of 12; tens of
+    // thousands of them across the rail yards)
+    const sf = sg.clone(); sf.setIndex(Array.from(sg.index.array).filter((_, i) => (i >= 12 && i < 18) || i >= 24)); sf.clearGroups();
+    const st = new THREE.Mesh(sg, sm), stf = new THREE.Mesh(sf, sm); st.name = stf.name = 'sleeper';
+    instance(this.scene, st, sleepers, { cell: 160, lod: stf, lodDist: 60, cullDist: 420, shadows: false });
     if (railG.length) { const m = new THREE.Mesh(mergeGeometries(railG), new THREE.MeshStandardMaterial({ color: 0x5a4c40, roughness: 0.55, metalness: 0.6 })); m.castShadow = true; this.scene.add(m); }
     // platforms (concrete slabs, 0.9 m high: low cover, vehicles go round)
     const pl = []; for (const a of D.areas) if (a.t === 'platform') { const [x0, z0, x1, z1] = polyBB(a.pts); const L = Math.hypot(a.pts[1][0] - a.pts[0][0], a.pts[1][1] - a.pts[0][1]); void L; const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; const sh = new THREE.Shape(a.pts.map(p => new THREE.Vector2(p[0] - cx, -(p[1] - cz)))); const eg = new THREE.ExtrudeGeometry(sh, { depth: 0.9, bevelEnabled: false }); eg.rotateX(-Math.PI / 2); eg.translate(cx, 0, cz); pl.push(eg); for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) if (inPoly(x + 0.5, z + 0.5, a.pts)) { const k = this.nav.idx(x + 0.5, z + 0.5); if (k >= 0) { this.nav.cost[k] = Math.max(this.nav.cost[k], 6); this.nav.low[k] = 1; } } }

@@ -68,15 +68,25 @@ export function gradeEnabled() {
 
 // context capabilities other modules pick their draw path by (world/buildings.js: BatchedMesh kit when multi-draw exists)
 export const CAPS = { multiDraw: false };
+// the live renderer for world builders that bake textures at load (world/impostor.js)
+export const ENGINE = { r: null, shadows: false, shadowCache: false };
 // ---- static shadow cache.  Opaque world geometry that never moves (panel-block kit, interiors, instanced props / rubble /
-// curbs / trunks: markStatic) is drawn into a cached depth target with the sun's shadow camera only when that camera
-// moved (the focus crossed a 2 m snap step) or a static changed (instances added / removed / moved, LOD visibility:
-// checked by a per-frame signature); every frame the cached depth is blitted into the shadow map right after three
-// clears it and only the other casters (units, vehicles, wrecks, foliage cards, fx) are drawn on top.  The shadow map is
-// the same texture as without the cache.  ?shadowcache=0 / localStorage smo_shadowcache=0: off.
+// curbs / trunks, tree crowns: markStatic) is drawn into a cached depth target with the sun's shadow camera; every frame
+// the cached depth is blitted into the shadow map right after three clears it and only the other casters (units,
+// vehicles, wrecks, fx) are drawn on top.  The shadow map is the same texture as without the cache.
+// Panning: the shadow camera moves in whole shadow-map texels across the light (followShadow) and keeps its depth along
+// the light (re-anchored only past +-60 m).  The cache covers the shadow map plus a margin (1/16 of its size per side),
+// so a camera move only changes which window of it is blitted; past the margin the cache recentres (one blit between two
+// ping-pong targets, the newly exposed strips drawn with a strip-sized camera).  The whole cache is redrawn only when a
+// static changed (instances added / removed / moved: per-frame signature), on a re-anchor or a big jump.
+// Distance-LOD sets (world/instancer.js updateLods) draw ONE fixed level into the cache (markStatic(o, 'always'): drawn
+// whatever its LOD visibility; 'skip': never drawn, its shadow comes from the 'always' level), so LOD switches while
+// the camera moves do not invalidate the cache.  Alpha-tested casters (leaf cards) are drawn with a matching
+// alpha-tested depth material.  ?shadowcache=0 / localStorage smo_shadowcache=0: off.
 export const STATIC_SHADOW = new Set();
-export function markStatic(o) { if (o && !STATIC_SHADOW.has(o)) { STATIC_SHADOW.add(o); o.layers.enable(3); } }
+export function markStatic(o, mode) { if (!o) return; if (mode) o.userData.shadowMode = mode; if (!STATIC_SHADOW.has(o)) { STATIC_SHADOW.add(o); o.layers.enable(3); } }
 function shadowCacheOn() { try { const q = new URLSearchParams(location.search).get('shadowcache'); if (q != null) return q !== '0'; return localStorage.getItem('smo_shadowcache') !== '0'; } catch { return true; } }
+const _SIDE = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide };
 export class Renderer {
   constructor(canvas, quality) {
     this.quality = quality;
@@ -90,6 +100,7 @@ export class Renderer {
     this.r.toneMappingExposure = 1.0;
     this.r.outputColorSpace = THREE.SRGBColorSpace;
     CAPS.multiDraw = this.r.extensions.has('WEBGL_multi_draw');
+    ENGINE.r = this.r; ENGINE.shadows = !lo; ENGINE.shadowCache = !lo && shadowCacheOn();
 
     const scene = this.scene = new THREE.Scene();
     const graded = this.graded = gradeEnabled();
@@ -123,6 +134,8 @@ export class Renderer {
     scene.environment = this.envRT.texture;
     scene.environmentIntensity = 0.75;
 
+    // light-space basis of the sun's shadow camera (lookAt from the light with up +Y): X right, Y up, sunDir back
+    this.lsX = new THREE.Vector3(0, 1, 0).cross(sunDir).normalize(); this.lsY = sunDir.clone().cross(this.lsX).normalize();
     const sun = this.sun = new THREE.DirectionalLight(0xfff0dc, 2.9);
     sun.castShadow = !lo;
     const sm = hi ? 4096 : 2048;
@@ -145,6 +158,21 @@ export class Renderer {
       const ao = this.ao = new GTAOPass(scene, this.camera, innerWidth, innerHeight, { depthTexture: comp.readBuffer.depthTexture });
       ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: hi ? 16 : 8 });
       ao.blendIntensity = 0.75;
+      // the AO is multiplied straight onto the frame (three's default output first copies the whole frame into the
+      // other buffer: one full-screen HDR read + write less); medium computes + denoises the AO at half resolution
+      // (bilinear upsample in the blend: AO is low-frequency and denoised) -- ?aohalf=0 full res, ?aohalf=1 on high too
+      const aoHalf = (() => { try { const q = new URLSearchParams(location.search).get('aohalf'); if (q != null) return q !== '0'; } catch { /* */ } return !hi; })();
+      if (aoHalf) { const ss = ao.setSize.bind(ao); ao.setSize = (w, h) => ss(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2))); ao.setSize(innerWidth, innerHeight); }
+      ao.needsSwap = false;
+      ao.render = function (renderer, writeBuffer, readBuffer) {
+        const c = this.camera, u = this.gtaoMaterial.uniforms;
+        u.cameraNear.value = c.near; u.cameraFar.value = c.far; u.cameraProjectionMatrix.value.copy(c.projectionMatrix); u.cameraProjectionMatrixInverse.value.copy(c.projectionMatrixInverse); u.cameraWorldMatrix.value.copy(c.matrixWorld);
+        this._renderPass(renderer, this.gtaoMaterial, this.gtaoRenderTarget, 0xffffff, 1.0);
+        this.pdMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(c.projectionMatrixInverse);
+        this._renderPass(renderer, this.pdMaterial, this.pdRenderTarget, 0xffffff, 1.0);
+        this.blendMaterial.uniforms.intensity.value = this.blendIntensity; this.blendMaterial.uniforms.tDiffuse.value = this.pdRenderTarget.texture;
+        this._renderPass(renderer, this.blendMaterial, readBuffer);
+      };
       comp.addPass(ao);
     }
     // sanitize before bloom: one NaN / Inf pixel (degenerate normals, a shader edge case on some GPUs, half-float
@@ -186,35 +214,92 @@ export class Renderer {
     addEventListener('resize', () => this.resize());
   }
   installShadowCache() {
-    const r = this.r, gl = r.getContext(), sm = r.shadowMap, sun = this.sun, base = sm.render;
-    const camC = new THREE.OrthographicCamera(), depthMat = new THREE.MeshDepthMaterial({ side: THREE.BackSide });   // (three draws FrontSide casters' back faces into shadow maps)
-    const pv = new THREE.Matrix4(), lastPV = new THREE.Matrix4(); let rt = null, sig0 = NaN, cacheOk = false;
-    const C = this.shadowCache = { renders: 0, frames: 0 };
-    const blit = map => {
-      const src = r.properties.get(rt).__webglFramebuffer, dst = r.properties.get(map).__webglFramebuffer; if (!src || !dst) return;
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dst);
-      gl.blitFramebuffer(0, 0, rt.width, rt.height, 0, 0, rt.width, rt.height, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, dst);   // (three's state cache has dst bound to FRAMEBUFFER = read + draw)
+    const r = this.r, gl = r.getContext(), sm = r.shadowMap, sun = this.sun, base = sm.render, self = this;
+    const camC = new THREE.OrthographicCamera(), camE = new THREE.OrthographicCamera();
+    // depth materials: three draws FrontSide casters' back faces into shadow maps (and DoubleSide both, BackSide front);
+    // alpha-tested casters keep their map / alpha test
+    const opaqueDepth = new THREE.MeshDepthMaterial({ side: THREE.BackSide }), depthOf = new Map();
+    const depthMat = m => {
+      if (!(m.alphaTest > 0) && m.side === THREE.FrontSide && m.shadowSide == null) return opaqueDepth;
+      const side = m.shadowSide ?? _SIDE[m.side], at = m.alphaTest > 0 ? m.alphaTest : 0, k = (at ? (m.map?.uuid || '') + '|' + (m.alphaMap?.uuid || '') + '|' + at : '') + '|' + side;
+      let d = depthOf.get(k); if (!d) { d = new THREE.MeshDepthMaterial({ side, map: at ? m.map : null, alphaMap: at ? m.alphaMap : null, alphaTest: at }); depthOf.set(k, d); }
+      return d;
+    };
+    const rts = [null, null]; let cur = 0, sig0 = NaN, cacheOk = false, cR = 0, cU = 0, cA = 0;
+    const C = this.shadowCache = { renders: 0, scrolls: 0, frames: 0, debug: /[?&]shdbg/.test(location.search) ? new Map() : null };
+    const X = this.lsX, Y = this.lsY, Z = this.sunDir;
+    const blit = (src, dst, sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1) => {
+      const fs = r.properties.get(src).__webglFramebuffer, fd = r.properties.get(dst).__webglFramebuffer; if (!fs || !fd) return false;
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fs); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fd);
+      gl.blitFramebuffer(sx0, sy0, sx1, sy1, dx0, dy0, dx1, dy1, gl.DEPTH_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fd);   // (three's state cache has dst bound to FRAMEBUFFER = read + draw)
+      return true;
+    };
+    // draw the static casters into rt, whole map or the texel rect x0..x1, y0..y1 (a strip camera: same depth range)
+    const drawStatics = (scene, shCam, rt, x0, y0, x1, y1) => {
+      const W = rt.width, H = rt.height, prev = r.getRenderTarget(), ov = scene.overrideMaterial, ar = r.info.autoReset, au = sm.autoUpdate;
+      camC.copy(shCam); camC.layers.set(3);
+      if (x0 > 0 || y0 > 0 || x1 < W || y1 < H) {
+        const tx = (shCam.right - shCam.left) / W, ty = (shCam.top - shCam.bottom) / H, l = shCam.left, b = shCam.bottom;
+        camC.left = l + x0 * tx; camC.right = l + x1 * tx; camC.bottom = b + y0 * ty; camC.top = b + y1 * ty; camC.updateProjectionMatrix();
+      }
+      rt.viewport.set(x0, y0, x1 - x0, y1 - y0); rt.scissor.set(x0, y0, x1 - x0, y1 - y0); rt.scissorTest = true;
+      sm.autoUpdate = false; r.info.autoReset = false; scene.overrideMaterial = null;
+      const vis = [], mats = [];
+      for (const o of STATIC_SHADOW) {
+        const mode = o.userData.shadowMode, show = o.castShadow && mode !== 'skip' && (o.visible || mode === 'always');
+        if (o.visible !== show) { vis.push(o, o.visible); o.visible = show; }
+        if (show) { mats.push(o, o.material); o.material = Array.isArray(o.material) ? o.material.map(depthMat) : depthMat(o.material); }
+      }
+      try { r.setRenderTarget(rt); r.clear(false, true, false); r.render(scene, camC); }
+      finally {
+        for (let i = 0; i < vis.length; i += 2) vis[i].visible = vis[i + 1];
+        for (let i = 0; i < mats.length; i += 2) mats[i].material = mats[i + 1];
+        rt.viewport.set(0, 0, W, H); rt.scissor.set(0, 0, W, H); rt.scissorTest = false;
+        scene.overrideMaterial = ov; sm.autoUpdate = au; r.info.autoReset = ar; r.setRenderTarget(prev);
+      }
     };
     sm.render = function (lights, scene, camera) {
       const sh = sun.shadow;
       if (!STATIC_SHADOW.size || !lights.includes(sun) || !sm.enabled || !sun.castShadow || !sh.map || (sm.autoUpdate === false && sm.needsUpdate === false)) return base.call(this, lights, scene, camera);
-      sh.updateMatrices(sun, camera); pv.multiplyMatrices(sh.camera.projectionMatrix, sh.camera.matrixWorldInverse);
-      // signature of the static set: visibility, instance counts / matrix versions, kit batch versions
+      sh.updateMatrices(sun, camera);
+      // signature of the static set: visibility (not LOD switches: 'always' / 'skip'), instance counts / matrix versions, kit batch versions
       let sig = 0;
-      for (const o of STATIC_SHADOW) { let vis = o.visible, root = o; for (let p = o.parent; p; p = p.parent) { vis &&= p.visible; root = p; } if (root !== scene) { STATIC_SHADOW.delete(o); continue; } sig = (sig * 31 + (vis ? 1 + (o.count ?? 0) + (o.instanceMatrix?.version ?? 0) * 7 + (o.kv ?? 0) * 13 : 0)) | 0; }
-      const w = sh.map.width, h = sh.map.height;
-      if (!rt || rt.width !== w || rt.height !== h) { rt?.dispose(); rt = new THREE.WebGLRenderTarget(w, h, { depthTexture: new THREE.DepthTexture(w, h, THREE.UnsignedIntType) }); cacheOk = false; }
-      if (!cacheOk || sig !== sig0 || !pv.equals(lastPV)) {
-        const prev = r.getRenderTarget(), ov = scene.overrideMaterial, ar = r.info.autoReset, au = sm.autoUpdate;
-        camC.copy(sh.camera); camC.layers.set(3); sm.autoUpdate = false; r.info.autoReset = false; scene.overrideMaterial = depthMat;
-        const off = []; for (const o of STATIC_SHADOW) if (!o.castShadow && o.visible) { o.visible = false; off.push(o); }   // (statics that do not cast)
-        try { r.setRenderTarget(rt); r.clear(); r.render(scene, camC); } finally { for (const o of off) o.visible = true; scene.overrideMaterial = ov; sm.autoUpdate = au; r.info.autoReset = ar; r.setRenderTarget(prev); }
-        sig0 = sig; lastPV.copy(pv); cacheOk = true; C.renders++;
+      for (const o of STATIC_SHADOW) {
+        const mode = o.userData.shadowMode; if (mode === 'skip') continue;
+        let vis = mode === 'always' || o.visible, root = o; for (let p = o.parent; p; p = p.parent) { vis &&= p.visible; root = p; }
+        if (root !== scene) { STATIC_SHADOW.delete(o); continue; }
+        const c = vis && o.castShadow ? 1 + (o.count ?? 0) + (o.instanceMatrix?.version ?? 0) * 7 + (o.kv ?? 0) * 13 : 0;
+        sig = (sig * 31 + c) | 0;
+        if (C.debug) { const was = C.debug.get(o); if (was !== undefined && was !== c) (C.changed ||= []).push((o.name || o.type) + ':' + (mode || '') + ':' + was + '>' + c); C.debug.set(o, c); }
+      }
+      // the cache covers the shadow map plus a margin of M texels on every side: while the camera pans less than M texels
+      // from where the cache was centred, a frame only blits the right window of it; past that the cache recentres
+      // (one blit into the other target + the exposed strips drawn), every ~M texels of camera travel
+      const w = sh.map.width, h = sh.map.height, M = Math.max(32, Math.round(w / 16)), CW = w + 2 * M, CH = h + 2 * M;
+      if (!rts[0] || rts[0].width !== CW || rts[0].height !== CH) { for (let i = 0; i < 2; i++) { rts[i]?.dispose(); rts[i] = new THREE.WebGLRenderTarget(CW, CH, { depthTexture: new THREE.DepthTexture(CW, CH, THREE.UnsignedIntType) }); r.initRenderTarget(rts[i]); } cacheOk = false; }   // (both framebuffers exist before the first scroll blit)
+      // light-space position of the shadow camera (followShadow keeps it on the texel grid)
+      const P = sun.position, pr = P.dot(X), pu = P.dot(Y), pa = P.dot(Z), sc = sh.camera, tx = (sc.right - sc.left) / w, ty = (sc.top - sc.bottom) / h;
+      camE.copy(sc); camE.left -= M * tx; camE.right += M * tx; camE.bottom -= M * ty; camE.top += M * ty; camE.updateProjectionMatrix();
+      let ox = Math.round((pr - cR) / tx), oy = Math.round((pu - cU) / ty);
+      if (!cacheOk || sig !== sig0 || Math.abs(pa - cA) > 1e-3 || Math.abs(ox) > CW / 3 || Math.abs(oy) > CH / 3 || self.shadowScroll === false && (ox || oy)) {
+        drawStatics(scene, camE, rts[cur], 0, 0, CW, CH);
+        sig0 = sig; cR = pr; cU = pu; cA = pa; cacheOk = true; C.renders++; ox = oy = 0;
+      } else if (Math.abs(ox) > M || Math.abs(oy) > M) {
+        // recentre: shift the cached depth by (ox, oy) texels into the other target, then draw the exposed strips
+        const dx = ox, dy = oy, src = rts[cur], dst = rts[cur ^ 1];
+        const sx0 = Math.max(0, dx), sx1 = CW + Math.min(0, dx), sy0 = Math.max(0, dy), sy1 = CH + Math.min(0, dy);
+        if (blit(src, dst, sx0, sy0, sx1, sy1, sx0 - dx, sy0 - dy, sx1 - dx, sy1 - dy)) {
+          if (dx > 0) drawStatics(scene, camE, dst, CW - dx, 0, CW, CH); else if (dx < 0) drawStatics(scene, camE, dst, 0, 0, -dx, CH);
+          if (dy > 0) drawStatics(scene, camE, dst, dx < 0 ? -dx : 0, CH - dy, dx > 0 ? CW - dx : CW, CH); else if (dy < 0) drawStatics(scene, camE, dst, dx < 0 ? -dx : 0, 0, dx > 0 ? CW - dx : CW, -dy);
+          cur ^= 1; cR += dx * tx; cU += dy * ty; C.scrolls++; ox = oy = 0;
+        } else { cacheOk = false; drawStatics(scene, camE, rts[cur], 0, 0, CW, CH); sig0 = sig; cR = pr; cU = pu; cA = pa; cacheOk = true; C.renders++; ox = oy = 0; }
       }
       C.frames++;
+      const rt = rts[cur];
       for (const o of STATIC_SHADOW) { o.userData.cs0 = o.castShadow; o.castShadow = false; }
-      const clr = r.clear; r.clear = function (...a) { clr.apply(this, a); if (r.getRenderTarget() === sh.map) blit(sh.map); };
+      const wx = M + ox, wy = M + oy;
+      const clr = r.clear; r.clear = function (...a) { clr.apply(this, a); if (r.getRenderTarget() === sh.map) blit(rt, sh.map, wx, wy, wx + w, wy + h, 0, 0, w, h); };
       try { base.call(this, lights, scene, camera); } finally { r.clear = clr; for (const o of STATIC_SHADOW) o.castShadow = o.userData.cs0; }
     };
   }
@@ -241,13 +326,21 @@ export class Renderer {
     if (s !== D.scale) { D.scale = s; this.r.setPixelRatio(D.base * s); this.r.setSize(innerWidth, innerHeight); this.composer.setPixelRatio(D.base * s); this.sizeGrade(); }
   }
   sizeGrade() { const r = this.grade?.uniforms.res; if (r) r.value.set(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio()); }
-  // Keep the shadow frustum centred on what the camera looks at.
+  // Keep the shadow frustum centred on what the camera looks at: the shadow camera sits on the shadow-map texel grid across
+  // the light (no shimmer on moving shadow edges; the static shadow cache scrolls by whole texels) and keeps its depth
+  // along the light until the focus has moved +-60 m that way (?shadowsnap=0: the old 2 m world-grid snap).
   followShadow(focus) {
-    const s = this.sun;
-    const snap = 2;
-    const fx = Math.round(focus.x / snap) * snap, fz = Math.round(focus.z / snap) * snap;
-    s.target.position.set(fx, 0, fz);
-    s.position.set(fx + this.sunDir.x * 300, this.sunDir.y * 300, fz + this.sunDir.z * 300);
+    const s = this.sun, Z = this.sunDir, X = this.lsX, Y = this.lsY, D = 300;
+    if (this.shadowSnapOff ??= (() => { try { return new URLSearchParams(location.search).get('shadowsnap') === '0'; } catch { return false; } })()) {
+      const snap = 2, fx = Math.round(focus.x / snap) * snap, fz = Math.round(focus.z / snap) * snap;
+      s.target.position.set(fx, 0, fz); s.position.set(fx + Z.x * D, Z.y * D, fz + Z.z * D); this.shadowScroll = false; return;
+    }
+    const c = s.shadow.camera, sz = s.shadow.mapSize, tx = (c.right - c.left) / sz.x, ty = (c.top - c.bottom) / sz.y;
+    const fr = focus.x * X.x + focus.z * X.z, fu = focus.x * Y.x + focus.z * Y.z, fa = focus.x * Z.x + focus.z * Z.z + D;   // (focus on the ground, y = 0)
+    if (this.shA == null || Math.abs(fa - this.shA) > 60) this.shA = Math.round(fa);
+    const pr = Math.round(fr / tx) * tx, pu = Math.round(fu / ty) * ty, pa = this.shA;
+    s.position.set(X.x * pr + Y.x * pu + Z.x * pa, X.y * pr + Y.y * pu + Z.y * pa, X.z * pr + Y.z * pu + Z.z * pa);
+    s.target.position.copy(s.position).addScaledVector(Z, -D);
   }
   render(dt, t) {
     this.grade.uniforms.time.value = t;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { NavGrid, BLOCK } from './nav.js';
 import { Building, KitPool, setKitCell, makeKitPool } from './buildings.js';
-import { instance, trs, LODS, farLod, treeLod } from './instancer.js';
+import { instance, instanceRuns, trs, LODS, farLod, treeLod } from './instancer.js';
 import { Terrain } from './terrain.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -162,6 +162,9 @@ export class City {
   ground() {
     const S = this.groundS = MAP_SIZE + 1400, g = new THREE.PlaneGeometry(S, S, 1, 1); g.rotateX(-Math.PI / 2);
     const ground = new THREE.Mesh(g, this.groundMat(false)); ground.receiveShadow = true; ground.name = 'ground'; this.scene.add(ground);
+    // drawn after the other opaque geometry (roads / pavements lie on it with a polygon offset): the depth test then
+    // skips its (expensive, splat + war map) shading under buildings, roads, props and vegetation.  ?groundlast=0: off
+    try { if (new URLSearchParams(location.search).get('groundlast') !== '0') ground.renderOrder = 1; } catch { /* */ }
     this.groundMesh = ground;
   }
   groundMat(terrain) {   // ground look v6: src/world/ground.js (height-blended, anti-tiled material sets)
@@ -670,7 +673,7 @@ export class City {
       }
     }
     const cg = new THREE.BoxGeometry(0.98, 0.2, 0.22);
-    instance(this.scene, new THREE.Mesh(cg, curbMat), curbs);
+    instanceRuns(this.scene, Object.assign(new THREE.Mesh(cg, curbMat), { name: 'curb' }), curbs, { cell: 90, lodDist: 100 });   // (far: merged straight runs)
   }
   // ---------------------------------------------------------------- buildings
   placeBuildings() {
