@@ -547,7 +547,9 @@ export class Farmland extends City {
   }
   // ---------------------------------------------------------------- crops
   crops() {
-    const R = this.rng, cap = this.quality === 'low' ? 7000 : this.quality === 'medium' ? 12000 : 16000;
+    // own stream: the number of draws depends on the quality cap, and peers on different quality settings must build the
+    // same map after this step (layout and nav from this.rng)
+    const R = mulberry(0x5bd1e995 ^ 4417), cap = this.quality === 'low' ? 7000 : this.quality === 'medium' ? 12000 : 16000;
     const inst = { shadows: this.quality === 'high', cullDist: this.quality === 'high' ? 300 : 230 };
     for (const f of this.fields) {
       if (f.type !== T_SUN && f.type !== T_CORN && f.type !== T_FALLOW) continue;
