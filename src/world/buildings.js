@@ -389,10 +389,12 @@ export class Building {
       const gone = this.pancaked && c >= this.pancaked[0] && c <= this.pancaked[1];
       const topGone = this.collapsedCorner && f >= this.floors - 2 && (this.collapsedCorner === 'right' ? c >= this.modules - 2 : c <= 1);
       if (gone || topGone) continue;
-      const cx = -this.L / 2 + (c + 0.5) * W;
+      // (slabs of the end columns stop 15 cm inside the gable: flush with the end wall's outer face they z-fought with it,
+      // a dashed light band along every floor joint of the blank end walls)
+      const x0 = -this.L / 2 + c * W + (c === 0 ? 0.15 : 0), x1 = -this.L / 2 + (c + 1) * W - (c === this.modules - 1 ? 0.15 : 0), cx = (x0 + x1) / 2;
       this.toWorld(cx, f * H + H - 0.11, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= []; this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM);
-      this.toWorld(cx, f * H + H / 2, 0, tmpV);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(x1 - x0, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= []; this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM);
+      this.toWorld(-this.L / 2 + (c + 0.5) * W, f * H + H / 2, 0, tmpV);
       tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]); darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);
     }

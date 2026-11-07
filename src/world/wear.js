@@ -299,7 +299,11 @@ export function weatherMaterial(m, { amount = 1, soot = 0, key = 'w' } = {}) {
       {
         float A = ${amount.toFixed(2)}, S = ${soot.toFixed(2)};
         vec3 c = diffuseColor.rgb; float up = vWxN.y, vert = 1.0 - abs(up);
-        float hz = dot(vWxP.xz, vec2(0.71, 0.71)) + vWxP.x * 0.3;   // coordinate along the wall
+        // coordinate along the wall: horizontal, in the face's own direction (a fixed world axis went constant along walls
+        // at ~55 deg to it -- streaks and dirt patches turned into horizontal bands across whole facades of rotated blocks);
+        // floors / roofs (no horizontal direction) keep the old world-axis mix
+        vec2 wxT = vec2(-vWxN.z, vWxN.x); float wxL = length(wxT);
+        float hz = mix(dot(vWxP.xz, vec2(0.71, 0.71)) + vWxP.x * 0.3, dot(vWxP.xz, wxT / max(wxL, 1e-3)), smoothstep(0.25, 0.5, wxL));
         float lum = dot(c, vec3(0.3, 0.59, 0.11));
         c = mix(c, vec3(lum) * vec3(1.0, 0.98, 0.94), 0.18 * A);                 // weathered, faded paint / plaster
         // ground splash: mud and dust kicked up the wall foot

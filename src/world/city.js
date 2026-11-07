@@ -735,6 +735,12 @@ export class City {
     const { W, H } = this.assets.kit, R = this.rng, list = this.decals = [], q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
     const add = (k, b, p, lx, y, w, h, dep) => {
       const m = meshes[k]; if (m.count >= 2600) return;
+      // never past the building's corner (edge panels) or up into the sky above the roof (top storey): a decal overhanging
+      // the wall it is painted on floats beside / above the block
+      const at = b.panelMap;
+      if (at && (!at.get(p.side + ':' + (p.col - 1) + ':' + p.floor) || !at.get(p.side + ':' + (p.col + 1) + ':' + p.floor))) { lx = Math.max(-W / 2 + 0.3, Math.min(W / 2 - 0.3, lx)); w = Math.min(w, W - 0.1 - 2 * Math.abs(lx)); }
+      if (at && !at.get(p.side + ':' + p.col + ':' + (p.floor + 1))) h = Math.min(h, H + 0.15 - y);
+      if (w < 0.25 || h < 0.25) return;
       const o = b.outward(p), c = b.panelCenter(p, new THREE.Vector3()), side = new THREE.Vector3(o.z, 0, -o.x);
       v.copy(c).addScaledVector(side, lx).addScaledVector(o, 0.02); v.y = p.floor * H + y;
       q.setFromAxisAngle(Y, b.rot + p.rot); sc.set(w, h, 1);
