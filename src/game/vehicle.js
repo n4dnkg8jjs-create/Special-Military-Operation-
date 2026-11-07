@@ -14,8 +14,8 @@ const tmp = new THREE.Vector3();
 
 // Fire damage look (v2). Burn spreads from the fire (B.fire: world point on the deck / engine) outward and faster
 // upward with time (B.burn 0..1): blistered, darkened paint at the front, then soot-black, paint burnt off to bare
-// heat-tinted steel, grey-white ash where it was hottest (top surfaces), vertical soot streaks on the sides, and - long
-// after - a brown-orange rust bloom (B.rust). Embers glow in the burnt parts while the fire is going (uEmber).
+// heat-tinted steel, grey-white ash where it was hottest (top surfaces), vertical soot streaks on the sides, a slight
+// brown cast in the soot (no rust: B.rust is unused). Embers glow in the burnt parts while the fire is going (uEmber).
 // Without B (old callers) the whole model is fully burnt.
 export function charMaterial(m, emberUniform = { value: 0 }, B = null) {
   if (!m || m.userData?.charred) return m;
@@ -47,18 +47,17 @@ export function charMaterial(m, emberUniform = { value: 0 }, B = null) {
         gBurnt = burnt;
         // blistered / darkened paint just ahead of the burn
         vec3 blister = orig * (0.38 + 0.25 * smoothstep(0.55, 0.75, n3)) + vec3(0.03, 0.015, 0.0);
-        // a burnt-out hull: paint gone to a dark red-brown oxide over black soot (the classic look within hours), bare
+        // a burnt-out hull: paint burnt to black soot with a slight brown cast (no rust), bare
         // heat-darkened steel on edges, light grey ash only in spots on the top surfaces, soot streaks up the sides
         vec3 soot = vec3(0.05, 0.045, 0.04) * (0.8 + 0.4 * n3);
-        vec3 oxide = vec3(0.2, 0.1, 0.055) * (0.75 + 0.5 * n3);
+        vec3 oxide = vec3(0.13, 0.095, 0.07) * (0.75 + 0.5 * n3);   // a slight brown cast in the soot, no rust
         vec3 ash = vec3(0.42, 0.41, 0.39) * (0.8 + 0.2 * n3);
         vec3 steel = vec3(0.16, 0.155, 0.16);
-        vec3 c = mix(soot, oxide, smoothstep(0.35, 0.65, n2) * (0.45 + 0.4 * uRust));
+        vec3 c = mix(soot, oxide, smoothstep(0.35, 0.65, n2) * 0.45);
         c = mix(c, steel, smoothstep(0.72, 0.86, n1) * 0.4);
         c = mix(c, ash, smoothstep(0.7, 0.86, n1 * 0.7 + n3 * 0.3 + up * 0.15) * up * 0.7);
         float streak = cn(vec3(vCharW.x * 7.0, vCharW.y * 0.5, vCharW.z * 7.0)) * side;               // soot runs up the sides
         c = mix(c, soot * 0.6, smoothstep(0.6, 0.88, streak) * 0.6);
-        c = mix(c, vec3(0.27, 0.13, 0.06) * (0.8 + 0.4 * n3), uRust * smoothstep(0.5, 0.8, cn(vCharW * 4.3 + 9.0)) * 0.6);
         diffuseColor.rgb = mix(mix(orig, blister, edge), c, burnt);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.95, gBurnt);`)
@@ -606,7 +605,6 @@ export class Vehicle {
     if (!this.burnApplied && !this.destroyed) { this.burnApplied = true; charObject(this.model, this.ember ||= { value: 1 }, B); }
     if (full) B.burn.value = Math.max(B.burn.value, 0.6);
     B.burn.value = Math.min(1, B.burn.value + dt / (this.destroyed ? 90 : 150));   // ~2.5 min to burn through, faster as a wreck
-    if (this.destroyed && B.burn.value >= 1) B.rust.value = Math.min(0.55, B.rust.value + dt / 400);
   }
   // swap the model to its wreck (also used by the versus joiner's puppet vehicles)
   showWreck() {
@@ -643,7 +641,7 @@ export class Vehicle {
     this.wreck = true;
   }
   updateWreck(dt) {
-    if (this.burnB && (this.burnB.burn.value < 1 || this.burnB.rust.value < 0.55)) this.burnLook(dt);
+    if (this.burnB && this.burnB.burn.value < 1) this.burnLook(dt);
     const f = this.flyer;
     if (f && !f.rest) {
       f.v.y -= 9.8 * dt; f.obj.position.addScaledVector(f.v, dt); f.obj.rotation.x += f.w.x * dt; f.obj.rotation.z += f.w.z * dt; f.obj.rotation.y += f.w.y * dt;
