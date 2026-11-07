@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { WEAPONS } from '../config.js';
 import { ROADS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
-import { unitSymbol, unitKindOf, UNIT_TYPE_NAME, ORDER_ICONS } from './symbols.js';
+import { unitSymbol, unitKindOf, unitPortrait, UNIT_TYPE_NAME, ORDER_ICONS, ARM_CODE } from './symbols.js';
 import { ContactMarkers } from './contactMarkers.js';
 
-// Battle HUD. Look & tokens: src/ui/style.css. All per-frame DOM writes are change-guarded
+// Battle HUD (look modelled on WARNO: score bar, deck of unit cards along the bottom, unit card + command grid, NATO
+// labels over units). Look & tokens: src/ui/style.css "Battle HUD v5". All per-frame DOM writes are change-guarded
 // (each element remembers what it last showed), slow panels refresh at 4 Hz.
-const C = { friend: '#5aa9dc', hostile: '#e2574a', neutral: '#a7a69c', accent: '#e4a948', ok: '#7fbb6a', t1: '#ece8de' };   // = style.css tokens
+const C = { friend: '#4d93dc', hostile: '#d9473d', neutral: '#9aa1a7', accent: '#e8b03c', ok: '#78b84a', t1: '#e6e8e9' };   // = style.css --w-* tokens
+const rng = m => m >= 1000 ? `${(m / 1000).toFixed(m % 1000 ? 1 : 0)} km` : `${m} m`;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const set = (el, k, v) => { if (el['_' + k] !== v) { el['_' + k] = v; el[k] = v; } };              // guarded property write
 const setS = (el, k, v) => { if (el['_s' + k] !== v) { el['_s' + k] = v; el.style[k] = v; } };      // guarded style write
@@ -104,49 +106,64 @@ export class HUD {
     m.rotation.x = -Math.PI / 2; m.position.set(p.x, 0.25, p.z); m.renderOrder = 3; g.scene.add(m); this._gm = m;
     this._gmT = setTimeout(() => { g.scene.remove(m); if (this._gm === m) this._gm = null; }, 30000);
   }
-  // ------------------------------------------------------------ roster
-  // Order-of-battle roster: a compact, grouped, scrollable list (left edge).
-  // Squads are nested under the carrier that brought them; groups collapse; Tab folds the whole panel to symbols.
+  // ------------------------------------------------------------ deck (bottom): unit cards by arm
+  // WARNO-style deck bar: arm tabs over one row of unit cards (portrait, NATO symbol, strength, bars). ALL shows every
+  // arm with a spine between them; a carrier's squads follow it. Tab (key) folds the cards to symbols + bars.
+  // Tab click: show that arm · Ctrl/Shift-click a tab: select the arm (Shift adds). Card: click select, dbl-click go to.
   rebuildCards() {
-    this.cards.innerHTML = ''; this.cards.className = 'roster' + (this.rosterMini ? ' mini' : '');
+    this.cards.innerHTML = ''; this.cards.className = 'deck' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
     const units = this.g.playerUnits.filter(u => !(u.type === 'squad' && u.crew && u.destroyed));
     const groupOf = u => u.type === 'vehicle' ? (u.kind === 'medevac' ? 'MEDICAL' : u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
     const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'MEDICAL', 'CREWS'];
-    const head = document.createElement('div'); head.className = 'rhead';
-    head.innerHTML = `<span class="label">Order of battle<span class="rcount"></span></span><span class="rbtn" title="Fold the roster (Tab)"></span>`;
-    head.querySelector('.rbtn').addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
-    this.rcountEl = head.querySelector('.rcount');
+    const carried = m => units.filter(q => q.type === 'squad' && q.carrier === m && groupOf(q) === null);
+    const groups = order.map(grp => { const members = units.filter(u => groupOf(u) === grp); return { grp, members, all: [...members, ...members.flatMap(carried)] }; }).filter(G => G.members.length);
+    if (this.deckTab !== 'ALL' && !groups.some(G => G.grp === this.deckTab)) this.deckTab = 'ALL';
+    // tab row
+    const head = document.createElement('div'); head.className = 'dk-tabs';
+    const tab = (key, label, title) => { const b = document.createElement('button'); b.className = 'dtab' + (this.deckTab === key ? ' on' : ''); b.title = title; b.innerHTML = `<span>${label}</span><b></b>`; head.appendChild(b); return b; };
+    const all = tab('ALL', 'All', 'All units'); all.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; if (e.ctrlKey || e.shiftKey) { this.select(units, e.shiftKey); return; } this.deckTab = 'ALL'; this.rebuildCards(); });
+    this.rcountEl = all.querySelector('b');
+    this.rosterGroups = [];
+    for (const G of groups) {
+      const b = tab(G.grp, ARM_CODE[G.grp] || G.grp, `${G.grp[0] + G.grp.slice(1).toLowerCase()} · click: show · Ctrl-click: select the arm · Shift-click: add to the selection`);
+      b.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; if (e.ctrlKey || e.shiftKey) { this.select(G.all, e.shiftKey); return; } this.deckTab = this.deckTab === G.grp ? 'ALL' : G.grp; this.rebuildCards(); });
+      this.rosterGroups.push({ el: b.querySelector('b'), members: G.all });
+    }
+    const sp = document.createElement('span'); sp.className = 'dk-sp'; head.appendChild(sp);
+    const fold = document.createElement('button'); fold.className = 'dk-fold'; fold.title = 'Fold the cards (Tab)'; fold.innerHTML = `<kbd>Tab</kbd>`; head.appendChild(fold);
+    fold.addEventListener('mousedown', e => { e.stopPropagation(); this.rosterMini = !this.rosterMini; this.rebuildCards(); });
     this.cards.appendChild(head);
-    const body = document.createElement('div'); body.className = 'rbody'; this.cards.appendChild(body);
-    this.rosterFold ||= {};
-    const row = (u, nested) => {
-      const el = document.createElement('div'); el.className = 'r' + (nested ? ' nest' : '');
-      el.innerHTML = `<span class="g"></span><span class="ic">${unitSymbol(unitKindOf(u), 'friend')}</span><span class="tx"><span class="nm">${esc(u.name)}</span><span class="st"></span></span><span class="mn"></span><span class="bars"><i class="hp"><b></b></i><i class="am"><b></b></i><i class="mo"><b></b></i></span>`;
-      el.title = u.name;
+    // card row
+    const strip = this.strip = document.createElement('div'); strip.className = 'dk-strip';
+    strip.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation(); strip.scrollLeft += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY); }, { passive: false });
+    strip.addEventListener('mousedown', e => e.stopPropagation());
+    this.cards.appendChild(strip);
+    const card = (u, nested) => {
+      const el = document.createElement('div'); el.className = 'uc' + (nested ? ' nest' : '');
+      const kind = unitKindOf(u);
+      el.innerHTML = `<div class="uc-top"><span class="g"></span><span class="ic">${unitSymbol(kind, 'friend')}</span><span class="mn"></span></div><div class="uc-pt">${unitPortrait(kind, u)}</div><div class="uc-nm">${esc(u.name)}</div><div class="st"></div><div class="uc-bars"><i class="hp"><b></b></i><i class="mo"><b></b></i><i class="am"><b></b></i></div>`;
+      el.title = `${u.name} · ${UNIT_TYPE_NAME[kind] || ''}`;
       el.addEventListener('mousedown', e => { e.stopPropagation(); if (e.button !== 0) return; this.select([u], e.shiftKey); this.g.sfx('ui_select'); });
       el.addEventListener('dblclick', () => { const c = u.center(); this.g.cam.lookAt(c.x, c.z); });
       const q = s => el.querySelector(s);
       this.cardEls.set(u, { el, g: q('.g'), st: q('.st'), mn: q('.mn'), hp: q('.hp b'), am: q('.am b'), mo: q('.mo b'), moI: q('.mo') }); return el;
     };
-    this.rosterGroups = [];
-    for (const grp of order) {
-      const members = units.filter(u => groupOf(u) === grp); if (!members.length) continue;
-      const h = document.createElement('div'); const folded = this.rosterFold[grp]; h.className = 'rg' + (folded ? ' folded' : '');
-      h.innerHTML = `<span class="chev"></span><span>${grp}</span><span class="rgn"></span>`; h.dataset.grp = grp;
-      h.title = 'Click to fold · Ctrl-click selects the group';
-      h.addEventListener('mousedown', e => { e.stopPropagation(); if (e.shiftKey || e.ctrlKey) { this.select(members.flatMap(m => [m, ...units.filter(q => q.carrier === m)]), e.shiftKey); return; } this.rosterFold[grp] = !folded; this.rebuildCards(); });
-      body.appendChild(h);
-      this.rosterGroups.push({ el: h.querySelector('.rgn'), members: [...members, ...members.flatMap(m => units.filter(q => q.type === 'squad' && q.carrier === m && groupOf(q) === null))] });
-      if (folded) { for (const u of members) this.cardEls.set(u, null); for (const q of units) if (q.carrier && members.includes(q.carrier) && groupOf(q) === null) this.cardEls.set(q, null); continue; }
-      for (const u of members) {
-        body.appendChild(row(u, false));
-        if (u.type === 'vehicle') for (const q of units.filter(q => q.type === 'squad' && q.carrier === u && groupOf(q) === null)) body.appendChild(row(q, true));
+    let first = true;
+    for (const G of groups) {
+      const shown = this.deckTab === 'ALL' || this.deckTab === G.grp;
+      if (!shown) { for (const u of G.all) this.cardEls.set(u, null); continue; }
+      if (this.deckTab === 'ALL') { const spine = document.createElement('div'); spine.className = 'dk-spine' + (first ? ' first' : ''); spine.innerHTML = `<span>${ARM_CODE[G.grp] || G.grp}</span>`; strip.appendChild(spine); }
+      first = false;
+      for (const u of G.members) {
+        strip.appendChild(card(u, false));
+        if (u.type === 'vehicle') for (const q of carried(u)) strip.appendChild(card(q, true));
       }
     }
     // squads whose carrier is gone and that weren't placed yet
-    for (const u of units) if (!this.cardEls.has(u)) body.appendChild(row(u, false));
+    for (const u of units) if (!this.cardEls.has(u)) strip.appendChild(card(u, false));
     this.rosterUnits = units;
+    this.updateCards();
   }
   updateCards() {
     const gOf = new Map(); for (const [k, v] of Object.entries(this.groups)) for (const u of v) if (!gOf.has(u)) gOf.set(u, k);
@@ -166,19 +183,27 @@ export class HUD {
         cls = /FIRE|IMMOB|DAMAGED|CREW/.test(st) ? 'warn' : '';
       }
       set(r.mn, 'textContent', men); set(r.st, 'textContent', st); set(r.st, 'className', 'st ' + cls);
+      tog(r.el, 'rout', cls === 'rout'); tog(r.el, 'warn', cls === 'warn');
       setS(r.hp, 'width', `${Math.round(hp * 100)}%`); setS(r.am, 'width', `${Math.round(Math.min(1, am) * 100)}%`); setS(r.mo, 'width', `${Math.round(Math.min(1, mo) * 100)}%`);
+      set(r.hp, 'className', hp < 0.35 ? 'bad' : hp < 0.65 ? 'warn' : '');
       set(r.moI, 'className', 'mo' + (u.type === 'squad' && u.routing ? ' bad' : mo < 0.45 ? ' warn' : ''));
       set(r.g, 'textContent', gOf.get(u) || '');
     }
     let fit = 0, all = 0;
     for (const u of this.rosterUnits || []) { if (u.type === 'squad' && !u.crew) { fit += u.effective.length; all += u.soldiers.length; } }
-    if (this.rcountEl) set(this.rcountEl, 'textContent', `${fit}/${all} men`);
+    if (this.rcountEl) set(this.rcountEl, 'textContent', `${fit}/${all}`);
     for (const gr of this.rosterGroups || []) set(gr.el, 'textContent', `${gr.members.filter(u => !u.destroyed).length}/${gr.members.length}`);
+  }
+  // bring the card of a single selected unit into view in the card row (on selection only)
+  revealCard(u) {
+    const r = this.cardEls?.get(u), S = this.strip; if (!r || !S) return;
+    const a = r.el.offsetLeft - S.offsetLeft, b = a + r.el.offsetWidth;
+    if (a < S.scrollLeft) S.scrollLeft = a - 8; else if (b > S.scrollLeft + S.clientWidth) S.scrollLeft = b - S.clientWidth + 8;
   }
   select(units, add = false) {
     if (!add) this.selected.clear();
     for (let u of units) { if (u?.medevac) u = u.medevac; if (u && (u.type === 'squad' ? !u.destroyed : !u.destroyed) && u.side === 'player') this.selected.add(u); }   // a medevac crew selects its pickup
-    this.updateInfo(true); if (this.cardEls) this.updateCards();
+    this.updateInfo(true); if (this.cardEls) { this.updateCards(); if (this.selected.size === 1) this.revealCard([...this.selected][0]); }
   }
   // ------------------------------------------------------------ order bar + unit panel
   updateOrders(sel) {
@@ -206,61 +231,81 @@ export class HUD {
     if (u) html = this.unitPanel(u);
     else if (sel.length > 1) {
       const men = sel.reduce((n, q) => n + (q.type === 'squad' ? q.effective.length : 0), 0), veh = sel.filter(q => q.type === 'vehicle').length;
-      html = `<div class="ui-head"><div class="tt"><h4>${sel.length} units selected</h4><div class="sub">${[men ? `${men} men` : '', veh ? `${veh} vehicle${veh > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} · right-drag to form a line</div></div></div><div class="ui-multi">${sel.slice(0, 18).map(q => unitSymbol(unitKindOf(q), 'friend')).join('')}</div>`;
+      const tile = q => { const f = q.type === 'squad' ? q.effective.length / q.soldiers.length : Math.max(0, q.hp / q.def.hp); return `<div class="mt">${unitSymbol(unitKindOf(q), 'friend')}<span>${esc(q.name)}</span><i class="${f < 0.35 ? 'bad' : f < 0.65 ? 'warn' : ''}"><b style="width:${Math.round(f * 100)}%"></b></i></div>`; };
+      html = `<div class="ui-head"><div class="tt"><h4>${sel.length} units</h4><div class="sub">${[men ? `${men} men` : '', veh ? `${veh} vehicle${veh > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')} · right-drag: form a line</div></div></div><div class="ui-multi">${sel.slice(0, 12).map(tile).join('')}${sel.length > 12 ? `<div class="mt more">+${sel.length - 12}</div>` : ''}</div>`;
     }
     if (html !== this.infoHTML) { this.infoHTML = html; this.info.innerHTML = html; }
     setS(this.info, 'display', html ? 'block' : 'none');
     tog(this.info, 'enemy', u && u.side !== 'player');
   }
+  // WARNO-style unit card: side-coloured head with the NATO symbol, portrait + cell gauges, weapon table (range, ammo), notes
   unitPanel(u) {
     // an enemy nobody has identified yet: nothing but the fact that something is there
-    if (u.side !== 'player' && !u.spotted && !u.destroyed) return `<div class="ui-head">${unitSymbol('contact', 'hostile')}<div class="tt"><h4>Unconfirmed contact</h4><div class="sub">No line of sight · not identified</div></div></div><div class="kv"><div><span>Right-click</span><b>area fire / close in</b></div></div>`;
-    const aff = u.side === 'player' ? 'friend' : 'hostile', kind = unitKindOf(u);
+    if (u.side !== 'player' && !u.spotted && !u.destroyed) return `<div class="ui-head"><span class="ui-tab h">${unitSymbol('contact', 'hostile')}</span><div class="tt"><h4>Unconfirmed contact</h4><div class="sub">No line of sight · not identified</div></div></div><div class="kv"><div><span>Right-click</span><b>area fire / close in</b></div></div>`;
+    const own = u.side === 'player', aff = own ? 'friend' : 'hostile', kind = unitKindOf(u);
     const row = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
-    const meter = (label, f, val, cls) => `<span>${label}</span><div class="meter ${cls}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
+    const meter = (label, f, val, cls, cells = 10) => `<span>${label}</span><div class="meter ${cls}" style="--n:${cells}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
+    const wpn = [];   // [name, range m | text, ammo]
+    const W = (name, r, ammo) => wpn.push(`<tr><td>${name}</td><td>${typeof r === 'number' ? rng(r) : r}</td><td>${ammo}</td></tr>`);
     let chip = '', meters = '', rows = '';
     if (u.type === 'squad') {
-      const s = u.soldiers, eff = u.effective.length, ms = u.moraleState(), am = u.ammoFrac();
+      const s = u.soldiers, eff = u.effective, ms = u.moraleState(), am = u.ammoFrac();
+      let sup = 0; for (const x of eff) sup += x.suppression || 0; sup = eff.length ? sup / eff.length / 100 : 0;
       chip = u.routing ? '<span class="chip bad">Routing</span>' : u.pinned ? '<span class="chip warn">Pinned</span>' : u.mounted ? '<span class="chip dim">Mounted</span>' : u.building ? '<span class="chip ok">Garrisoned</span>' : '';
-      meters = meter('Strength', eff / s.length, `${eff}/${s.length}`, 'friend')
-        + meter('Morale', u.morale / 100, `${ms[0] + ms.slice(1).toLowerCase()} ${Math.round(u.morale)}`, u.routing ? 'bad' : u.morale < 45 ? 'warn' : 'ok')
-        + meter('Ammo', am, `${Math.round(am * 100)}%`, am < 0.25 ? 'bad' : am < 0.5 ? 'warn' : '');
-      rows += row('Fit / wounded / KIA', `${eff} / ${s.filter(x => x.state === 'critical' || x.state === 'stable' || x.state === 'light').length} / ${s.filter(x => x.state === 'dead').length}`);
-      if (u.side === 'player') rows += row('Mags per man', s.filter(x => x.effective).map(x => x.weaponKey === 'rpg7' ? `${x.inMag + x.mags}r` : `${x.mags}`).join(' '));
+      meters = meter('Str', eff.length / s.length, `${eff.length}/${s.length}`, eff.length / s.length < 0.5 ? 'warn' : 'ok', s.length)
+        + meter('Mor', u.morale / 100, `${ms[0] + ms.slice(1).toLowerCase()}`, u.routing ? 'bad' : u.morale < 45 ? 'warn' : 'friend')
+        + meter('Sup', sup, sup > 0.6 ? 'Heavy' : sup > 0.25 ? 'Under fire' : 'None', sup > 0.6 ? 'bad' : sup > 0.25 ? 'warn' : 'dim');
+      if (own) meters += meter('Amm', am, `${Math.round(am * 100)}%`, am < 0.25 ? 'bad' : am < 0.5 ? 'warn' : 'ammo');
+      // weapons carried by the men still fighting: count, range, what is left (own side only)
+      const G = new Map();
+      for (const x of eff) {
+        const k = x.weaponKey, w = WEAPONS[k]; if (!w) continue;
+        const e = G.get(k) || G.set(k, { w, n: 0, a: 0 }).get(k); e.n++; e.a += k === 'rpg7' ? (x.inMag || 0) + (x.mags || 0) : x.mags || 0;
+      }
+      for (const { w, n, a } of [...G.values()].sort((p, q) => q.w.range - p.w.range)) W(`${n > 1 ? `<i>${n}×</i>` : ''}${esc(w.name)}`, w.range, own ? `${a}<small>${w.type === 'at' ? 'rkt' : w.type === 'mg' ? 'box' : 'mag'}</small>` : '—');
+      const r22 = eff.reduce((n, x) => n + (x.rpg22 || 0), 0), gr = eff.reduce((n, x) => n + (x.grenades || 0), 0);
+      if (r22) W(`${esc(WEAPONS.rpg22.name)}`, WEAPONS.rpg22.range, own ? `${r22}<small>rkt</small>` : '—');
+      if (gr && own) W('Hand grenades', 30, `${gr}`);
+      const sp = u.support;
+      if (sp && sp.drones != null) { W('FPV drone (PG-7VL)', sp.W.range, own ? `${sp.drones}${sp.drone ? '+1' : ''}<small>/${sp.capacity?.() ?? 5}</small>` : '—'); rows += row('Team', sp.status()); }
+      else if (sp) { W(esc(sp.W.name), sp.W.range, own ? `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? '+1' : ''}<small>msl</small>` : '—'); rows += row('Team', sp.status()); }
+      rows += row('Casualties', `${s.filter(x => x.state === 'critical' || x.state === 'stable' || x.state === 'light').length} wounded · ${s.filter(x => x.state === 'dead').length} KIA`);
       rows += row('Status', u.mounted ? `Mounted in ${esc(u.carrier?.name)}` : u.building ? (u.inCellar ? 'In the cellar (G: back up)' : u.building.house ? 'Garrisoned (G: cellar)' : 'Garrisoned') : u.order?.type === 'move' ? (u.run ? 'Running' : 'Moving') : 'Holding');
       if (u.holdFire) rows += row('Fire', 'Holding fire');
       if (u.order?.type === 'clear' && u.clearStatus) { const cs = u.clearStatus(); rows += row('Trench', esc(cs[0])); if (cs[1]) rows += row('Fire group', esc(cs[1])); }
-      const sp = u.support;
-      if (sp && sp.drones != null) { rows += row('System', 'FPV strike drones (PG-7VL)'); rows += row('Drones', `${sp.drones}${sp.drone ? ' + 1 airborne' : ''} / ${sp.capacity?.() ?? 5}`); rows += row('Team', sp.status()); }
-      else if (sp) { rows += row('System', `${sp.W.name} · ${sp.W.range} m`); rows += row('Missiles', `${sp.ammo + (sp.loaded ? 1 : 0)}${sp.missile ? ' + 1 in flight' : ''}`); rows += row('Team', sp.status()); }
-      if (u.carrier && u.side === 'player') rows += row('Carrier', `${esc(u.carrier.name)}${u.carrier.destroyed ? ' (lost)' : ''}`);
+      if (u.carrier && own) rows += row('Carrier', `${esc(u.carrier.name)}${u.carrier.destroyed ? ' (lost)' : ''}`);
     } else {
       const st = u.moraleState(), hull = Math.max(0, u.hp / u.def.hp), crewMax = u.def.crew || 3, am = u.ammoFrac();
       chip = st === 'OPERATIONAL' ? '' : `<span class="chip ${/FIRE|DESTROY/.test(st) ? 'bad' : 'warn'}">${st.toLowerCase()}</span>`;
-      meters = meter('Hull', hull, `${Math.round(hull * 100)}%`, hull < 0.35 ? 'bad' : hull < 0.65 ? 'warn' : 'friend')
-        + meter('Crew', Math.max(0, u.crew) / crewMax, `${Math.max(0, u.crew)}/${crewMax}`, u.crew < crewMax ? 'warn' : 'ok')
-        + meter('Main gun', am, `${u.weapons[0].ammo}`, am < 0.2 ? 'bad' : am < 0.45 ? 'warn' : '');
-      const w = u.weapons[0];
+      meters = meter('Hull', hull, `${Math.round(hull * 100)}%`, hull < 0.35 ? 'bad' : hull < 0.65 ? 'warn' : 'ok')
+        + meter('Crew', Math.max(0, u.crew) / crewMax, `${Math.max(0, u.crew)}/${crewMax}`, u.crew < crewMax ? 'warn' : 'friend', crewMax);
+      if (own) meters += meter('Amm', am, `${Math.round(am * 100)}%`, am < 0.2 ? 'bad' : am < 0.45 ? 'warn' : 'ammo');
+      const w = u.weapons?.[0], wn = k => esc(WEAPONS[k]?.name || k), A = v => own ? v : '—';
       if (u.hudPanel) ({ meters, rows } = u.hudPanel(meter, row));   // e.g. the medevac pickup (game/medevac.js)
       else if (u.kind === 'spg') {
-        rows += row('Gun', `${WEAPONS[w.key].name} · ${w.ammo}/${u.def.ammo} HE-Frag`);
+        W(wn(w.key), `${rng(u.def.directRange)} · ${(WEAPONS[w.key].range / 1000).toFixed(0)} km`, A(`${w.ammo}<small>/${u.def.ammo}</small>`));
+        if (u.def.mg) W(wn(u.weapons[1].key).split(' (')[0], WEAPONS[u.weapons[1].key].range, A(u.weapons[1].ammo));
         rows += row('Fire mission', `${u.def.salvo} rds · ${Math.round(60 / u.def.interval)} rpm · FIRE AT (C)`);
-        rows += row('Range', `indirect ≥ ${u.def.minRange >= 1000 ? (u.def.minRange / 1000).toFixed(1) + ' km' : u.def.minRange + ' m'} · direct ≤ ${(u.def.directRange / 1000).toFixed(1)} km`);
+        rows += row('Indirect fire', `≥ ${rng(u.def.minRange)}`);
         rows += row('Into / out of action', `${u.def.deployT} s / ${u.def.packT} s${u.def.arc ? ' · ±30°' : ' · 360°'}`);
-        if (u.def.mg) rows += row('Kord 12.7 mm', `${u.weapons[1].ammo}`);
-      } else {
-        rows += row('Main gun', u.kind === 'tank' ? `APFSDS ${w.ap} · HE-FRAG ${w.he}` : `${WEAPONS[w.key]?.name || ''} · ${w.ammo} rds`);
-        if (u.gun100) rows += row('100 mm', `${u.gun100.ammo} HE-Frag`);
-        if (u.atgm) rows += row('ATGM', u.atgmDisabled ? 'launcher destroyed' : `${WEAPONS[u.atgm.key].name.split(' (')[0]} · ${u.atgm.ammo}`);
-        rows += row('Coax PKT', `${u.weapons[1].ammo}`);
-        if (u.supply) rows += row('Resupply stock', `${u.supply.rifle} rds · ${u.supply.rpg} rkt`);
+      } else if (w) {
+        W(wn(w.key), WEAPONS[w.key]?.range || 0, A(u.kind === 'tank' ? `${w.ap}<small>AP</small> ${w.he}<small>HE</small>` : `${w.ammo}`));
+        if (u.gun100) W(wn('a70').replace(' (HE-Frag)', ''), WEAPONS.a70.range, A(`${u.gun100.ammo}<small>HE</small>`));
+        if (u.atgm) W(wn(u.atgm.key).split(' (')[0], WEAPONS[u.atgm.key].range, u.atgmDisabled ? '<em>lost</em>' : A(`${u.atgm.ammo}<small>msl</small>`));
+        if (u.weapons[1]) W(wn(u.weapons[1].key), WEAPONS[u.weapons[1].key]?.range || 0, A(u.weapons[1].ammo));
+        if (u.supply && own) rows += row('Resupply stock', `${u.supply.rifle} rds · ${u.supply.rpg} rkt`);
         if (u.passengers) rows += row('Carrying', esc(u.passengers.name));
       }
     }
-    return `<div class="ui-head">${unitSymbol(kind, aff)}<div class="tt"><h4>${u.side === 'player' ? '' : 'Enemy '}${esc(u.name)}</h4><div class="sub">${UNIT_TYPE_NAME[kind] || ''}</div></div>${chip}</div><div class="ui-meters">${meters}</div><div class="kv">${rows}</div>`;
+    const head = `<div class="ui-head"><span class="ui-tab ${own ? 'f' : 'h'}">${unitSymbol(kind, aff)}</span><div class="tt"><h4>${own ? '' : 'Enemy '}${esc(u.name)}</h4><div class="sub">${UNIT_TYPE_NAME[kind] || ''}${u.faction?.name ? ` · ${esc(u.faction.name)}` : ''}</div></div>${chip}</div>`;
+    return `${head}<div class="ui-body"><div class="ui-pt">${unitPortrait(kind, u)}</div><div class="ui-meters">${meters}</div></div>`
+      + (wpn.length ? `<table class="ui-wpn"><thead><tr><th>Weapon</th><th>Range</th><th>Ammo</th></tr></thead><tbody>${wpn.join('')}</tbody></table>` : '')
+      + (rows ? `<div class="kv">${rows}</div>` : '');
   }
-  // ------------------------------------------------------------ banners
-  // World-anchored unit flags. Far-away banners collapse to the symbol and fade; selected ones stay crisp.
+  // ------------------------------------------------------------ labels (world-anchored)
+  // WARNO-style unit labels: a side-coloured tab with the NATO symbol, the name on a dark strip, a cell bar under it
+  // (squads: men fit, vehicles: hull) and a hairline morale bar. Far away a label shrinks to the tab; selected or
+  // troubled units stay full size and opaque. Status tag (PINNED / ROUTING / vehicle notes) sits on top.
   updateBanners() {
     const cam = this.g.renderer.camera, v = new THREE.Vector3(), cp = cam.position, W = innerWidth, H = innerHeight;
     const all = [...this.g.squads, ...this.g.vehicles];
@@ -270,9 +315,8 @@ export class HUD {
       if (!show) { if (b) setS(b.el, 'display', 'none'); continue; }
       if (!b) {
         const el = document.createElement('div'), friend = u.side === 'player'; el.className = 'banner ' + (friend ? 'f' : 'h');
-        if (friend) el.style.setProperty('--tape', u.faction.color);
-        el.innerHTML = `<div class="pin"></div><div class="flag">${unitSymbol(unitKindOf(u), friend ? 'friend' : 'hostile')}<span class="bn">${esc(friend ? u.name : (u.type === 'squad' ? 'Infantry' : u.name))}</span></div><div class="mb"><i></i></div><div class="pole"></div>`;
-        document.body.appendChild(el); b = { el, bar: el.querySelector('.mb i'), pin: el.querySelector('.pin') }; this.banners.set(u, b);
+        el.innerHTML = `<div class="pin"></div><div class="flag"><span class="tab">${unitSymbol(unitKindOf(u), friend ? 'friend' : 'hostile')}</span><span class="bn">${esc(friend ? u.name : (u.type === 'squad' ? (u.kind === 'atgm' ? 'ATGM team' : u.kind === 'fpv' ? 'FPV team' : 'Infantry') : u.name))}</span></div><div class="hb"><i></i></div>${u.type === 'squad' ? '<div class="mb"><i></i></div>' : ''}`;
+        document.body.appendChild(el); b = { el, bar: el.querySelector('.hb i'), mb: el.querySelector('.mb i'), pin: el.querySelector('.pin') }; this.banners.set(u, b);
       }
       const c = u.type === 'squad' ? (u.leader || u.alive[0])?.pos || u.center() : u.pos;
       v.set(c.x, (u.type === 'squad' ? 2.4 : 4.2) + (u.type === 'squad' && u.leader?.inside && u.leader.inside !== 'btr' ? u.leader.pos.y : 0), c.z);
@@ -284,15 +328,16 @@ export class HUD {
       const sel = this.selected.has(u);
       const alarm = u.type === 'squad' && (u.routing || u.pinned);   // a unit in trouble stays readable (name + full opacity) at any distance
       tog(b.el, 'sel', sel); tog(b.el, 'far', !sel && !alarm && dist > 140);
-      setS(b.el, 'opacity', sel || alarm ? '1' : String(Math.round(Math.max(0.45, Math.min(1, 1 - (dist - 110) / 260)) * 20) / 20));
+      setS(b.el, 'opacity', sel || alarm ? '1' : String(Math.round(Math.max(0.5, Math.min(1, 1 - (dist - 110) / 260)) * 20) / 20));
       // status sign, by priority: ROUTING > PINNED > the unit's own note (e.g. a vehicle crew FIGHTING FIRE)
       const rout = u.type === 'squad' && !!u.routing, note = rout ? 'ROUTING' : u.type === 'squad' && u.pinned ? 'PINNED' : (u.bannerNote || '');
       if (note !== b.note) {
-        b.note = note; b.pin.textContent = note; b.pin.style.display = note ? 'flex' : 'none';
+        b.note = note; b.pin.textContent = note; b.pin.style.display = note ? 'block' : 'none';
         b.pin.className = 'pin' + (rout ? ' rout' : /FIRE/.test(note) ? ' fire' : ''); tog(b.el, 'rout', rout);
       }
-      const val = u.type === 'squad' ? u.morale : Math.max(0, u.hp / u.def.hp * 100);
-      setS(b.bar, 'width', `${Math.round(val)}%`); set(b.bar, 'className', u.type === 'squad' && u.routing ? 'bad' : val < 45 ? 'warn' : '');
+      let hp; if (u.type === 'squad') { let n = 0; for (const s of u.soldiers) if (s.effective) n++; hp = n / Math.max(1, u.soldiers.length) * 100; } else hp = Math.max(0, u.hp / u.def.hp * 100);   // (no array per frame)
+      setS(b.bar, 'width', `${Math.round(hp)}%`); set(b.bar, 'className', hp < 35 ? 'bad' : hp < 65 ? 'warn' : '');
+      if (b.mb) { setS(b.mb, 'width', `${Math.round(u.morale)}%`); set(b.mb, 'className', u.routing ? 'bad' : u.morale < 45 ? 'warn' : ''); }
     }
   }
   // ------------------------------------------------------------ top bar
@@ -303,7 +348,7 @@ export class HUD {
     const lost = g.objectives.filter(o => o.owner === 'enemy');
     const men = side => g.squads.reduce((n, q) => n + (q.side === side && !q.destroyed ? q.effective.length : 0), 0), veh = side => g.vehicles.filter(v => v.side === side && !v.destroyed).length;
     const res = g.commander ? Math.max(0, (g.commander.waves?.length ?? g.commander.plan.length) - g.commander.waveI) : 0;
-    set(this.forcesEl, 'innerHTML', `<span class="fz f" title="Your force"><b>${men('player')}</b>men <b>${veh('player')}</b>veh${g.reinforced ? '' : ' +1 res'}</span><span class="fz h" title="Enemy (estimate)"><b>≈${men('enemy')}</b>men <b>${veh('enemy')}</b>veh${res ? ` +${res} res` : ''}</span>`);
+    set(this.forcesEl, 'innerHTML', `<div class="fz-h"><span>Force</span><span>Men</span><span>Veh</span><span>Res</span></div><div class="fz f" title="Your force"><span><i></i>${esc(g.playerFaction?.name || 'Own')}</span><b>${men('player')}</b><b>${veh('player')}</b><b>${g.reinforced ? '–' : '+1'}</b></div><div class="fz h" title="Enemy (estimate)"><span><i></i>${esc(g.enemyFaction?.name || 'Enemy')}</span><b>≈${men('enemy')}</b><b>${veh('enemy')}</b><b>${res ? `+${res}` : '–'}</b></div>`);
     const held = g.objectives.filter(o => o.owner === 'player').length;
     set(this.phaseEl, 'textContent', g.phase === 'deploy' ? 'DEPLOYMENT · CLOCK STOPPED'
       : this.tkOn ? (lost.length > held ? `RETAKE ${lost.map(o => o.id).join(' & ')} · WE ARE BLEEDING` : held > lost.length ? (held === g.objectives.length ? 'ALL HELD · ENEMY BLEEDING' : `HOLD ${g.objectives.filter(o => o.owner === 'player').map(o => o.id).join(' & ')} · ENEMY BLEEDING`) : `TAKE ${g.objectives.filter(o => o.owner !== 'player').map(o => o.id).join(' & ')} · BLEED THE ENEMY`)
@@ -386,35 +431,35 @@ export class HUD {
     x.drawImage(this.mmBase, 0, 0, S, S);
     // staging grounds during deployment
     if (g.phase === 'deploy' && DEPLOY_ZONES) for (const [side, col] of [['player', C.ok], ['enemy', C.hostile]]) {
-      const z = DEPLOY_ZONES[side]; if (!z) continue; x.setLineDash([3, 3]); x.strokeStyle = col; x.lineWidth = 1.2; x.fillStyle = side === 'player' ? 'rgba(125,189,105,.12)' : 'rgba(234,90,75,.10)';
+      const z = DEPLOY_ZONES[side]; if (!z) continue; x.setLineDash([3, 3]); x.strokeStyle = col; x.lineWidth = 1.2; x.fillStyle = side === 'player' ? 'rgba(120,184,74,.12)' : 'rgba(217,71,61,.10)';
       x.fillRect(P(z.x0), P(z.z0), (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.strokeRect(P(z.x0) + .5, P(z.z0) + .5, (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.setLineDash([]);
     }
     // objectives: capture circle in the owner's colour, control arc, letter
     for (const ob of g.objectives) {
       const cx = P(ob.x), cz = P(ob.z), rr = Math.max(6, TUNING.captureRadius * k), col = ob.owner === 'player' ? C.friend : ob.owner === 'enemy' ? C.hostile : C.neutral;
-      x.fillStyle = ob.owner === 'player' ? 'rgba(92,178,230,.16)' : ob.owner === 'enemy' ? 'rgba(234,90,75,.16)' : 'rgba(165,172,158,.10)';
+      x.fillStyle = ob.owner === 'player' ? 'rgba(77,147,220,.16)' : ob.owner === 'enemy' ? 'rgba(217,71,61,.16)' : 'rgba(165,172,158,.10)';
       x.beginPath(); x.arc(cx, cz, rr, 0, 7); x.fill();
       x.strokeStyle = ob.contested ? C.accent : col; x.lineWidth = 1.5; if (ob.contested) x.setLineDash([3, 2]); x.stroke(); x.setLineDash([]);
       const cf = Math.max(-100, Math.min(100, ob.control)) / 100;
       if (cf) { x.strokeStyle = cf > 0 ? C.friend : C.hostile; x.lineWidth = 2.5; x.beginPath(); x.arc(cx, cz, rr + 2.5, -Math.PI / 2, -Math.PI / 2 + cf * Math.PI * 2, cf < 0); x.stroke(); }
-      x.fillStyle = 'rgba(10,14,12,.85)'; x.fillRect(cx - 6, cz - 6, 12, 12); x.strokeStyle = col; x.lineWidth = 1; x.strokeRect(cx - 5.5, cz - 5.5, 11, 11);
+      x.fillStyle = 'rgba(12,15,18,.88)'; x.fillRect(cx - 6, cz - 6, 12, 12); x.strokeStyle = col; x.lineWidth = 1; x.strokeRect(cx - 5.5, cz - 5.5, 11, 11);
       x.fillStyle = C.t1; x.font = '700 9px "Barlow SC", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ob.id, cx, cz + 0.5);
     }
     // units: men as faint dots, each unit as an APP-6 frame (friend rectangle / hostile diamond)
     const frame = (px, pz, friend, sel) => {
       x.beginPath();
       if (friend) x.rect(px - 4.5, pz - 3, 9, 6); else { x.moveTo(px, pz - 4.5); x.lineTo(px + 4.5, pz); x.lineTo(px, pz + 4.5); x.lineTo(px - 4.5, pz); x.closePath(); }
-      x.fillStyle = friend ? 'rgba(92,178,230,.55)' : 'rgba(234,90,75,.6)'; x.fill();
+      x.fillStyle = friend ? 'rgba(77,147,220,.55)' : 'rgba(217,71,61,.6)'; x.fill();
       x.lineWidth = sel ? 2 : 1.2; x.strokeStyle = sel ? '#fff' : friend ? C.friend : C.hostile; x.stroke();
     };
     // unconfirmed contacts: a faint hollow diamond, no men, no type
-    x.strokeStyle = 'rgba(234,90,75,.55)'; x.lineWidth = 1;
+    x.strokeStyle = 'rgba(217,71,61,.55)'; x.lineWidth = 1;
     for (const u of g.squads) if (u.side === 'enemy' && !u.spotted && !u.concealed && !u.destroyed && !u.mounted && !u.medevac) { const c = (u.leader?.alive ? u.leader : u.soldiers.find(s => s.alive))?.pos; if (c) { const px = P(c.x), pz = P(c.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); } }
     for (const v of g.vehicles) if (v.side === 'enemy' && !v.spotted && !v.concealed && !v.destroyed) { const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
       const friend = sq.side === 'player';
-      x.fillStyle = friend ? 'rgba(160,215,245,.7)' : 'rgba(250,150,140,.75)';
+      x.fillStyle = friend ? 'rgba(150,195,240,.75)' : 'rgba(240,140,130,.8)';
       for (const s of sq.soldiers) if (s.effective && s.inside !== 'btr') x.fillRect(P(s.pos.x) - .75, P(s.pos.z) - .75, 1.5, 1.5);
       const c = (sq.leader?.effective ? sq.leader : sq.effective[0])?.pos; if (c) frame(P(c.x), P(c.z), friend, this.selected.has(sq));
     }
@@ -452,7 +497,7 @@ export class HUD {
     const life = kind === 'bad' ? 7 : kind === 'good' ? 5 : 4.5;
     const el = document.createElement('div'); el.className = `alert ${kind}`; el._msg = msg; el._kind = kind; el._n = 1; el._life = life;
     el.style.setProperty('--life', `${life}s`);
-    const tt = Math.max(0, this.g.time || 0); el.innerHTML = `<span class="t">${String(Math.floor(tt / 60)).padStart(2, '0')}:${String(Math.floor(tt % 60)).padStart(2, '0')}</span><span class="m"></span><span class="n"></span>`; el.querySelector('.m').textContent = msg;   // mission time stamp
+    const tt = Math.max(0, this.g.time || 0); el.innerHTML = `<i class="k"></i><span class="t">${String(Math.floor(tt / 60)).padStart(2, '0')}:${String(Math.floor(tt % 60)).padStart(2, '0')}</span><span class="m"></span><span class="n"></span>`; el.querySelector('.m').textContent = msg;   // mission time stamp
     this.alerts.prepend(el);
     while (this.alerts.children.length > 5) { const list = [...this.alerts.children].reverse(); (list.find(a => a._kind !== 'bad') || list[0]).remove(); }
     el._t = setTimeout(() => el.remove(), (life + 0.5) * 1000);

@@ -2,14 +2,14 @@ import * as THREE from 'three';
 
 // Unconfirmed contacts. Enemy units are always drawn at their real position, but until the player's side has really
 // identified one (unit.spotted: the detection meter in game.spotFor has filled / the unit is in line of sight), a "?"
-// in a hostile diamond floats above it: one per squad / vehicle, never per man. It fades out (~0.3 s) when the contact
+// on a hostile label tab (the same red tab + white APP-6 diamond as the unit labels) floats above it: one per squad / vehicle, never per man. It fades out (~0.3 s) when the contact
 // is confirmed (the normal enemy banner takes over) and fades back in when contact is lost.
 // Purely cosmetic: targeting, AI knowledge and engagement rules still go by spotting (game.seen / unit.spotted).
 // One draw call: an InstancedBufferGeometry quad billboarded in the vertex shader, sized by camera distance (about a
 // constant screen size, bounded), drawn over the terrain (no depth test) so it never sinks into a hill or a roof.
 // No per-frame allocations: instance data lives in one preallocated Float32Array.
 
-const MAX = 128, HOSTILE = 0xe2574a;
+const MAX = 128, HOSTILE = 0xa32f28;   // = style.css --w-hod (the hostile label tab)
 const VS = `
   attribute vec4 aData;            // xyz: anchor above the unit, w: opacity
   uniform float uTime, uPx;        // uPx: world size per metre of view depth for ~constant screen size
@@ -27,22 +27,25 @@ const FS = `
   varying vec2 vUv; varying float vA;
   void main() {
     vec4 t = texture2D(map, vUv);
-    // r: tinted parts (frame + glyph), g: dark backing, a: coverage
-    vec3 c = mix(vec3(0.05, 0.06, 0.06), uColor * 1.08, t.r);
+    // r: the hostile tab (filled in uColor), g: the white NATO frame + "?", black: keyline, a: coverage
+    vec3 c = mix(vec3(0.03, 0.04, 0.05), uColor, t.r);
+    c = mix(c, vec3(0.95), t.g);
     float a = t.a * vA; if (a < 0.01) discard;
     gl_FragColor = vec4(c, a);
   }`;
 
+// the same vocabulary as the hostile unit labels (style.css .banner.h .tab): a red tab with a black keyline, the white
+// APP-6 hostile frame (diamond) and a "?" in it
 function glyphTexture() {
   const S = 128, cv = document.createElement('canvas'); cv.width = cv.height = S; const x = cv.getContext('2d');
-  const dia = (r) => { x.beginPath(); x.moveTo(S / 2, S / 2 - r); x.lineTo(S / 2 + r, S / 2); x.lineTo(S / 2, S / 2 + r); x.lineTo(S / 2 - r, S / 2); x.closePath(); };
-  // dark halo + backing (black in r), then the frame and the "?" in white (= tinted by uColor in the shader)
-  x.fillStyle = 'rgba(0,0,0,0.45)'; dia(60); x.fill();
-  x.fillStyle = 'rgba(0,0,0,0.72)'; dia(50); x.fill();
-  x.lineJoin = 'round'; x.strokeStyle = '#fff'; x.lineWidth = 7; dia(50); x.stroke();
-  x.fillStyle = '#fff'; x.font = '900 66px "Barlow Condensed", "Arial Black", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText('?', S / 2, S / 2 + 4);
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4;
+  const m = S / 2, w = 52, h = 40, r = 27;
+  x.fillStyle = 'rgba(0,0,0,0.8)'; x.fillRect(m - w - 5, m - h - 5, (w + 5) * 2, (h + 5) * 2);   // keyline
+  x.fillStyle = '#f00'; x.fillRect(m - w, m - h, w * 2, h * 2);                                   // tab (r)
+  x.strokeStyle = '#ff0'; x.lineWidth = 6; x.lineJoin = 'miter';                                  // white parts (r + g)
+  x.beginPath(); x.moveTo(m, m - r); x.lineTo(m + r, m); x.lineTo(m, m + r); x.lineTo(m - r, m); x.closePath(); x.stroke();
+  x.fillStyle = '#ff0'; x.font = '800 38px "Barlow Condensed", "Arial Narrow", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('?', m, m + 2);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.NoColorSpace; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = 4;
   return t;
 }
 
@@ -89,8 +92,8 @@ export class ContactMarkers {
     if (!this.mesh) return;
     const g = this.g, cam = g.renderer.camera, a = this.data, k = Math.min(1, dt * 3.5);
     this.mat.uniforms.uTime.value += dt;
-    // ~38 px tall on screen whatever the zoom (bounded), from the vertical field of view and the viewport height
-    this.mat.uniforms.uPx.value = 2 * Math.tan(cam.fov * Math.PI / 360) * 38 / Math.max(300, innerHeight);
+    // ~32 px tall on screen whatever the zoom (bounded), from the vertical field of view and the viewport height
+    this.mat.uniforms.uPx.value = 2 * Math.tan(cam.fov * Math.PI / 360) * 32 / Math.max(300, innerHeight);
     let n = 0;
     const each = u => {
       const on = ContactMarkers.unconfirmed(u);
@@ -133,12 +136,10 @@ export class ContactMarkers {
     let el = this.tip;
     if (!u) { if (el && this.tipU) { el.style.display = 'none'; this.tipU = null; } return; }
     if (!el) {
-      el = this.tip = document.createElement('div'); el.id = 'contactTip';
-      Object.assign(el.style, { position: 'fixed', zIndex: 30, pointerEvents: 'none', padding: '.3rem .55rem', background: 'rgba(14,17,16,.88)', border: '1px solid rgba(226,87,74,.55)',
-        borderLeft: '3px solid #e2574a', color: '#ece8de', font: '600 12px/1.25 "Barlow", system-ui, sans-serif', letterSpacing: '.02em', whiteSpace: 'nowrap' });
-      el.innerHTML = '<b style="color:#e2574a;letter-spacing:.06em;text-transform:uppercase;font-size:11px">Unconfirmed contact</b><br><span style="opacity:.7">No line of sight · right-click: area fire / close in</span>';
+      el = this.tip = document.createElement('div'); el.id = 'contactTip';   // look: style.css #contactTip
+      el.innerHTML = '<span class="tab">?</span><span class="tx"><b>Unconfirmed contact</b><span>No line of sight · right-click: area fire / close in</span></span>';
       document.body.appendChild(el);
     }
-    this.tipU = u; el.style.display = 'block'; el.style.transform = `translate(${Math.round(m[0] + 16)}px,${Math.round(m[1] + 14)}px)`; el.style.left = '0'; el.style.top = '0';
+    this.tipU = u; el.style.display = 'flex'; el.style.transform = `translate(${Math.round(m[0] + 16)}px,${Math.round(m[1] + 14)}px)`; el.style.left = '0'; el.style.top = '0';
   }
 }

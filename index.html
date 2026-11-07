@@ -91,7 +91,7 @@
         <div class="label">Graphics</div>
         <label class="set-row" for="quality"><span><b>Quality preset</b><small>Shadows, draw distance, effects. Applies to the next battle.</small></span>
           <select id="quality"><option value="high" selected>High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
-        <label class="set-row" for="fpvAuto" style="margin-top:.8rem"><span><b>FPV drone view</b><small>Start battles with the drone camera panel open (right edge). In battle the <kbd>FPV</kbd> tab or <kbd>N</kbd> opens / closes it.</small></span>
+        <label class="set-row" for="fpvAuto" style="margin-top:.8rem"><span><b>FPV drone view</b><small>Start battles with the FPV camera panel open (top right). In battle the <kbd>FPV</kbd> tab or <kbd>N</kbd> opens / closes it.</small></span>
           <input type="checkbox" id="fpvAuto" style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--accent)"></label>
       </div>
       <div class="panel set-card keys">
@@ -129,42 +129,47 @@
   </div>
 </div>
 
-<!-- HUD -->
+<!-- HUD (battle). Layout: score bar top centre, force state + message log top left, system cluster top right,
+     one dock along the bottom: minimap · deck (unit cards by arm) · unit card over the command grid. Look: style.css "Battle HUD v5". -->
 <div id="hud" class="hidden">
   <div id="topbar">
     <div class="tb-main">
-      <div class="tk tk-f hidden" id="tkF"><div class="tk-head"><span class="tk-side"></span><span class="tk-rate"></span></div><div class="tk-row"><div class="tk-bar"><i></i><b></b></div><span class="tk-num">0</span></div></div>
+      <div class="tk tk-f hidden" id="tkF"><div class="tk-num">0</div><div class="tk-tx"><div class="tk-head"><i class="tk-flag"></i><span class="tk-side"></span><span class="tk-rate"></span></div><div class="tk-bar"><i></i><b></b></div></div></div>
       <div id="clock"><div id="timer">12:00</div><div id="phase">CAPTURE A &amp; B · THEN HOLD</div></div>
-      <div class="tk tk-h hidden" id="tkH"><div class="tk-head"><span class="tk-rate"></span><span class="tk-side"></span></div><div class="tk-row"><span class="tk-num">0</span><div class="tk-bar"><i></i><b></b></div></div></div>
+      <div class="tk tk-h hidden" id="tkH"><div class="tk-tx"><div class="tk-head"><span class="tk-rate"></span><span class="tk-side"></span><i class="tk-flag"></i></div><div class="tk-bar"><i></i><b></b></div></div><div class="tk-num">0</div></div>
     </div>
     <div class="tb-objs" id="objRow">
       <div id="obj-A" class="objective"><span class="tag">A</span><div class="ob-tx"><div class="name">School No. 7</div><div class="state"></div></div><div class="ctl"><div class="fill"></div></div></div>
       <div id="obj-B" class="objective"><span class="tag">B</span><div class="ob-tx"><div class="name">Market Crossroads</div><div class="state"></div></div><div class="ctl"><div class="fill"></div></div></div>
     </div>
-    <div id="forces"></div>
   </div>
+  <div id="forces"></div>
   <div id="hud-sys"><div id="fps"></div></div>
+  <div id="alerts" aria-live="polite"></div>
   <div id="deploybar">
     <div class="dk"><b>Deployment</b><span>Clock stopped</span></div>
     <div class="dt">Place your units in your staging ground: select, then right-click or right-drag a formation line. <kbd>M</kbd> mounts and dismounts. The enemy is deploying opposite you.</div>
     <button id="startBattle" class="btn btn-go">Start battle <kbd>Enter</kbd></button>
   </div>
-  <div id="alerts" aria-live="polite"></div>
-  <div id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas><div class="mm-n">N</div></div>
-  <div id="cards"></div>
-  <div id="unitinfo"></div>
-  <div id="cmd">
-    <div id="orders">
-      <button data-o="run" data-tip="Run: move at the double, tires the men" data-k="R"><span class="ol">Run</span></button>
-      <button data-o="holdfire" data-tip="Hold fire: stay hidden, don't engage" data-k="F"><span class="ol">Hold fire</span></button>
-      <button data-o="garrison" data-tip="Garrison the building, house or trench under the cursor (or the nearest one). A squad already in a house: down into the cellar / back up to the windows" data-k="G"><span class="ol">Garrison</span></button>
-      <button data-o="mount" data-tip="Mount or dismount the carrier" data-k="M"><span class="ol">Mount</span></button>
-      <button data-o="resupply" data-tip="Go back to the carrier for ammunition" data-k="B"><span class="ol">Resupply</span></button>
-      <button data-o="halt" data-tip="Halt: stop and cancel orders" data-k="X"><span class="ol">Halt</span></button>
-      <button data-o="smoke" data-tip="Throw smoke toward the cursor" data-k="V"><span class="ol">Smoke</span></button>
-      <button data-o="fireground" data-tip="Fire at ground: suppress an area without a spotted enemy" data-k="C"><span class="ol">Fire at</span></button>
-      <button data-o="mortar" data-tip="Call an 82 mm mortar fire mission" data-k="T"><span class="ol">Mortar</span><span id="mortarCount" class="cnt">3</span></button>
-      <button data-o="artillery" data-tip="Call a 152 / 155 mm artillery fire mission: an adjusting round, then fire for effect ~40 s after the call. Drone-adjusted, a tighter sheaf than the mortars, a much bigger burst: keep own troops 150 m clear" data-k="Y"><span class="ol">Artillery</span><span id="artyCount" class="cnt">2</span></button>
+  <div id="dock">
+    <div id="minimap-wrap"><div class="mm-head"><span>Map</span><span class="mm-n">N</span></div><canvas id="minimap" width="220" height="220"></canvas></div>
+    <div id="cards"></div>
+    <div id="side">
+      <div id="unitinfo"></div>
+      <div id="cmd">
+        <div id="orders">
+          <button data-o="run" data-tip="Run: move at the double, tires the men" data-k="R"><span class="ol">Run</span></button>
+          <button data-o="holdfire" data-tip="Hold fire: stay hidden, don't engage" data-k="F"><span class="ol">Hold fire</span></button>
+          <button data-o="garrison" data-tip="Garrison the building, house or trench under the cursor (or the nearest one). A squad already in a house: down into the cellar / back up to the windows" data-k="G"><span class="ol">Garrison</span></button>
+          <button data-o="mount" data-tip="Mount or dismount the carrier" data-k="M"><span class="ol">Mount</span></button>
+          <button data-o="resupply" data-tip="Go back to the carrier for ammunition" data-k="B"><span class="ol">Resupply</span></button>
+          <button data-o="halt" data-tip="Halt: stop and cancel orders" data-k="X"><span class="ol">Halt</span></button>
+          <button data-o="smoke" data-tip="Throw smoke toward the cursor" data-k="V"><span class="ol">Smoke</span></button>
+          <button data-o="fireground" data-tip="Fire at ground: suppress an area without a spotted enemy" data-k="C"><span class="ol">Fire at</span></button>
+          <button data-o="mortar" data-tip="Call an 82 mm mortar fire mission" data-k="T"><span class="ol">Mortar</span><span id="mortarCount" class="cnt">3</span></button>
+          <button data-o="artillery" data-tip="Call a 152 / 155 mm artillery fire mission: an adjusting round, then fire for effect ~40 s after the call. Drone-adjusted, a tighter sheaf than the mortars, a much bigger burst: keep own troops 150 m clear" data-k="Y"><span class="ol">Artillery</span><span id="artyCount" class="cnt">2</span></button>
+        </div>
+      </div>
     </div>
   </div>
   <div id="pausebadge" class="hidden"><b>Paused</b><span>Press <kbd>Space</kbd> to resume</span></div>

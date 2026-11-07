@@ -20,7 +20,7 @@ import { Osd } from './osd.js';
 //     snow and dropout streaks rising with range from the pilot, lost line of sight, low altitude far out and enemy EW
 //     (vehicle jammer kits, the side's trench EW mod, a jammed dive), brief breakups (frozen frame, tearing, roll), and
 //     on impact / shoot-down a burst of static, then SIGNAL LOST, then the window closes or goes to the next drone.
-//   * window: a ground-station monitor (style.css, FPV section): title (team, drone number), the receiver's status line
+//   * window: a ground-station monitor docked top right (style.css, FPV section): title (team, drone number), the receiver's status line
 //     (band / channel, link bars + LQ, pack voltage, DVR time), the Betaflight-style OSD (ui/osd.js, a canvas over the
 //     picture), a standby scan screen; N toggles, Shift+N cycles, x closes (localStorage smo_fpvfeed_open); a click on
 //     the feed jumps the main camera to the drone. ?dronefeed=0: off.
@@ -108,11 +108,11 @@ export class DroneFeed {
   // ---------------------------------------------------------------- DOM
   buildDom() {
     const el = this.el = document.createElement('div'); el.id = 'dronefeed'; el.className = 'df hidden';
-    el.innerHTML = `<div class="df-head"><div class="df-r1"><i class="df-live"></i><span class="df-title">Drone feed</span><span class="df-num"></span><span class="df-sp"></span>
+    el.innerHTML = `<div class="df-head"><div class="df-r1"><i class="df-live"></i><span class="df-title">FPV feed</span><span class="df-num"></span><span class="df-sp"></span>
       <button class="df-cyc" title="Next drone in the air (Shift+N)">Next <b></b></button>
-      <button class="df-x" title="Close the drone view (N)" aria-label="Close the drone view">&times;</button></div>
+      <button class="df-x" title="Close the FPV view (N)" aria-label="Close the FPV view">&times;</button></div>
       <div class="df-r2"><span class="df-ch" title="Video channel (band R)"><span class="v">--</span></span><span class="df-lq" title="Link quality"><i class="df-sig" data-n="0"><b></b><b></b><b></b><b></b></i>LQ <span class="v">--</span></span><span class="df-bat" title="Pack voltage (6S)"><i class="df-cell"><b></b></i><span class="v">--</span></span><span class="df-rec" title="Video recorder"><i></i>REC <span class="v">00:00</span></span></div></div>
-      <div class="df-scr" title="Click: move the camera to this drone"><canvas class="df-osd"></canvas><div class="df-sb"><b>NO SIGNAL</b><span>No drone in the air. Select the FPV team and right-click a target to launch one.</span></div><div class="df-lost"><span>SIGNAL LOST</span></div></div>`;
+      <div class="df-scr" title="Click: move the camera to this drone"><canvas class="df-osd"></canvas><div class="df-sb"><b>NO SIGNAL</b><span>No FPV drone in the air. Select the FPV team and right-click a target to launch one.</span></div><div class="df-lost"><span>SIGNAL LOST</span></div></div>`;
     const q = s => el.querySelector(s);
     this.titleEl = q('.df-title'); this.numEl = q('.df-num'); this.cycEl = q('.df-cyc'); this.cycN = q('.df-cyc b'); this.scr = q('.df-scr'); this.osd = q('.df-osd'); this.lostEl = q('.df-lost');
     this.osdC = new Osd(this.osd);
@@ -121,12 +121,12 @@ export class DroneFeed {
     this.cycEl.addEventListener('click', () => this.cycle(false));
     q('.df-x').addEventListener('click', () => { this.setPanel(false); this.g.sfx?.('ui_click'); });
     // closed: a tab at the right edge (live dot + number of drones in the air); a click (or N) opens the panel
-    const pill = this.pill = document.createElement('button'); pill.id = 'dronefeedPill'; pill.className = 'hidden'; pill.title = 'Drone view (N)';
+    const pill = this.pill = document.createElement('button'); pill.id = 'dronefeedPill'; pill.className = 'hidden'; pill.title = 'FPV view (N)';
     pill.innerHTML = '<i class="df-live"></i><span>FPV</span><b></b>'; this.pillN = pill.querySelector('b');
     pill.addEventListener('pointerdown', e => e.stopPropagation()); pill.addEventListener('click', () => { this.setPanel(true); this.g.sfx?.('ui_click'); });
     this.scr.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.button === 0) this.jump(); });
-    const hud = document.getElementById('hud') || document.body, cmd = document.getElementById('cmd');
-    if (cmd && cmd.parentNode === hud) { hud.insertBefore(el, cmd); hud.insertBefore(pill, cmd); } else hud.append(el, pill);   // before the order bar: its tooltips paint over the window
+    const hud = document.getElementById('hud') || document.body, dock = document.getElementById('dock') || document.getElementById('cmd');
+    if (dock && dock.parentNode === hud) { hud.insertBefore(el, dock); hud.insertBefore(pill, dock); } else hud.append(el, pill);   // before the dock: the unit card and the order tooltips paint over the window
   }
   // window size: ~344x194 CSS px at 1600 px wide, 288 at 1280, 550 at 2560; whole pixels (size and position: no
   // transform) so the canvas viewport matches the screen area exactly
@@ -134,7 +134,8 @@ export class DroneFeed {
     const w = Math.round(Math.min(560, Math.max(288, innerWidth * 0.215))), h = Math.round(w * 9 / 16);
     if (w !== this._w || h !== this._h) { this._w = w; this._h = h; this.scr.style.width = w + 'px'; this.scr.style.height = h + 'px'; this.el.style.setProperty('--dfw', w + 'px'); }
     this.osdC.size(w, h, Math.min(2, devicePixelRatio || 1));
-    if (this.visible) { const top = Math.round(Math.max(8, innerHeight * 0.45 - this.el.offsetHeight / 2)); if (top !== this._top) { this._top = top; this.el.style.top = top + 'px'; } }
+    // top right, under the system cluster (fps / withdraw), clear of the message log (top left) and the dock (bottom)
+    if (this.visible) { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, top = Math.round(Math.max(8, rem * 2.4)); if (top !== this._top) { this._top = top; this.el.style.top = top + 'px'; } }
     this.rectT = 0;
   }
   readRect() {
@@ -221,7 +222,7 @@ export class DroneFeed {
     }
   }
   standby() {
-    this.el.classList.add('standby'); this.titleEl.textContent = 'Drone feed'; this.numEl.textContent = ''; this.osdC.clear();
+    this.el.classList.add('standby'); this.titleEl.textContent = 'FPV feed'; this.numEl.textContent = ''; this.osdC.clear();
     const R = this.rx; R.ch.textContent = 'SCAN'; R.sig.dataset.n = '0'; R.lq.textContent = '--'; R.v.textContent = '--'; R.cell.style.setProperty('--b', '0%'); R.rec.textContent = '00:00'; R.bat.classList.remove('low'); this._rxv = null;
   }
   setPill(n) {   // n < 0: no tab; 0: the tab, no drone up; n: drones in the air
