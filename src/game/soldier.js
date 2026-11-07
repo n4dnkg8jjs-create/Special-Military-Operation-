@@ -290,6 +290,9 @@ export class Soldier {
     this.launcherObj = this.rpg22Tpl.clone(); this.launcherObj.traverse(o => { if (o.isMesh) o.castShadow = true; });
     if (this.weaponObj && !this.dropped) this.weaponTo('back');   // v9 slung: the rifle on its sling while he fires (was hidden)
     (this.sockets?.R || this.root).add(this.launcherObj);
+    // on the right shoulder beside the cheek (sight in front of the eye): from the hand socket the tube ran through the
+    // jaw - shifted 5 cm outboard and yawed 8 deg so its rear end clears the face
+    if (this.sockets?.R) { this.launcherObj.position.set(-0.05, 0.01, 0); this.launcherObj.rotation.set(0, 0.14, 0); }
     this.muzzleObjSaved = this.muzzleObj; this.muzzleObj = this.launcherObj.getObjectByName('muzzle') || this.muzzleObj;
   }
   discardLauncher() {
