@@ -374,5 +374,60 @@ if (process.argv[2] === 'content') {
   VK.applyKitFx(v, ['plate', 'cage', 'ew']);
   ok(v.hp > 160 && v.def.hp === v.hp && v.def.speed < 16.5 && v.zones[0].faces.side.ke >= 9 && v.zones[1].faces.side.ke === 1 && v.cage > 0.2, `casevac pickup with armour, net and jammer: hp ${v.hp}, speed ${v.def.speed.toFixed(1)}, cab side ${v.zones[0].faces.side.ke} mm, cage ${v.cage.toFixed(2)}`);
 }
+// ------------------------------------------------------------------ v8: every directive asks only what the game can do and
+// check. Each directive (content, its grid-extension bands, the versus orders of both sides on both operations, the test
+// campaigns) has a kind with an implemented completion check (state.js DIRECTIVE_KINDS); doing exactly what its task says
+// completes it; and its order text asks for nothing the game cannot do or detect.
+{
+  const { DIRECTIVE_KINDS } = await import('../state.js'), GR8 = await import('../growth.js'), VS = await import('../versus.js');
+  const testDefs = L.normalizeAll((await import('../test_campaign.js')).TEST_CAMPAIGNS);
+  console.log('== directives: implemented checks, tasks, text');
+  // order texts must not ask for what the campaign or the battle cannot do / detect (no minelaying or mine clearing, no
+  // engineer tasks, no reporting / confirming, no civilians, no time-of-day, no follow-on objectives outside the targets)
+  const BANNED = [/\bmine (the|it|them)\b/i, /\blay (mines|a minefield)/i, /\bclear(ed)? (a |the )?(lane|minefield)/i, /\bengineers? (with|to|in front)/i, /\b(confirm|report)\b/i, /\bcivilians?\b/i, /\bat night\b/i, /\bH-hour\b/i, /\bevacuate the (damaged|wounded)/i, /\bproven lane/i, /\bfire control\b/i, /\bthen pull back/i];
+  const kinds = Object.keys(DIRECTIVE_KINDS);
+  const check = (where, d, task) => {
+    ok(kinds.includes(d.kind) && typeof DIRECTIVE_KINDS[d.kind].check === 'function', `${where} ${d.id}: kind '${d.kind}' has a completion check`);
+    ok(typeof task === 'string' && task.length > 20, `${where} ${d.id}: task line (${task})`);
+    for (const re of BANNED) ok(!re.test(d.text || ''), `${where} ${d.id}: order text asks for something the game cannot do (${re}): ${d.text}`);
+  };
+  const lists = [];
+  for (const def of Object.values(defs)) lists.push([def.id, def, [...def.directives, ...(def.aor.ext?.bands || []).flatMap(b => b.directives || [])]]);
+  for (const def of Object.values(testDefs)) lists.push([`test ${def.id}`, def, def.directives]);
+  if (process.argv[2] === 'content') for (const op of ['UA', 'RU']) for (const f of ['UA', 'RU']) { const sd = VS.sideDef2(defs, op, f); lists.push([`versus ${op}/${f}`, sd, sd.directives]); }
+  for (const [where, def, ds] of lists) {
+    let C = new Campaign2(def); for (const b of def.aor.ext?.bands || []) GR8.applyBand(C, b);
+    for (const d of ds) {
+      check(where, d, C.directiveTask(d));
+      if (!kinds.includes(d.kind)) continue;
+      // doing what the task says completes it (a fresh campaign, the directive alone)
+      C = new Campaign2(def); for (const b of def.aor.ext?.bands || []) GR8.applyBand(C, b); C.directives = []; C.doneDirectives = {};
+      C.activate(d); const a = C.directives.find(x => x.id === d.id); if (!a) { ok(false, `${where} ${d.id}: could not be issued`); continue; }
+      const T = (d.targets || []).filter(t => C.cell(t)); ok(T.length === (d.targets || []).length, `${where} ${d.id}: every target on the grid`);
+      const own = () => { for (const t of T) C.owner[t] = 'player'; };
+      if (d.kind === 'capture') { C.checkDirectives(); ok(!C.doneDirectives[d.id] || T.every(t => def.aor.cells.find(c => c.id === t)?.owner === 'player'), `${where} ${d.id}: not done before`); own(); C.checkDirectives(); }
+      else if (d.kind === 'hold') { own(); if (d.count) for (let i = 0; i < d.count; i++) C.checkDirectives(null, true); else { a.deadline = '2000-01-01'; C.checkDirectives(); } }
+      else if (d.kind === 'survive') { own(); a.deadline = '2000-01-01'; C.checkDirectives(); }
+      else if (d.kind === 'destroy') { C.checkDirectives({ cell: T[0] || C.def.aor.cells[0].id, mode: 'attack', vehKills: Math.max(0, (d.count || 5) - 1) }); ok(!C.doneDirectives[d.id], `${where} ${d.id}: one short is not enough`); C.checkDirectives({ cell: T[0] || C.def.aor.cells[0].id, mode: 'fire', vehKills: 1 }); }
+      else if (d.kind === 'raid') { for (let i = 0; i < (d.count || 1); i++) { ok(!C.doneDirectives[d.id], `${where} ${d.id}: not done after ${i} raids`); C.checkDirectives({ cell: T[i % T.length], mode: 'attack', vehKills: 0 }); } }
+      else if (d.kind === 'recon') { for (const t of T) if (C.owner[t] !== 'player') C.observe(t); C.checkDirectives(); }
+      else if (d.kind === 'isolate') { C.checkDirectives(null, true); ok(!C.doneDirectives[d.id], `${where} ${d.id}: not done while supplied`); for (const t of T) C.esupplied[t] = 0; C.checkDirectives(null, true); }
+      ok(C.doneDirectives[d.id] === 'success', `${where} ${d.id} (${d.kind}): completed by doing its task (${C.doneDirectives[d.id] || 'still open'})`);
+    }
+  }
+  // the real paths: a counter-battery mission that destroys a gun counts for a 'destroy' order; the pipe at Tsarska Okhota
+  // lowers its fortifications; Zenit counts as done once cut off at the end of a week
+  for (const def of Object.values(defs)) {
+    setRandom(seeded(5)); const C = new Campaign2(def); const d = def.directives.find(x => x.kind === 'destroy' && !(x.targets || []).length); if (!d || !C.arty.enemy.length) continue;
+    C.directives = []; C.doneDirectives = {}; C.activate(d); const a = C.directives[0], b = C.arty.enemy[0]; b.hp = 0.2; b.revealed = C.turn; const p0 = a.progress;
+    C.applyFire({ side: 'player', kind: 'counterbattery', cell: b.cell, battery: C.arty.player[0]?.id, cb: 1 }, () => 0);
+    ok(b.down && a.progress === p0 + 1, `${def.id}: a gun destroyed by counter-battery fire counts for '${d.title}' (${p0} -> ${a.progress})`);
+  }
+  if (defs.RU?.directives.some(x => x.id === 'ru_tsarska')) {
+    const C = new Campaign2(defs.RU), d = C.directiveDef('ru_tsarska'), t = d.targets[0], f0 = C.fort[t]; C.activate(d);
+    ok(C.fort[t] === f0 - 1 && d.onIssue?.fortDown?.includes(t), `ru_tsarska: the pipe lowers Tsarska Okhota's fortifications (${f0} -> ${C.fort[t]})`);
+    const Z = new Campaign2(defs.RU), z = Z.directiveDef('ru_zenit'); ok(z.kind === 'isolate', 'ru_zenit: take or cut off');
+  }
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -241,7 +241,7 @@ export class CampaignScreen {
     if (!C.directives.length) p.appendChild(h('div', { class: 'c2-note' }, 'No active directives. Hold the sector and prepare; higher command will issue new orders.'));
     for (const a of C.directives) {
       const d = C.directiveDef(a.id); if (!d) continue; const st = C.directiveStatus(a);
-      const card = h('div', { class: 'c2-card dir' }, `<div class="c2-ck">${esc(d.from || 'Higher command')} · issued ${esc(dateLabel(a.issuedDate))}</div><div class="c2-ch">${esc(d.title)}</div><div class="c2-order">${esc(d.text || '')}</div>
+      const card = h('div', { class: 'c2-card dir' }, `<div class="c2-ck">${esc(d.from || 'Higher command')} · issued ${esc(dateLabel(a.issuedDate))}</div><div class="c2-ch">${esc(d.title)}</div><div class="c2-order">${esc(d.text || '')}</div><div class="c2-task"><b>Task:</b> ${esc(C.directiveTask(d))}</div>
         <div class="c2-kv"><span>${esc(kindLabel(d.kind))}</span><b>${esc(st.txt)}</b></div><div class="c2-kv"><span>Deadline</span><b class="${st.weeksLeft <= 1 ? 'warn' : ''}">${esc(dateLabel(a.deadline))} (${st.weeksLeft ? `${st.weeksLeft} wk` : 'this week'})</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP${d.reward?.units?.length ? ` + ${d.reward.units.length} unit(s)` : ''}${d.reward?.unlock?.length ? ' + equipment' : ''}</b></div>`);
       const tg = h('div', { class: 'c2-row' }); for (const t of d.targets || []) tg.appendChild(h('button', { class: 'c2-chip' + (C.owner[t] === 'player' ? ' ok' : ''), onclick: () => { this.map.flyTo({ ...this.map.cellCenter(t), dist: 8 }, 1); this.clickCell(t); } }, `${esc(cellRef(C, t))}`));
       card.appendChild(tg); p.appendChild(card);
@@ -478,7 +478,7 @@ export class CampaignScreen {
   }
   directiveModal(a, then = null) {
     const C = this.C, d = C.directiveDef(a.id); if (!d) return;
-    this.modal(`<div class="c2-k">NEW DIRECTIVE · ${esc(d.from || 'Higher command')} · ${esc(dateLabel(a.issuedDate))}</div><h2>${esc(d.title)}</h2><div class="c2-order lg">${esc(d.text || '')}</div>
+    this.modal(`<div class="c2-k">NEW DIRECTIVE · ${esc(d.from || 'Higher command')} · ${esc(dateLabel(a.issuedDate))}</div><h2>${esc(d.title)}</h2><div class="c2-order lg">${esc(d.text || '')}</div><div class="c2-task"><b>Task:</b> ${esc(C.directiveTask(d))}</div>
       <div class="c2-kv"><span>Task</span><b>${esc(kindLabel(d.kind))}${(d.targets || []).length ? ': ' + d.targets.map(t => esc(C.cellName(t))).join(', ') : ''}</b></div><div class="c2-kv"><span>Deadline</span><b>${esc(dateLabel(a.deadline))}</b></div><div class="c2-kv"><span>Reward</span><b>${d.reward?.lp || 0} LP</b></div>`,
       [['ACKNOWLEDGED', 'pri', () => { this.tab = 'dir'; this.renderLeft(); const t = (d.targets || [])[0]; if (t) this.map.flyTo({ ...this.map.cellCenter(t), dist: 14 }, 1.4); then?.(); }]]);
   }
@@ -774,7 +774,7 @@ export class CampaignScreen {
 }
 
 const cellRef = (C, id) => { const n = C.cellName(id), r = C.gridRef(id); return n.endsWith(r) ? n : `${n} ${r}`; };
-const kindLabel = k => ({ capture: 'Capture', hold: 'Hold', survive: 'Hold the line', destroy: 'Destroy enemy vehicles', recon: 'Reconnaissance', raid: 'Raid' })[k] || k;
+const kindLabel = k => ({ capture: 'Capture', hold: 'Hold', survive: 'Hold the line', destroy: 'Destroy vehicles / guns', recon: 'Reconnaissance', raid: 'Raid', isolate: 'Take or cut off' })[k] || k;
 const seasonName = d => { const m = +String(d).slice(5, 7); return m === 12 || m <= 2 ? 'WINTER' : m <= 5 ? 'SPRING' : m <= 8 ? 'SUMMER' : 'AUTUMN'; };
 
 // 3D vehicle preview for the tech tree: one renderer, reused every time the tree opens; the GLB (cached) rotates
@@ -889,6 +889,7 @@ export function injectCss() {
 .good{color:#a9d48a!important}.warn{color:#e8b85a!important}.bad{color:#ef8c7c!important}.own{color:#8fbaf0!important}
 .c2-note{font-size:13px;color:var(--dim,#9c978a);line-height:1.4;margin:4px 0 8px}.c2-desc{font-size:13px;color:#bdb8a8;margin-top:4px;line-height:1.35}.c2-req{font-size:12px;color:#c9a46a;margin-top:3px}
 .c2-order{font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;font-size:12.5px;line-height:1.5;color:#d8d3c2;background:rgba(0,0,0,.25);border-left:2px solid var(--acc);padding:6px 9px;margin:6px 0;white-space:pre-wrap}.c2-order.lg{font-size:14px}
+.c2-task{font-size:12px;line-height:1.4;color:#ecd9a8;margin:2px 0 6px}.c2-task b{color:var(--acc);font-weight:700;letter-spacing:.04em;text-transform:uppercase;font-size:10.5px;margin-right:3px}
 .c2-hist{font-size:12.5px;color:#c4bfae;margin-top:4px;line-height:1.4}.c2-hist b{color:var(--acc);font-weight:600}
 .c2-sub{font-size:11px;letter-spacing:.2em;color:var(--dim,#9c978a);text-transform:uppercase;margin:10px 0 6px}
 .c2-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.c2-row.end{justify-content:flex-end;margin-top:16px}

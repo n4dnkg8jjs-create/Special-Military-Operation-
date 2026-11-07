@@ -2,7 +2,7 @@
 // The engine loads this through v2/index.js (loadCampaigns -> CAMPAIGNS2). Node check:
 //   node -e "import('./src/campaign/v2/content_index.js').then(m => { for (const d of Object.values(m.CAMPAIGNS2)) console.log(d.id, m.validate2(d)); })"
 import { MODS } from '../schema.js';
-import { CAMPAIGN_MODS } from './state.js';
+import { CAMPAIGN_MODS, DIRECTIVE_KINDS } from './state.js';
 import { CAMPAIGN2_UA } from './content_ua.js';
 import { CAMPAIGN2_RU } from './content_ru.js';
 
@@ -12,7 +12,7 @@ export default CAMPAIGNS2;
 const TERRAIN = ['fields', 'forest', 'urban', 'industrial', 'village', 'water', 'heights', 'balka'];
 const OWNERS = ['player', 'enemy', 'contested'];
 const MAPS = ['robotyne', 'avdiivka', 'city', 'farmland'];
-const KINDS = ['capture', 'hold', 'destroy', 'recon', 'survive', 'raid'];
+const KINDS = Object.keys(DIRECTIVE_KINDS);   // the kinds the rules can check (state.js): capture, hold, survive, destroy, raid, recon, isolate
 const UNIT_KINDS = ['mech', 'imech', 'tank', 'assault', 'atgm', 'fpv', 'spg', 'replacements'];
 const ENEMY_KINDS = ['mech', 'imech', 'foot', 'assault', 'tank', 'atgm', 'fpv', 'spg', 'defend'];
 const SETTLE = ['town', 'village', 'hamlet', 'industrial'];
@@ -128,7 +128,8 @@ export function validate2(def) {
     if (!KINDS.includes(d.kind)) err(`${w} kind ${d.kind}`);
     if (!d.title || !d.text || !d.from) err(`${w} title/text/from`);
     for (const t of d.targets || []) if (!cell(t)) err(`${w} target ${t} missing`);
-    if (['capture', 'hold', 'survive', 'recon', 'raid'].includes(d.kind) && !(d.targets || []).length) err(`${w} needs targets`);
+    if (['capture', 'hold', 'survive', 'recon', 'raid', 'isolate'].includes(d.kind) && !(d.targets || []).length) err(`${w} needs targets`);
+    for (const t of d.onIssue?.fortDown || []) if (!cell(t)) err(`${w} onIssue.fortDown ${t} missing`);
     const is = d.issue || {};
     if (is.date && !inRange(is.date)) err(`${w} issue.date ${is.date} outside campaign`);
     if (is.after && !dIds.has(is.after)) err(`${w} issue.after ${is.after} unknown`);

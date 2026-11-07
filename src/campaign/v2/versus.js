@@ -69,17 +69,17 @@ export function sideDef2(defs, opId, faction) {
     const key = ownCells.filter(c => (c.vp || 0) > 0).sort((a, b) => (b.vp || 0) - (a.vp || 0) || a.id.localeCompare(b.id)).slice(0, 4);
     const from = faction === 'RU' ? 'Group of Forces HQ' : 'Operational-Strategic Group HQ';
     directives = key.map((c, i) => ({ id: `vs_hold${i}`, issue: { date: op.start.date }, from, kind: 'hold', targets: [c.id], count: 6 + i * 3, deadline: 8 + i * 4,
-      title: `Hold ${c.settlement?.name || c.name || 'the line'}`, text: `${c.settlement?.name || 'This sector'} must not fall. Hold it for ${6 + i * 3} weeks in a row; counterattack at once if it is lost.`, reward: { lp: 25 + i * 10 }, penalty: { lp: 10 } }));
-    for (const c of key.slice(0, 2)) directives.push({ id: `vs_retake_${c.id}`, issue: { when: `lost:${c.id}` }, from, kind: 'capture', targets: [c.id], deadline: 4, title: `Retake ${c.settlement?.name || 'the position'}`, text: 'The position has been lost. Retake it before the enemy digs in.', reward: { lp: 40 }, penalty: { lp: 15 } });
+      title: `Hold ${c.settlement?.name || c.name || 'the line'}`, text: `${c.settlement?.name || 'This sector'} must not fall. Hold it for ${6 + i * 3} weeks in a row; if it is lost, counterattack at once — the count starts again when it is back in our hands.`, reward: { lp: 25 + i * 10 }, penalty: { lp: 10 } }));
+    for (const c of key.slice(0, 2)) directives.push({ id: `vs_retake_${c.id}`, issue: { when: `lost:${c.id}` }, from, kind: 'capture', targets: [c.id], deadline: 4, title: `Retake ${c.settlement?.name || 'the position'}`, text: 'The position has been lost. Retake it before the enemy digs in: attack it from a neighbouring square.', reward: { lp: 40 }, penalty: { lp: 15 } });
     // the same kinds of orders a single-player brigade gets (content directives: recon / destroy), for the defence:
     // find the attacker's staging areas, then wear down his armour as the offensive comes on
     const staging = cells.filter(c => c.owner !== 'player' && dEnemy2(c) === 2 && c.terrain !== 'water').sort((a, b) => (b.vp || 0) + (b.settlement ? 1 : 0) + (b.road || 0) * 0.5 - ((a.vp || 0) + (a.settlement ? 1 : 0) + (a.road || 0) * 0.5) || a.id.localeCompare(b.id)).slice(0, 3);
     if (staging.length) directives.push({ id: 'vs_recon', issue: { date: op.start.date }, from: `${from} — Intelligence`, kind: 'recon', targets: staging.map(c => c.id), deadline: 6,
       title: 'Find the enemy\'s staging areas', text: `Higher command needs to know where the enemy is massing for the offensive. Put drones over ${staging.map(c => c.settlement?.name || c.name || 'the squares').filter((x, i, a) => a.indexOf(x) === i).join(', ')} behind his line.`, reward: { lp: 30 }, penalty: { lp: 5 } });
     directives.push({ id: 'vs_attrit', issue: { date: op.start.date }, from: `${from} — Fires`, kind: 'destroy', targets: [], count: 4, deadline: 12,
-      title: 'Attrit the attacking armour', text: 'Destroy enemy armoured vehicles wherever they come on: ATGM ambushes, drones, mines and artillery.', reward: { lp: 35 }, penalty: { lp: 5 }, next: { success: 'vs_attrit2' } });
+      title: 'Attrit the attacking armour', text: 'Destroy enemy armoured vehicles wherever they come on — ATGM teams, drones and tanks in the defensive battles — or his guns by counter-battery fire.', reward: { lp: 35 }, penalty: { lp: 5 }, next: { success: 'vs_attrit2' } });
     directives.push({ id: 'vs_attrit2', from: `${from} — Fires`, kind: 'destroy', targets: [], count: 6, deadline: 14,
-      title: 'Break the offensive\'s armour', text: 'The enemy is feeding in his reserves. Keep destroying his armoured vehicles before they reach the main belt.', reward: { lp: 50 }, penalty: { lp: 10 } });
+      title: 'Break the offensive\'s armour', text: 'The enemy is feeding in his reserves. Keep destroying his armoured vehicles and guns before they reach the main belt.', reward: { lp: 50 }, penalty: { lp: 10 } });
   }
   const def = { ...own, goal: null, vsGoal: op.goal || null, id: faction, version: 2, title: `${op.title} — versus`, region: op.region, mapId: opId, vsOp: opId, versus: true,
     aor, start, directives, theatre: op.theatre, intro: { place: op.intro?.place || A.name, date: op.intro?.date || '', lines: [] },
@@ -199,6 +199,7 @@ export class VersusGame {
             if (Math.random() < F.CB_HIT + (intel ? F.CB_INTEL : 0) + (r.cb || 0) + (A.mods().cbBonus || 0)) { b.hp = Math.round((b.hp - F.CB_DMG) * 100) / 100; if (b.hp <= 0) { b.hp = 0; b.down = F.REBUILD; } hits.push(b); }
           }
           A.note(hits.length ? `Counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed' : 'damaged'}`).join(', ')}.` : `Counter-battery fire on ${name}: no confirmed hits.`, hits.length ? 'good' : '');
+          if (hits.some(h => h.down)) A.checkDirectives({ cell: X, mode: 'fire', vehKills: hits.filter(h => h.down).length });   // guns destroyed count for 'destroy' orders (state.js DIRECTIVE_KINDS)
           if (hits.length) D.note(`Enemy counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed — rebuilt in ' + F.REBUILD + ' weeks' : 'damaged'}`).join(', ')}.`, 'bad');
         }
       }

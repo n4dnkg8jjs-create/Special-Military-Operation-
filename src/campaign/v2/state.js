@@ -363,6 +363,7 @@ export class Campaign2 {
       else this.note(`Enemy artillery and drones interdict the roads through ${name}: our supply through it is cut back this week.`, 'bad');
     } else if (r.kind === 'counterbattery') {
       const hits = F.resolveCB(this, S, X, (r.cb || 0) + (us ? (this.mods().cbBonus || 0) : 0), rnd);
+      if (us && hits.some(h => h.down)) this.checkDirectives({ cell: X, mode: 'fire', vehKills: hits.filter(h => h.down).length });   // guns destroyed count for 'destroy' orders
       if (us) this.note(hits.length ? `Counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed' : 'damaged'}`).join(', ')}.` : `Counter-battery fire on ${name}: no confirmed hits.`, hits.length ? 'good' : '');
       else if (hits.length) this.note(`Enemy counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed — rebuilt in ' + F.REBUILD + ' weeks' : 'damaged'}`).join(', ')}.`, 'bad');
     }
@@ -534,30 +535,27 @@ export class Campaign2 {
     const deadline = d.deadlineDate || (d.deadline != null ? addDays(this.date, d.deadline * (this.def.start.turnDays || 7)) : this.def.start.end);
     this.directives.push({ id: d.id, issued: this.turn, issuedDate: this.date, deadline, progress: 0, held: 0 });
     this.note(`New directive from ${d.from || 'higher command'}: ${d.title}.`, 'directive');
+    // what comes with the order (content onIssue): fortDown — the defences of these squares count one level lower (a way
+    // round them has been found, e.g. the drainage pipe at Tsarska Okhota)
+    for (const id of d.onIssue?.fortDown || []) if (this.owner[id] !== 'player' && (this.fort[id] || 0) > 0) { this.fort[id]--; this.note(`${this.cellName(id)}: a way round the defences has been found — its fortifications now count as ${['none', 'trenches', 'dug in', 'fortified line'][this.fort[id]]}.`, 'good'); }
   }
+  // what the directive asks, exactly as the rules check it (DIRECTIVE_KINDS): shown under the order text (ui.js)
+  directiveTask(d) { const K = DIRECTIVE_KINDS[d.kind], ns = (d.targets || []).map(t => this.cellName(t)); const n = Object.assign(listOf(ns, 'and'), { or: listOf(ns, 'or') }); return K ? K.task(d, ns.length ? n : '') : ''; }
   directiveStatus(a) {
     const d = this.directiveDef(a.id), T = d.targets || [];
     const held = T.filter(t => this.owner[t] === 'player').length;
-    const txt = { capture: `${held}/${T.length} objectives taken`, hold: d.count ? `held ${a.held}/${d.count} wk` : `${held}/${T.length} held`, survive: `${held}/${T.length} held`, destroy: `${a.progress}/${d.count || 5} vehicles`, raid: `${a.progress}/${d.count || 1} raids`, recon: `${T.filter(t => this.recon[t] != null).length}/${T.length} observed` }[d.kind] || '';
+    const txt = DIRECTIVE_KINDS[d.kind]?.status(this, a, d, held) || '';
     return { held, txt, weeksLeft: Math.max(0, Math.ceil((parseDate(a.deadline) - parseDate(this.date)) / DAY / (this.def.start.turnDays || 7))) };   // 0 = this is the last week
   }
+  // ev: a battle ({ cell, from, mode: 'attack'|'defend'|'occupy', vehKills }) or a fire mission ({ cell, mode: 'fire', vehKills: guns destroyed })
   checkDirectives(ev = null, endOfTurn = false) {
     for (const a of [...this.directives]) {
       const d = this.directiveDef(a.id); if (!d) { this.directives = this.directives.filter(x => x !== a); continue; }
+      const K = DIRECTIVE_KINDS[d.kind]; if (!K) continue;
       const T = d.targets || [], allHeld = T.every(t => this.owner[t] === 'player');
       const past = this.date > a.deadline || this.date >= this.def.start.end;   // the deadline's own week still counts
-      // (destroy: a counterattack launched from a target square counts too)
-      if (ev) { if (d.kind === 'destroy' && (!T.length || T.includes(ev.cell) || T.includes(ev.from))) a.progress += ev.vehKills || 0; if (d.kind === 'raid' && ev.mode === 'attack' && T.includes(ev.cell)) a.progress++; }
-      let res = null;
-      if (d.kind === 'capture') { if (allHeld) res = true; else if (past) res = false; }
-      else if (d.kind === 'destroy') { if (a.progress >= (d.count || 5)) res = true; else if (past) res = false; }
-      else if (d.kind === 'raid') { if (a.progress >= (d.count || 1)) res = true; else if (past) res = false; }
-      else if (d.kind === 'recon') { if (T.every(t => this.recon[t] != null || this.owner[t] === 'player')) res = true; else if (past) res = false; }
-      else if (d.kind === 'survive') { if (!allHeld) res = false; else if (past) res = true; }
-      else if (d.kind === 'hold') {
-        if (endOfTurn) a.held = allHeld ? a.held + 1 : 0;
-        if (d.count && a.held >= d.count) res = true; else if (past) res = d.count ? false : allHeld;
-      }
+      if (ev && K.event) K.event(this, a, d, ev);
+      const res = K.check(this, a, d, { T, allHeld, past, endOfTurn });
       if (res != null) this.finishDirective(a, d, res);
     }
   }
@@ -1029,6 +1027,35 @@ export class Campaign2 {
   }
 }
 const fmt = v => (Math.round(v * 10) / 10).toString();
+// ------------------------------------------------------------------ directive kinds: what each one asks (task: the line under
+// the order text), how it counts (event: a battle / fire mission), when it is decided (check: true success, false failure,
+// null not yet) and its progress line. Every content directive's kind must be one of these (test_rules.mjs checks it).
+const plural = (n, a, b = a + 's') => `${n} ${n === 1 ? a : b}`;
+const listOf = (a, w) => (a.length <= 1 ? a[0] || '' : `${a.slice(0, -1).join(', ')} ${w} ${a[a.length - 1]}`);
+export const DIRECTIVE_KINDS = {
+  capture: { task: (d, n) => ((d.targets || []).length > 1 ? `Take ${n} — all of them ours at the same time — before the deadline.` : `Take ${n || 'the objective'} before the deadline.`),
+    check: (C, a, d, x) => (x.allHeld ? true : x.past ? false : null), status: (C, a, d, held) => `${held}/${(d.targets || []).length} objectives taken` },
+  hold: { task: (d, n) => (d.count ? `Hold ${n} at the end of ${d.count} weeks in a row (losing ${(d.targets || []).length > 1 ? 'one' : 'it'} resets the count).` : `Hold ${n} on the deadline.`),
+    check: (C, a, d, x) => { if (x.endOfTurn) a.held = x.allHeld ? a.held + 1 : 0; if (d.count && a.held >= d.count) return true; return x.past ? (d.count ? false : x.allHeld) : null; },
+    status: (C, a, d, held) => (d.count ? `held ${a.held}/${d.count} wk` : `${held}/${(d.targets || []).length} held`) },
+  survive: { task: (d, n) => `Do not lose ${n} until the deadline: losing any of them fails the order at once.`,
+    check: (C, a, d, x) => (!x.allHeld ? false : x.past ? true : null), status: (C, a, d, held) => `${held}/${(d.targets || []).length} held` },
+  // enemy armoured vehicles knocked out in battles (fought or staff-resolved) and enemy guns destroyed by counter-battery
+  // fire; with targets, only in / from those squares
+  destroy: { task: (d, n) => `Destroy ${plural(d.count || 5, 'enemy armoured vehicle')} or gun${(d.count || 5) === 1 ? '' : 's'}${n ? ` in or coming from ${n.or}` : ''}: in battles, or guns by counter-battery fire.`,
+    event: (C, a, d, ev) => { const T = d.targets || []; if (!T.length || T.includes(ev.cell) || T.includes(ev.from)) a.progress += ev.vehKills || 0; },
+    check: (C, a, d, x) => (a.progress >= (d.count || 5) ? true : x.past ? false : null), status: (C, a, d) => `${a.progress}/${d.count || 5} destroyed` },
+  // an attack battle on a target square (won or lost, fought or staff-resolved) is a raid
+  raid: { task: (d, n) => `Attack ${n.or || n} ${d.count > 1 ? `${d.count} times` : 'once'} — won or lost, every attack counts; taking the square is not required.`,
+    event: (C, a, d, ev) => { if (ev.mode === 'attack' && (d.targets || []).includes(ev.cell)) a.progress++; },
+    check: (C, a, d, x) => (a.progress >= (d.count || 1) ? true : x.past ? false : null), status: (C, a, d) => `${a.progress}/${d.count || 1} raids` },
+  recon: { task: (d, n) => `Get eyes on ${n}: a UAV sortie over ${(d.targets || []).length > 1 ? 'each' : 'it'}, or a task force next to ${(d.targets || []).length > 1 ? 'each' : 'it'}.`,
+    check: (C, a, d, x) => (x.T.every(t => C.recon[t] != null || C.owner[t] === 'player') ? true : x.past ? false : null), status: (C, a, d) => `${(d.targets || []).filter(t => C.recon[t] != null || C.owner[t] === 'player').length}/${(d.targets || []).length} observed` },
+  // take the square, or cut it off: no supply from any enemy hub or source reaches it (supply.js) at the end of a week
+  isolate: { task: (d, n) => `Take ${n} or cut ${(d.targets || []).length > 1 ? 'them' : 'it'} off: at the end of a week no enemy supply route may reach ${(d.targets || []).length > 1 ? 'them' : 'it'} (Supply view).`,
+    check: (C, a, d, x) => (x.T.every(t => C.owner[t] === 'player' || (x.endOfTurn && (C.esupplied?.[t] ?? 1) <= 0)) ? true : x.past ? false : null),
+    status: (C, a, d) => `${(d.targets || []).filter(t => C.owner[t] === 'player').length} taken · ${(d.targets || []).filter(t => C.owner[t] !== 'player' && (C.esupplied?.[t] ?? 1) <= 0).length} cut off / ${(d.targets || []).length}` },
+};
 // share of a staff-resolved battle's casualties who are wounded rather than killed: better casualty care (tech mods
 // medSave: stabilisation points, blood forward, armoured ambulances) keeps more of them alive (versus.js autoBattle too)
 export const woundedShare = (m = {}) => Math.min(0.8, 0.6 + 0.25 * (m.medSave || 0));
