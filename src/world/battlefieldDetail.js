@@ -209,7 +209,7 @@ function wireMaterial(vertexColors) {
       .replace('#include <color_fragment>', `{
         float rn = bfN2(vWArc.x * 1.3 + vWRust * 31.0) * 0.6 + bfN2(vWArc.x * 7.0) * 0.4;
         wRust = clamp(vWRust * 1.2 + (rn - 0.5) * 0.8 * smoothstep(0.02, 0.3, vWRust), 0.0, 1.0);
-        vec3 zinc = vec3(0.47, 0.48, 0.475) * (0.72 + 0.34 * bfN2(vWArc.x * 3.0 + 5.0));   // hot-dip zinc, dulled
+        vec3 zinc = vec3(0.33, 0.335, 0.33) * (0.75 + 0.3 * bfN2(vWArc.x * 3.0 + 5.0));   // hot-dip zinc after months outdoors: dull grey
         vec3 rust = mix(vec3(0.24, 0.12, 0.055), vec3(0.37, 0.21, 0.11), bfN2(vWArc.x * 11.0));
         diffuseColor.rgb = mix(zinc, rust, wRust);
       }`)
@@ -243,9 +243,9 @@ function wireMaterial(vertexColors) {
             // single blade flats flash (one random facet per blade); directLight = the (shadowed) sun after the light loop
           vec3 H = normalize(directLight.direction + normalize(vViewPosition));
           float th = dot(normalize(vWTan), H), sth = sqrt(max(0.0, 1.0 - th * th));
-          float k = pow(sth, 80.0) * 0.6;
+          float k = pow(sth, 80.0) * 0.22;
           float hb = bfH2(floor(vWArc.x / 0.035) * 7.31 + vWArc.z * 3.0);
-          k += step(vWArc.z, 0.5) * step(0.95, hb) * pow(sth, 14.0) * 2.2;
+          k += step(vWArc.z, 0.5) * step(0.95, hb) * pow(sth, 14.0) * 0.8;
           reflectedLight.directSpecular += directLight.color * k * (1.0 - wRust) * (0.25 + 0.75 * smoothstep(0.15, 0.7, vWFade));
         }
         #endif`);
