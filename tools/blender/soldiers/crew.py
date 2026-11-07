@@ -39,7 +39,7 @@ SCHEMES = {   # coverall colour schemes per faction (material name, base, notes)
 # ====================================================================================== coverall texture
 def bake_coverall(mesh, skel, labels, faction, scheme, res_a=2048, res_n=1024, seed=0, olive=None):
     """one-piece crew coverall on the uniform mesh / UVs (bind pose): base (plain olive or camo) + seams, front zip,
-    chest zip pockets, thigh pockets, quilted knee and elbow pads, elastic waist, ankle tabs, flag patch, oil / dust"""
+    chest zip pockets, thigh pockets, quilted knee and elbow pads, elastic waist, ankle tabs, oil / dust (no flag patch)"""
     rng = np.random.default_rng(seed)
     pos, nrm, uv, tri = mesh['pos'], mesh['nrm'], mesh['uv'], mesh['tri']
     labnames = sorted(set(labels)); L = {l: i for i, l in enumerate(labnames)}
@@ -85,22 +85,12 @@ def bake_coverall(mesh, skel, labels, faction, scheme, res_a=2048, res_n=1024, s
         q = np.abs(np.sin((th * r_arm + s) / 0.022 * np.pi)) * np.abs(np.sin((th * r_arm - s) / 0.022 * np.pi))
         H += np.where(m, seam(esd) + stitch(esd, th * r_arm + s, 0.003) + np.where(ein, 0.0018 - 0.0007 * (1 - q), 0), 0)
         shade *= np.where(ein, 0.93 + 0.07 * q, 1)
-        # upper-sleeve pocket with the flag patch (left) / plain velcro panel (right)
+        # upper-sleeve pocket with a plain velcro panel (both sides; models_v11: flag patch removed)
         sd = rect(th * 0.055, s, 0.0, 0.14, 0.06, 0.07, 0.012)
         pk = m & on_up
         H += np.where(pk, np.where(sd < 0, 0.0014, 0) + seam(sd) + stitch(sd, th * 0.055 + s, 0.003), 0)
         shade *= np.where(pk, 1 - 0.22 * np.exp(-((sd - 0.001) / 0.002) ** 2), 1)
-        if side == 'Left':
-            psd = rect(th * 0.055, s, 0, 0.15, 0.038, 0.025, 0.004)
-            pm = pk & (psd < 0)
-            yy = (s - 0.125) / 0.05
-            if faction == 'ua':
-                col = np.where((yy < 0.5)[..., None], TX.hexc('#2a5a9a'), TX.hexc('#e8c21a'))
-            else:
-                col = np.where((yy < 0.333)[..., None], TX.hexc('#e6e6e0'), np.where((yy < 0.667)[..., None], TX.hexc('#2e4f9e'), TX.hexc('#b3282d')))
-            col = col * 0.8 + 0.2 * TX.hexc('#6b6b55')
-            patch[pm, :3] = col[pm]; patch[pm, 3] = 0.92
-            H += np.where(pm, 0.0006, 0)
+        # (models_v11: no flag patch on the pocket - identification is the tape bands only)
         # wrist tab (velcro cuff adjuster)
         ct = m & (np.abs(s - (Lu + np.linalg.norm(wr - el) - 0.035)) < 0.014) & (np.abs(np.angle(np.exp(1j * (th - np.pi * 0.5 * sx)))) < 0.35)
         H += np.where(ct, 0.0012, 0)

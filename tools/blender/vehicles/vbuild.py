@@ -18,6 +18,9 @@ SCHEMES = {
                      wear=1.0, dust_amt=1.0, fade=(86, 92, 64)),
     'ua_green': dict(base=(55, 65, 39), base2=(49, 58, 35), camo=[((31, 31, 28), 0.24), ((98, 84, 60), 0.14)],
                      dust=(136, 126, 106), mud=(64, 54, 42), wear=1.15, dust_amt=0.9, fade=(84, 90, 62)),
+    # models_v11 BTR-82A: greyer, darker Russian protective green (2022-24 photos: 4BO-style green reads grey-green, not olive)
+    'ru_btr82': dict(base=(53, 62, 46), base2=(46, 55, 40), camo=None, dust=(136, 127, 108), mud=(64, 55, 44),
+                     wear=1.0, dust_amt=1.0, fade=(80, 88, 72)),
     # UA BTR-80: green base with brown + khaki disruptive patches (2022-24 field repaints)
     'ua_btr': dict(base=(57, 67, 40), base2=(50, 59, 36), camo=[((82, 63, 42), 0.24), ((116, 104, 72), 0.12)], camo_freq=0.72,
                    dust=(136, 126, 106), mud=(64, 54, 42), wear=1.2, dust_amt=0.95, fade=(84, 90, 62)),

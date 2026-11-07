@@ -116,7 +116,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         # sleeve gather near cuff
         dc = s - (Lu + np.linalg.norm(wr - el) - 0.04)
         H += m * np.sin(th * 7 + s * 40) * np.exp(-(dc / 0.05) ** 2) * 0.0012
-        # shoulder pocket (velcro flag panel) on upper outer sleeve
+        # shoulder pocket (velcro panel, left bare - models_v11) on upper outer sleeve
         r_arm = 0.055
         sd = rect_sdf(th * r_arm, s, 0.012 * sx * 0, 0.14, 0.065, 0.075, 0.012)
         pk = m & on_up
@@ -127,18 +127,7 @@ def bake_uniform(mesh, skel, labels, faction, variant, res_a=2048, res_n=1024, t
         fsd = rect_sdf(th * r_arm, s, 0, 0.078, 0.068, 0.024, 0.008)
         H += np.where(pk & (fsd < 0), 0.0012, 0) + np.where(pk, seam_profile(fsd), 0)
         shade *= np.where(pk & (np.abs(fsd) < 0.003) & (s > 0.09), 0.72, 1)
-        # flag / unit patch on the left sleeve pocket (velcro)
-        if side == 'Left':
-            psd = rect_sdf(th * r_arm, s, 0, 0.155, 0.04, 0.026, 0.004)
-            pm = pk & (psd < 0)
-            yy = (s - 0.129) / 0.052  # 0 top .. 1 bottom
-            if faction == 'ua':
-                col = np.where((yy < 0.5)[..., None], TX.hexc('#2a5a9a'), TX.hexc('#e8c21a'))
-            else:
-                col = np.where((yy < 0.333)[..., None], TX.hexc('#e6e6e0'), np.where((yy < 0.667)[..., None], TX.hexc('#2e4f9e'), TX.hexc('#b3282d')))
-            col = col * 0.8 + 0.2 * TX.hexc('#6b6b55')  # subdued / dirty
-            patch[pm, :3] = col[pm]; patch[pm, 3] = 0.92
-            H += np.where(pm, 0.0006, 0)
+        # (models_v11: no national flag / unit patch on the sleeve pocket any more - identification is the tape bands only)
         # elbow reinforcement on back of elbow
         esd = rect_sdf(th * 0.05, s, (np.pi / 2 * sx) * 0.05 * 0.9, Lu, 0.05, 0.07, 0.03)
         H += np.where(m, seam_profile(esd) + np.where(esd < 0, 0.0005, 0), 0)

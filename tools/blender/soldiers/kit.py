@@ -6,9 +6,9 @@ import pouches as PO
 import meshutil as MU
 
 RU_MATS = dict(fabric='emr_gear', webbing='emr_gear', hardware='gear_hardware', mag='ak_mag_polymer',
-               radio='radio_black', red='medic_red', flag_a='flag_white', flag_b='flag_blue', flag_c='flag_red')
+               radio='radio_black', red='medic_red')
 UA_MATS = dict(fabric='multicam_gear', webbing='coyote_webbing', hardware='gear_hardware', mag='ak_mag_polymer',
-               radio='radio_black', red='medic_red', flag_a='flag_blue', flag_b='flag_yellow', flag_c='flag_yellow')
+               radio='radio_black', red='medic_red')
 
 
 def tag(parts, group):
@@ -159,14 +159,11 @@ def plate_carrier(env, fac):
         out += tag(PO.hydration(m, panel_M(bfr, 0, by(1.14))), 'pouches_back')
         out += tag(PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.07, 0.017)), 'pouches_back')
     else:
-        # JPC-style: triple open-top mag shingle with visible mags, admin + flag, tourniquet, radio
+        # JPC-style: triple open-top mag shingle with visible mags, admin pouch, tourniquet, radio
         for k, x in enumerate((-0.088, 0.0, 0.088)):
             out += tag(PO.mag_pouch(m, panel_M(ffr, x, -0.15), open_top=True, n_mags=1, w=0.075, h=0.16, d=0.045), 'pouches_front')
         out += tag(PO.admin_pouch(m, panel_M(ffr, 0, -0.005), w=0.2, h=0.1, d=0.028), 'pouches_front')
-        # UA flag patch on the admin pouch (blue over yellow)
-        Mf = panel_M(ffr, 0, 0.045, 0.031)
-        out += tag([PO.local_part(PO.rbox(0.07, 0.022, 0.003, 0.0, 1), Mf @ PO.T(0, 0.011, 0), m['flag_a'], 'hard'),
-                    PO.local_part(PO.rbox(0.07, 0.022, 0.003, 0.0, 1), Mf @ PO.T(0, -0.011, 0), m['flag_b'], 'hard')], 'pouches_front')
+        # (models_v11: no flag patch on the admin pouch - identification is the tape bands only)
         out += tag(PO.tourniquet(m, panel_M(ffr, -0.085, 0.075)), 'pouches_front')
         # (radio pouch: comms.py, per preset - v10)
         out += tag(PO.ifak(m, side_M(env, -1.75, 1.07, 0.015), w=0.15, cross=True), 'pouches_side')
@@ -414,10 +411,7 @@ def helmet(kind, c, r, mats, fac, trees=None, retention_ctx=True):
             out.append(strip(a0, a1, np.radians(26), np.radians(36), 0.0006, 0.0022, m['webbing']))
         out.append(strip(np.radians(154), np.radians(206), np.radians(8), np.radians(22), 0.0006, 0.0022, m['webbing']))
     if H.get('cord'):
-        # shock cords from the shroud along the sides (between rails and side velcro) to the back
-        for sgn in (1, -1):
-            a0, a1 = sorted((sgn * np.radians(22), sgn * np.radians(150)))
-            out.append(strip(a0, a1, np.radians(20.0), np.radians(21.8), 0.002, 0.0055, m['hardware'], n=20))
+        out += nvg_cords(on, frame, surf, c, m, log=print)
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.085, 0.055, 0.028, 0.01, 2), frame(np.pi, np.radians(H.get('cw_el', 5)), 0.0) @ PO.T(0, 0.0, 0.014), m['fabric']))
     if H.get('goggles'):
@@ -432,6 +426,60 @@ def helmet(kind, c, r, mats, fac, trees=None, retention_ctx=True):
         p['group'] = 'helmet'
     if retention_ctx:       # v10: the retention harness is built per body variant (helmets.retention)
         out[0]['helmet_ctx'] = dict(kind=kind, on=on, frame=frame, rim_fn=rim_fn, H=H, c=c, surf=surf, flare_fn=flare_fn)
+    return out
+
+
+def nvg_cords(on, frame, surf, c, m, rc=0.0022, n=36, sides=5, log=None):
+    """models_v11: NVG shock cord (bungee) of a FAST-type high cut, one per side: from a hook moulded on the side edge of the
+    NVG shroud, tight along the shell, over the side above the ARC rail, to a rear hook on the back of the shell beside the
+    counterweight.  A taut cord over a convex shell lies on the shortest path: the polyline (ends fixed on the hooks) is
+    relaxed to its shortest length while every point is kept >= rc + 0.5 mm off the shell (radially, the shell is star-shaped
+    round c) and >= 18.5 deg elevation over the rail band (rails / end stops / headset adapters top out ~15.5 deg).  Round
+    section (4.4 mm), 5 sides.  Returns parts (cords + 4 hooks)."""
+    import packs as PK                                         # (packs imports kit)
+    out = []
+    hw = m['hardware']
+    def lift(P, h):
+        D = P - c; r = np.linalg.norm(D, axis=1)
+        az = np.arctan2(D[:, 0], D[:, 2]); el = np.arcsin(np.clip(D[:, 1] / r, -1, 1))
+        return az, el, r
+    for sgn in (1, -1):
+        Mf = frame(0.0, np.radians(8), 0.0)                    # shroud plate frame (plate: 70 x 44 x 6 mm, z 0..6 mm)
+        Mh = Mf @ PO.T(sgn * 0.037, 0.009, 0.0035)
+        out.append(PO.local_part(PO.rbox(0.012, 0.012, 0.007, 0.002, 1), Mh, hw, 'hard'))
+        p0 = PO.xf(np.array([[sgn * 0.0425, 0.009, 0.0045]]), Mf)[0]
+        ar, er = sgn * np.radians(150.0), np.radians(9.0)      # rear hook (beside the counterweight, which spans ~161..199 deg)
+        Mr = frame(ar, er, 0.0)
+        out.append(PO.local_part(PO.rbox(0.011, 0.016, 0.007, 0.002, 1), Mr @ PO.T(0, 0, 0.0035), hw, 'hard'))
+        out.append(PO.local_part(PO.rbox(0.011, 0.004, 0.006, 0.0015, 1), Mr @ PO.T(0, 0.009, 0.0075), hw, 'hard'))   # hook lip
+        p1 = PO.xf(np.array([[0.0, 0.0045, 0.0072 + rc * 0.4]]), Mr)[0]
+        # initial guess: (az, el) path bulging up the side, on the offset surface
+        t = np.linspace(0, 1, n)
+        az0, el0, _ = lift(p0[None], 0); az0, el0 = az0[0], el0[0]
+        A = az0 + (ar - az0) * t; E = el0 + (er - el0) * t + np.radians(14) * np.sin(np.pi * t)
+        P = surf(A, E, rc + 0.0005); P[0] = p0; P[-1] = p1
+        lo_rail = np.radians(18.5)
+        for it in range(4000):
+            Q = P.copy()
+            Q[1:-1] = 0.5 * (P[:-2] + P[2:])
+            az, el, r = lift(Q[1:-1], 0)
+            band = (np.abs(az) > np.radians(62)) & (np.abs(az) < np.radians(122))
+            el = np.where(band, np.maximum(el, lo_rail), el)
+            rmin = np.linalg.norm(surf(az, el, rc + 0.0005) - c, axis=1)
+            rr = np.maximum(r, rmin)
+            Q[1:-1] = c + np.stack([np.cos(el) * np.sin(az), np.sin(el), np.cos(el) * np.cos(az)], 1) * rr[:, None]
+            dmax = np.abs(Q - P).max(); P = Q
+            if dmax < 2e-7:
+                break
+        az, el, r = lift(P, 0)
+        gap = r - np.linalg.norm(surf(az, el, 0.0) - c, axis=1)
+        if log:
+            log(f'nvg cord {"LR"[sgn < 0]}: {it} iters, length {np.linalg.norm(np.diff(P, axis=0), axis=1).sum():.3f} m, '
+                f'el {np.degrees(el).min():.1f}..{np.degrees(el).max():.1f} deg, centre-line height over the shell '
+                f'{gap[1:-1].min() * 1000:.1f}..{gap[1:-1].max() * 1000:.1f} mm')
+        Dn = P - c; Dn /= np.linalg.norm(Dn, axis=1, keepdims=True)
+        cord = PK._sweep(P, Dn, rc, sides, hw)
+        out.append(cord)
     return out
 
 

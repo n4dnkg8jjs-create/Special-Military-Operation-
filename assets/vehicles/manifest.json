@@ -72,28 +72,28 @@
    ],
    "markings": "none (plain field-worn 4BO-style green, dust)",
    "file": "assets/vehicles/btr82a.glb",
-   "file_mb": 6.38,
+   "file_mb": 4.34,
    "tris": {
-    "lod0": 75713,
-    "lod1": 22694,
-    "hull_wreck": 16504,
-    "turret_wreck": 2217
+    "lod0": 77644,
+    "lod1": 23266,
+    "hull_wreck": 16980,
+    "turret_wreck": 2551
    },
    "model_bbox_m": {
     "min": [
-     -1.531,
+     -1.556,
      -0.042,
      -3.937
     ],
     "max": [
-     1.531,
-     3.28,
-     4.12
+     1.556,
+     2.935,
+     3.95
     ],
     "size": [
-     3.062,
-     3.322,
-     8.057
+     3.112,
+     2.977,
+     7.887
     ]
    },
    "materials": [
@@ -107,7 +107,7 @@
      "name": "ride_seat_1",
      "seat_type": "edge",
      "pos": [
-      -0.56,
+      -0.7,
       1.976,
       -0.45
      ],
@@ -121,7 +121,7 @@
      "name": "ride_seat_2",
      "seat_type": "edge",
      "pos": [
-      0.56,
+      0.7,
       1.976,
       -0.45
      ],
@@ -135,7 +135,7 @@
      "name": "ride_seat_3",
      "seat_type": "edge",
      "pos": [
-      -0.56,
+      -0.7,
       1.969,
       -1.25
      ],
@@ -149,7 +149,7 @@
      "name": "ride_seat_4",
      "seat_type": "edge",
      "pos": [
-      0.56,
+      0.7,
       1.969,
       -1.25
      ],
@@ -163,7 +163,7 @@
      "name": "ride_seat_5",
      "seat_type": "edge",
      "pos": [
-      -0.56,
+      -0.7,
       2.003,
       -1.95
      ],
@@ -177,7 +177,7 @@
      "name": "ride_seat_6",
      "seat_type": "edge",
      "pos": [
-      0.56,
+      0.7,
       2.003,
       -1.95
      ],
@@ -220,21 +220,21 @@
     "turret_sweep_radius_m": 1.04,
     "turret_sweep_z_m": [
      2.0,
-     3.28
+     2.935
     ],
-    "min_rider_margin_m": 0.121,
+    "min_rider_margin_m": 0.181,
     "per_seat_margin_m": [
-     0.121,
-     0.121,
-     0.882,
-     0.882,
-     1.566,
-     1.566,
-     1.896,
-     1.896
+     0.181,
+     0.181,
+     0.92,
+     0.92,
+     1.595,
+     1.595,
+     1.895,
+     1.895
     ],
-    "gun_trunnion_height_m": 2.34,
-    "gun_min_elevation_to_clear_riders_deg": 49.6,
+    "gun_trunnion_height_m": 2.56,
+    "gun_min_elevation_to_clear_riders_deg": 27.4,
     "gun_max_elevation_deg": 70,
     "gun_can_clear_riders": true
    },
@@ -283,7 +283,7 @@
     "hatch_driver": "driver roof hatch rim centre (hull, front left)",
     "hatch_gunner": "BPPU turret roof hatch rim centre (turret)",
     "hatch_cargo_*": "troop roof hatch rim centres behind the turret (hull)",
-    "exhaust": "left silencer outlet",
+    "exhaust": "right silencer outlet",
     "dismount_L / dismount_R": "side door ground points",
     "ride_seat_1..8": "desant seats"
    },
@@ -346,8 +346,8 @@
         "name": "exhaust",
         "type": "empty",
         "pos": [
-         1.416,
-         1.505,
+         -1.458,
+         1.491,
          -3.4
         ]
        },
@@ -518,7 +518,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 21823,
+        "tris": 22880,
         "pos": [
          0.0,
          0.0,
@@ -529,7 +529,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 6537,
+        "tris": 6855,
         "pos": [
          0.0,
          0.0,
@@ -540,7 +540,7 @@
         "name": "ride_seat_1",
         "type": "empty",
         "pos": [
-         -0.56,
+         -0.7,
          1.976,
          -0.45
         ]
@@ -549,7 +549,7 @@
         "name": "ride_seat_2",
         "type": "empty",
         "pos": [
-         0.56,
+         0.7,
          1.976,
          -0.45
         ]
@@ -558,7 +558,7 @@
         "name": "ride_seat_3",
         "type": "empty",
         "pos": [
-         -0.56,
+         -0.7,
          1.969,
          -1.25
         ]
@@ -567,7 +567,7 @@
         "name": "ride_seat_4",
         "type": "empty",
         "pos": [
-         0.56,
+         0.7,
          1.969,
          -1.25
         ]
@@ -576,7 +576,7 @@
         "name": "ride_seat_5",
         "type": "empty",
         "pos": [
-         -0.56,
+         -0.7,
          2.003,
          -1.95
         ]
@@ -585,7 +585,7 @@
         "name": "ride_seat_6",
         "type": "empty",
         "pos": [
-         0.56,
+         0.7,
          2.003,
          -1.95
         ]
@@ -622,47 +622,47 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.34,
-           1.57
+           2.56,
+           1.37
           ],
           "children": [
            {
             "name": "coax_muzzle",
             "type": "empty",
             "pos": [
-             -0.2,
-             2.31,
-             2.24
+             -0.15,
+             2.525,
+             2.0
             ]
            },
            {
             "name": "gun_geo",
             "type": "mesh",
-            "tris": 920,
+            "tris": 904,
             "pos": [
              0.0,
-             2.34,
-             1.57
+             2.56,
+             1.37
             ]
            },
            {
             "name": "gun_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 276,
+            "tris": 270,
             "pos": [
              0.0,
-             2.34,
-             1.57
+             2.56,
+             1.37
             ]
            },
            {
             "name": "muzzle",
             "type": "empty",
             "pos": [
-             0.04,
-             2.34,
-             4.13
+             0.03,
+             2.56,
+             3.97
             ]
            }
           ]
@@ -671,18 +671,18 @@
           "name": "hatch_gunner",
           "type": "empty",
           "pos": [
-           -0.12,
-           2.63,
-           0.67
+           0.3,
+           2.47,
+           0.63
           ]
          },
          {
           "name": "hatch_lid_gunner",
           "type": "empty",
           "pos": [
-           -0.12,
-           2.602,
-           0.396
+           0.3,
+           2.442,
+           0.386
           ],
           "children": [
            {
@@ -690,20 +690,20 @@
             "type": "mesh",
             "tris": 610,
             "pos": [
-             -0.12,
-             2.602,
-             0.396
+             0.3,
+             2.442,
+             0.386
             ]
            },
            {
             "name": "hatch_lid_gunner_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 183,
+            "tris": 182,
             "pos": [
-             -0.12,
-             2.602,
-             0.396
+             0.3,
+             2.442,
+             0.386
             ]
            }
           ]
@@ -713,14 +713,14 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.5,
-           0.49
+           2.58,
+           1.25
           ]
          },
          {
           "name": "turret_geo",
           "type": "mesh",
-          "tris": 3448,
+          "tris": 4338,
           "pos": [
            0.0,
            2.0,
@@ -731,7 +731,7 @@
           "name": "turret_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1034,
+          "tris": 1295,
           "pos": [
            0.0,
            2.0,
@@ -1002,7 +1002,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 16504,
+      "tris": 16980,
       "pos": [
        0.0,
        0.0,
@@ -1013,7 +1013,7 @@
       "name": "turret_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 2217,
+      "tris": 2551,
       "pos": [
        0.0,
        1.702,
@@ -1021,7 +1021,8 @@
       ]
      }
     ]
-   }
+   },
+   "textures": "EXT_texture_webp (tools/optimize_assets.sh step applied)"
   },
   "btr80_ua": {
    "faction": "UA",

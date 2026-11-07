@@ -15,6 +15,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { FACTIONS, SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES } from '/src/config.js';
 import { Soldier, prepareSoldierAssets } from '/src/game/soldier.js';
 const q = new URLSearchParams(location.search);
+// models_v11: tapeUA= / tapeRU= (hex) preview another identification-tape colour (the game takes it from config.js FACTIONS.*.tape)
+for (const f of ['UA', 'RU']) if (q.get('tape' + f)) FACTIONS[f].tape = parseInt(q.get('tape' + f), 16);
 const W = +(q.get('w') || 1400), H = +(q.get('h') || 800);
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setSize(W, H); renderer.shadowMap.enabled = true; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;

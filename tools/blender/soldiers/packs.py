@@ -9,12 +9,12 @@ Detail that would cost triangles is painted instead: the pack bodies / pockets /
 (`pack_ua` / `pack_ru`): every face of a box gets its own chart (box projection in the box's own frame, front / sides / top at
 PXM texels per metre, the face against the back and the bottom at lower density), painted with the faction's gear camo (same
 tile as the per-part gear) plus a height field (zippers with slider + pull, PALS webbing rows with bar tacks, laser-cut MOLLE
-slots, bound edges, panel seams with stitching, velcro ID field with a flag patch, flat compression straps, drain grommets,
+slots, bound edges, panel seams with stitching, velcro ID field (bare: no flag patch since models_v11), flat compression straps, drain grommets,
 labels, the spiral of the rolled mat) turned into a normal map and a cavity / contact AO multiplied into the base colour.
 combo.make places these charts in the preset atlas like the uniform (SRC_SCALE['pack_']), so a preset stays at 2 draw calls.
 
 Real kit, 2023-25 photos: UA - 3-day / 1-day assault packs (M-Tac, Dozor, 5.11 Rush-type) in MultiCam with laser-cut or webbing
-MOLLE, velcro flag patch, side compression straps, karimat foam roll strapped under the pack, hydration tube, CAT / SICH
+MOLLE, bare velcro field, side compression straps, karimat foam roll strapped under the pack, hydration tube, CAT / SICH
 tourniquet on the shoulder strap. RU - Ratnik-era (6Sh117 set) raid / assault packs in EMR with webbing PALS, flap pockets
 with buckled straps, MPL-50 strapped to the side, karimat roll."""
 import numpy as np
@@ -633,10 +633,10 @@ def _paint_ruck_front(cv, c):
     m_ = 0.028
     pts = [(m_ + 0.012, h - 0.05), (m_ + 0.008, 0.06), (m_ + 0.02, m_ + 0.012), (w / 2, m_), (w - m_ - 0.02, m_ + 0.012), (w - m_ - 0.008, 0.06), (w - m_ - 0.012, h - 0.05)]
     zipper(cv, c, pts, slider_at=(0.42, 0.58))
-    # upper admin pocket: horizontal zip + velcro ID field with the flag (UA) / name tape field (RU)
+    # upper admin pocket: horizontal zip + plain velcro ID field (UA; models_v11: no flag patch) / name tape field (RU)
     zipper(cv, c, [(0.06, 0.135), (w - 0.06, 0.135)], slider_at=0.82)
     if ua:
-        velcro(cv, c, w / 2 - 0.06, 0.05, w / 2 + 0.06, 0.12, flag=((0.12, 0.31, 0.62), (0.89, 0.75, 0.11)))
+        velcro(cv, c, w / 2 - 0.06, 0.05, w / 2 + 0.06, 0.12)
     else:
         webbing_rows(cv, c, 0.05, w - 0.05, 0.06, 1, hgt=0.025)
         label(cv, c, w / 2 - 0.035, 0.093, w / 2 + 0.035, 0.112, (0.2, 0.21, 0.17))
@@ -692,7 +692,7 @@ def _paint_assault_ua(cv, c):
     w, h = c.aw, c.bh
     binding(cv, c, 0.0)
     zipper(cv, c, [(0.022, h - 0.02), (0.02, 0.045), (0.04, 0.022), (w - 0.04, 0.022), (w - 0.02, 0.045), (w - 0.022, h - 0.02)], slider_at=(0.45, 0.55))
-    velcro(cv, c, w / 2 - 0.055, 0.04, w / 2 + 0.055, 0.105, flag=((0.12, 0.31, 0.62), (0.89, 0.75, 0.11)))
+    velcro(cv, c, w / 2 - 0.055, 0.04, w / 2 + 0.055, 0.105)        # (models_v11: no flag patch)
     laser_molle(cv, c, 0.035, w - 0.035, 0.12, 2)
     cast(cv, c, w / 2 - 0.1, h - 0.17, w / 2 + 0.1, h - 0.03, 0.3)
 
