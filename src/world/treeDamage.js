@@ -16,7 +16,7 @@
 // rounds up to the stump.  All of it is a deterministic function of the bursts (position rounded to 1 cm, power), so a
 // versus joiner replaying the host's explosion events gets the same state; visuals use Math.random freely.
 import * as THREE from 'three';
-import { PLACED, simplified } from './instancer.js';
+import { PLACED } from './instancer.js';
 import { TRUNKS } from './vegetation.js';
 import { MAP_SIZE } from './city.js';
 
@@ -182,7 +182,10 @@ export class TreeDamage {
     const inv = new THREE.Matrix4().copy(tpl.matrixWorld).invert(), parts = [];
     tpl.traverse(o => {
       if (!o.isMesh || o.isSkinnedMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material]; if (mats.some(isLeafMat)) return;
-      const im = new THREE.InstancedMesh(o.geometry, o.material, cap); im.count = 0; im.visible = false; im.frustumCulled = false; im.castShadow = im.receiveShadow = true; im.name = 'td_' + (tpl.name || 'tree');
+      // double-sided: open branch-tube ends and the snapped butt are seen from inside once the tree lies on its side
+      const ds = m => (this._dsMat ||= new Map()).get(m) || this._dsMat.set(m, Object.assign(m.clone(), { side: THREE.DoubleSide })).get(m);
+      const mat = Array.isArray(o.material) ? o.material.map(ds) : ds(o.material);
+      const im = new THREE.InstancedMesh(o.geometry, mat, cap); im.count = 0; im.visible = false; im.frustumCulled = false; im.castShadow = im.receiveShadow = true; im.name = 'td_' + (tpl.name || 'tree');
       this.scene.add(im); parts.push({ im, rel: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld) });
     });
     return { tpl, parts, cap, head: 0, n: 0, items: stat ? null : [] };
@@ -200,7 +203,9 @@ export class TreeDamage {
   setFoliage(t, f) {
     const I = this.tInfo[t], M = this.tP[t].matrices[this.tI[t]], s0 = this.slotStart[t], s1 = this.slotStart[t + 1];
     const D = this._m;
-    if (f > 0) { const k = 0.42 + 0.58 * f; this._inv.copy(M).invert(); D.copy(M).multiply(this._m2.makeTranslation(I.c.x, I.c.y, I.c.z)).multiply(this._m3.makeScale(k, k, k)).multiply(this._m2.makeTranslation(-I.c.x, -I.c.y, -I.c.z)).multiply(this._inv); }
+    // (a crown squeezed to 40 % read as a dark ball of leaves: now it thins only a little, and goes bare below ~45 %)
+    if (f < 0.45) f = 0;
+    if (f > 0) { const k = 0.82 + 0.18 * f; this._inv.copy(M).invert(); D.copy(M).multiply(this._m2.makeTranslation(I.c.x, I.c.y, I.c.z)).multiply(this._m3.makeScale(k, k, k)).multiply(this._m2.makeTranslation(-I.c.x, -I.c.y, -I.c.z)).multiply(this._inv); }
     for (let k = s0; k < s1; k++) {
       if (!this.slotLeaf[k]) continue;
       const o = this.slotOrig(k);
@@ -279,7 +284,7 @@ export class TreeDamage {
     if (tr) tr.y1 = Math.min(tr.y1, tr.y0 + 0.3 + hs);
     // falling top
     let top = this.tops.get(I.tpl);
-    if (!top) { const src = simplified(I.tpl, 0, 0.04, true) || I.tpl; top = this.dynPool(src, TOP_CAP, false); this.tops.set(I.tpl, top); }
+    if (!top) { top = this.dynPool(I.tpl, TOP_CAP, false); this.tops.set(I.tpl, top); }   // (full bark mesh: the simplified one had holes - tops looked see-through)
     const slot = top.head; top.head = (top.head + 1) % top.cap;
     const it = top.items[slot] || (top.items[slot] = { M: new THREE.Matrix4() });
     it.t = t; it.th = 0; it.w = 0.25 + Math.min(1.2, q) * 0.5; it.dx = dx; it.dz = dz; it.hs = hs; it.L = Math.max(2, I.h * s); it.rest = false; it.thf = 1.5 + hash(t, 11) * 0.12; it.slot = slot; it.age = 0;
