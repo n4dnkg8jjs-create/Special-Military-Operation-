@@ -57,7 +57,7 @@ const SCENES = {
     at(19.3, () => a.play('servo_stop', { x: 40, y: 2, z: -40 }));
     drone({ x: 200, y: 70, z: -300 }, { x: 5, y: 1, z: -20 }, 31, 38.5);
   } },
-  field_quiet: { dur: 40, env: 'field', fn: ({ at, a, auto }) => {
+  field_ambience: { dur: 40, env: 'field', fn: ({ at, a, auto }) => {
     at(0, () => { a.play('ambience_wind', null, { gain: 0.8 }); a.play('ambience_wind', null, { gain: 0.6 }); a.play('ambience_battle', null, { gain: 0.5 }); });
     auto('mg_near', { x: -40, y: 1, z: -60 }, 17, 21, 650, [6, 12], [0.6, 1]); auto('rifle_near', { x: -30, y: 1, z: -50 }, 17.3, 21.5, 600, [1, 3], [0.4, 0.8]);
     at(19.5, () => a.play('explosion_small', { x: -60, y: 0, z: -110 }));
@@ -99,7 +99,7 @@ const api = async (sceneSrc, dur, env) => {
   const L0 = buf.getChannelData(0), R0 = buf.getChannelData(1), n = L0.length, pcm = new Int16Array(n * 2); let pk = 0;
   for (let i = 0; i < n; i++) { pk = Math.max(pk, Math.abs(L0[i]), Math.abs(R0[i])); pcm[2 * i] = Math.max(-1, Math.min(1, L0[i])) * 32767; pcm[2 * i + 1] = Math.max(-1, Math.min(1, R0[i])) * 32767; }
   let s = ''; const u8 = new Uint8Array(pcm.buffer); for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
-  return { b64: btoa(s), sr, peak: pk, voices: a.act.length };
+  return { b64: btoa(s), sr, peak: pk, voices: a.act.length, rounds: Object.fromEntries(['mg_round_near', 'mg_round_far', 'hmg_round', 'hmg_round_far', 'ac_round', 'ac_round_far', 'drone_buzz', 'pain', 'death'].map(k => [k, (a.manifest[k]?.buffers || []).map(b => +(a.cuts.get(b) || b.duration).toFixed(3))])) };
 };
 
 const want = (process.argv[2] || Object.keys(SCENES).join(',')).split(',');
@@ -112,6 +112,7 @@ for (const k of want) {
   const pcm = Buffer.from(r.b64, 'base64'), h = Buffer.alloc(44);
   h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(2, 22); h.writeUInt32LE(r.sr, 24); h.writeUInt32LE(r.sr * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
   fs.writeFileSync(path.join(out, k + '.wav'), Buffer.concat([h, pcm]));
+  if (k === want[0]) console.log(JSON.stringify(r.rounds));
   console.log(k, `${S.dur}s peak ${(20 * Math.log10(r.peak)).toFixed(1)} dBFS, rendered in ${((Date.now() - t) / 1000).toFixed(1)} s`);
 }
 console.log('page errors:', errs.length, errs.slice(0, 5));

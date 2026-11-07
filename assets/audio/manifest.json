@@ -638,17 +638,16 @@
  },
  "incoming_whistle": {
   "category": "explosions",
-  "gain": 1.0,
+  "gain": 0.8,
   "loop": false,
   "spatial": true,
-  "refDistance": 30,
-  "maxDistance": 700,
-  "note": "82/120 mm mortar bomb whistle, 1.45 s ending at impact (play ~1.4 s before); procedural",
+  "refDistance": 20,
+  "maxDistance": 800,
+  "note": "falling shell whistle; play ~2-4 s before impact",
   "files": [
    "explosions/incoming_whistle_01.mp3",
    "explosions/incoming_whistle_02.mp3",
-   "explosions/incoming_whistle_03.mp3",
-   "explosions/incoming_whistle_04.mp3"
+   "explosions/incoming_whistle_03.mp3"
   ]
  },
  "debris": {
@@ -998,21 +997,6 @@
   "maxDistance": 120,
   "note": "short hit / pain grunt (non-verbal)",
   "files": [
-   "human/pain_01.mp3",
-   "human/pain_02.mp3",
-   "human/pain_03.mp3",
-   "human/pain_04.mp3",
-   "human/pain_05.mp3",
-   "human/pain_06.mp3",
-   "human/pain_07.mp3",
-   "human/pain_08.mp3",
-   "human/pain_09.mp3",
-   "human/pain_10.mp3",
-   "human/pain_11.mp3",
-   "human/pain_12.mp3",
-   "human/pain_13.mp3",
-   "human/pain_14.mp3",
-   "human/pain_15.mp3",
    "human/pain_16.mp3",
    "human/pain_17.mp3",
    "human/pain_18.mp3",
@@ -1020,9 +1004,7 @@
    "human/pain_20.mp3",
    "human/pain_21.mp3",
    "human/pain_22.mp3",
-   "human/pain_23.mp3",
    "human/pain_24.mp3",
-   "human/pain_25.mp3",
    "human/pain_26.mp3"
   ]
  },
@@ -1063,8 +1045,7 @@
   "files": [
    "human/death_01.mp3",
    "human/death_02.mp3",
-   "human/death_03.mp3",
-   "human/death_04.mp3"
+   "human/death_03.mp3"
   ]
  },
  "shout": {
@@ -1372,157 +1353,20 @@
    "ui/defeat_02.mp3"
   ]
  },
- "mg_shot_near": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 10,
-  "maxDistance": 900,
-  "note": "PKM/PKT single round (cut from 7.62 MG bursts + Mosin 7.62x54R singles); per-round",
-  "files": [
-   "weapons/mg_shot_near_01.mp3",
-   "weapons/mg_shot_near_02.mp3",
-   "weapons/mg_shot_near_03.mp3",
-   "weapons/mg_shot_near_04.mp3",
-   "weapons/mg_shot_near_05.mp3",
-   "weapons/mg_shot_near_06.mp3",
-   "weapons/mg_shot_near_07.mp3",
-   "weapons/mg_shot_near_08.mp3",
-   "weapons/mg_shot_near_09.mp3",
-   "weapons/mg_shot_near_10.mp3",
-   "weapons/mg_shot_near_11.mp3",
-   "weapons/mg_shot_near_12.mp3"
-  ]
- },
- "mg_shot_far": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 40,
-  "maxDistance": 2000,
-  "note": "7.62 MG round heard from 150 m+",
-  "files": [
-   "weapons/mg_shot_far_01.mp3",
-   "weapons/mg_shot_far_02.mp3",
-   "weapons/mg_shot_far_03.mp3",
-   "weapons/mg_shot_far_04.mp3",
-   "weapons/mg_shot_far_05.mp3",
-   "weapons/mg_shot_far_06.mp3",
-   "weapons/mg_shot_far_07.mp3",
-   "weapons/mg_shot_far_08.mp3"
-  ]
- },
- "hmg_shot": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 14,
-  "maxDistance": 900,
-  "note": "KPVT 14.5 / Kord 12.7 single round (cut from .50 cal bursts); per-round",
-  "files": [
-   "weapons/hmg_shot_01.mp3",
-   "weapons/hmg_shot_02.mp3",
-   "weapons/hmg_shot_03.mp3",
-   "weapons/hmg_shot_04.mp3",
-   "weapons/hmg_shot_05.mp3",
-   "weapons/hmg_shot_06.mp3",
-   "weapons/hmg_shot_07.mp3",
-   "weapons/hmg_shot_08.mp3",
-   "weapons/hmg_shot_09.mp3",
-   "weapons/hmg_shot_10.mp3"
-  ]
- },
- "hmg_shot_far": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 50,
-  "maxDistance": 2500,
-  "note": "heavy MG round heard from 150 m+",
-  "files": [
-   "weapons/hmg_shot_far_01.mp3",
-   "weapons/hmg_shot_far_02.mp3",
-   "weapons/hmg_shot_far_03.mp3",
-   "weapons/hmg_shot_far_04.mp3",
-   "weapons/hmg_shot_far_05.mp3",
-   "weapons/hmg_shot_far_06.mp3",
-   "weapons/hmg_shot_far_07.mp3",
-   "weapons/hmg_shot_far_08.mp3"
-  ]
- },
- "ac_shot": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 16,
-  "maxDistance": 1200,
-  "note": "2A42/2A72 30 mm single round (cut from 25/30 mm bursts); per-round",
-  "files": [
-   "weapons/ac_shot_01.mp3",
-   "weapons/ac_shot_02.mp3",
-   "weapons/ac_shot_03.mp3",
-   "weapons/ac_shot_04.mp3",
-   "weapons/ac_shot_05.mp3",
-   "weapons/ac_shot_06.mp3",
-   "weapons/ac_shot_07.mp3",
-   "weapons/ac_shot_08.mp3",
-   "weapons/ac_shot_09.mp3",
-   "weapons/ac_shot_10.mp3"
-  ]
- },
- "ac_shot_far": {
+ "howitzer": {
   "category": "weapons",
   "gain": 1.0,
   "loop": false,
   "spatial": true,
   "refDistance": 60,
-  "maxDistance": 3000,
-  "note": "30 mm round heard from 150 m+",
+  "maxDistance": 6000,
+  "note": "152/155 mm howitzer report: real howitzer recordings, slightly lowered, + rolling echo",
   "files": [
-   "weapons/ac_shot_far_01.mp3",
-   "weapons/ac_shot_far_02.mp3",
-   "weapons/ac_shot_far_03.mp3",
-   "weapons/ac_shot_far_04.mp3",
-   "weapons/ac_shot_far_05.mp3",
-   "weapons/ac_shot_far_06.mp3",
-   "weapons/ac_shot_far_07.mp3",
-   "weapons/ac_shot_far_08.mp3"
-  ]
- },
- "bullet_crack": {
-  "category": "ballistics",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 6,
-  "maxDistance": 60,
-  "note": "supersonic round passing close (N-wave + snap); procedural",
-  "files": [
-   "synth/bullet_crack_01.mp3",
-   "synth/bullet_crack_02.mp3",
-   "synth/bullet_crack_03.mp3",
-   "synth/bullet_crack_04.mp3",
-   "synth/bullet_crack_05.mp3"
-  ]
- },
- "sub_thump": {
-  "category": "explosions",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 25,
-  "maxDistance": 400,
-  "note": "close-blast low-frequency pressure thump (layered under near explosions); procedural",
-  "files": [
-   "synth/sub_thump_01.mp3",
-   "synth/sub_thump_02.mp3",
-   "synth/sub_thump_03.mp3",
-   "synth/sub_thump_04.mp3"
+   "weapons/howitzer_01.mp3",
+   "weapons/howitzer_02.mp3",
+   "weapons/howitzer_03.mp3",
+   "weapons/howitzer_04.mp3",
+   "weapons/howitzer_05.mp3"
   ]
  },
  "shell_incoming": {
@@ -1532,7 +1376,7 @@
   "spatial": true,
   "refDistance": 40,
   "maxDistance": 900,
-  "note": "152/155 mm shell incoming, 2.45 s ending at impact (play 2.3-2.6 s before the burst); procedural",
+  "note": "152/155 mm incoming: tearing rush, 1.7 s ending at the burst (rocket-motor recording at half speed); no whistle",
   "files": [
    "explosions/shell_incoming_01.mp3",
    "explosions/shell_incoming_02.mp3",
@@ -1540,108 +1384,19 @@
    "explosions/shell_incoming_04.mp3"
   ]
  },
- "drone_buzz": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": true,
-  "spatial": true,
-  "refDistance": 16,
-  "maxDistance": 600,
-  "note": "FPV quad motors (loop; playbackRate = throttle); procedural",
-  "files": [
-   "synth/drone_buzz_01.mp3"
-  ],
-  "loopStart": 0.25,
-  "loopEnd": 2.25
- },
- "atgm_motor": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": true,
-  "spatial": true,
-  "refDistance": 14,
-  "maxDistance": 800,
-  "note": "ATGM / rocket sustainer motor roar (loop); procedural",
-  "files": [
-   "synth/atgm_motor_01.mp3"
-  ],
-  "loopStart": 0.25,
-  "loopEnd": 2.65
- },
- "track_squeal": {
-  "category": "vehicles",
-  "gain": 1.0,
-  "loop": true,
-  "spatial": true,
-  "refDistance": 10,
-  "maxDistance": 500,
-  "note": "track / road-wheel squeal & grind (loop, layered on track_clank); procedural",
-  "files": [
-   "synth/track_squeal_01.mp3"
-  ],
-  "loopStart": 0.25,
-  "loopEnd": 5.45
- },
- "tyre_roll": {
-  "category": "vehicles",
-  "gain": 1.0,
-  "loop": true,
-  "spatial": true,
-  "refDistance": 10,
-  "maxDistance": 500,
-  "note": "big off-road tyres on broken asphalt / gravel (loop, layered under wheeled drive); procedural",
-  "files": [
-   "synth/tyre_roll_01.mp3"
-  ],
-  "loopStart": 0.25,
-  "loopEnd": 5.45
- },
- "crickets": {
-  "category": "ambience",
-  "gain": 1.0,
-  "loop": true,
-  "spatial": false,
-  "refDistance": 10,
-  "maxDistance": 600,
-  "note": "field crickets bed (quiet moments, rural); procedural",
-  "files": [
-   "ambience/crickets_01.mp3"
-  ],
-  "loopStart": 0.25,
-  "loopEnd": 11.25
- },
- "bird": {
-  "category": "ambience",
+ "mortar_incoming": {
+  "category": "explosions",
   "gain": 1.0,
   "loop": false,
   "spatial": true,
-  "refDistance": 20,
-  "maxDistance": 300,
-  "note": "songbird calls (quiet moments); procedural",
+  "refDistance": 25,
+  "maxDistance": 500,
+  "note": "82/120 mm bomb arrival: short rising whoosh / flutter, 0.9 s ending at the burst; played only some of the time",
   "files": [
-   "ambience/bird_01.mp3",
-   "ambience/bird_02.mp3",
-   "ambience/bird_03.mp3",
-   "ambience/bird_04.mp3",
-   "ambience/bird_05.mp3",
-   "ambience/bird_06.mp3",
-   "ambience/bird_07.mp3",
-   "ambience/bird_08.mp3"
-  ]
- },
- "howitzer": {
-  "category": "weapons",
-  "gain": 1.0,
-  "loop": false,
-  "spatial": true,
-  "refDistance": 60,
-  "maxDistance": 6000,
-  "note": "152/155 mm howitzer report (tank-gun recordings pitched down + sub + echo)",
-  "files": [
-   "weapons/howitzer_01.mp3",
-   "weapons/howitzer_02.mp3",
-   "weapons/howitzer_03.mp3",
-   "weapons/howitzer_04.mp3"
+   "explosions/mortar_incoming_01.mp3",
+   "explosions/mortar_incoming_02.mp3",
+   "explosions/mortar_incoming_03.mp3",
+   "explosions/mortar_incoming_04.mp3"
   ]
  }
 }
