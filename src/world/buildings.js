@@ -219,7 +219,7 @@ export function makeKitPool(scene, kit) {
   return on ? new KitBatch(scene, kit) : new KitPool(scene, kit);
 }
 
-const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpS = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0), _ic = new THREE.Color();
 
 export class Building {
   // opts: {x, z, rot, modules, floors, depthModules, sections, kind: 'khrushchyovka'|'nine'|'school'|'shop', seed}
@@ -320,6 +320,59 @@ export class Building {
     for (const p of this.panels) if (p.state === 3 && p.floor < top && !cornerZone(p)) { const a = at.get(p.side + ':' + p.col + ':' + (p.floor + 1)); if (a) a.state = Math.max(a.state, 1); }
     this.panelMap = at;
   }
+  // ---- real-place ruins (world/ruins.js plans them per map; applied after predamage / pancake, before requestKit)
+  // plan: { seed, glass (share of panes gone), burn: [[a, c, f0, f1]] burnt-out flats (soot plumes, black rooms),
+  //   fab: [[a, c, depth]] glide bomb through the roof -- a V-shaped crater, depth storeys at its middle column,
+  //   roof: [[a, c]] roof burnt off / caved in over a section, the top storey open to the sky,
+  //   shear: [[side, a, c, f0, f1]] the outer panels of a facade stripped by a blast, the rooms behind exposed }
+  // Ground and first floors (garrison slots, floors 0..2) are never taken away here: nav / garrison stay as they were.
+  ruin(plan) {
+    const r = mulberry(plan.seed || 1), F = this.floors, M = this.modules, at = this.panelMap || new Map(this.panels.map(p => [p.side + ':' + p.col + ':' + p.floor, p]));
+    this.panelMap = at; this.cut = new Array(M).fill(F); this.roofGone = new Set(); this.burnt = new Set(); this.extras ||= [];
+    const P = (side, c, f) => at.get(side + ':' + c + ':' + f), endSide = c => c === 0 ? 'left' : c === M - 1 ? 'right' : null;
+    const lose = p => { if (p && !p.gone) { p.state = 3; p.gone = true; p.pre = true; } }, wreck = (p, s = 3) => { if (p && !p.gone) p.state = Math.max(p.state, s); };
+    const endPanels = (side, f) => this.panels.filter(p => p.side === side && p.floor === f);
+    for (const [a, c, f0, f1] of plan.burn || []) for (let col = a; col <= c; col++) for (let f = f0; f <= Math.min(F - 1, f1); f++) {
+      this.burnt.add(col + ':' + f);
+      for (const s of ['front', 'back']) { const p = P(s, col, f); if (p && !p.gone) { p.state = Math.max(p.state, r() < 0.3 ? 2 : 1); p.soot = true; } }
+      const e = endSide(col); if (e) for (const p of endPanels(e, f)) { p.state = Math.max(p.state, 1); p.soot = r() < 0.6; }
+    }
+    for (const [a, c, depth] of plan.fab || []) {
+      const mid = (a + c) / 2, half = (c - a) / 2 + 1;
+      for (let col = a; col <= c; col++) {
+        const d = Math.max(1, Math.round(depth * (1 - Math.abs(col - mid) / half * 0.6) + (r() - 0.5) * 0.8)), cut = Math.max(3, F - d);
+        this.cut[col] = Math.min(this.cut[col], cut);
+        for (let f = cut; f < F; f++) { lose(P('front', col, f)); lose(P('back', col, f)); }
+        wreck(P('front', col, cut - 1)); wreck(P('back', col, cut - 1));
+        const e = endSide(col); if (e) for (let f = cut; f < F; f++) for (const p of endPanels(e, f)) lose(p);
+        for (let f = cut - 2; f < cut; f++) if (f >= 0) for (const s of ['front', 'back']) { const p = P(s, col, f); if (p && !p.gone && r() < 0.6) { p.soot = true; this.burnt.add(col + ':' + f); } }
+      }
+      // the torn edges either side: blown out / holed a storey or two below the crater rim
+      for (const col of [a - 1, c + 1]) if (col >= 0 && col < M) { const cut = this.cut[col === a - 1 ? a : c]; for (let f = Math.max(0, cut - 2); f < F; f++) for (const s of ['front', 'back']) wreck(P(s, col, f), f >= cut ? 3 : 2); }
+      // floor slabs of the storey above torn off at the crater rim, hanging into the rooms (kit slab_hanging)
+      for (let col = a; col <= c; col++) if (r() < 0.55) { const f = this.cut[col] - 1, p = P(r() < 0.5 ? 'front' : 'back', col, f); if (p && f >= 2) (this.hang ||= new Set()).add(col + ':' + f + ':' + p.side); }
+    }
+    for (const [a, c] of plan.roof || []) for (let col = a; col <= c; col++) {
+      if (this.cut[col] < F) continue;
+      this.roofGone.add(col); this.burnt.add(col + ':' + (F - 1));
+      for (const s of ['front', 'back']) { const p = P(s, col, F - 1); if (p && !p.gone) { p.state = Math.max(p.state, r() < 0.45 ? 3 : 2); p.soot = true; } const q = P(s, col, F - 2); if (q && !q.gone && r() < 0.5) q.soot = true; }
+      const e = endSide(col); if (e) for (const p of endPanels(e, F - 1)) { p.state = Math.max(p.state, 2); p.soot = true; }
+    }
+    for (const [side, a, c, f0, f1] of plan.shear || []) {
+      for (let col = a; col <= c; col++) {
+        const lo = Math.max(3, f0 + Math.round((r() - 0.5) * 1.6)), hi = Math.min(F - 1, f1 + Math.round((r() - 0.5) * 1.6)), edge = col === a || col === c;
+        for (let f = lo; f <= hi; f++) { const p = P(side, col, f); if (!p) continue; if (edge || f === lo || f === hi) { if (r() < 0.6) wreck(p); else lose(p); } else lose(p); }
+      }
+    }
+    // structural sense: nothing intact hangs over a gone panel (cracked / holed), no glass anywhere near the fighting
+    for (const p of this.panels) if (!p.gone && p.floor > 0) { const b = P(p.side, p.col, p.floor - 1); if (b?.gone && p.state < 2) p.state = 2; }
+    for (const p of this.panels) if (!p.gone && p.state <= 1 && r() < (plan.glass ?? 0.9)) p.open = true;
+    // window rows burnt out: soot plumes over the damaged windows of whole floors
+    for (const p of this.panels) if (!p.gone && p.state >= 2 && r() < 0.55) p.soot = true;
+    // ruined top storeys: parapets go with them (isDestroyedTop)
+    this.ruined = true;
+  }
+  ruinedCol(c, f) { return (this.cut && f >= this.cut[c]) || (this.roofGone?.has(c) && f >= this.floors - 1); }
   // Pancake a vertical slice of the building (all floors) between cols a..b.
   pancake(a, b) {
     for (const p of this.panels) if ((p.side === 'front' || p.side === 'back') && p.col >= a && p.col <= b) { p.state = 3; if (p.floor > 0) p.gone = true; }
@@ -335,6 +388,8 @@ export class Building {
     this.signs = this.signs || this.panels.filter(p => p.shop && p.col % 3 === 0).map((p, i) => ({ p, name: this.signNames?.[i % this.signNames.length] }));
     for (const sg of this.signs) if (sg.name) pool.request(sg.name, 1, c);
     if (this.floors >= 9 && this.kit.pieces.roof_machine_room) pool.request('roof_machine_room', this.sections, c);
+    if (this.hang?.size && this.kit.pieces.slab_hanging) pool.request('slab_hanging', this.hang.size, c);
+    for (const e of this.extras || []) if (this.kit.pieces[e.piece]) pool.request(e.piece, 1, c);
     pool.request('roof_parapet', 2 * this.modules + 2 * this.depthModules, c);
   }
   panelMatrix(p, out) {
@@ -360,7 +415,10 @@ export class Building {
     }
     // shop signs above shopfronts, lift machine rooms on tall blocks
     for (const sg of this.signs || []) if (sg.name) { sg.slot = -1; sg.cell = this.cell; const m2 = this.panelMatrix(sg.p, new THREE.Matrix4()).multiply(new THREE.Matrix4().makeTranslation(0, this.kit.H * 0.764, 0)); pool.add(sg.name, m2, sg, null); }
-    if (this.floors >= 9 && this.kit.pieces.roof_machine_room) for (const [a, b] of this.secCols) { const o = { slot: -1, cell: this.cell }; const w = this.toWorld(-this.L / 2 + ((a + b + 1) / 2) * this.kit.W, this.floors * this.kit.H + 0.2, 0); pool.add('roof_machine_room', new THREE.Matrix4().compose(w, new THREE.Quaternion().setFromAxisAngle(Y, this.rot), tmpS.set(1, 1, 1)), o, null); (this.machines ||= []).push({ o, a, b }); }
+    // (ruins.js) slabs hanging into the rooms at a bomb crater's rim, heaps / furniture / broken slabs of the plan
+    if (this.hang?.size && this.kit.pieces.slab_hanging) for (const k of this.hang) { const [c, f, side] = k.split(':'), p = this.panelMap.get(side + ':' + c + ':' + f); if (!p) continue; const o = { slot: -1, cell: this.cell }; pool.add('slab_hanging', this.panelMatrix(p, new THREE.Matrix4()).multiply(new THREE.Matrix4().makeTranslation(1.6, -0.458, -2.33)), o, null); }
+    for (const e of this.extras || []) if (this.kit.pieces[e.piece]) { e.o = { slot: -1, cell: this.cell }; pool.add(e.piece, e.M, e.o, e.color || null); }
+    if (this.floors >= 9 && this.kit.pieces.roof_machine_room) for (const [a, b] of this.secCols) { if (this.ruined && [...Array(b - a + 1).keys()].some(i => this.ruinedCol(a + i, this.floors - 1))) continue; const o = { slot: -1, cell: this.cell }; const w = this.toWorld(-this.L / 2 + ((a + b + 1) / 2) * this.kit.W, this.floors * this.kit.H + 0.2, 0); pool.add('roof_machine_room', new THREE.Matrix4().compose(w, new THREE.Quaternion().setFromAxisAngle(Y, this.rot), tmpS.set(1, 1, 1)), o, null); (this.machines ||= []).push({ o, a, b }); }
     // roof parapets
     const { W, H } = this.kit, top = this.floors * H;
     this.parapets = [];
@@ -380,7 +438,10 @@ export class Building {
       pool.add('roof_parapet', tmpM, o, this.tint); this.parapets.push(o);
     }
   }
-  isDestroyedTop(side, col) { const p = this.panels.find(q => q.side === side && q.col === col && q.floor === this.floors - 1); return p && (p.state === 3 || p.gone); }
+  isDestroyedTop(side, col) {
+    if (this.ruined) { const c = side === 'left' ? 0 : side === 'right' ? this.modules - 1 : col; if (this.ruinedCol(c, this.floors - 1)) return true; }
+    const p = this.panels.find(q => q.side === side && q.col === col && q.floor === this.floors - 1); return p && (p.state === 3 || p.gone);
+  }
   // Interior: floor slabs + dark volume per column so holes read as rooms.
   buildInterior(slabMesh, darkMesh, counters) {
     const { W, H } = this.kit, inset = 1.2, D = this.D;
@@ -388,14 +449,20 @@ export class Building {
     for (let c = 0; c < this.modules; c++) for (let f = 0; f < this.floors; f++) {
       const gone = this.pancaked && c >= this.pancaked[0] && c <= this.pancaked[1];
       const topGone = this.collapsedCorner && f >= this.floors - 2 && (this.collapsedCorner === 'right' ? c >= this.modules - 2 : c <= 1);
-      if (gone || topGone) continue;
+      if (gone || topGone || (this.ruined && this.ruinedCol(c, f))) continue;
+      // (ruins.js) burnt-out flats: black rooms behind the empty windows, a charred ceiling; the floor under an open sky
+      // (bomb crater, roof gone) charred / dusty; the slab hanging at a crater rim is a kit piece instead
+      const burnt = this.burnt?.has(c + ':' + f), open = this.ruined && this.ruinedCol(c, f + 1), hang = this.hang && (this.hang.has(c + ':' + f + ':front') || this.hang.has(c + ':' + f + ':back'));
       // (slabs of the end columns stop 15 cm inside the gable: flush with the end wall's outer face they z-fought with it,
       // a dashed light band along every floor joint of the blank end walls)
       const x0 = -this.L / 2 + c * W + (c === 0 ? 0.15 : 0), x1 = -this.L / 2 + (c + 1) * W - (c === this.modules - 1 ? 0.15 : 0), cx = (x0 + x1) / 2;
       this.toWorld(cx, f * H + H - 0.11, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(x1 - x0, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= []; this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(x1 - x0, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= [];
+      if (!hang) { if (this.ruined) slabMesh.setColorAt(counters.slab, _ic.setScalar(open ? 0.62 + this.rng() * 0.12 : burnt ? 0.42 : 1)); this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM); }
       this.toWorld(-this.L / 2 + (c + 0.5) * W, f * H + H / 2, 0, tmpV);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]); darkMesh.setMatrixAt(counters.dark++, tmpM);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]);
+      if (this.ruined) darkMesh.setColorAt(counters.dark, _ic.setScalar(burnt ? 0.16 + this.rng() * 0.08 : 0.85 + this.rng() * 0.15));
+      darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);
     }
     // roof, per module column (missing over collapsed parts).  Inset into the wall thickness: a roof slab flush with the
@@ -405,7 +472,7 @@ export class Building {
     for (let c = 0; c < this.modules; c++) {
       const gone = this.pancaked && c >= this.pancaked[0] && c <= this.pancaked[1];
       const corner = this.collapsedCorner && (this.collapsedCorner === 'right' ? c >= this.modules - 2 : c <= 1);
-      if (gone || corner) continue;
+      if (gone || corner || (this.ruined && this.ruinedCol(c, this.floors - 1))) continue;
       const a = Math.max(-this.L / 2 + ins, -this.L / 2 + c * W - 0.005), b = Math.min(this.L / 2 - ins, -this.L / 2 + (c + 1) * W + 0.005);
       this.toWorld((a + b) / 2, this.floors * H + 0.05, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
       tmpM.compose(tmpV, tmpQ, tmpS.set(b - a, 0.3, this.D - 2 * ins)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
@@ -484,8 +551,8 @@ export class Building {
       let low = 0, lowBad = 0, all = 0, score = 0;
       for (const p of this.panels) {
         if (p.side !== 'front' && p.side !== 'back') continue; if (p.col < a || p.col > b) continue;
-        all++; score += p.gone ? 3 : p.state;
-        if (p.floor <= 1) { low++; if (p.state === 3 || p.gone) lowBad++; }
+        all++; score += p.gone ? (p.pre ? 1 : 3) : p.state;   // (ruins.js pre-damage: the section has stood like that for weeks)
+        if (p.floor <= 1) { low++; if ((p.state === 3 || p.gone) && !p.pre) lowBad++; }
       }
       if ((low && lowBad / low >= 0.38) || (all && score / (3 * all) >= 0.5)) out.push(si);
     });

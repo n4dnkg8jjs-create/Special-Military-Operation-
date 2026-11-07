@@ -88,7 +88,7 @@ function instanceOne(scene, template, matrices, { shadows = true, colors = null 
     im.matrixAutoUpdate = false;   // static: the per-instance matrices carry the placement (no per-frame matrix recompose)
     // cached shadow (engine/renderer.js: same depth material variants as three's shadow pass, alpha-tested cards
     // included), unless a cut-out / two-sided material has its own shader edits (it may move vertices: wind)
-    if (im.castShadow && !mats.some(mm => mm.transparent || mm.alphaToCoverage || ((mm.alphaTest > 0 || mm.side !== THREE.FrontSide || mm.shadowSide != null) && Object.hasOwn(mm, 'onBeforeCompile') && !mm.userData.alphaCov))) markStatic(im);   // (wear.js alphaCoverage: fragment only)
+    if (im.castShadow && !mats.some(mm => mm.transparent || mm.alphaToCoverage || ((mm.alphaTest > 0 || mm.side !== THREE.FrontSide || mm.shadowSide != null) && Object.hasOwn(mm, 'onBeforeCompile') && !mm.userData.alphaCov && !mm.userData.staticOk))) markStatic(im);   // (wear.js alphaCoverage / charred / ruin shells: fragment only)
     scene.add(im); out.push(im);
   });
   return out;

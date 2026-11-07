@@ -17,14 +17,15 @@
 //     (ballast, sleepers, rails), platforms, gas pipes, power lines, tree rows, woods, balkas along streams
 //   - fields from the OSM farmland polygons (crop / stubble / ploughed / fallow, row direction along the field)
 import * as THREE from 'three';
-import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary } from './city.js';
+import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary, craterTexture } from './city.js';
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
 import { instance, instanceRuns, trs, LODS, treeLod } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv } from './wear.js';
+import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
+import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
 import AVDIIVKA from './real/avdiivka_osm.js';
@@ -249,6 +250,7 @@ const Real = {
     this.plotIdx = new PolyIndex(); for (const p of D.plots || []) this.plotIdx.add(p.pts, p);
     this.dmg = MAP.damage || {};
     this.houseSpots = []; this.yardRects = []; this.burntSpots = []; this.lawnPolys = []; this.gardenPolys = []; this.yardPolys = [];
+    ruinsSetup(this);   // the battle's destruction (maps.js `ruin`, ruins.js): hooks used by the steps below
   },
   areasAt(x, z) { return this.areaIdx.at(x, z); },
   // rubble piles: the scanned heaps are 10-30k triangles each -- beyond ~240 m one instanced low-poly mound (all
@@ -378,7 +380,7 @@ const Real = {
     // pancaked entrance sections on a few long blocks (urban maps)
     this.pancakes = [];
     // (imagery-ranked layouts: the worst-hit blocks; otherwise 12 % at random)
-    if (this.urban) rows.forEach((r, i) => { const d = r[9].osm?.dmg; if (r[7] !== 'school' && r[3] >= 8 && r[4] >= 4 && (d != null ? d > 0.82 && R() < 0.75 : r[3] >= 14 && R() < 0.12)) { const a = 1 + Math.floor(R() * Math.max(1, r[3] - 4)); this.pancakes.push([i, a, Math.min(r[3] - 2, a + 1 + Math.floor(R() * 2))]); } });
+    if (this.urban) rows.forEach((r, i) => { const d = r[9].osm?.dmg; if (r[7] !== 'school' && r[3] >= 8 && r[4] >= 4 && (d != null ? d > (MAP.ruin?.blocks?.pancakeD ?? 0.82) && R() < 0.75 : r[3] >= 14 && R() < 0.12)) { const a = 1 + Math.floor(R() * Math.max(1, r[3] - 4)); this.pancakes.push([i, a, Math.min(r[3] - 2, a + 1 + Math.floor(R() * 2))]); } });
   },
   // ---------------------------------------------------------------- procedural halls (industrial, barns, stores)
   hallsReal() {
@@ -488,15 +490,22 @@ const Real = {
         if (!best) continue;
         // syn plots carry the street-facing rotation; OSM houses: front (+Z of the template) towards the nearest road
         let ry = b.syn ? b.rot : facing(x, z, b.rot) ; if (best.sw && !b.syn) ry += Math.PI / 2;
-        const roll = R(), state = roll < dRub ? 2 : roll < dRub + dBurn ? 1 : 0;
-        this.houseState.set(b, state);
+        // state: 0 intact, 1 burnt-out shell, 2 flattened (heap); ruins.js (the map's battle profile, own RNG) adds
+        // 3 roof broken open, 4 wall stubs on a heap
+        const roll = R(), fate = this.ruinHouse ? this.ruinHouse(x, z) : null, state = fate ?? (roll < dRub ? 2 : roll < dRub + dBurn ? 1 : 0);
+        this.houseState.set(b, state === 4 ? 2 : state === 3 ? 1 : state);
         if (state === 2) rubble(x, z, (1.0 + R() * 0.3) * best.s);
         else {
-          const name = state === 1 ? (this.burntTpl(best.t.n) || best.t.n) : best.t.n;
-          if (!this.put(name, x, z, ry + (R() - 0.5) * 0.06, { s: best.s, occ: state === 1 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } })) continue D;
-          if (state === 1) this.burntSpots.push([x, z, 8]);
+          const mode = state === 3 ? 'holed' : state === 4 ? 'stub' : null, rv = mode && ruinTpl(this, best.t.n, mode);
+          const name = state === 1 ? (this.burntTpl(best.t.n) || best.t.n) : rv || best.t.n, ryh = ry + (R() - 0.5) * 0.06;
+          // wall stubs: slow going and good cover for infantry, no way through for wheeled vehicles
+          const o = state === 4 && rv ? { s: best.s, cost: 7, low: true, occ: 1.3, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } } : { s: best.s, occ: state === 1 || state === 4 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } };
+          if (!this.put(name, x, z, ryh, o)) continue D;
+          if (state === 4 && rv) this.nav.setVeh(x, z, b.L / 2 * 0.8, b.D / 2 * 0.8, b.rot, 1);
+          if (state === 1 || state === 4) this.burntSpots.push([x, z, state === 1 ? 8 : 6]);
+          if (this.ruin && state) this.ruin.houses.push({ x, z, y: this.tplBaseY(this.tpl(name), x, z, ryh, best.s), ry: ryh, s: best.s, t: best.t.n, mode: state === 1 ? 'shell' : mode || 'shell' });
         }
-        this.houseSpots.push([x, z, state === 2]);
+        this.houseSpots.push([x, z, state === 2 || state === 4]);
       } else if (b.cls === 'shed') {
         const n = this.urban ? (R() < 0.5 ? 'garage_unit' : 'shed_wood') : (b.L > 5 ? 'shed_wood' : 'outhouse');
         if (this.railNear(x, z, 6.5)) continue;
@@ -590,7 +599,9 @@ const Real = {
     const items = [];
     const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false;
       const t = this.tpl(n); if (this.crownHit(x, z, t ? this.canopyR(t, s) * 0.75 : 2)) return false;   // crown clear of roofs
-      items.push([n, trs(x, 0, z, R() * 6.28, s)]); this.nav.circle(x, z, 0.45, BLOCK); this.solidAdd(x, z, 0.4, 0.4, 0, 'tree'); return true; };
+      const ry = R() * 6.28;
+      if (this.ruinTree) { const f = this.ruinTree(n, x, z, s); if (f === null) { this.nav.circle(x, z, 0.4, BLOCK); this.solidAdd(x, z, 0.3, 0.3, 0, 'tree'); return true; } n = f; }   // (ruins.js: stripped / snapped / felled; a stump is debris)
+      items.push([n, trs(x, 0, z, ry, s)]); this.nav.circle(x, z, 0.45, BLOCK); this.solidAdd(x, z, 0.4, 0.4, 0, 'tree'); return true; };
     const pick = (shell = 0.15) => { if (R() < shell && this.tpl('tree_acacia_shelled')) return 'tree_acacia_shelled'; return kinds[Math.floor(R() * Math.min(4, kinds.length))]; };
     // woods / forest / scrub polygons
     const MN = this.forestMN = Math.ceil(MAP_SIZE / 4), mask = this.forestMask = new Uint8Array(MN * MN), half = MAP_SIZE / 2;
@@ -746,6 +757,7 @@ const Real = {
       const P = r.pts.map((p, i) => { const q = r.pts[Math.min(i + 1, r.pts.length - 1)], pr = r.pts[Math.max(i - 1, 0)], dx = q[0] - pr[0], dz = q[1] - pr[1], L = Math.hypot(dx, dz) || 1; return [p[0] - dz / L * o * sd, p[1] + dx / L * o * sd]; });
       run(P, this.urban ? 34 : 40);
     }
+    this.ruinPoles?.(mats, lines, att, pole);   // (ruins.js: poles down / leaning, their spans on the ground)
     if (mats.length) instance(this.scene, pole, mats, { cell: 320, cullDist: 650 });
     if (lines.length) { const g = mergeGeometries(lines.map(p => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(p), 10, 0.012, 3))); this.scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: 0.6, metalness: 0.4 }))); }
   },
@@ -777,7 +789,8 @@ const Real = {
       this.nav.rect(x, z, 1.75, 3.7, ry, BLOCK, 0.2); this.solidAdd(x, z, 1.75, 3.7, ry, 'wreck'); this.nav.addOccluder(x, z, 1.6, 3.4, ry, 2.2, null);
       this.wreckSpots.push([x, z]);
     }
-    for (const [, v] of by) instance(this.scene, v.grp, v.m, { cullDist: 520 });
+    this.ruinWrecks?.(WT, add);   // (ruins.js: the battle's knocked-out armour, burnt cars in the courtyards / yards)
+    for (const [, v] of by) instance(this.scene, v.grp, v.m, { cullDist: 520, cell: 320 });
     // burnt cars on the verges of the paved / main streets
     const roads = this.osm.roads.filter(r => r.type === 'paved' || r.type === 'street' || r.type === 'gravel');
     for (let i = 0, n = 0; i < 200 && n < (this.urban ? 16 : 9); i++) {
@@ -785,7 +798,7 @@ const Real = {
       const P = r.pts, k = Math.floor(R() * (P.length - 1)), [ax, az] = P[k], [bx, bz] = P[k + 1], t = R(), L = Math.hypot(bx - ax, bz - az) || 1, sd = R() < 0.5 ? -1 : 1, o = r.w / 2 - 1.1;
       const x = ax + (bx - ax) * t - (bz - az) / L * o * sd, z = az + (bz - az) * t + (bx - ax) / L * o * sd;
       if (Math.abs(x) > MAP_SIZE / 2 - 15 || Math.abs(z) > MAP_SIZE / 2 - 15 || this.terrain.cutSDF(x, z) < 6) continue;
-      if (this.put(R() < 0.7 ? 'car_vaz2107_burnt' : 'car_vaz2107_burnt_sagged', x, z, Math.atan2(-(bz - az), bx - ax) + Math.PI / 2 + (R() - 0.5) * 0.6, { cost: BLOCK, check: false })) { n++; this.burntSpots.push([x, z, 4]); }
+      if (this.put(R() < 0.7 ? 'car_vaz2107_burnt' : 'car_vaz2107_burnt_sagged', x, z, Math.atan2(-(bz - az), bx - ax) + Math.PI / 2 + (R() - 0.5) * 0.6, { cost: BLOCK, check: false, inst: { cell: 320, cullDist: 900 }, group: '_wr' })) { n++; this.burntSpots.push([x, z, 4]); }
     }
     // hedgehogs / sandbags at the objectives' road approaches
     for (const o of MAP.objectives) {
@@ -833,14 +846,14 @@ export class RealRural extends Farmland {
     this.realSetup();
     this.grassMax = this.quality === 'low' ? 48000 : this.quality === 'medium' ? 90000 : 130000; this.grassCull = 260; this.noOuterGrass = true;
     weatherEnv(this.assets);
-    step('layout', () => this.layoutReal());
+    step('layout', () => { this.layoutReal(); this.ruinCraters?.(); });
     step('ground', () => { this.ground(); this.roadsReal(); });
     step('classify', () => this.classifyBuildings());
     step('buildings', () => this.placeBuildings());
     step('balkas', () => this.balkasReal());
     step('fortifications', () => this.fortifications());
     step('halls', () => { this.hallsReal(); this.garagesReal(); });
-    step('houses', () => { this.smallBuildings(); this.plotsReal(); });
+    step('houses', () => { this.smallBuildings(); this.plotsReal(); ruinsHeat(this); });
     step('vegetation', () => this.vegetationReal());
     step('rubble', () => this.rubbleAndDebris());
     step('props', () => { this.polesReal(); this.linesReal(); this.propsLight(); this.warReal(); });
@@ -1083,7 +1096,7 @@ export class RealUrban extends City {
     step('buildings', () => { this.placeBuildings(); this.facadeDecals(); });
     step('fortifications', () => this.fortifications());
     step('halls', () => { this.hallsReal(); this.garagesReal(); });
-    step('houses', () => { this.smallBuildings(); this.plotsReal(); });
+    step('houses', () => { this.smallBuildings(); this.plotsReal(); ruinsHeat(this); });
     step('rubble', () => this.rubbleAndDebris());
     step('rail', () => this.railReal());
     step('vegetation', () => { this.linesReal(); this.vegetationReal(); });   // walls / fences / gas pipes first: trees keep clear
@@ -1113,6 +1126,14 @@ export class RealUrban extends City {
     for (let i = 0; i < 40; i++) { const x = (R() - 0.5) * (MAP_SIZE - 60), z = (R() - 0.5) * (MAP_SIZE - 60), idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && T.tyre && !this.inPlot(x, z)) this.putProp('tyre', x, z, R() * 6, 0); }
   }
   putProp(type, x, z, ry, cost) { Farmland.prototype.putProp.call(this, type, x, z, ry, cost); }
+  // craters: the battle's own (ruins.js, own RNG: the open field the attack came across, courtyards, gardens, scars on
+  // the asphalt, bomb craters by the ruined blocks) instead of City's random 120; one decal InstancedMesh as before
+  craters() {
+    if (!this.ruinCraters) return City.prototype.craters.call(this);
+    this.craterCap = MAP.ruin?.craters?.cap ?? 1600; this.craterMesh = craterMesh(this.scene, this.assets.tex.crater, craterTexture(), this.craterCap, 0xc2b8a8);
+    for (const c of this.pendingCraters || []) this.addCrater(...c); this.pendingCraters = null;
+    this.ruinCraters();
+  }
   // knocked-out armour handled by warReal (MAP.wrecks); nothing on the carriageways
   cityWrecksReal() { }
   // urban splat: R lawn, G rubble / gravel, B mud, A trampled paths -- painted from the OSM layout

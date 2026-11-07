@@ -687,6 +687,8 @@ export class City {
     }
     // a pancaked section on the nine-storey at (30,-68) and the one at (-150,-60)
     for (const [i, a, c] of this.pancakes || MAP.pancakes || []) this.buildings[i]?.pancake(a, c);
+    // real-place maps (ruins.js): bomb craters, stripped facades, burnt-out storeys, the kit pieces that go with them
+    if (this.ruinPlan) for (const b of this.buildings) this.ruinPlan(b);
     const aabb = b => { const c = Math.abs(Math.cos(b.rot)), sn = Math.abs(Math.sin(b.rot)); const hx = (b.L * c + b.D * sn) / 2, hz = (b.L * sn + b.D * c) / 2; return [b.x - hx, b.x + hx, b.z - hz, b.z + hz]; };
     if (!this.buildingRows) this.buildings.forEach((b, i) => { const A = aabb(b);
       this.buildings.forEach((o, j) => { if (j <= i) return; const B = aabb(o); if (A[0] < B[1] && A[1] > B[0] && A[2] < B[3] && A[3] > B[2]) console.warn('building overlap', i, j); });
@@ -732,7 +734,7 @@ export class City {
     const kinds = ['soot', 'pocks', 'scorch', 'streak'], tex = kinds.map(decalTexture);
     const g = new THREE.PlaneGeometry(1, 1); g.translate(0, 0.5, 0);
     const meshes = tex.map(t => { const m = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 2600); m.count = 0; m.receiveShadow = true; m.frustumCulled = false; this.scene.add(m); return m; });
-    const { W, H } = this.assets.kit, R = this.rng, list = this.decals = [], q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    const { W, H } = this.assets.kit, R = this.decalRng || this.rng, list = this.decals = [], q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
     const add = (k, b, p, lx, y, w, h, dep) => {
       const m = meshes[k]; if (m.count >= 2600) return;
       // never past the building's corner (edge panels) or up into the sky above the roof (top storey): a decal overhanging
@@ -761,7 +763,7 @@ export class City {
         }
         if (up && (up.state === 3 || up.gone)) continue;
         const band = up?.balcony ? 0.5 : 1.28;               // solid wall between this window head and the next sill
-        if (p.state >= 2 && R() < 0.8) add(0, b, p, (R() - .5) * 0.3, 2.33, 1.2 + R() * 0.6, band, up);
+        if ((p.state >= 2 || p.soot) && R() < (p.soot ? 0.92 : 0.8)) add(0, b, p, (R() - .5) * 0.3, 2.33, 1.2 + R() * 0.6, band, up);   // (p.soot: ruins.js burnt-out flats)
         else if (p.state >= 1 && R() < 0.45) add(1, b, p, (R() - .5) * 1.2, 2.34, 0.8 + R() * 0.8, Math.min(band, 0.6 + R() * 0.6), up);
         else if (R() < 0.08) add(3, b, p, (R() - .5) * 2.4, 2.33, 0.35 + R() * 0.3, band, up);
       }
@@ -799,42 +801,45 @@ export class City {
     return l.length ? l : T;
   }
   rubbleAndDebris() {
-    const T = this.rubbleTemplates(), place = new Map(), REF = 3.4;
+    const T = this.rubbleTemplates(), place = new Map(), REF = 3.4, rng = this.rubbleRng || this.rng;   // (real-place maps: own stream, ruins.js)
     // s = size relative to a 3.4 m-radius pile; each template is scaled to that footprint
     const add = (x, z, s, ry, own = null, kind = 'fan') => {
-      if (onRoad(x, z, -1) && this.rng() < 0.5) s *= 0.6;
-      const pool = this.rubblePool(kind), t = pool[Math.floor(this.rng() * pool.length)], sc = s * REF / Math.max(1.5, t.userData.r), rr = t.userData.r * sc;
+      if (onRoad(x, z, -1) && rng() < 0.5) s *= 0.6;
+      const pool = this.rubblePool(kind), t = pool[Math.floor(rng() * pool.length)], sc = s * REF / Math.max(1.5, t.userData.r), rr = t.userData.r * sc;
       if (this.buildings.some(b => b !== own && (() => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + rr * 0.7 && Math.abs(lz) < b.D / 2 + rr * 0.7; })())) return;
       if (this.terrain.cutSDF(x, z) < rr + 1) return;
       const M = trs(x, 0, z, ry, sc); (place.get(t) || place.set(t, []).get(t)).push(M); this.terrain.stamp(t, M);
       // passable for everyone, slow; big heaps give low cover (vehicles climb them: see groundHeight)
       const top = t.userData.h * sc;
       this.nav.circle(x, z, rr * 0.65, top > 1.1 ? 7 : top > 0.5 ? 5 : 3, true);
+      // real-place maps: a heap over ~1.2 m stops wheeled vehicles, over ~2.2 m any vehicle (infantry climb it, slowly)
+      if (this.real && top > 1.2) { const nav = this.nav, v = top > 2.2 ? 2 : 1, r0 = rr * 0.5; nav.veh ||= new Uint8Array(nav.n * nav.n); nav.vehDirty = true; for (let zz = z - r0; zz <= z + r0; zz += nav.cell) for (let xx = x - r0; xx <= x + r0; xx += nav.cell) { if ((xx - x) ** 2 + (zz - z) ** 2 > r0 * r0) continue; const i = nav.idx(xx, zz); if (i >= 0) nav.veh[i] = Math.max(nav.veh[i], v); } }
     };
     for (const b of this.buildings) {
       // debris fans under destroyed/holed panels
       for (const p of b.panels) {
         if (p.state < 2 || p.floor > 3) continue;
-        if (p.state === 2 && this.rng() < 0.6) continue;
+        if (p.state === 2 && rng() < 0.6) continue;
         const c = b.panelCenter(p), o = b.outward(p);
-        const sc = 0.6 + this.rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = REF * sc * 0.42 + this.rng() * 0.5;
-        add(c.x + o.x * off, c.z + o.z * off, sc, this.rng() * 6.28, b, /brick/.test(b.kind) ? (this.rng() < 0.6 ? 'brick' : 'fan') : 'fan');
+        const sc = 0.6 + rng() * 0.5 + (p.state === 3 ? 0.4 : 0), off = REF * sc * 0.42 + rng() * 0.5;
+        add(c.x + o.x * off, c.z + o.z * off, sc, rng() * 6.28, b, /brick/.test(b.kind) ? (rng() < 0.6 ? 'brick' : 'fan') : 'fan');
       }
       if (b.pancaked) for (let c = b.pancaked[0]; c <= b.pancaked[1]; c++) for (let k = 0; k < 3; k++) {
-        const w = b.toWorld(-b.L / 2 + (c + 0.5) * this.assets.kit.W + (this.rng() - .5) * 3, 0, (this.rng() - .5) * b.D * 1.4);
-        add(w.x, w.z, 1.6 + this.rng() * 0.9, this.rng() * 6.28, null, 'heap');
+        const w = b.toWorld(-b.L / 2 + (c + 0.5) * this.assets.kit.W + (rng() - .5) * 3, 0, (rng() - .5) * b.D * 1.4);
+        add(w.x, w.z, 1.6 + rng() * 0.9, rng() * 6.28, null, 'heap');
       }
       if (b.collapsedCorner) for (let k = 0; k < 3; k++) {
-        const ex = (b.collapsedCorner === 'right' ? 1 : -1) * (b.L / 2 + 2 + this.rng() * 3);
-        const w = b.toWorld(ex, 0, (this.rng() - .5) * b.D); add(w.x, w.z, 1.0 + this.rng() * 0.7, this.rng() * 6.28, null, /brick/.test(b.kind) ? 'brick' : 'heap');
+        const ex = (b.collapsedCorner === 'right' ? 1 : -1) * (b.L / 2 + 2 + rng() * 3);
+        const w = b.toWorld(ex, 0, (rng() - .5) * b.D); add(w.x, w.z, 1.0 + rng() * 0.7, rng() * 6.28, null, /brick/.test(b.kind) ? 'brick' : 'heap');
       }
     }
     // loose debris lies along the foot of the walls it fell from, not in the middle of yards
     for (let i = 0; i < (this.streetDebris ?? 18) && this.buildings.length; i++) {
-      const b = this.buildings[Math.floor(this.rng() * this.buildings.length)], side = Math.floor(this.rng() * 4), s = 0.35 + this.rng() * 0.4, rr = REF * s * 0.45;
-      const u = (this.rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
-      add(w.x, w.z, s, this.rng() * 6.28, b, 'street');
+      const b = this.buildings[Math.floor(rng() * this.buildings.length)], side = Math.floor(rng() * 4), s = 0.35 + rng() * 0.4, rr = REF * s * 0.45;
+      const u = (rng() - .5) * 0.9, w = side < 2 ? b.toWorld(u * b.L, 0, (side ? 1 : -1) * (b.D / 2 + rr)) : b.toWorld((side === 2 ? 1 : -1) * (b.L / 2 + rr), 0, u * b.D);
+      add(w.x, w.z, s, rng() * 6.28, b, 'street');
     }
+    this.ruinRubble?.(add);   // (ruins.js: heaps along stripped facades / bomb craters, flattened houses, the kit collapse piles)
     for (const [t, l] of place) instance(this.scene, t, l, this.rubbleInst?.(t, l) || farLod(t));   // (real-place maps: far LOD / bigger cells; otherwise the heaps' simplified copy beyond ~80 m)
     this.rubbleInstances = [...place.values()];
   }

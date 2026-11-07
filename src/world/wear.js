@@ -434,11 +434,137 @@ export function burntHouse(tpl) {
   const floor = new THREE.Mesh(fl, charred(null)); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);
   return grp;
 }
+// ---------------------------------------------------------------- shell-holed / flattened house (real-place maps, ruins.js)
+// From an intact house template:
+//   'holed': the roof broken open by shell / bomb hits -- one or two ragged holes through the slopes (the roof faces are
+//            tessellated to <= 0.9 m first, so the hole edge is ragged, not a triangle edge), walls and gables intact,
+//            the shell double sided (the inner faces of the walls show through the hole), lightly sooted; a floor of
+//            fallen ceiling / roof slate inside.
+//   'stub':  the house flattened to its walls: roof gone, every wall face tessellated to <= 0.6 m and cut at a ragged
+//            height that wanders round the outline (0.2 m where a wall fell outright, up to ~2.6 m at a surviving corner),
+//            sooted; the caller heaps rubble inside (ruins.js).
+// userData.frame: the wall box, eave / ridge height and ridge axis in the template frame (rafters, debris: ruins.js),
+// userData.holes: the roof holes [x, z, r] (template frame).
+const _ruinMat = new Map();
+function ruinMat(src, soot, key) {
+  const k = (src?.uuid || 'none') + key; if (_ruinMat.has(k)) return _ruinMat.get(k);
+  const m = src.clone(); m.userData = {}; m.side = THREE.DoubleSide; m.vertexColors = false;
+  weatherMaterial(m, { amount: 1, soot, key }); m.userData.staticOk = true;   // (fragment-only edits: static shadow cache OK)
+  _ruinMat.set(k, m); return m;
+}
+let _ruinFloorM = null;
+function ruinFloorMat() {   // broken ceiling / slate / plaster heaped on the floor (grey-brown, blotchy, darker in the cracks)
+  if (_ruinFloorM) return _ruinFloorM;
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }); m.userData = { weathered: true, staticOk: true };
+  m.customProgramCacheKey = () => 'ruin_floor_v1';
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vRfP;').replace('#include <begin_vertex>', `#include <begin_vertex>
+      { vec4 p = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          p = instanceMatrix * p;
+        #endif
+        vRfP = (modelMatrix * p).xyz; }`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vRfP; ${WAR_NOISE}`).replace('#include <map_fragment>', `#include <map_fragment>
+      { float a = wfbm(vRfP.xz * 0.9), b = wn1(vRfP.xz * 4.0), c = wn1(vRfP.xz * 11.0);
+        vec3 col = mix(vec3(0.27, 0.25, 0.23), vec3(0.42, 0.38, 0.33), smoothstep(0.3, 0.75, a));
+        col = mix(col, vec3(0.36, 0.2, 0.15), smoothstep(0.62, 0.8, b) * 0.5);        // broken brick
+        col = mix(col, vec3(0.5, 0.5, 0.47), smoothstep(0.7, 0.9, c) * 0.4);          // slate / plaster flakes
+        diffuseColor.rgb = col * (0.7 + 0.45 * c); }`);
+  };
+  return (_ruinFloorM = m);
+}
+// split triangles until no edge is longer than maxL (position / normal / uv interpolated); arrays of the non-indexed form
+function tessellate(P, N, U, maxL) {
+  const oP = [], oN = [], oU = [], st = [];
+  for (let i = 0; i < P.length / 9; i++) st.push([P.slice(i * 9, i * 9 + 9), N.slice(i * 9, i * 9 + 9), U.slice(i * 6, i * 6 + 6)]);
+  const L2 = maxL * maxL;
+  while (st.length) {
+    const [p, n, u] = st.pop(); let e = -1, best = L2;
+    for (let k = 0; k < 3; k++) { const a = k * 3, b = ((k + 1) % 3) * 3, d = (p[a] - p[b]) ** 2 + (p[a + 1] - p[b + 1]) ** 2 + (p[a + 2] - p[b + 2]) ** 2; if (d > best) { best = d; e = k; } }
+    if (e < 0 || oP.length > 3e5) { oP.push(...p); oN.push(...n); oU.push(...u); continue; }
+    const k0 = e, k1 = (e + 1) % 3, k2 = (e + 2) % 3, mid = (arr, s) => { const o = []; for (let c = 0; c < s; c++) o.push((arr[k0 * s + c] + arr[k1 * s + c]) / 2); return o; };
+    const mp = mid(p, 3), mn = mid(n, 3), mu = mid(u, 2), l = Math.hypot(mn[0], mn[1], mn[2]) || 1; mn[0] /= l; mn[1] /= l; mn[2] /= l;
+    const V = (arr, s, k) => arr.slice(k * s, k * s + s);
+    st.push([[...V(p, 3, k0), ...mp, ...V(p, 3, k2)], [...V(n, 3, k0), ...mn, ...V(n, 3, k2)], [...V(u, 2, k0), ...mu, ...V(u, 2, k2)]]);
+    st.push([[...mp, ...V(p, 3, k1), ...V(p, 3, k2)], [...mn, ...V(n, 3, k1), ...V(n, 3, k2)], [...mu, ...V(u, 2, k1), ...V(u, 2, k2)]]);
+  }
+  return [oP, oN, oU];
+}
+export function houseRuin(tpl, mode, seed = 1) {
+  tpl.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(tpl.matrixWorld).invert(), geos = []; let mat = null;
+  tpl.traverse(o => { if (!o.isMesh) return; const g = floatGeo(o.geometry).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)); geos.push(g.index ? g.toNonIndexed() : g); mat ||= Array.isArray(o.material) ? o.material[0] : o.material; });
+  if (!geos.length || !mat) return null;
+  const all = geos.length > 1 ? mergeGeometries(geos.map(g => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k); return g; })) : geos[0];
+  if (!all || !all.attributes.uv || !all.attributes.normal) return null;
+  all.computeBoundingBox(); const bb = all.boundingBox, H = bb.max.y - bb.min.y, eave = bb.min.y + Math.min(3.3, H * 0.55);
+  let s = seed >>> 0 || 1; const R = () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const pos = all.attributes.position.array, nrm = all.attributes.normal.array, uvs = all.attributes.uv.array, nT = pos.length / 9;
+  const roofP = [], roofN = [], roofU = [], restP = [], restN = [], restU = [];
+  const wb = new THREE.Box3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let i = 0; i < nT; i++) {
+    a.fromArray(pos, i * 9); b.fromArray(pos, i * 9 + 3); c.fromArray(pos, i * 9 + 6);
+    n.subVectors(c, b).cross(a.clone().sub(b)).normalize();
+    const top = Math.max(a.y, b.y, c.y), low = Math.min(a.y, b.y, c.y), sloped = Math.abs(n.y) > 0.35, roof = (low > eave - 0.15 && sloped) || (top > eave + 0.3 && sloped);
+    if (!sloped) for (const v of [a, b, c]) if (v.y > bb.min.y + 1.0 && v.y < eave - 0.2) wb.expandByPoint(v);
+    const [P, N, U] = roof ? [roofP, roofN, roofU] : [restP, restN, restU];
+    for (let k = 0; k < 9; k++) { P.push(pos[i * 9 + k]); N.push(nrm[i * 9 + k]); }
+    for (let k = 0; k < 6; k++) U.push(uvs[i * 6 + k]);
+  }
+  const box = wb.isEmpty() ? bb : wb, cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2, hx = (box.max.x - box.min.x) / 2, hz = (box.max.z - box.min.z) / 2;
+  const frame = { cx, cz, hx, hz, y0: bb.min.y, eave, ridge: bb.max.y, axis: hx >= hz ? 'x' : 'z' };
+  let outP, outN, outU, holes = [];
+  const hn = (k, x) => { const i = Math.floor(x), f = x - i, h = q => { const v = Math.sin(q * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; return h(i) + (h(i + 1) - h(i)) * f * f * (3 - 2 * f); };
+  if (mode === 'holed') {
+    // one or two holes, centred on a slope (off the ridge), radius 0.3-0.5 of the short half-width.. 0.55 of the long one
+    const nh = R() < 0.55 ? 1 : 2;
+    for (let h = 0; h < nh; h++) {
+      const along = (R() - 0.5) * 1.3, side = (R() < 0.5 ? -1 : 1) * (0.25 + R() * 0.5);
+      const x = frame.axis === 'x' ? cx + along * hx : cx + side * hx, z = frame.axis === 'x' ? cz + side * hz : cz + along * hz;
+      holes.push([x, z, Math.min(hx, hz) * (0.7 + R() * 0.55) + (h ? 0 : 0.6), R() * 100]);
+    }
+    const [tp, tn, tu] = tessellate(roofP, roofN, roofU, 0.9), kp = [], kn = [], ku = [];
+    for (let i = 0; i < tp.length / 9; i++) {
+      const mx = (tp[i * 9] + tp[i * 9 + 3] + tp[i * 9 + 6]) / 3, mz = (tp[i * 9 + 2] + tp[i * 9 + 5] + tp[i * 9 + 8]) / 3;
+      if (holes.some(([x, z, r, k]) => { const d = Math.hypot(mx - x, mz - z), ang = Math.atan2(mz - z, mx - x); return d < r * (0.62 + 0.55 * hn(k, (ang + 3.15) * 1.6)); })) continue;
+      for (let q = 0; q < 9; q++) { kp.push(tp[i * 9 + q]); kn.push(tn[i * 9 + q]); } for (let q = 0; q < 6; q++) ku.push(tu[i * 6 + q]);
+    }
+    outP = [...restP, ...kp]; outN = [...restN, ...kn]; outU = [...restU, ...ku];
+  } else {
+    // stub: no roof; walls cut at a ragged height wandering round the outline
+    const [tp, tn, tu] = tessellate(restP, restN, restU, 0.6), k0 = R() * 50, h0 = 0.9 + R() * 0.7, P = 2 * (hx + hz) * 2, kp = [], kn = [], ku = [];
+    const corner = R() * 6.28, cutH = (x, z) => {
+      const ang = Math.atan2((z - cz) / Math.max(hz, 0.5), (x - cx) / Math.max(hx, 0.5)), t = (ang + Math.PI) / 6.2832 * P / 0.55;
+      let h = h0 + (hn(k0, t * 0.25) - 0.5) * 1.3 + (hn(k0 + 7, Math.floor(t)) - 0.5) * 0.45;
+      if (hn(k0 + 3, t * 0.12) < 0.22) h = 0.15 + hn(k0 + 9, t) * 0.3;                                         // fallen outright
+      const dc = Math.abs(((ang - corner + 9.42) % 6.2832) - 3.1416); if (dc < 0.35) h = Math.max(h, 2.2 + (0.35 - dc) * 1.5);   // a corner still up
+      return bb.min.y + Math.max(0.12, Math.min(eave - bb.min.y - 0.1, h));
+    };
+    for (let i = 0; i < tp.length / 9; i++) {
+      const mx = (tp[i * 9] + tp[i * 9 + 3] + tp[i * 9 + 6]) / 3, my = (tp[i * 9 + 1] + tp[i * 9 + 4] + tp[i * 9 + 7]) / 3, mz = (tp[i * 9 + 2] + tp[i * 9 + 5] + tp[i * 9 + 8]) / 3;
+      if (my > cutH(mx, mz)) continue;
+      for (let q = 0; q < 9; q++) { kp.push(tp[i * 9 + q]); kn.push(tn[i * 9 + q]); } for (let q = 0; q < 6; q++) ku.push(tu[i * 6 + q]);
+    }
+    outP = kp; outN = kn; outU = ku;
+  }
+  if (!outP.length) return null;
+  const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(outP, 3)); g2.setAttribute('normal', new THREE.Float32BufferAttribute(outN, 3)); g2.setAttribute('uv', new THREE.Float32BufferAttribute(outU, 2));
+  g2.computeBoundingSphere();
+  const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_' + mode;
+  const shell = new THREE.Mesh(g2, ruinMat(mat, mode === 'stub' ? 0.55 : 0.18, 'ruin_' + mode)); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
+  if (mode === 'holed') {   // fallen ceiling and slate on the floor (only seen through the holes)
+    const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.45, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.2, cz);
+    const floor = new THREE.Mesh(fl, ruinFloorMat()); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);
+  }
+  grp.userData.frame = frame; grp.userData.holes = holes.map(([x, z, r]) => [x, z, r]);
+  return grp;
+}
 const _char = new Map();
 export function charred(src, doubleSide = false) {
   const key = (src?.uuid || 'none') + doubleSide; if (_char.has(key)) return _char.get(key);
   const m = src ? src.clone() : new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 });
-  m.userData = { weathered: true }; m.roughness = 0.97; m.metalness = 0; m.vertexColors = false; if (m.color) m.color.setRGB(1, 1, 1); if (doubleSide) m.side = THREE.DoubleSide;
+  m.userData = { weathered: true, staticOk: true }; m.roughness = 0.97; m.metalness = 0; m.vertexColors = false; if (m.color) m.color.setRGB(1, 1, 1); if (doubleSide) m.side = THREE.DoubleSide;
   m.customProgramCacheKey = () => 'charred_env' + (src ? 1 : 0);
   if (!src) m.defines = { CHAR_FLOOR: '' };
   m.onBeforeCompile = sh => {

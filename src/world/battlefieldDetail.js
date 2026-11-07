@@ -873,6 +873,9 @@ function build(w, opt) {
   // tops of the snapped belt trees (treeFate), lying from their stumps the way the blast threw them
   for (const [x, z] of w._bfTops || []) mark('stump', x, z);
   for (const [x, z, a, k] of w._bfTops || []) { const px = x + Math.cos(a) * 0.4, pz = z + Math.sin(a) * 0.4; if (T.cutSDF(px, pz) < 1) continue; D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, true); PC.log(D, R, k); stats.pieces++; }
+  // map-specific debris (w.bfExtra: e.g. ruins.js -- the real-place maps' ruins): written into the same per-cell buffers
+  // (no extra draw calls), with their own RNG (bf's stream is not touched), after everything above has claimed its ground
+  for (const f of w.bfExtra || []) try { f({ D, PC, H, free, claim, taken, scorch, stats, mark, inBuilding }); } catch (e) { console.warn('bfExtra', e); }
   // ---------------------------------------------------------------- 6. scorched patches (war map scorch channel)
   for (let i = 0, made = 0; i < 900 && made < (rural ? 90 : 30); i++) { const x = (R() - 0.5) * MAP_SIZE * 0.95, z = (R() - 0.5) * MAP_SIZE * 0.95, h = heatAt(w, x, z); if (h < 0.5 || R() > h * 0.5 || onRoad(x, z, 1)) continue; scorch.push([x, z, 2 + R() * 5, 0.3 + R() * 0.35]); made++; }
   paintScorch(w, scorch);
@@ -906,7 +909,7 @@ function build(w, opt) {
   if (typeof window !== 'undefined') window.__bf = stats;
 }
 // add soft, ragged scorch into the war map's R channel (wear.js paintWar data) and re-upload it
-function paintScorch(w, spots) {
+export function paintScorch(w, spots) {
   const d = w.warData, N = w.warN; if (!d || !N || !spots.length) return;
   const k = N / MAP_SIZE;
   for (const [x, z, r, a] of spots) {
@@ -918,3 +921,5 @@ function paintScorch(w, spots) {
   }
   const t = w.groundUniforms?.tWar?.value; if (t && t.image?.data === d) t.needsUpdate = true;
 }
+// (debris writer, piece library and helpers for map-specific dressing: ruins.js)
+export { Debris, PC, geos, G as DG, lm, col, mcol, hash2, seedOf, debrisMaterial, shatteredTpl };

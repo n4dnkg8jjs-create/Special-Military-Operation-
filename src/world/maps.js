@@ -313,7 +313,20 @@ export const MAPS = {
     roads: [], buildings: [], pancakes: [],
     // windbreaks / tree belts seen on the ground but missing from OSM (polylines, game frame)
     belts: [[[279, -650], [283, -420], [288, -190], [292, 20], [300, 140]], [[-60, 556], [60, 552], [150, 560]], [[-420, 590], [-330, 572]]],
-    damage: { rubble: 0.36, burnt: 0.3 },
+    damage: { rubble: 0.5, burnt: 0.45 },
+    // the battle's destruction (world/ruins.js; sources: previews/realcity_destruction/PROGRESS.md): summer 2023 --
+    // "not a single house left": roofless, holed, flattened; gardens and belts shredded, the northern approach cratered
+    ruin: {
+      houses: { intact: 0.02, grad: [0, 0.5], mix: { rubble: 0.24, stub: 0.22, shell: 0.3, holed: 0.24 } },
+      blocks: { glass: 0.96, burn: 0.8, roof: 0.85, roofTall: 0.85, scale: 1 },
+      trees: { level: 0.55, stump: 0.14, broken: 0.18, stripped: 0.42 },
+      poles: 0.55, cars: 12, litter: 1,
+      craters: { zones: [[-680, 300, 680, 640, 140], [-680, -100, 680, 300, 50], [-680, -640, 680, -100, 30]], plot: 2, belt: 0.55 },
+      // [x, z, heading, vehicle, 0 | 1 turret gone | 2 turret blown off lying by it]: Bradleys / BTR on the northern
+      // approach (Aug 2023), Russian armour caught in the village
+      wrecks: [[-120, 600, 3.1, 'bradley_ua', 0], [160, 640, 2.9, 'bradley_ua', 0], [420, 560, 3.3, 't72av_ua', 2], [-300, 610, 3.0, 'btr80_ua', 0],
+        [60, 300, 0.3, 'bmp3', 0], [-200, 100, 2.4, 'btr82a', 2], [300, -80, 0.2, 't72b3', 0]],
+    },
     // churned vehicle trails: the UA approaches from the north edge (field edges, tree belts, the highway verge) and the
     // Russian supply tracks from the south
     trails: [
@@ -390,7 +403,20 @@ export const MAPS = {
     blurb: 'The real south-east of Avdiivka (Donetsk oblast, winter 2023-24): the five- and nine-storey microdistrict between vul. Vorobyova, Molodizhna and Hrushevskoho with schools No. 2 and 5, the Khimik stadium, the garage cooperatives on the disused Yasynuvata railway and the private sector on Soborna street; the city centre to the north. The attack comes across the open field south of vul. Vorobyova. Map data © OpenStreetMap contributors (ODbL).',
     sub: 'Real place · panel blocks, private sector, railway · OSM layout', credit: 'Map data © OpenStreetMap contributors (ODbL)', north: [0, -1],
     roads: [], buildings: [], pancakes: [],
-    damage: { rubble: 0.22, burnt: 0.26, blocks: [0.7, 1.45] },
+    damage: { rubble: 0.45, burnt: 0.45, blocks: [0.8, 1.5] },
+    // the battle's destruction (world/ruins.js; sources: previews/realcity_destruction/PROGRESS.md): Jan-Feb 2024, the
+    // Khimik / south-east microdistrict under ~30 glide bombs a day: bomb-cratered and stripped blocks, burnt-out
+    // storeys, no glass; the private sector roofless / flattened; trees stumps; the field to the south cratered
+    ruin: {
+      houses: { intact: 0.06, grad: [0, 1], mix: { rubble: 0.2, stub: 0.17, shell: 0.36, holed: 0.27 } },
+      blocks: { glass: 0.95, burn: 0.75, fab: 0.6, fabTall: 0.9, roof: 0.6, roofTall: 0.7, roofHoles: 0.12, shear: 0.35, pancakeD: 0.78, scale: 1 },
+      trees: { level: 0.7, stump: 0.16, broken: 0.24, stripped: 0.5 },
+      poles: 0.45, cars: 24, litter: 1.2,
+      craters: { cap: 1700, field: 0.55, yard: 0.16, garden: 0.22, street: 0.035, fab: 2 },
+      // the assault that reached vul. Vorobyova (Russian armour in the field edge), UA vehicles hit in the district
+      wrecks: [[-150, 405, 3.1, 'bmp3', 2], [90, 395, 2.7, 't72b3', 2], [-380, 395, 3.5, 'btr82a', 0], [230, 410, 3.0, 'bmp3', 0],
+        [-250, 250, 0.4, 'btr80_ua', 0], [120, 60, 1.6, 'btr80_ua', 1], [-60, -200, 0.2, 't72av_ua', 0], [-420, 120, 1.0, 'bmp3', 0]],
+    },
     // layout v2 (2026-11): extent centred 300 m west / 60 m north of v1 -- old coordinates + (300, 60)
     objectives: [
       { id: 'A', name: 'Khimik Stadium', x: -31, z: -282, r: 32, phase: 2 },
