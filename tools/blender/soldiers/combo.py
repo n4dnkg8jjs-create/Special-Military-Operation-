@@ -74,7 +74,7 @@ TCELL = 2        # tiling-camo region = TCELL x TCELL repeats of the tile
 # tile region size (px) per tiling material: one 0.5 m repeat. 1024 = the per-part material's own resolution
 TILE_PX = {'emr_gear': 640, 'multicam_gear': 640, 'mm14_gear': 640, 'coyote_webbing': 192, 'ranger_gear': 192}
 # texel-density targets (scale relative to each source texture, before the global fit multiplier)
-SRC_SCALE = {'camo': 1.0, 'multicam': 0.8, 'skin_': 0.5, 'hands_skin': 0.7, 'eye': 0.5, 'pack_': 1.0}   # pack_: soldiers_v9 painted packs (packs.PXM)
+SRC_SCALE = {'camo': 1.0, 'multicam': 0.8, 'skin_': 0.5, 'hands_skin': 0.7, 'eye': 0.5, 'pack_': 1.0, 'hg_': 1.0}   # hg_: soldiers_v10 painted helmet shells + comms (helmets.py / comms.py)   # pack_: soldiers_v9 painted packs (packs.PXM)
 GEAR_PX_PER_M = 1229.0   # = uniform texel density at 2048^2 (0.81 mm/texel)
 
 
@@ -334,7 +334,7 @@ def headgear_ao(P, N, occ_prims, dist=0.28):
 
 
 def _is_headgear(n):
-    return n.startswith('helmet') or n == 'headset'
+    return n.startswith('helmet') or n == 'headset' or n.startswith('hs_') or n.startswith('retention_')     # v10 comms / harness
 
 
 def _ao_receiver(m):
@@ -388,7 +388,9 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
     # pre-pack coordinates = atlas px at density multiplier 1, / S.  Islands may only turn by 90 deg steps.
     pk_uv, pk_tri, pk_src = [], [], []
     for key, d in uvsets.items():
-        m = key[0]; K1 = rec.specs[m]['base'].shape[1] * _src_scale(m)
+        # v10: non-square textures keep their aspect (K1 = (width, height) px; was width only -> the pack / headgear charts lost
+        # vertical resolution when their texture is taller than wide)
+        m = key[0]; K1 = np.array(rec.specs[m]['base'].shape[1::-1][:2], float) * _src_scale(m)
         pk_uv.append(d['uv'] * K1 / S); pk_tri.append(d['tri']); pk_src.append(('tex', key, K1))
     quad = lambda w, h: (np.array([[0, 0], [w, 0], [w, h], [0, h]], float) / S, np.array([[0, 1, 2], [0, 2, 3]]))
     for m in tile:
@@ -431,7 +433,7 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
                 sw[m] = ((cx + cell / 2) / S, (cy + cell / 2) / S)
             continue
         d = uvsets[key]; m = key[0]
-        K = int(round(K1 * mul))
+        K = np.round(K1 * mul).astype(int)
         A = d['uv'] * K; B = newuv * S
         xf = {}
         for l in d['isl']:
@@ -476,10 +478,11 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
     # ---------------------------------------------------------------- rasterise the texture islands into the atlas
     pres = {}
     def prescaled(m, K):
+        K = tuple(int(k_) for k_ in np.atleast_1d(K)) * (2 if np.size(K) == 1 else 1)
         if (m, K) not in pres:
             sp = rec.specs[m]
-            b = lin2srgb(srgb2lin(_resize(sp['base'], K, K)) * srgb2lin(sp['color'])[None, None])
-            n_ = (_resize(sp['nrm'], K, K) * 2 - 1) if sp['nrm'] is not None else None
+            b = lin2srgb(srgb2lin(_resize(sp['base'], K[0], K[1])) * srgb2lin(sp['color'])[None, None])
+            n_ = (_resize(sp['nrm'], K[0], K[1]) * 2 - 1) if sp['nrm'] is not None else None
             pres[(m, K)] = (b, n_)
         return pres[(m, K)]
 

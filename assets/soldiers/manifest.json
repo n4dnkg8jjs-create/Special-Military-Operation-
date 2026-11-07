@@ -101,7 +101,7 @@
  },
  "soldier_ru": {
   "file": "soldier_ru.glb",
-  "size_bytes": 19435456,
+  "size_bytes": 20743512,
   "mesh_nodes_tris": {
    "body_A": 10865,
    "body_B": 10865,
@@ -110,13 +110,13 @@
    "gloves": 1918,
    "boots": 2356,
    "vest": 4770,
-   "pouches_front": 1888,
+   "pouches_front": 1604,
    "pouches_side": 1036,
    "pouches_back": 612,
-   "helmet_A": 3096,
-   "helmet_B": 5174,
-   "helmet_C": 3852,
-   "helmet_D": 3108,
+   "helmet_A": 1932,
+   "helmet_B": 4010,
+   "helmet_C": 2838,
+   "helmet_D": 2400,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -129,35 +129,57 @@
    "pouches_assault": 2416,
    "elbowpads": 568,
    "backpack_assault": 928,
-   "helmet_assault_A": 3096,
-   "helmet_assault_B": 2220,
-   "headset": 252,
+   "helmet_assault_A": 1932,
+   "helmet_assault_B": 1512,
+   "retention_helmet_A_A": 576,
+   "retention_helmet_B_B": 584,
+   "retention_helmet_C_C": 512,
+   "retention_helmet_D_C": 312,
+   "retention_helmet_assault_A_A": 576,
+   "retention_helmet_assault_A_C": 584,
+   "retention_helmet_assault_B_A": 504,
+   "retention_helmet_assault_B_B": 512,
+   "hs_combo_0": 746,
+   "radio_combo_0": 650,
+   "hs_combo_1": 600,
+   "radio_combo_1": 608,
+   "hs_combo_2": 600,
+   "radio_combo_3": 268,
+   "hs_combo_4": 600,
+   "radio_combo_4": 608,
+   "hs_assault_combo_0": 746,
+   "radio_assault_combo_0": 650,
+   "hs_assault_combo_1": 600,
+   "radio_assault_combo_1": 598,
+   "hs_assault_combo_2": 600,
+   "radio_assault_combo_2": 630,
+   "radio_assault_combo_3": 268,
    "balaclava_A": 2607,
    "balaclava_B": 2607,
    "balaclava_C": 2593,
-   "sling_back": 608,
-   "sling_back_pouch": 608,
-   "sling_back_pack": 608,
-   "sling_back_ruck": 608,
-   "combo_0": 24299,
+   "sling_back": 972,
+   "sling_back_pouch": 1036,
+   "sling_back_pack": 1116,
+   "sling_back_ruck": 1252,
+   "combo_0": 25073,
    "combo_0_tape": 840,
-   "combo_1": 28182,
+   "combo_1": 28776,
    "combo_1_tape": 840,
-   "combo_2": 25844,
-   "combo_2_tape": 1552,
-   "combo_3": 25623,
+   "combo_2": 26044,
+   "combo_2_tape": 1408,
+   "combo_3": 25269,
    "combo_3_tape": 840,
-   "combo_4": 28670,
+   "combo_4": 29264,
    "combo_4_tape": 1120,
-   "combo_5": 24944,
+   "combo_5": 24506,
    "combo_5_tape": 840,
-   "assault_combo_0": 31044,
+   "assault_combo_0": 31566,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 28628,
+   "assault_combo_1": 29344,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 31032,
+   "assault_combo_2": 31388,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 28132,
+   "assault_combo_3": 28162,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 20335,
    "crew_combo_0_tape": 840,
@@ -173,14 +195,14 @@
    "hands_LOD1": 537,
    "gloves_LOD1": 536,
    "boots_LOD1": 760,
-   "vest_LOD1": 1334,
-   "pouches_front_LOD1": 527,
+   "vest_LOD1": 1335,
+   "pouches_front_LOD1": 448,
    "pouches_side_LOD1": 307,
    "pouches_back_LOD1": 201,
-   "helmet_A_LOD1": 864,
-   "helmet_B_LOD1": 1443,
-   "helmet_C_LOD1": 1075,
-   "helmet_D_LOD1": 1208,
+   "helmet_A_LOD1": 571,
+   "helmet_B_LOD1": 1151,
+   "helmet_C_LOD1": 829,
+   "helmet_D_LOD1": 672,
    "armband_L_LOD1": 78,
    "kneepads_LOD1": 198,
    "legband_L_LOD1": 78,
@@ -193,35 +215,57 @@
    "pouches_assault_LOD1": 693,
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 257,
-   "helmet_assault_A_LOD1": 864,
-   "helmet_assault_B_LOD1": 619,
-   "headset_LOD1": 70,
+   "helmet_assault_A_LOD1": 571,
+   "helmet_assault_B_LOD1": 422,
+   "retention_helmet_A_A_LOD1": 160,
+   "retention_helmet_B_B_LOD1": 162,
+   "retention_helmet_C_C_LOD1": 142,
+   "retention_helmet_D_C_LOD1": 87,
+   "retention_helmet_assault_A_A_LOD1": 160,
+   "retention_helmet_assault_A_C_LOD1": 162,
+   "retention_helmet_assault_B_A_LOD1": 140,
+   "retention_helmet_assault_B_B_LOD1": 142,
+   "hs_combo_0_LOD1": 204,
+   "radio_combo_0_LOD1": 214,
+   "hs_combo_1_LOD1": 165,
+   "radio_combo_1_LOD1": 203,
+   "hs_combo_2_LOD1": 166,
+   "radio_combo_3_LOD1": 106,
+   "hs_combo_4_LOD1": 165,
+   "radio_combo_4_LOD1": 203,
+   "hs_assault_combo_0_LOD1": 204,
+   "radio_assault_combo_0_LOD1": 214,
+   "hs_assault_combo_1_LOD1": 166,
+   "radio_assault_combo_1_LOD1": 199,
+   "hs_assault_combo_2_LOD1": 165,
+   "radio_assault_combo_2_LOD1": 208,
+   "radio_assault_combo_3_LOD1": 106,
    "balaclava_A_LOD1": 729,
    "balaclava_B_LOD1": 728,
    "balaclava_C_LOD1": 725,
-   "combo_0_LOD1": 6802,
+   "combo_0_LOD1": 7019,
    "combo_0_tape_LOD1": 335,
-   "combo_1_LOD1": 7890,
+   "combo_1_LOD1": 8057,
    "combo_1_tape_LOD1": 335,
-   "combo_2_LOD1": 7235,
-   "combo_2_tape_LOD1": 619,
-   "combo_3_LOD1": 7173,
+   "combo_2_LOD1": 7292,
+   "combo_2_tape_LOD1": 562,
+   "combo_3_LOD1": 7075,
    "combo_3_tape_LOD1": 335,
-   "combo_4_LOD1": 8026,
+   "combo_4_LOD1": 8193,
    "combo_4_tape_LOD1": 448,
-   "combo_5_LOD1": 6983,
+   "combo_5_LOD1": 6861,
    "combo_5_tape_LOD1": 335,
-   "assault_combo_0_LOD1": 8692,
+   "assault_combo_0_LOD1": 8838,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 8015,
+   "assault_combo_1_LOD1": 8216,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 8688,
+   "assault_combo_2_LOD1": 8788,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 7875,
+   "assault_combo_3_LOD1": 7885,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5693,
    "crew_combo_0_tape_LOD1": 335,
-   "crew_combo_1_LOD1": 6624,
+   "crew_combo_1_LOD1": 6625,
    "crew_combo_1_tape_LOD1": 335,
    "crew_combo_2_LOD1": 6624,
    "crew_combo_2_tape_LOD1": 335
@@ -238,7 +282,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 26769,
+  "default_config_tris": 25321,
   "materials_by_node": {
    "body_A": [
     "emr_camo",
@@ -272,8 +316,7 @@
    ],
    "pouches_front": [
     "emr_gear",
-    "gear_hardware",
-    "radio_black"
+    "gear_hardware"
    ],
    "pouches_side": [
     "emr_gear",
@@ -282,31 +325,32 @@
    ],
    "pouches_back": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "hydro_tube"
    ],
    "helmet_A": [
     "emr_gear",
     "gear_hardware",
-    "helmet_band"
+    "helmet_band",
+    "hg_ru"
    ],
    "helmet_B": [
     "emr_gear",
-    "gear_hardware",
     "goggle_foam",
     "goggle_frame",
     "goggle_lens",
     "goggle_strap",
-    "helmet_band"
+    "helmet_band",
+    "hg_ru"
    ],
    "helmet_C": [
-    "emr_gear",
-    "gear_hardware",
+    "hg_ru",
+    "scrim_green",
+    "scrim_tan",
     "tape"
    ],
    "helmet_D": [
-    "emr_gear",
-    "gear_hardware",
-    "ssh68_paint"
+    "hg_ru"
    ],
    "armband_L": [
     "tape"
@@ -325,7 +369,11 @@
    ],
    "backpack": [
     "emr_gear",
-    "gear_hardware"
+    "gear_hardware",
+    "mat_foam_ru",
+    "pack_ru",
+    "shovel_paint",
+    "shovel_wood"
    ],
    "armor_assault": [
     "emr_gear"
@@ -347,19 +395,145 @@
    "backpack_assault": [
     "emr_gear",
     "gear_hardware",
+    "pack_ru",
     "radio_black"
    ],
    "helmet_assault_A": [
     "emr_gear",
     "gear_hardware",
-    "helmet_band"
+    "helmet_band",
+    "hg_ru"
    ],
    "helmet_assault_B": [
-    "altyn_steel",
-    "gear_hardware"
+    "hg_ru"
    ],
-   "headset": [
-    "radio_black"
+   "retention_helmet_A_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_B_B": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_C_C": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_D_C": [
+    "gear_hardware",
+    "harness_leather"
+   ],
+   "retention_helmet_assault_A_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_assault_A_C": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_assault_B_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "retention_helmet_assault_B_B": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ru"
+   ],
+   "hs_combo_0": [
+    "hg_ru",
+    "hs_boom",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_0": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "hs_combo_1": [
+    "hg_ru",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_1": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "hs_combo_2": [
+    "hg_ru",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_3": [
+    "emr_gear",
+    "hg_ru",
+    "radio_antenna"
+   ],
+   "hs_combo_4": [
+    "hg_ru",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_4": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_0": [
+    "hg_ru",
+    "hs_boom",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_0": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_1": [
+    "hg_ru",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_1": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_2": [
+    "hg_ru",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_2": [
+    "emr_gear",
+    "hg_ru",
+    "hs_cable",
+    "hs_seal",
+    "radio_antenna"
+   ],
+   "radio_assault_combo_3": [
+    "emr_gear",
+    "hg_ru",
+    "radio_antenna"
    ],
    "balaclava_A": [
     "balaclava_ru"
@@ -463,214 +637,6 @@
    ],
    "crew_combo_2_tape": [
     "tape"
-   ],
-   "body_A_LOD1": [
-    "emr_camo",
-    "eye",
-    "skin_A"
-   ],
-   "body_B_LOD1": [
-    "emr_camo",
-    "eye",
-    "skin_B"
-   ],
-   "body_C_LOD1": [
-    "emr_camo",
-    "eye",
-    "skin_C"
-   ],
-   "hands_LOD1": [
-    "hands_skin"
-   ],
-   "gloves_LOD1": [
-    "gloves"
-   ],
-   "boots_LOD1": [
-    "boot_lace",
-    "boot_leather",
-    "boot_metal",
-    "boot_sole"
-   ],
-   "vest_LOD1": [
-    "emr_gear"
-   ],
-   "pouches_front_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "radio_black"
-   ],
-   "pouches_side_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "medic_red"
-   ],
-   "pouches_back_LOD1": [
-    "emr_gear",
-    "gear_hardware"
-   ],
-   "helmet_A_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "helmet_band"
-   ],
-   "helmet_B_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "goggle_foam",
-    "goggle_frame",
-    "goggle_lens",
-    "goggle_strap",
-    "helmet_band"
-   ],
-   "helmet_C_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "tape"
-   ],
-   "helmet_D_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "ssh68_paint"
-   ],
-   "armband_L_LOD1": [
-    "tape"
-   ],
-   "kneepads_LOD1": [
-    "kneepad_shell"
-   ],
-   "legband_L_LOD1": [
-    "tape"
-   ],
-   "armband_R_LOD1": [
-    "tape"
-   ],
-   "legband_R_LOD1": [
-    "tape"
-   ],
-   "backpack_LOD1": [
-    "emr_gear",
-    "gear_hardware"
-   ],
-   "armor_assault_LOD1": [
-    "emr_gear"
-   ],
-   "armor_groin_LOD1": [
-    "emr_gear"
-   ],
-   "armor_arms_LOD1": [
-    "emr_gear"
-   ],
-   "pouches_assault_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "medic_red"
-   ],
-   "elbowpads_LOD1": [
-    "kneepad_shell"
-   ],
-   "backpack_assault_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "radio_black"
-   ],
-   "helmet_assault_A_LOD1": [
-    "emr_gear",
-    "gear_hardware",
-    "helmet_band"
-   ],
-   "helmet_assault_B_LOD1": [
-    "altyn_steel",
-    "gear_hardware"
-   ],
-   "headset_LOD1": [
-    "radio_black"
-   ],
-   "balaclava_A_LOD1": [
-    "balaclava_ru"
-   ],
-   "balaclava_B_LOD1": [
-    "balaclava_ru"
-   ],
-   "balaclava_C_LOD1": [
-    "balaclava_ru"
-   ],
-   "combo_0_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "combo_1_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "combo_2_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_2_tape_LOD1": [
-    "tape"
-   ],
-   "combo_3_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_3_tape_LOD1": [
-    "tape"
-   ],
-   "combo_4_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_4_tape_LOD1": [
-    "tape"
-   ],
-   "combo_5_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "combo_5_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_0_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "assault_combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_1_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "assault_combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_2_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "assault_combo_2_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_3_LOD1": [
-    "soldier_atlas_ru"
-   ],
-   "assault_combo_3_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_0_LOD1": [
-    "soldier_atlas_crew_ru"
-   ],
-   "crew_combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_1_LOD1": [
-    "soldier_atlas_crew_ru"
-   ],
-   "crew_combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_2_LOD1": [
-    "soldier_atlas_crew_ru"
-   ],
-   "crew_combo_2_tape_LOD1": [
-    "tape"
    ]
   },
   "node_extras": {
@@ -756,7 +722,73 @@
    "helmet_assault_B": {
     "default_visible": false
    },
-   "headset": {
+   "retention_helmet_A_A": {
+    "default_visible": false
+   },
+   "retention_helmet_B_B": {
+    "default_visible": false
+   },
+   "retention_helmet_C_C": {
+    "default_visible": false
+   },
+   "retention_helmet_D_C": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_A_A": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_A_C": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_B_A": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_B_B": {
+    "default_visible": false
+   },
+   "hs_combo_0": {
+    "default_visible": false
+   },
+   "radio_combo_0": {
+    "default_visible": false
+   },
+   "hs_combo_1": {
+    "default_visible": false
+   },
+   "radio_combo_1": {
+    "default_visible": false
+   },
+   "hs_combo_2": {
+    "default_visible": false
+   },
+   "radio_combo_3": {
+    "default_visible": false
+   },
+   "hs_combo_4": {
+    "default_visible": false
+   },
+   "radio_combo_4": {
+    "default_visible": false
+   },
+   "hs_assault_combo_0": {
+    "default_visible": false
+   },
+   "radio_assault_combo_0": {
+    "default_visible": false
+   },
+   "hs_assault_combo_1": {
+    "default_visible": false
+   },
+   "radio_assault_combo_1": {
+    "default_visible": false
+   },
+   "hs_assault_combo_2": {
+    "default_visible": false
+   },
+   "radio_assault_combo_2": {
+    "default_visible": false
+   },
+   "radio_assault_combo_3": {
     "default_visible": false
    },
    "balaclava_A": {
@@ -807,6 +839,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "leader",
+     "headset": true,
+     "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+     "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+     "radio_desc": "Azart R-187-P1",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -820,7 +857,10 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ]
    },
    "combo_0_tape": {
@@ -843,6 +883,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+     "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-82",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -858,7 +903,10 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ]
    },
    "combo_1_tape": {
@@ -881,6 +929,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Chinese Earmor-clone (black, headband under the helmet); no radio",
+     "headset_desc": "Chinese Earmor-clone (black, headband under the helmet)",
+     "radio_desc": "no radio",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -897,7 +950,9 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "hs_combo_2"
     ]
    },
    "combo_2_tape": {
@@ -920,6 +975,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -935,7 +995,9 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "radio_combo_3"
     ]
    },
    "combo_3_tape": {
@@ -958,6 +1020,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M32-type (olive, headband under the helmet); Kenwood-type handheld + PTT",
+     "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+     "radio_desc": "Kenwood-type handheld",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -975,7 +1042,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ]
    },
    "combo_4_tape": {
@@ -998,6 +1068,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; no radio",
+     "headset_desc": "no ear protection",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -1012,7 +1087,8 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_D_C"
     ]
    },
    "combo_5_tape": {
@@ -1034,6 +1110,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "leader",
+     "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+     "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+     "radio_desc": "Azart R-187-P1",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -1054,9 +1134,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ]
    },
    "assault_combo_0_tape": {
@@ -1078,6 +1160,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+     "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-82",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1098,7 +1184,9 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset"
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ]
    },
    "assault_combo_1_tape": {
@@ -1120,6 +1208,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Earmor M32-type (olive, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -1140,9 +1232,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_C",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ]
    },
    "assault_combo_2_tape": {
@@ -1164,6 +1258,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1183,7 +1281,9 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "balaclava_A"
+     "balaclava_A",
+     "retention_helmet_assault_B_A",
+     "radio_assault_combo_3"
     ]
    },
    "assault_combo_3_tape": {
@@ -1397,7 +1497,95 @@
     "default_visible": false,
     "lod": 1
    },
-   "headset_LOD1": {
+   "retention_helmet_A_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_B_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_C_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_D_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_A_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_A_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_B_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_B_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_3_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_4_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_4_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_3_LOD1": {
     "default_visible": false,
     "lod": 1
    },
@@ -1428,6 +1616,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "leader",
+     "headset": true,
+     "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+     "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+     "radio_desc": "Azart R-187-P1",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1441,7 +1634,10 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ],
     "lod": 1
    },
@@ -1466,6 +1662,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+     "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-82",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -1481,7 +1682,10 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ],
     "lod": 1
    },
@@ -1506,6 +1710,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Chinese Earmor-clone (black, headband under the helmet); no radio",
+     "headset_desc": "Chinese Earmor-clone (black, headband under the helmet)",
+     "radio_desc": "no radio",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1522,7 +1731,9 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "hs_combo_2"
     ],
     "lod": 1
    },
@@ -1547,6 +1758,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -1562,7 +1778,9 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "radio_combo_3"
     ],
     "lod": 1
    },
@@ -1587,6 +1805,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M32-type (olive, headband under the helmet); Kenwood-type handheld + PTT",
+     "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+     "radio_desc": "Kenwood-type handheld",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -1604,7 +1827,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ],
     "lod": 1
    },
@@ -1629,6 +1855,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; no radio",
+     "headset_desc": "no ear protection",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -1643,7 +1874,8 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_D_C"
     ],
     "lod": 1
    },
@@ -1667,6 +1899,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "leader",
+     "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+     "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+     "radio_desc": "Azart R-187-P1",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -1687,9 +1923,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ],
     "lod": 1
    },
@@ -1713,6 +1951,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+     "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-82",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1733,7 +1975,9 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset"
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ],
     "lod": 1
    },
@@ -1757,6 +2001,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Earmor M32-type (olive, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -1777,9 +2025,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_C",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ],
     "lod": 1
    },
@@ -1803,6 +2053,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -1822,7 +2076,9 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "balaclava_A"
+     "balaclava_A",
+     "retention_helmet_assault_B_A",
+     "radio_assault_combo_3"
     ],
     "lod": 1
    },
@@ -1934,7 +2190,6 @@
   "notes": "body_A/B/C are alternative variants (one visible at a time; A default). hands vs gloves are alternatives. helmet_A/B/C/D alternatives (see combos[*].helmet_desc). backpack, legband_L, kneepads, pouches_back off by default. Gear is skinned to the shared skeleton: vest / plate carrier to the trunk chain only (Hips..Spine1; the shoulder straps and the top corners share up to 50 % with the clavicles, no arm / neck influence, so nothing flares out when the arms are raised), pouches rigid per pouch, helmet rigid to Head, kneepads rigid to *Leg, tape bands follow the sleeve weights. All textured materials use colour factor 1. Vertex colours (COLOR_0) on gear carry baked ambient occlusion. RU vest = 6B45/6B46 (Ratnik) style: front and back sections run from the collar bones / shoulder blades down to the belt line (1.015 m, trouser waist ~1.0 m), soft side sections wrap the waist (to 1.26 m), shooter's cut front / armhole cut back; 6Sh117-style pouches: three double mag pouches low on the front, radio + grenade pouch above, grenade pouches / IFAK on the sides. Armour add-on nodes: armor_groin = soft groin protector flap hung from the bottom of the front section (RU) / under the plate carrier (UA), conforming to the lower belly and the fronts of both thighs, skinned Hips -> 85 % average of both UpLeg bones at the bottom edge (it is lifted / pushed forward by the thighs); armor_arms = soft shoulder (deltoid) protectors sewn to the shoulder straps, rigid with the upper arm, top edge shared 45 % with the clavicle bone.  Presets: see combos[*].groin_protector / shoulder_protectors (standard presets: some with a groin flap, some with shoulder protectors; assault presets mostly both).",
   "uniform_material": "emr_camo (all variants)",
   "gear_materials": [
-   "altyn_steel",
    "balaclava_ru",
    "boot_lace",
    "boot_leather",
@@ -1950,10 +2205,26 @@
    "goggle_lens",
    "goggle_strap",
    "hands_skin",
+   "harness_leather",
+   "harness_pad",
+   "harness_ru",
    "helmet_band",
+   "hg_ru",
+   "hs_boom",
+   "hs_cable",
+   "hs_seal",
+   "hs_yoke",
+   "hydro_tube",
    "kneepad_shell",
+   "mat_foam_ru",
    "medic_red",
+   "pack_ru",
+   "radio_antenna",
    "radio_black",
+   "scrim_green",
+   "scrim_tan",
+   "shovel_paint",
+   "shovel_wood",
    "skin_A",
    "skin_B",
    "skin_C",
@@ -1961,7 +2232,6 @@
    "sling_ru",
    "soldier_atlas_crew_ru",
    "soldier_atlas_ru",
-   "ssh68_paint",
    "tape"
   ],
   "node_list": [
@@ -2025,7 +2295,29 @@
    "backpack_assault",
    "helmet_assault_A",
    "helmet_assault_B",
-   "headset",
+   "retention_helmet_A_A",
+   "retention_helmet_B_B",
+   "retention_helmet_C_C",
+   "retention_helmet_D_C",
+   "retention_helmet_assault_A_A",
+   "retention_helmet_assault_A_C",
+   "retention_helmet_assault_B_A",
+   "retention_helmet_assault_B_B",
+   "hs_combo_0",
+   "radio_combo_0",
+   "hs_combo_1",
+   "radio_combo_1",
+   "hs_combo_2",
+   "radio_combo_3",
+   "hs_combo_4",
+   "radio_combo_4",
+   "hs_assault_combo_0",
+   "radio_assault_combo_0",
+   "hs_assault_combo_1",
+   "radio_assault_combo_1",
+   "hs_assault_combo_2",
+   "radio_assault_combo_2",
+   "radio_assault_combo_3",
    "balaclava_A",
    "balaclava_B",
    "balaclava_C",
@@ -2098,7 +2390,29 @@
    "backpack_assault_LOD1",
    "helmet_assault_A_LOD1",
    "helmet_assault_B_LOD1",
-   "headset_LOD1",
+   "retention_helmet_A_A_LOD1",
+   "retention_helmet_B_B_LOD1",
+   "retention_helmet_C_C_LOD1",
+   "retention_helmet_D_C_LOD1",
+   "retention_helmet_assault_A_A_LOD1",
+   "retention_helmet_assault_A_C_LOD1",
+   "retention_helmet_assault_B_A_LOD1",
+   "retention_helmet_assault_B_B_LOD1",
+   "hs_combo_0_LOD1",
+   "radio_combo_0_LOD1",
+   "hs_combo_1_LOD1",
+   "radio_combo_1_LOD1",
+   "hs_combo_2_LOD1",
+   "radio_combo_3_LOD1",
+   "hs_combo_4_LOD1",
+   "radio_combo_4_LOD1",
+   "hs_assault_combo_0_LOD1",
+   "radio_assault_combo_0_LOD1",
+   "hs_assault_combo_1_LOD1",
+   "radio_assault_combo_1_LOD1",
+   "hs_assault_combo_2_LOD1",
+   "radio_assault_combo_2_LOD1",
+   "radio_assault_combo_3_LOD1",
    "balaclava_A_LOD1",
    "balaclava_B_LOD1",
    "balaclava_C_LOD1",
@@ -2152,11 +2466,19 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ],
+    "comms_role": "leader",
+    "headset": true,
+    "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+    "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+    "radio_desc": "Azart R-187-P1",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 24299,
+    "tris": 25073,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -2191,11 +2513,19 @@
      "armband_L",
      "armband_R",
      "legband_R",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+    "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+    "radio_desc": "Baofeng UV-82",
     "sling_node": "sling_back_ruck",
     "sling_socket": "weapon_socket_sling_ruck",
-    "tris": 28182,
+    "tris": 28776,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -2231,12 +2561,20 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "hs_combo_2",
+     "radio_combo_2"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "Chinese Earmor-clone (black, headband under the helmet); no radio",
+    "headset_desc": "Chinese Earmor-clone (black, headband under the helmet)",
+    "radio_desc": "no radio",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 25844,
-    "tape_tris": 1552,
+    "tris": 26044,
+    "tape_tris": 1408,
     "nodes": [
      "combo_2",
      "combo_2_tape"
@@ -2270,11 +2608,19 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_3",
+     "radio_combo_3"
     ],
+    "comms_role": "rifleman",
+    "headset": false,
+    "comms": "no ear protection; Baofeng UV-5R + long whip",
+    "headset_desc": "no ear protection",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back_pouch",
     "sling_socket": "weapon_socket_sling_pouch",
-    "tris": 25623,
+    "tris": 25269,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -2311,11 +2657,19 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_B_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "Earmor M32-type (olive, headband under the helmet); Kenwood-type handheld + PTT",
+    "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+    "radio_desc": "Kenwood-type handheld",
     "sling_node": "sling_back_ruck",
     "sling_socket": "weapon_socket_sling_ruck",
-    "tris": 28670,
+    "tris": 29264,
     "tape_tris": 1120,
     "nodes": [
      "combo_4",
@@ -2349,11 +2703,19 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_D_C",
+     "hs_combo_5",
+     "radio_combo_5"
     ],
+    "comms_role": "rifleman",
+    "headset": false,
+    "comms": "no ear protection; no radio",
+    "headset_desc": "no ear protection",
+    "radio_desc": "no radio",
     "sling_node": "sling_back_pouch",
     "sling_socket": "weapon_socket_sling_pouch",
-    "tris": 24944,
+    "tris": 24506,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -2394,13 +2756,19 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ],
+    "comms_role": "leader",
+    "comms": "Earmor M32-type (black, headband under the helmet, mic boom); Azart R-187-P1 + PTT",
+    "headset_desc": "Earmor M32-type (black, headband under the helmet, mic boom)",
+    "radio_desc": "Azart R-187-P1",
     "sling_node": "sling_back_pack",
     "sling_socket": "weapon_socket_sling_pack",
-    "tris": 31044,
+    "tris": 31566,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -2439,11 +2807,17 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset"
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ],
+    "comms_role": "rifleman",
+    "comms": "GSSh-01 (Ratnik) (olive, headband under the helmet); Baofeng UV-82 + PTT",
+    "headset_desc": "GSSh-01 (Ratnik) (olive, headband under the helmet)",
+    "radio_desc": "Baofeng UV-82",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 28628,
+    "tris": 29344,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -2482,13 +2856,19 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_C",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ],
+    "comms_role": "rifleman",
+    "comms": "Earmor M32-type (olive, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+    "headset_desc": "Earmor M32-type (olive, headband under the helmet)",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back_pack",
     "sling_socket": "weapon_socket_sling_pack",
-    "tris": 31032,
+    "tris": 31388,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -2526,11 +2906,18 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "balaclava_A"
+     "balaclava_A",
+     "retention_helmet_assault_B_A",
+     "hs_assault_combo_3",
+     "radio_assault_combo_3"
     ],
+    "comms_role": "rifleman",
+    "comms": "no ear protection; Baofeng UV-5R + long whip",
+    "headset_desc": "no ear protection",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 28132,
+    "tris": 28162,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -2659,13 +3046,14 @@
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ru: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (RU: olive-khaki or EMR) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ru (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.0 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
   "tape_alt_material": "tape (white #e9e9e4); for red tape set tape colour to #b01e1e (tape_red); materials named `tape` are recolourable",
-  "sling_notes": "Slung weapons (v9, src/game/soldier.js stow()): a weapon not in his hands hangs on its sling on his back - parent it to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, measured onto the outer surface of that preset's back gear) with identity, and show extras.preset.sling_node (skinned 32 mm webbing sling, hidden by default) while anything hangs there. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel. Used for: the RPG gunner's AK (and his RPG-7 when he has the AK in his hands: same line, turned optic-out, origin +0.16 m gun-Y / +0.18 m gun-Z), the RPG-22 shooter's rifle while the launcher is up, medics / draggers / wounded, FPV assistant; ATGM crew lay the rifle down beside them during atgm_* clips. weapon_socket_back (ATGM tubes / folded launchers) is moved per man along the chest axis so that kit rests on his preset's back gear (Soldier.fitBackKit).",
-  "head_shading_notes": "Helmet / headset occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's headgear): brow, eyes, temples and ears darken under the brim.",
-  "v6_notes": "v9: packs (packs.py): rucksack (UA 3-day assault pack / RU Ratnik-type raid pack) and assault pack rebuilt with painted detail - one textured material per faction (pack_ua / pack_ru, placed in the preset atlas like the uniform): every pack / pocket face has its own chart with the gear camo plus a baked height field (coil zips with sliders and pulls, PALS webbing rows with bar tacks, laser-cut MOLLE, bound edges, stitched seams, velcro ID field with a UA flag patch, flat compression straps, grommets, labels) as normal map + cavity AO; geometry: side-release buckles, strap bridges, grab handles, karimat foam roll under the rucksack (spiral ends), MPL-50 entrenching tool on the RU rucksack, hydration tube and CAT tourniquet on the UA rucksack straps (webbing MOLLE rows moved from geometry into the texture: tris about unchanged). v8: wrists (wrist.py): sleeve ends cinched round the wrist with a 3.4 mm rounded hem + shadowed inner facing (the sleeves were open 6 cm tubes before), forearm skin continues 8 cm inside the sleeve, gloves with a cuff tucked under the sleeve (UA dark neoprene + velcro tab, RU knit) and a dark base-layer cuff; hem / tube skinned forearm-only behind the wrist (wrist_check.py: 111 clips, no poke-through). v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves 10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. Runtime damage (src/game/soldierDamage.js): materials soldier_atlas_* / *_camo / skin_* are patched once (defines SOLDIER_DMG, DMG_BASE = real bone count); each soldier's skinned meshes get 4 extra data bones (__dmg0..3, not in the scene graph) whose matrices carry up to 4 wounds (bind-space centre / radius, bandage band, code) + mud / rips / soot / back mud / fade / tint."
+  "sling_notes": "Slung weapons (v9, src/game/soldier.js stow()): a weapon not in his hands hangs on its sling on his back - parent it to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, measured onto the outer surface of that preset's back gear) with identity, and show extras.preset.sling_node (skinned 32 mm webbing sling, hidden by default) while anything hangs there. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel. Used for: the RPG gunner's AK (and his RPG-7 when he has the AK in his hands: same line, turned optic-out, origin +0.16 m gun-Y / +0.18 m gun-Z), the RPG-22 shooter's rifle while the launcher is up, medics / draggers / wounded, FPV assistant; ATGM crew lay the rifle down beside them during atgm_* clips. weapon_socket_back (ATGM tubes / folded launchers) is moved per man along the chest axis so that kit rests on his preset's back gear (Soldier.fitBackKit). v10 sling: one continuous 32 mm strap from the front swivel over the right shoulder beside the neck, diagonally across the chest to the left hip, round the left flank at belt height to the rear swivel; every sample on a ray from inside the body is pulled taut against the outermost surface (body, vest, front / side pouches, radio pouches, the class's back gear) + 4.5 mm, so it lies on the kit and bridges hollows straight (no plateaus / gaps, no longer under the left arm); the strap ends wrap round the AK-74M swivel bars, sewn fold-back loops, slider + adjuster buckles.  AK-12: soldier.js moves it 3 cm up the sling line so its front swivel meets the strap.",
+  "head_shading_notes": "Helmet / headset / retention occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's helmet_*, hs_* and retention_* nodes): brow, eyes, temples and ears darken under the brim and the cups.",
+  "v6_notes": "v10 (2026-11): comms + ear protection per preset (comms.py: nodes hs_<preset> on the head - ear cups with leatherette seals, ARC rail adapters on FAST-type helmets or a headband yoke going up under the rim, knobs, mic boom for leaders - and radio_<preset> on the plate carrier - handheld radio in an open-top pouch with antenna, PTT on the left shoulder strap, cables cup -> neck -> PTT -> radio; cups fitted to each preset's own head and helmet: centred on the ear, pulled inside the shell's inner surface where a rim covers them, lowered under low rims); painted helmet shells (helmets.py, `hg_<fac>` charts in the preset atlas: cover seams + stitching, hem, creases, band shadow, bolt heads, labels, FAST loop-velcro fields, paint wear / chips / scratches on bare shells; the geometry seams / velcro strips were removed, -0.3..-0.6 k tris per helmet); 4-point retention harness per helmet x body variant (retention_<helmet>_<body>: front / rear straps round the ear to a junction, chin strap along the jaw to a chin cup, side-release buckle, nape cradle + pad with a ratchet dial on modern helmets; SSh-68: 2-point leather strap), projected onto that face (no floating, no skin penetration), scrim on the UA PASGT-type and RU 6B7; joint skin-weight clean-up (joints.py: diffusion round shoulders / elbows / hips / knees, measured with joints_check.py over every clip: mean deformation badness -28 %); rifle sling rebuilt (taut, continuous, over the right shoulder, across the chest to the left hip, round the flank to the rear swivel; strap ends wrap the swivels; adjuster + slider). v9: packs (packs.py): rucksack (UA 3-day assault pack / RU Ratnik-type raid pack) and assault pack rebuilt with painted detail - one textured material per faction (pack_ua / pack_ru, placed in the preset atlas like the uniform): every pack / pocket face has its own chart with the gear camo plus a baked height field (coil zips with sliders and pulls, PALS webbing rows with bar tacks, laser-cut MOLLE, bound edges, stitched seams, velcro ID field with a UA flag patch, flat compression straps, grommets, labels) as normal map + cavity AO; geometry: side-release buckles, strap bridges, grab handles, karimat foam roll under the rucksack (spiral ends), MPL-50 entrenching tool on the RU rucksack, hydration tube and CAT tourniquet on the UA rucksack straps (webbing MOLLE rows moved from geometry into the texture: tris about unchanged). v8: wrists (wrist.py): sleeve ends cinched round the wrist with a 3.4 mm rounded hem + shadowed inner facing (the sleeves were open 6 cm tubes before), forearm skin continues 8 cm inside the sleeve, gloves with a cuff tucked under the sleeve (UA dark neoprene + velcro tab, RU knit) and a dark base-layer cuff; hem / tube skinned forearm-only behind the wrist (wrist_check.py: 111 clips, no poke-through). v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves 10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. Runtime damage (src/game/soldierDamage.js): materials soldier_atlas_* / *_camo / skin_* are patched once (defines SOLDIER_DMG, DMG_BASE = real bone count); each soldier's skinned meshes get 4 extra data bones (__dmg0..3, not in the scene graph) whose matrices carry up to 4 wounds (bind-space centre / radius, bandage band, code) + mud / rips / soot / back mud / fade / tint.",
+  "comms_notes": "Comms (v10, comms.py): every preset lists `comms_role` ('leader' | 'rifleman'), `comms`, `headset_desc`, `radio_desc`; its parts include hs_<preset> (head-mounted, rigid with Head; absent / empty when he wears no ear protection) and radio_<preset> (plate-carrier mounted, vest weights; the headset cable blends Head -> Neck -> vest).  src/game/soldier.js picks a preset with comms_role 'leader' for role.leader soldiers (squad / assault leaders, ATGM gunner, FPV pilot) and a non-leader preset for everyone else.  Loadouts (2022-25 photos): UA - Peltor ComTac III-type on ARC rails + mic boom + AN/PRC-152 (leaders), Earmor M31 on rails / M32 with headband + Motorola R7 / DP4400 or Baofeng UV-5R + PTT, cheap passive muffs, some without; RU - Earmor M32 / clones + mic boom + Azart R-187-P1 (leaders), GSSh-01 (Ratnik) + Baofeng UV-82, Kenwood-type handhelds, Baofeng UV-5R in a chest pouch without a headset, mobilised men without. Retention harness: retention_<helmet>_<body> (in the presets)."
  },
  "soldier_ua": {
   "file": "soldier_ua.glb",
-  "size_bytes": 21426656,
+  "size_bytes": 22738920,
   "mesh_nodes_tris": {
    "body_A": 10865,
    "body_B": 10865,
@@ -2675,12 +3063,12 @@
    "boots": 2356,
    "vest": 4150,
    "pouches_front": 1224,
-   "pouches_side": 952,
+   "pouches_side": 668,
    "pouches_back": 336,
-   "helmet_A": 4252,
-   "helmet_B": 8628,
-   "helmet_C": 6462,
-   "helmet_D": 7974,
+   "helmet_A": 3238,
+   "helmet_B": 7200,
+   "helmet_C": 5298,
+   "helmet_D": 6954,
    "armband_L": 280,
    "kneepads": 712,
    "legband_L": 280,
@@ -2690,38 +3078,61 @@
    "armor_assault": 640,
    "armor_groin": 488,
    "armor_arms": 856,
-   "pouches_assault": 2252,
+   "pouches_assault": 1968,
    "elbowpads": 568,
    "backpack_assault": 928,
-   "helmet_assault_A": 8628,
-   "helmet_assault_B": 4698,
-   "headset": 252,
+   "helmet_assault_A": 7200,
+   "helmet_assault_B": 3678,
+   "retention_helmet_A_A": 504,
+   "retention_helmet_B_B": 584,
+   "retention_helmet_C_C": 584,
+   "retention_helmet_D_B": 584,
+   "retention_helmet_assault_A_A": 576,
+   "retention_helmet_assault_A_C": 584,
+   "retention_helmet_assault_B_A": 576,
+   "retention_helmet_assault_B_B": 584,
+   "hs_combo_0": 600,
+   "radio_combo_0": 704,
+   "hs_combo_1": 826,
+   "radio_combo_1": 702,
+   "radio_combo_2": 292,
+   "hs_combo_3": 536,
+   "hs_combo_4": 712,
+   "radio_combo_4": 648,
+   "hs_assault_combo_0": 826,
+   "radio_assault_combo_0": 766,
+   "hs_assault_combo_1": 600,
+   "radio_assault_combo_1": 678,
+   "hs_assault_combo_2": 712,
+   "radio_assault_combo_2": 750,
+   "hs_assault_combo_3": 568,
+   "radio_assault_combo_3": 678,
    "balaclava_A": 2607,
    "balaclava_B": 2607,
    "balaclava_C": 2593,
-   "sling_back": 608,
-   "sling_back_pouch": 608,
-   "sling_back_pack": 608,
-   "sling_back_ruck": 608,
-   "combo_0": 24422,
+   "sling_back": 988,
+   "sling_back_pouch": 1052,
+   "sling_back_pack": 1132,
+   "sling_back_ruck": 1260,
+   "combo_0": 25030,
    "combo_0_tape": 840,
-   "combo_1": 29919,
+   "combo_1": 30409,
    "combo_1_tape": 840,
-   "combo_2": 27942,
+   "combo_2": 27402,
    "combo_2_tape": 1120,
-   "combo_3": 25470,
+   "combo_3": 25310,
    "combo_3_tape": 840,
-   "combo_4": 30519,
+   "combo_4": 31249,
    "combo_4_tape": 1210,
-   "combo_5": 27078,
+   "combo_5": 26246,
    "combo_5_tape": 840,
-   "assault_combo_0": 34542,
+   "assault_combo_0": 34844,
    "assault_combo_0_tape": 1120,
-   "assault_combo_1": 29442,
+   "assault_combo_1": 29838,
    "assault_combo_1_tape": 1120,
-   "assault_combo_2": 34652,
+   "assault_combo_2": 34766,
    "assault_combo_2_tape": 1120,
-   "assault_combo_3": 31225,
+   "assault_combo_3": 31589,
    "assault_combo_3_tape": 1120,
    "crew_combo_0": 20335,
    "crew_combo_0_tape": 840,
@@ -2739,12 +3150,12 @@
    "boots_LOD1": 760,
    "vest_LOD1": 1161,
    "pouches_front_LOD1": 421,
-   "pouches_side_LOD1": 312,
+   "pouches_side_LOD1": 203,
    "pouches_back_LOD1": 125,
-   "helmet_A_LOD1": 1408,
-   "helmet_B_LOD1": 2600,
-   "helmet_C_LOD1": 1906,
-   "helmet_D_LOD1": 2570,
+   "helmet_A_LOD1": 941,
+   "helmet_B_LOD1": 2015,
+   "helmet_C_LOD1": 1480,
+   "helmet_D_LOD1": 1946,
    "armband_L_LOD1": 78,
    "kneepads_LOD1": 198,
    "legband_L_LOD1": 78,
@@ -2754,34 +3165,57 @@
    "armor_assault_LOD1": 178,
    "armor_groin_LOD1": 134,
    "armor_arms_LOD1": 238,
-   "pouches_assault_LOD1": 627,
+   "pouches_assault_LOD1": 582,
    "elbowpads_LOD1": 158,
    "backpack_assault_LOD1": 297,
-   "helmet_assault_A_LOD1": 2600,
-   "helmet_assault_B_LOD1": 1543,
-   "headset_LOD1": 70,
+   "helmet_assault_A_LOD1": 2015,
+   "helmet_assault_B_LOD1": 1024,
+   "retention_helmet_A_A_LOD1": 140,
+   "retention_helmet_B_B_LOD1": 179,
+   "retention_helmet_C_C_LOD1": 179,
+   "retention_helmet_D_B_LOD1": 179,
+   "retention_helmet_assault_A_A_LOD1": 177,
+   "retention_helmet_assault_A_C_LOD1": 179,
+   "retention_helmet_assault_B_A_LOD1": 177,
+   "retention_helmet_assault_B_B_LOD1": 179,
+   "hs_combo_0_LOD1": 165,
+   "radio_combo_0_LOD1": 292,
+   "hs_combo_1_LOD1": 227,
+   "radio_combo_1_LOD1": 293,
+   "radio_combo_2_LOD1": 176,
+   "hs_combo_3_LOD1": 147,
+   "hs_combo_4_LOD1": 197,
+   "radio_combo_4_LOD1": 277,
+   "hs_assault_combo_0_LOD1": 227,
+   "radio_assault_combo_0_LOD1": 311,
+   "hs_assault_combo_1_LOD1": 165,
+   "radio_assault_combo_1_LOD1": 287,
+   "hs_assault_combo_2_LOD1": 197,
+   "radio_assault_combo_2_LOD1": 307,
+   "hs_assault_combo_3_LOD1": 156,
+   "radio_assault_combo_3_LOD1": 287,
    "balaclava_A_LOD1": 729,
    "balaclava_B_LOD1": 728,
    "balaclava_C_LOD1": 725,
-   "combo_0_LOD1": 6837,
+   "combo_0_LOD1": 7008,
    "combo_0_tape_LOD1": 335,
-   "combo_1_LOD1": 8376,
+   "combo_1_LOD1": 8513,
    "combo_1_tape_LOD1": 335,
-   "combo_2_LOD1": 7823,
+   "combo_2_LOD1": 7672,
    "combo_2_tape_LOD1": 448,
-   "combo_3_LOD1": 7130,
+   "combo_3_LOD1": 7085,
    "combo_3_tape_LOD1": 335,
-   "combo_4_LOD1": 8545,
+   "combo_4_LOD1": 8749,
    "combo_4_tape_LOD1": 484,
-   "combo_5_LOD1": 7581,
+   "combo_5_LOD1": 7348,
    "combo_5_tape_LOD1": 335,
-   "assault_combo_0_LOD1": 9670,
+   "assault_combo_0_LOD1": 9756,
    "assault_combo_0_tape_LOD1": 448,
-   "assault_combo_1_LOD1": 8243,
+   "assault_combo_1_LOD1": 8353,
    "assault_combo_1_tape_LOD1": 448,
-   "assault_combo_2_LOD1": 9702,
+   "assault_combo_2_LOD1": 9734,
    "assault_combo_2_tape_LOD1": 448,
-   "assault_combo_3_LOD1": 8743,
+   "assault_combo_3_LOD1": 8844,
    "assault_combo_3_tape_LOD1": 448,
    "crew_combo_0_LOD1": 5692,
    "crew_combo_0_tape_LOD1": 335,
@@ -2802,7 +3236,7 @@
    "armband_R",
    "legband_R"
   ],
-  "default_config_tris": 26557,
+  "default_config_tris": 25259,
   "materials_by_node": {
    "body_A": [
     "eye",
@@ -2845,38 +3279,36 @@
     "multicam_gear"
    ],
    "pouches_side": [
-    "coyote_webbing",
     "gear_hardware",
     "medic_red",
-    "multicam_gear",
-    "radio_black"
+    "multicam_gear"
    ],
    "pouches_back": [
     "gear_hardware",
+    "hydro_tube",
     "multicam_gear"
    ],
    "helmet_A": [
     "coyote_webbing",
-    "gear_hardware",
-    "mm14_gear"
+    "hg_ua",
+    "scrim_green",
+    "scrim_tan"
    ],
    "helmet_B": [
-    "coyote_webbing",
     "gear_hardware",
+    "hg_ua",
     "ranger_gear"
    ],
    "helmet_C": [
     "coyote_webbing",
-    "gear_hardware",
     "goggle_foam",
     "goggle_frame_tan",
     "goggle_lens_clear",
-    "multicam_gear"
+    "hg_ua"
    ],
    "helmet_D": [
-    "coyote_webbing",
     "gear_hardware",
-    "multicam_gear",
+    "hg_ua",
     "tape"
    ],
    "armband_L": [
@@ -2897,7 +3329,11 @@
    "backpack": [
     "coyote_webbing",
     "gear_hardware",
-    "multicam_gear"
+    "hydro_tube",
+    "mat_foam_ua",
+    "medic_red",
+    "multicam_gear",
+    "pack_ua"
    ],
    "armor_assault": [
     "multicam_gear"
@@ -2913,8 +3349,7 @@
     "coyote_webbing",
     "gear_hardware",
     "medic_red",
-    "multicam_gear",
-    "radio_black"
+    "multicam_gear"
    ],
    "elbowpads": [
     "kneepad_shell"
@@ -2923,23 +3358,171 @@
     "coyote_webbing",
     "gear_hardware",
     "multicam_gear",
+    "pack_ua",
     "radio_black"
    ],
    "helmet_assault_A": [
-    "coyote_webbing",
     "gear_hardware",
+    "hg_ua",
     "ranger_gear"
    ],
    "helmet_assault_B": [
     "coyote_webbing",
-    "gear_hardware",
     "goggle_foam",
     "goggle_frame_tan",
     "goggle_lens_clear",
-    "multicam_gear"
+    "hg_ua"
    ],
-   "headset": [
-    "radio_black"
+   "retention_helmet_A_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua"
+   ],
+   "retention_helmet_B_B": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_C_C": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_D_B": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_assault_A_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_assault_A_C": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_assault_B_A": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "retention_helmet_assault_B_B": [
+    "gear_hardware",
+    "harness_pad",
+    "harness_ua",
+    "medic_red"
+   ],
+   "hs_combo_0": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_0": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_combo_1": [
+    "hg_ua",
+    "hs_boom",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_1": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "radio_combo_2": [
+    "coyote_webbing",
+    "hg_ua",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_combo_3": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "hs_combo_4": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_combo_4": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_0": [
+    "hg_ua",
+    "hs_boom",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_0": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_1": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_1": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_2": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_2": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
+   ],
+   "hs_assault_combo_3": [
+    "hg_ua",
+    "hs_seal",
+    "hs_yoke"
+   ],
+   "radio_assault_combo_3": [
+    "coyote_webbing",
+    "hg_ua",
+    "hs_cable",
+    "hs_seal",
+    "multicam_gear",
+    "radio_antenna"
    ],
    "balaclava_A": [
     "balaclava_ua"
@@ -3043,230 +3626,6 @@
    ],
    "crew_combo_2_tape": [
     "tape"
-   ],
-   "body_A_LOD1": [
-    "eye",
-    "mm14_camo",
-    "skin_A"
-   ],
-   "body_B_LOD1": [
-    "eye",
-    "mm14_camo",
-    "skin_B"
-   ],
-   "body_C_LOD1": [
-    "eye",
-    "mm14_multicam_camo",
-    "skin_C"
-   ],
-   "hands_LOD1": [
-    "hands_skin"
-   ],
-   "gloves_LOD1": [
-    "gloves"
-   ],
-   "boots_LOD1": [
-    "boot_lace",
-    "boot_leather",
-    "boot_metal",
-    "boot_sole"
-   ],
-   "vest_LOD1": [
-    "coyote_webbing",
-    "multicam_gear"
-   ],
-   "pouches_front_LOD1": [
-    "ak_mag_polymer",
-    "coyote_webbing",
-    "flag_blue",
-    "flag_yellow",
-    "gear_hardware",
-    "medic_red",
-    "multicam_gear"
-   ],
-   "pouches_side_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "medic_red",
-    "multicam_gear",
-    "radio_black"
-   ],
-   "pouches_back_LOD1": [
-    "gear_hardware",
-    "multicam_gear"
-   ],
-   "helmet_A_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "mm14_gear"
-   ],
-   "helmet_B_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "ranger_gear"
-   ],
-   "helmet_C_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "goggle_foam",
-    "goggle_frame_tan",
-    "goggle_lens_clear",
-    "multicam_gear"
-   ],
-   "helmet_D_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "multicam_gear",
-    "tape"
-   ],
-   "armband_L_LOD1": [
-    "tape"
-   ],
-   "kneepads_LOD1": [
-    "kneepad_shell"
-   ],
-   "legband_L_LOD1": [
-    "tape"
-   ],
-   "armband_R_LOD1": [
-    "tape"
-   ],
-   "legband_R_LOD1": [
-    "tape"
-   ],
-   "backpack_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "multicam_gear"
-   ],
-   "armor_assault_LOD1": [
-    "multicam_gear"
-   ],
-   "armor_groin_LOD1": [
-    "coyote_webbing",
-    "multicam_gear"
-   ],
-   "armor_arms_LOD1": [
-    "multicam_gear"
-   ],
-   "pouches_assault_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "medic_red",
-    "multicam_gear",
-    "radio_black"
-   ],
-   "elbowpads_LOD1": [
-    "kneepad_shell"
-   ],
-   "backpack_assault_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "multicam_gear",
-    "radio_black"
-   ],
-   "helmet_assault_A_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "ranger_gear"
-   ],
-   "helmet_assault_B_LOD1": [
-    "coyote_webbing",
-    "gear_hardware",
-    "goggle_foam",
-    "goggle_frame_tan",
-    "goggle_lens_clear",
-    "multicam_gear"
-   ],
-   "headset_LOD1": [
-    "radio_black"
-   ],
-   "balaclava_A_LOD1": [
-    "balaclava_ua"
-   ],
-   "balaclava_B_LOD1": [
-    "balaclava_ua"
-   ],
-   "balaclava_C_LOD1": [
-    "balaclava_ua"
-   ],
-   "combo_0_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "combo_1_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "combo_2_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_2_tape_LOD1": [
-    "tape"
-   ],
-   "combo_3_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_3_tape_LOD1": [
-    "tape"
-   ],
-   "combo_4_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_4_tape_LOD1": [
-    "tape"
-   ],
-   "combo_5_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "combo_5_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_0_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "assault_combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_1_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "assault_combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_2_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "assault_combo_2_tape_LOD1": [
-    "tape"
-   ],
-   "assault_combo_3_LOD1": [
-    "soldier_atlas_ua"
-   ],
-   "assault_combo_3_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_0_LOD1": [
-    "soldier_atlas_crew_ua"
-   ],
-   "crew_combo_0_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_1_LOD1": [
-    "soldier_atlas_crew_ua"
-   ],
-   "crew_combo_1_tape_LOD1": [
-    "tape"
-   ],
-   "crew_combo_2_LOD1": [
-    "soldier_atlas_crew_ua"
-   ],
-   "crew_combo_2_tape_LOD1": [
-    "tape"
    ]
   },
   "node_extras": {
@@ -3352,7 +3711,76 @@
    "helmet_assault_B": {
     "default_visible": false
    },
-   "headset": {
+   "retention_helmet_A_A": {
+    "default_visible": false
+   },
+   "retention_helmet_B_B": {
+    "default_visible": false
+   },
+   "retention_helmet_C_C": {
+    "default_visible": false
+   },
+   "retention_helmet_D_B": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_A_A": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_A_C": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_B_A": {
+    "default_visible": false
+   },
+   "retention_helmet_assault_B_B": {
+    "default_visible": false
+   },
+   "hs_combo_0": {
+    "default_visible": false
+   },
+   "radio_combo_0": {
+    "default_visible": false
+   },
+   "hs_combo_1": {
+    "default_visible": false
+   },
+   "radio_combo_1": {
+    "default_visible": false
+   },
+   "radio_combo_2": {
+    "default_visible": false
+   },
+   "hs_combo_3": {
+    "default_visible": false
+   },
+   "hs_combo_4": {
+    "default_visible": false
+   },
+   "radio_combo_4": {
+    "default_visible": false
+   },
+   "hs_assault_combo_0": {
+    "default_visible": false
+   },
+   "radio_assault_combo_0": {
+    "default_visible": false
+   },
+   "hs_assault_combo_1": {
+    "default_visible": false
+   },
+   "radio_assault_combo_1": {
+    "default_visible": false
+   },
+   "hs_assault_combo_2": {
+    "default_visible": false
+   },
+   "radio_assault_combo_2": {
+    "default_visible": false
+   },
+   "hs_assault_combo_3": {
+    "default_visible": false
+   },
+   "radio_assault_combo_3": {
     "default_visible": false
    },
    "balaclava_A": {
@@ -3403,6 +3831,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M32-type (coyote, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -3416,7 +3849,10 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ]
    },
    "combo_0_tape": {
@@ -3439,6 +3875,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "leader",
+     "headset": true,
+     "comms": "Peltor ComTac III-type (od, helmet rails, mic boom); AN/PRC-152 + PTT",
+     "headset_desc": "Peltor ComTac III-type (od, helmet rails, mic boom)",
+     "radio_desc": "AN/PRC-152",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -3453,7 +3894,10 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ]
    },
    "combo_1_tape": {
@@ -3476,6 +3920,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -3492,7 +3941,9 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "radio_combo_2"
     ]
    },
    "combo_2_tape": {
@@ -3515,6 +3966,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "cheap passive ear muffs (olive, headband under the helmet); no radio",
+     "headset_desc": "cheap passive ear muffs (olive, headband under the helmet)",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -3530,7 +3986,9 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_3"
     ]
    },
    "combo_3_tape": {
@@ -3553,6 +4011,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M31-type (rail) (coyote, helmet rails); Motorola R7 + PTT",
+     "headset_desc": "Earmor M31-type (rail) (coyote, helmet rails)",
+     "radio_desc": "Motorola R7",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -3570,7 +4033,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_D_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ]
    },
    "combo_4_tape": {
@@ -3593,6 +4059,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; no radio",
+     "headset_desc": "no ear protection",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -3607,7 +4078,8 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_C_C"
     ]
    },
    "combo_5_tape": {
@@ -3629,6 +4101,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "leader",
+     "comms": "Peltor ComTac III-type (coyote, helmet rails, mic boom); AN/PRC-152 + PTT",
+     "headset_desc": "Peltor ComTac III-type (coyote, helmet rails, mic boom)",
+     "radio_desc": "AN/PRC-152",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -3649,8 +4125,10 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ]
    },
    "assault_combo_0_tape": {
@@ -3672,6 +4150,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "comms": "Earmor M32-type (coyote, headband under the helmet); Motorola R7 + PTT",
+     "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+     "radio_desc": "Motorola R7",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -3691,8 +4173,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "headset",
-     "balaclava_B"
+     "balaclava_B",
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ]
    },
    "assault_combo_1_tape": {
@@ -3714,6 +4198,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Earmor M31-type (rail) (od, helmet rails); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M31-type (rail) (od, helmet rails)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -3734,8 +4222,10 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ]
    },
    "assault_combo_2_tape": {
@@ -3757,6 +4247,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Peltor ComTac III-type (od, headband under the helmet); Motorola DP4400 + PTT",
+     "headset_desc": "Peltor ComTac III-type (od, headband under the helmet)",
+     "radio_desc": "Motorola DP4400",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -3777,9 +4271,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_B_A",
+     "hs_assault_combo_3",
+     "radio_assault_combo_3"
     ]
    },
    "assault_combo_3_tape": {
@@ -3993,7 +4489,99 @@
     "default_visible": false,
     "lod": 1
    },
-   "headset_LOD1": {
+   "retention_helmet_A_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_B_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_C_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_D_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_A_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_A_C_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_B_A_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "retention_helmet_assault_B_B_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_3_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_combo_4_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_combo_4_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_0_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_1_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_2_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "hs_assault_combo_3_LOD1": {
+    "default_visible": false,
+    "lod": 1
+   },
+   "radio_assault_combo_3_LOD1": {
     "default_visible": false,
     "lod": 1
    },
@@ -4024,6 +4612,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M32-type (coyote, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -4037,7 +4630,10 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ],
     "lod": 1
    },
@@ -4062,6 +4658,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "leader",
+     "headset": true,
+     "comms": "Peltor ComTac III-type (od, helmet rails, mic boom); AN/PRC-152 + PTT",
+     "headset_desc": "Peltor ComTac III-type (od, helmet rails, mic boom)",
+     "radio_desc": "AN/PRC-152",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -4076,7 +4677,10 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ],
     "lod": 1
    },
@@ -4101,6 +4705,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; Baofeng UV-5R + long whip",
+     "headset_desc": "no ear protection",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -4117,7 +4726,9 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "radio_combo_2"
     ],
     "lod": 1
    },
@@ -4142,6 +4753,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "cheap passive ear muffs (olive, headband under the helmet); no radio",
+     "headset_desc": "cheap passive ear muffs (olive, headband under the helmet)",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -4157,7 +4773,9 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_3"
     ],
     "lod": 1
    },
@@ -4182,6 +4800,11 @@
      "legband_L": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "headset": true,
+     "comms": "Earmor M31-type (rail) (coyote, helmet rails); Motorola R7 + PTT",
+     "headset_desc": "Earmor M31-type (rail) (coyote, helmet rails)",
+     "radio_desc": "Motorola R7",
      "sling_node": "sling_back_ruck",
      "sling_socket": "weapon_socket_sling_ruck"
     },
@@ -4199,7 +4822,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_D_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ],
     "lod": 1
    },
@@ -4224,6 +4850,11 @@
      "legband_L": false,
      "groin_protector": false,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "headset": false,
+     "comms": "no ear protection; no radio",
+     "headset_desc": "no ear protection",
+     "radio_desc": "no radio",
      "sling_node": "sling_back_pouch",
      "sling_socket": "weapon_socket_sling_pouch"
     },
@@ -4238,7 +4869,8 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_C_C"
     ],
     "lod": 1
    },
@@ -4262,6 +4894,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "leader",
+     "comms": "Peltor ComTac III-type (coyote, helmet rails, mic boom); AN/PRC-152 + PTT",
+     "headset_desc": "Peltor ComTac III-type (coyote, helmet rails, mic boom)",
+     "radio_desc": "AN/PRC-152",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -4282,8 +4918,10 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ],
     "lod": 1
    },
@@ -4307,6 +4945,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": false,
+     "comms_role": "rifleman",
+     "comms": "Earmor M32-type (coyote, headband under the helmet); Motorola R7 + PTT",
+     "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+     "radio_desc": "Motorola R7",
      "sling_node": "sling_back",
      "sling_socket": "weapon_socket_sling"
     },
@@ -4326,8 +4968,10 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "headset",
-     "balaclava_B"
+     "balaclava_B",
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ],
     "lod": 1
    },
@@ -4351,6 +4995,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Earmor M31-type (rail) (od, helmet rails); Baofeng UV-5R + long whip + PTT",
+     "headset_desc": "Earmor M31-type (rail) (od, helmet rails)",
+     "radio_desc": "Baofeng UV-5R + long whip",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -4371,8 +5019,10 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ],
     "lod": 1
    },
@@ -4396,6 +5046,10 @@
      "gloves": true,
      "groin_protector": true,
      "shoulder_protectors": true,
+     "comms_role": "rifleman",
+     "comms": "Peltor ComTac III-type (od, headband under the helmet); Motorola DP4400 + PTT",
+     "headset_desc": "Peltor ComTac III-type (od, headband under the helmet)",
+     "radio_desc": "Motorola DP4400",
      "sling_node": "sling_back_pack",
      "sling_socket": "weapon_socket_sling_pack"
     },
@@ -4416,9 +5070,11 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_B_A",
+     "hs_assault_combo_3",
+     "radio_assault_combo_3"
     ],
     "lod": 1
    },
@@ -4546,14 +5202,26 @@
    "goggle_frame_tan",
    "goggle_lens_clear",
    "hands_skin",
+   "harness_pad",
+   "harness_ua",
+   "hg_ua",
+   "hs_boom",
+   "hs_cable",
+   "hs_seal",
+   "hs_yoke",
+   "hydro_tube",
    "kneepad_shell",
+   "mat_foam_ua",
    "medic_red",
    "mm14_camo",
-   "mm14_gear",
    "mm14_multicam_camo",
    "multicam_gear",
+   "pack_ua",
+   "radio_antenna",
    "radio_black",
    "ranger_gear",
+   "scrim_green",
+   "scrim_tan",
    "skin_A",
    "skin_B",
    "skin_C",
@@ -4624,7 +5292,30 @@
    "backpack_assault",
    "helmet_assault_A",
    "helmet_assault_B",
-   "headset",
+   "retention_helmet_A_A",
+   "retention_helmet_B_B",
+   "retention_helmet_C_C",
+   "retention_helmet_D_B",
+   "retention_helmet_assault_A_A",
+   "retention_helmet_assault_A_C",
+   "retention_helmet_assault_B_A",
+   "retention_helmet_assault_B_B",
+   "hs_combo_0",
+   "radio_combo_0",
+   "hs_combo_1",
+   "radio_combo_1",
+   "radio_combo_2",
+   "hs_combo_3",
+   "hs_combo_4",
+   "radio_combo_4",
+   "hs_assault_combo_0",
+   "radio_assault_combo_0",
+   "hs_assault_combo_1",
+   "radio_assault_combo_1",
+   "hs_assault_combo_2",
+   "radio_assault_combo_2",
+   "hs_assault_combo_3",
+   "radio_assault_combo_3",
    "balaclava_A",
    "balaclava_B",
    "balaclava_C",
@@ -4697,7 +5388,30 @@
    "backpack_assault_LOD1",
    "helmet_assault_A_LOD1",
    "helmet_assault_B_LOD1",
-   "headset_LOD1",
+   "retention_helmet_A_A_LOD1",
+   "retention_helmet_B_B_LOD1",
+   "retention_helmet_C_C_LOD1",
+   "retention_helmet_D_B_LOD1",
+   "retention_helmet_assault_A_A_LOD1",
+   "retention_helmet_assault_A_C_LOD1",
+   "retention_helmet_assault_B_A_LOD1",
+   "retention_helmet_assault_B_B_LOD1",
+   "hs_combo_0_LOD1",
+   "radio_combo_0_LOD1",
+   "hs_combo_1_LOD1",
+   "radio_combo_1_LOD1",
+   "radio_combo_2_LOD1",
+   "hs_combo_3_LOD1",
+   "hs_combo_4_LOD1",
+   "radio_combo_4_LOD1",
+   "hs_assault_combo_0_LOD1",
+   "radio_assault_combo_0_LOD1",
+   "hs_assault_combo_1_LOD1",
+   "radio_assault_combo_1_LOD1",
+   "hs_assault_combo_2_LOD1",
+   "radio_assault_combo_2_LOD1",
+   "hs_assault_combo_3_LOD1",
+   "radio_assault_combo_3_LOD1",
    "balaclava_A_LOD1",
    "balaclava_B_LOD1",
    "balaclava_C_LOD1",
@@ -4751,11 +5465,19 @@
      "pouches_side",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_0",
+     "radio_combo_0"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "Earmor M32-type (coyote, headband under the helmet); Baofeng UV-5R + long whip + PTT",
+    "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 24422,
+    "tris": 25030,
     "tape_tris": 840,
     "nodes": [
      "combo_0",
@@ -4789,11 +5511,19 @@
      "backpack",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_B_B",
+     "hs_combo_1",
+     "radio_combo_1"
     ],
+    "comms_role": "leader",
+    "headset": true,
+    "comms": "Peltor ComTac III-type (od, helmet rails, mic boom); AN/PRC-152 + PTT",
+    "headset_desc": "Peltor ComTac III-type (od, helmet rails, mic boom)",
+    "radio_desc": "AN/PRC-152",
     "sling_node": "sling_back_ruck",
     "sling_socket": "weapon_socket_sling_ruck",
-    "tris": 29919,
+    "tris": 30409,
     "tape_tris": 840,
     "nodes": [
      "combo_1",
@@ -4829,11 +5559,19 @@
      "armband_R",
      "legband_R",
      "legband_L",
-     "armor_groin"
+     "armor_groin",
+     "retention_helmet_C_C",
+     "hs_combo_2",
+     "radio_combo_2"
     ],
+    "comms_role": "rifleman",
+    "headset": false,
+    "comms": "no ear protection; Baofeng UV-5R + long whip",
+    "headset_desc": "no ear protection",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 27942,
+    "tris": 27402,
     "tape_tris": 1120,
     "nodes": [
      "combo_2",
@@ -4868,11 +5606,19 @@
      "kneepads",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_A_A",
+     "hs_combo_3",
+     "radio_combo_3"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "cheap passive ear muffs (olive, headband under the helmet); no radio",
+    "headset_desc": "cheap passive ear muffs (olive, headband under the helmet)",
+    "radio_desc": "no radio",
     "sling_node": "sling_back_pouch",
     "sling_socket": "weapon_socket_sling_pouch",
-    "tris": 25470,
+    "tris": 25310,
     "tape_tris": 840,
     "nodes": [
      "combo_3",
@@ -4909,11 +5655,19 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "armor_arms"
+     "armor_arms",
+     "retention_helmet_D_B",
+     "hs_combo_4",
+     "radio_combo_4"
     ],
+    "comms_role": "rifleman",
+    "headset": true,
+    "comms": "Earmor M31-type (rail) (coyote, helmet rails); Motorola R7 + PTT",
+    "headset_desc": "Earmor M31-type (rail) (coyote, helmet rails)",
+    "radio_desc": "Motorola R7",
     "sling_node": "sling_back_ruck",
     "sling_socket": "weapon_socket_sling_ruck",
-    "tris": 30519,
+    "tris": 31249,
     "tape_tris": 1210,
     "nodes": [
      "combo_4",
@@ -4947,11 +5701,19 @@
      "pouches_back",
      "armband_L",
      "armband_R",
-     "legband_R"
+     "legband_R",
+     "retention_helmet_C_C",
+     "hs_combo_5",
+     "radio_combo_5"
     ],
+    "comms_role": "rifleman",
+    "headset": false,
+    "comms": "no ear protection; no radio",
+    "headset_desc": "no ear protection",
+    "radio_desc": "no radio",
     "sling_node": "sling_back_pouch",
     "sling_socket": "weapon_socket_sling_pouch",
-    "tris": 27078,
+    "tris": 26246,
     "tape_tris": 840,
     "nodes": [
      "combo_5",
@@ -4992,12 +5754,18 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_A",
+     "hs_assault_combo_0",
+     "radio_assault_combo_0"
     ],
+    "comms_role": "leader",
+    "comms": "Peltor ComTac III-type (coyote, helmet rails, mic boom); AN/PRC-152 + PTT",
+    "headset_desc": "Peltor ComTac III-type (coyote, helmet rails, mic boom)",
+    "radio_desc": "AN/PRC-152",
     "sling_node": "sling_back_pack",
     "sling_socket": "weapon_socket_sling_pack",
-    "tris": 34542,
+    "tris": 34844,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_0",
@@ -5035,12 +5803,18 @@
      "legband_R",
      "legband_L",
      "armor_groin",
-     "headset",
-     "balaclava_B"
+     "balaclava_B",
+     "retention_helmet_assault_B_B",
+     "hs_assault_combo_1",
+     "radio_assault_combo_1"
     ],
+    "comms_role": "rifleman",
+    "comms": "Earmor M32-type (coyote, headband under the helmet); Motorola R7 + PTT",
+    "headset_desc": "Earmor M32-type (coyote, headband under the helmet)",
+    "radio_desc": "Motorola R7",
     "sling_node": "sling_back",
     "sling_socket": "weapon_socket_sling",
-    "tris": 29442,
+    "tris": 29838,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_1",
@@ -5079,12 +5853,18 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_A_C",
+     "hs_assault_combo_2",
+     "radio_assault_combo_2"
     ],
+    "comms_role": "rifleman",
+    "comms": "Earmor M31-type (rail) (od, helmet rails); Baofeng UV-5R + long whip + PTT",
+    "headset_desc": "Earmor M31-type (rail) (od, helmet rails)",
+    "radio_desc": "Baofeng UV-5R + long whip",
     "sling_node": "sling_back_pack",
     "sling_socket": "weapon_socket_sling_pack",
-    "tris": 34652,
+    "tris": 34766,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_2",
@@ -5123,13 +5903,19 @@
      "legband_L",
      "armor_groin",
      "armor_arms",
-     "headset",
      "balaclava_A",
-     "backpack_assault"
+     "backpack_assault",
+     "retention_helmet_assault_B_A",
+     "hs_assault_combo_3",
+     "radio_assault_combo_3"
     ],
+    "comms_role": "rifleman",
+    "comms": "Peltor ComTac III-type (od, headband under the helmet); Motorola DP4400 + PTT",
+    "headset_desc": "Peltor ComTac III-type (od, headband under the helmet)",
+    "radio_desc": "Motorola DP4400",
     "sling_node": "sling_back_pack",
     "sling_socket": "weapon_socket_sling_pack",
-    "tris": 31225,
+    "tris": 31589,
     "tape_tris": 1120,
     "nodes": [
      "assault_combo_3",
@@ -5258,9 +6044,10 @@
   "crew_notes": "Armoured-vehicle crew presets `crew_combo_<n>` (+ `crew_combo_<n>_tape`, + `_LOD1` siblings): same skeleton, skin and sockets as the infantry, ONE material each (soldier_atlas_crew_ua: its own 2048^2 atlas, base colour / normal / ORM like the infantry atlas), so 2 draw calls per crewman. Look: one-piece crew coverall (UA: MM-14 or olive) with full-length front zip, slanted chest zip pockets, thigh pockets, quilted knee / elbow pads, elastic waist and ankle tabs, flag patch on the left sleeve; Soviet padded tanker helmet (shlemofon TSh: longitudinal padded rolls, forehead roll, ear-phone housings, chin strap) black or olive, throat microphone band with the intercom cable; waist belt with a PM flap holster on the right hip and a utility pouch; light soft armour vest on presets 1 and 2; gloves or bare hands; boots; armbands / right thigh band with the recolourable `tape` material exactly like the infantry presets; no rucksack, no rifle (pistol: pm.glb in weapon_socket). No per-part crew nodes are written (only the presets), hidden by default (extras.combo = true).",
   "combo_notes": "Pre-combined presets for rendering (2 draw calls per soldier): `<name>` = ONE SkinnedMesh / ONE primitive with material soldier_atlas_ua (2048^2 atlas: base colour JPEG, normal PNG, ORM PNG [R=AO 1, G=roughness, B=metalness]) merging every visible part (body/head/eyes, hands or gloves, boots, vest, pouches, helmet, backpack, kneepads, assault armour, headset, balaclava); `<name>_tape` = the preset's arm/leg bands with the recolourable `tape` material; `<name>_LOD1` / `<name>_tape_LOD1` ~28% / ~40%. Same skeleton/skin as the per-part nodes, so all sockets keep working. extras.combo = true, hidden by default (show exactly one preset + its _tape and hide all per-part nodes). Camouflage is identical to the per-part materials: the uniform is copied texel-for-texel (90-degree turns only) at ~1.3 mm/texel (EMR / MM-14 pixels stay 3.5-6 texels wide), tiling gear camo is mapped into one wrap-padded repeat region per material at the same pattern scale (gear triangles never cross a repeat: components are shifted by whole tiles), vertex colours keep the baked AO. Balaclava presets drop the covered face triangles. Presets wearing the vest also drop the uniform triangles completely covered by it (every corner under the vest, skinned to the trunk).",
   "tape_alt_material": "tape (yellow #e8c31c)",
-  "sling_notes": "Slung weapons (v9, src/game/soldier.js stow()): a weapon not in his hands hangs on its sling on his back - parent it to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, measured onto the outer surface of that preset's back gear) with identity, and show extras.preset.sling_node (skinned 32 mm webbing sling, hidden by default) while anything hangs there. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel. Used for: the RPG gunner's AK (and his RPG-7 when he has the AK in his hands: same line, turned optic-out, origin +0.16 m gun-Y / +0.18 m gun-Z), the RPG-22 shooter's rifle while the launcher is up, medics / draggers / wounded, FPV assistant; ATGM crew lay the rifle down beside them during atgm_* clips. weapon_socket_back (ATGM tubes / folded launchers) is moved per man along the chest axis so that kit rests on his preset's back gear (Soldier.fitBackKit).",
-  "head_shading_notes": "Helmet / headset occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's headgear): brow, eyes, temples and ears darken under the brim.",
-  "v6_notes": "v9: packs (packs.py): rucksack (UA 3-day assault pack / RU Ratnik-type raid pack) and assault pack rebuilt with painted detail - one textured material per faction (pack_ua / pack_ru, placed in the preset atlas like the uniform): every pack / pocket face has its own chart with the gear camo plus a baked height field (coil zips with sliders and pulls, PALS webbing rows with bar tacks, laser-cut MOLLE, bound edges, stitched seams, velcro ID field with a UA flag patch, flat compression straps, grommets, labels) as normal map + cavity AO; geometry: side-release buckles, strap bridges, grab handles, karimat foam roll under the rucksack (spiral ends), MPL-50 entrenching tool on the RU rucksack, hydration tube and CAT tourniquet on the UA rucksack straps (webbing MOLLE rows moved from geometry into the texture: tris about unchanged). v8: wrists (wrist.py): sleeve ends cinched round the wrist with a 3.4 mm rounded hem + shadowed inner facing (the sleeves were open 6 cm tubes before), forearm skin continues 8 cm inside the sleeve, gloves with a cuff tucked under the sleeve (UA dark neoprene + velcro tab, RU knit) and a dark base-layer cuff; hem / tube skinned forearm-only behind the wrist (wrist_check.py: 111 clips, no poke-through). v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves 10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. Runtime damage (src/game/soldierDamage.js): materials soldier_atlas_* / *_camo / skin_* are patched once (defines SOLDIER_DMG, DMG_BASE = real bone count); each soldier's skinned meshes get 4 extra data bones (__dmg0..3, not in the scene graph) whose matrices carry up to 4 wounds (bind-space centre / radius, bandage band, code) + mud / rips / soot / back mud / fade / tint."
+  "sling_notes": "Slung weapons (v9, src/game/soldier.js stow()): a weapon not in his hands hangs on its sling on his back - parent it to the socket named in the visible preset's extras.preset.sling_socket (weapon_socket_sling / _pouch / _pack / _ruck: Spine1 children, measured onto the outer surface of that preset's back gear) with identity, and show extras.preset.sling_node (skinned 32 mm webbing sling, hidden by default) while anything hangs there. The rifle lies on its left side diagonally across the back, muzzle up behind the right shoulder, butt at the left hip; the sling runs from the front swivel over the right shoulder, across the chest to the left flank and round to the rear swivel. Used for: the RPG gunner's AK (and his RPG-7 when he has the AK in his hands: same line, turned optic-out, origin +0.16 m gun-Y / +0.18 m gun-Z), the RPG-22 shooter's rifle while the launcher is up, medics / draggers / wounded, FPV assistant; ATGM crew lay the rifle down beside them during atgm_* clips. weapon_socket_back (ATGM tubes / folded launchers) is moved per man along the chest axis so that kit rests on his preset's back gear (Soldier.fitBackKit). v10 sling: one continuous 32 mm strap from the front swivel over the right shoulder beside the neck, diagonally across the chest to the left hip, round the left flank at belt height to the rear swivel; every sample on a ray from inside the body is pulled taut against the outermost surface (body, vest, front / side pouches, radio pouches, the class's back gear) + 4.5 mm, so it lies on the kit and bridges hollows straight (no plateaus / gaps, no longer under the left arm); the strap ends wrap round the AK-74M swivel bars, sewn fold-back loops, slider + adjuster buckles.  AK-12: soldier.js moves it 3 cm up the sling line so its front swivel meets the strap.",
+  "head_shading_notes": "Helmet / headset / retention occlusion is baked per preset into the COLOR_0 vertex colours of the head, eyes and balaclava (sky-weighted hemisphere AO against that preset's helmet_*, hs_* and retention_* nodes): brow, eyes, temples and ears darken under the brim and the cups.",
+  "v6_notes": "v10 (2026-11): comms + ear protection per preset (comms.py: nodes hs_<preset> on the head - ear cups with leatherette seals, ARC rail adapters on FAST-type helmets or a headband yoke going up under the rim, knobs, mic boom for leaders - and radio_<preset> on the plate carrier - handheld radio in an open-top pouch with antenna, PTT on the left shoulder strap, cables cup -> neck -> PTT -> radio; cups fitted to each preset's own head and helmet: centred on the ear, pulled inside the shell's inner surface where a rim covers them, lowered under low rims); painted helmet shells (helmets.py, `hg_<fac>` charts in the preset atlas: cover seams + stitching, hem, creases, band shadow, bolt heads, labels, FAST loop-velcro fields, paint wear / chips / scratches on bare shells; the geometry seams / velcro strips were removed, -0.3..-0.6 k tris per helmet); 4-point retention harness per helmet x body variant (retention_<helmet>_<body>: front / rear straps round the ear to a junction, chin strap along the jaw to a chin cup, side-release buckle, nape cradle + pad with a ratchet dial on modern helmets; SSh-68: 2-point leather strap), projected onto that face (no floating, no skin penetration), scrim on the UA PASGT-type and RU 6B7; joint skin-weight clean-up (joints.py: diffusion round shoulders / elbows / hips / knees, measured with joints_check.py over every clip: mean deformation badness -28 %); rifle sling rebuilt (taut, continuous, over the right shoulder, across the chest to the left hip, round the flank to the rear swivel; strap ends wrap the swivels; adjuster + slider). v9: packs (packs.py): rucksack (UA 3-day assault pack / RU Ratnik-type raid pack) and assault pack rebuilt with painted detail - one textured material per faction (pack_ua / pack_ru, placed in the preset atlas like the uniform): every pack / pocket face has its own chart with the gear camo plus a baked height field (coil zips with sliders and pulls, PALS webbing rows with bar tacks, laser-cut MOLLE, bound edges, stitched seams, velcro ID field with a UA flag patch, flat compression straps, grommets, labels) as normal map + cavity AO; geometry: side-release buckles, strap bridges, grab handles, karimat foam roll under the rucksack (spiral ends), MPL-50 entrenching tool on the RU rucksack, hydration tube and CAT tourniquet on the UA rucksack straps (webbing MOLLE rows moved from geometry into the texture: tris about unchanged). v8: wrists (wrist.py): sleeve ends cinched round the wrist with a 3.4 mm rounded hem + shadowed inner facing (the sleeves were open 6 cm tubes before), forearm skin continues 8 cm inside the sleeve, gloves with a cuff tucked under the sleeve (UA dark neoprene + velcro tab, RU knit) and a dark base-layer cuff; hem / tube skinned forearm-only behind the wrist (wrist_check.py: 111 clips, no poke-through). v7: soft shaded cloth folds (smooth crease profile, tapered), UA open-top pouch mags turned broad-side out / feed lips down, soft blast smudges. v6 (2026-11): baggier layered uniform (build_soldier.thicken_uniform: per-vertex offset field, trunk 8-15 mm, sleeves 10-18 mm with bunching at the cuffs, trousers 11-28 mm: full thigh / seat, bunching above and below the knee pads, blousing over the boot tops, filled cargo / sleeve pockets; same topology, UVs and weights), re-baked uniform textures (rebake_v6.py: ragged printed MM-14 / EMR pixels with per-pixel tone variation, stronger folds, mud / grime / wear gradients), fuller pouches. Runtime damage (src/game/soldierDamage.js): materials soldier_atlas_* / *_camo / skin_* are patched once (defines SOLDIER_DMG, DMG_BASE = real bone count); each soldier's skinned meshes get 4 extra data bones (__dmg0..3, not in the scene graph) whose matrices carry up to 4 wounds (bind-space centre / radius, bandage band, code) + mud / rips / soot / back mud / fade / tint.",
+  "comms_notes": "Comms (v10, comms.py): every preset lists `comms_role` ('leader' | 'rifleman'), `comms`, `headset_desc`, `radio_desc`; its parts include hs_<preset> (head-mounted, rigid with Head; absent / empty when he wears no ear protection) and radio_<preset> (plate-carrier mounted, vest weights; the headset cable blends Head -> Neck -> vest).  src/game/soldier.js picks a preset with comms_role 'leader' for role.leader soldiers (squad / assault leaders, ATGM gunner, FPV pilot) and a non-leader preset for everyone else.  Loadouts (2022-25 photos): UA - Peltor ComTac III-type on ARC rails + mic boom + AN/PRC-152 (leaders), Earmor M31 on rails / M32 with headband + Motorola R7 / DP4400 or Baofeng UV-5R + PTT, cheap passive muffs, some without; RU - Earmor M32 / clones + mic boom + Azart R-187-P1 (leaders), GSSh-01 (Ratnik) + Baofeng UV-82, Kenwood-type handhelds, Baofeng UV-5R in a chest pouch without a headset, mobilised men without. Retention harness: retention_<helmet>_<body> (in the presets)."
  },
  "soldier_anims": {
   "file": "soldier_anims.glb",

@@ -168,7 +168,7 @@ def assault_pouches(env, fac):
     else:
         for th in (0.78, 1.02, -0.78, -1.02):
             out += PO.grenade_pouch(m, side_M(env, th, 1.08, 0.016), w=0.066, h=0.095)
-        out += PO.radio_pouch(m, side_M(env, 1.57, 1.10, 0.036), antenna=0.22)
+        pass   # v10: radio + PTT per preset (comms.py)
         out += PO.ifak(m, side_M(env, -1.57, 1.10, 0.036), w=0.13)
         out += PO.tourniquet(m, side_M(env, -1.3, 1.08, 0.016))
     return K.tag(out, 'pouches_assault')

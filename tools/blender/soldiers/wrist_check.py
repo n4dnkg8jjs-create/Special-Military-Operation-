@@ -34,6 +34,7 @@ def main():
     if '--step' in args:
         i = args.index('--step'); step = int(args[i + 1]); del args[i:i + 2]
     R = BS.load(); BS.thicken_uniform(R)
+    import joints as JT; JT.apply(R)          # v10: the shipped (cleaned) joint weights
     sk = R['skel']
     rig = A.Rig(sk, R['hands']['pos'], R['hands']['W'])
     S = WR.apply(R, rig)

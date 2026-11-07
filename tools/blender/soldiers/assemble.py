@@ -147,6 +147,11 @@ SOLIDS = {
     # soldiers_v9 packs (packs.PACK_SOLIDS): karimat foam, MPL-50 entrenching tool, hydration tube
     'mat_foam_ua': ('#5c5f45', 0.95, 0.0), 'mat_foam_ru': ('#4b5140', 0.95, 0.0),
     'shovel_paint': ('#474b38', 0.6, 0.25), 'shovel_wood': ('#6b5034', 0.75, 0.0), 'hydro_tube': ('#2d2f2a', 0.55, 0.0),
+    # soldiers_v10 (helmets.HG_SOLIDS / comms.CM_SOLIDS): harness straps / pads, scrim, headset seals / yokes / cables, antennas
+    'harness_ua': ('#3a3428', 0.85, 0.0), 'harness_ru': ('#2c2e27', 0.85, 0.0), 'harness_leather': ('#3d2d20', 0.6, 0.0),
+    'harness_pad': ('#1c1c1b', 0.9, 0.0), 'scrim_tan': ('#7b6a4b', 0.97, 0.0), 'scrim_green': ('#4f5338', 0.97, 0.0),
+    'hs_seal': ('#121212', 0.55, 0.0), 'hs_yoke': ('#1c1c1b', 0.5, 0.05), 'hs_cable': ('#151515', 0.5, 0.0),
+    'hs_boom': ('#141414', 0.45, 0.0), 'radio_antenna': ('#121212', 0.55, 0.0),
 }
 
 
@@ -169,6 +174,11 @@ class Mats:
             a, n = _tile('multicam' if self.fac == 'ua' else 'emr')
             alb, nrm = PK.texture(self.fac, a, n, {'ua': SOLIDS['mat_foam_ua'][0], 'ru': SOLIDS['mat_foam_ru'][0]})
             i = g.material(name, color=(1, 1, 1, 1), base_tex=g.image(alb, quality=88), normal_tex=g.image(nrm, 'PNG'), roughness=0.92)
+        elif name.startswith('hg_'):
+            # soldiers_v10: painted helmet shells, headset cups, radio fronts, PTT (helmets.py / comms.py)
+            import helmets as HG
+            alb, nrm = HG.texture(self.fac)
+            i = g.material(name, color=(1, 1, 1, 1), base_tex=g.image(alb, quality=88), normal_tex=g.image(nrm, 'PNG'), roughness=0.7)
         elif name == 'tape':
             col = '#e9e9e4' if self.fac == 'ru' else '#e8c31c'
             i = g.material('tape', color=TX.hexc(col).tolist() + [1], roughness=0.32, extras={'recolourable': True})

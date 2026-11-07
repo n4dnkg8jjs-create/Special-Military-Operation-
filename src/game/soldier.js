@@ -77,7 +77,10 @@ export class Soldier {
       const combos = []; m.traverse(o => { const mm = o.name.match(/^((?:assault_|crew_)?combo_\d+)$/); if (mm) combos.push(mm[1]); });
       const pre = this.squad.crew && combos.some(c => c.startsWith('crew_')) ? 'crew_' : this.assault && combos.some(c => c.startsWith('assault_')) ? 'assault_' : '';
       const pool = combos.filter(c => (c.match(/^(assault_|crew_)/)?.[1] || '') === pre);
-      const combo = pool.length ? (pool.includes(this.squad.forceCombo) ? this.squad.forceCombo : pool[Math.floor(r() * pool.length)]) : null;   // (forceCombo: preview pages)
+      // v10 comms: leaders get a preset with the leader's comms (headset + mic boom + PRC-152 / R-187 + PTT), everyone else one without
+      const lead = c => m.getObjectByName(c)?.userData?.preset?.comms_role === 'leader', byRole = pool.filter(c => lead(c) === !!this.role?.leader);
+      const pick = byRole.length ? byRole : pool;
+      const combo = pool.length ? (pool.includes(this.squad.forceCombo) ? this.squad.forceCombo : pick[Math.floor(r() * pick.length)]) : null;   // (forceCombo: preview pages)
       this.comboName = combo;
       const gloves = this.assault || r() < 0.4, backpack = r() < (this.role.weapon === 'rpg7' ? 0.9 : this.assault ? 0.7 : 0.3), knee = this.assault || r() < 0.45;
       const legL = this.faction.id === 'UA' ? r() < 0.35 : r() < 0.15;
@@ -165,6 +168,7 @@ export class Soldier {
     if (!sock || key === 'pm') { o.visible = false; o.parent?.remove(o); this.slingUpdate(); return; }
     sock.add(o); o.visible = true; this._stowFar = undefined;
     if (key === 'rpg7' && this.slingSock) { o.position.set(0, 0.16, 0.18); o.quaternion.set(0, 0, 1, 0); } else { o.position.set(0, 0, 0); o.quaternion.identity(); }
+    if (key === 'ak12' && this.slingSock) o.position.set(0, 0.008, 0.03);   // v10 sling: AK-12 swivels sit 4 cm further back than the AK-74M's the strap is built for
     if (this.backKitDepth && sock === this.slingSock) o.position.x -= this.backKitDepth;   // over the TLC / tripod (sling socket +X = toward the body)
     this.slingUpdate();
   }

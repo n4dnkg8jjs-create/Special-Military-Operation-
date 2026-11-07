@@ -78,7 +78,7 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             side = 'Left' if p['pos'][:, 0].mean() > 0 else 'Right'
             W[:, idx[side + 'Leg']] = 1
             p['W'] = W
-        elif grp.startswith('helmet') or grp == 'headset':
+        elif grp.startswith('helmet') or grp == 'headset' or grp.startswith('hs_') or grp.startswith('retention_'):
             W = np.zeros((len(p['pos']), rig_sk.n), np.float32); W[:, idx['Head']] = 1; p['W'] = W
         elif grp == 'armor_arms':
             sd = p.get('side') or ('Left' if p['pos'][:, 0].mean() > 0 else 'Right')
@@ -127,6 +127,27 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             w = w / max(w.sum(), 1e-9)
             for p in body:
                 p['W'] = np.repeat(w[None], len(p['pos']), 0)
+        # soldiers_v10 comms: radio / pouch / PTT rigid with the plate carrier where they sit; cables follow the vest, the
+        # headset cable blends to the head over its first ~6 cm (p['cable_head'] = per-vertex head share)
+        for p in parts:
+            if not p.get('group', '').startswith('radio_'):
+                continue
+            if p.get('cable_head') is not None or p['mat'] in ('hs_cable', 'radio_antenna') and 'local' not in p:
+                _, nn = tree.query(p['pos'], k=6)
+                Wv = VW[nn].mean(1)
+                if p.get('cable_head') is not None:
+                    Wh = np.zeros_like(Wv); Wh[:, idx['Head']] = 1
+                    f = np.asarray(p['cable_head'])[:, None]
+                    # middle of the run (neck): share the neck so it does not tear when he looks round
+                    Wn = np.zeros_like(Wv); Wn[:, idx['Neck']] = 1
+                    g = np.clip(1 - np.abs(f - 0.5) * 2, 0, 1) * 0.6
+                    Wv = Wh * f + Wv * (1 - f)
+                    Wv = Wv * (1 - g) + Wn * g
+                p['W'] = (Wv / Wv.sum(1, keepdims=True)).astype(np.float32)
+            else:
+                _, nn = tree.query(p['pos'].mean(0)[None], k=8)
+                w = VW[nn.reshape(-1)].mean(0); w /= w.sum()
+                p['W'] = np.repeat(w[None], len(p['pos']), 0).astype(np.float32)
     return parts
 
 
@@ -192,9 +213,12 @@ def make_gear(R, fac, env, which=None):
     # head meshes of all body variants: chin straps are projected onto these (env.trees only holds the uniform)
     htrees = [BVHTree.FromPolygons([tuple(p_) for p_ in R['variants'][v]['head_pos']], [tuple(map(int, t)) for t in R['head']['tri']], all_triangles=True)
               for v in 'ABC']
+    hctx = {}
     for nm, kind in STD_HELMETS[fac].items():
         for q in K.helmet(kind, c, r, mm, fac, trees=htrees):
             q['group'] = nm; parts.append(q)
+            if 'helmet_ctx' in q:
+                hctx[nm] = q.pop('helmet_ctx')
     sk = R['skel']; J = lambda n: sk.head[sk.idx[n]]
     for sd, sx in (('Left', 1), ('Right', -1)):
         p = K.tape_band(env.trees, J(sd + 'Arm'), J(sd + 'ForeArm'), 0.12, np.array([sx, 0, 0.0]), seed=sx + 2)
@@ -215,7 +239,17 @@ def make_gear(R, fac, env, which=None):
     for kind, nm, ms in ((hA2, 'helmet_assault_A', mm), (hB2, 'helmet_assault_B', amm if fac == 'ru' else mm)):
         for q in K.helmet(kind, c, r, ms, fac, trees=htrees):
             q['group'] = nm; parts.append(q)
-    parts += AT.headset(c, r, fac)
+            if 'helmet_ctx' in q:
+                hctx[nm] = q.pop('helmet_ctx')
+    # soldiers_v10: 4-point retention harness per (helmet, body variant) used by a preset, comms per preset (helmets.py / comms.py)
+    import helmets as HG, comms as CM
+    skins = {v: HG.Skin(R['variants'][v]['head_pos'], R['head']['tri'], c) for v in 'ABC'}
+    lms = {v: R['variants'][v]['lm'] for v in 'ABC'}
+    std, ast = presets(fac)
+    for hn, bv in sorted({(pr['helmet'], pr['body'][-1]) for pr in std + ast}):
+        for q in HG.retention(hctx[hn], skins[bv], lms[bv], fac, log=print):
+            q['group'] = f'retention_{hn}_{bv}'; parts.append(q)
+    parts += CM.build(fac, std + ast, hctx, skins, lms, env, parts, mm, log=print)
     for vn in 'ABC':
         parts.append(AT.balaclava(R, vn, fac))
     if which:
@@ -406,7 +440,8 @@ def make_slings(R, fac, env, parts, rig, log=print):
     wa = U['W'][:, [idx[b] for b in ARM_BONES]].sum(1)
     trunk = U['tri'][(wa[U['tri']] < 0.35).all(1)]          # no sleeves: in the bind pose the arms hang out to the sides
     body = [(R['variants'][v]['uniform_pos'], trunk) for v in 'ABC']
-    base_meshes = body + [(p['pos'], p['tri']) for p in vest + by('pouches_front')]
+    radios = [p for p in parts if p['group'].startswith('radio_') and p['mat'] not in ('radio_antenna', 'hs_cable')]   # v10: comms pouches
+    base_meshes = body + [(p['pos'], p['tri']) for p in vest + by('pouches_front') + by('pouches_side') + radios]
     Rg = np.stack([SLING_XG, SLING_YG, SLING_ZG], 1)
     mat = 'sling_ru' if fac == 'ru' else 'sling_ua'
     # footprint of the rifle's left side (receiver .. handguard, incl. the side-mount optic) in gun space
@@ -428,47 +463,70 @@ def make_slings(R, fac, env, parts, rig, log=print):
         P0[2] = np.percentile(zs, 3) - 0.004 - 0.035
         q_sock = qfrom_mat(Rg)
         Fw = P0 + Rg @ SWIVEL_F; Rw = P0 + Rg @ SWIVEL_R
-        # ---- guide path (outward-projected samples)
-        def proj(o, d, extra_off=0.0055):
+        # ---- guide rays (v10 sling): every sample lives on a ray from inside the body (origin o, direction d) and may not come
+        # closer to it than the outermost surface (body / vest / pouches / side pouches / radios / back gear) + 5 mm.  Route:
+        # front swivel -> over the right shoulder (beside the neck) -> diagonally across the chest -> left hip -> round the left
+        # flank at belt height -> rear swivel at the butt (the carry the slung-rifle frame was designed for; the strap no longer
+        # passes under the left arm).  The samples are then pulled taut (constrained relaxation: each point slides along its ray
+        # toward its neighbours' midpoint but never into the surface) -> the strap lies on the body / gear and bridges hollows
+        # in straight lines like real tensioned webbing, without the plateaus of the old max filter.
+        def surf_r(o, d):
             d = d / np.linalg.norm(d)
             h = tree.ray_cast(Vector(o + d * 0.6), Vector(-d), 0.6)
-            r = 0.6 - h[3] if h[0] is not None else 0.15
-            return r, d
-        samples = []        # (origin, dir, r)
+            return (0.6 - h[3]) if h[0] is not None else 0.0
+        rays = []           # (o, d, rmin, fixed point or None)
         yc = 1.36; zc = float(env.zcen(yc))
-        for ph in np.radians(np.linspace(150, 22, 16)):          # over the right shoulder, back -> front (trapezius beside the neck)
+        for ph in np.radians(np.linspace(150, 22, 14)):          # over the right shoulder, back -> front (trapezius beside the neck)
             u = (np.radians(150) - ph) / np.radians(128)
-            x = -0.078 - 0.03 * u
-            o = np.array([x, yc, zc]); r, d = proj(o, np.array([0, np.sin(ph), np.cos(ph)]))
-            samples.append((o, d, r))
+            o = np.array([-0.078 - 0.03 * u, yc, zc]); d = np.array([0, np.sin(ph), np.cos(ph)])
+            rays.append((o, d))
         n2 = 22
-        for u in np.linspace(0, 1, n2)[1:]:                       # across the chest to the left flank under the arm
-            th = -0.72 + (1.50 + 0.72) * u; y = 1.40 - 0.17 * u
-            o = np.array([0, y, float(env.zcen(y))]); r, d = proj(o, np.array([np.sin(th), 0, np.cos(th)]))
-            samples.append((o, d, r))
+        th0, y0 = -0.70, 1.40
+        th1, y1 = 1.40, 1.13                                  # left side, on the cummerbund (below the arm, above the belt)
+        for u in np.linspace(0, 1, n2)[1:]:                       # diagonally across the chest to the left hip
+            th = th0 + (th1 - th0) * u; y = y0 + (y1 - y0) * u
+            o = np.array([0, y, float(env.zcen(y))]); rays.append((o, np.array([np.sin(th), 0, np.cos(th)])))
         thR = np.arctan2(Rw[0], Rw[2] - float(env.zcen(Rw[1])))
-        for u in np.linspace(0, 1, 14)[1:-2]:                     # round the left side, down the back toward the rear swivel
-            th = 1.50 + (thR - 1.50) * u; y = 1.23 + (Rw[1] + 0.02 - 1.23) * u
-            o = np.array([0, y, float(env.zcen(y))]); r, d = proj(o, np.array([np.sin(th), 0, np.cos(th)]))
-            samples.append((o, d, r))
-        r = np.array([s_[2] for s_ in samples])
-        k = 3
-        rp = np.pad(r, k, mode='edge')
-        r = np.array([rp[i:i + 2 * k + 1].max() for i in range(len(r))])      # taut over pouches / dips
-        rp = np.pad(r, 2, mode='edge'); r = np.convolve(rp, np.ones(5) / 5, mode='valid')
-        C = np.array([o + d * (rr + 0.0055) for (o, d, _), rr in zip(samples, r)])
-        Nn = np.array([d for (_, d, _) in samples])
-        for _ in range(2):
-            C[1:-1] = 0.5 * C[1:-1] + 0.25 * (C[:-2] + C[2:])
-        # straight runs from the swivels (strap face parallel to the gun's side at the swivel)
+        for u in np.linspace(0, 1, 14)[1:-1]:                     # round the left flank at belt height toward the rear swivel
+            th = th1 + (thR - th1) * u; y = y1 + (Rw[1] + 0.03 - y1) * u
+            o = np.array([0, y, float(env.zcen(y))]); rays.append((o, np.array([np.sin(th), 0, np.cos(th)])))
+        O = np.array([r_[0] for r_ in rays]); D = np.array([r_[1] / np.linalg.norm(r_[1]) for r_ in rays])
+        rmin = np.array([surf_r(o, d) for o, d in zip(O, D)]) + 0.0045
+        t = rmin.copy()
+        A_ = Fw + np.array([0, 0, -1.0]) * 0.0; B_ = Rw.copy()
+        for it in range(400):                                    # pull taut
+            P = O + D * t[:, None]
+            Pp = np.concatenate([[A_], P, [B_]])
+            mid = 0.5 * (Pp[:-2] + Pp[2:])
+            tn = np.sum((mid - O) * D, 1)
+            t = np.maximum(rmin, t + 0.5 * (tn - t))
+        C = O + D * t[:, None]
+        Nn = D.copy()
+        # straight runs from the swivels (strap face parallel to the gun's side at the swivel), checked against the surface
         nback = np.array([0, 0, -1.0])
         def run(a, b, na, nb, m):
             t_ = np.linspace(0, 1, m)[:, None]
             nn = na * (1 - t_) + nb * t_
-            return a * (1 - t_) + b * t_, nn / np.linalg.norm(nn, axis=1, keepdims=True)
-        A1, NA1 = run(Fw + nback * 0.006, C[0], nback, Nn[0], 7)
-        A2, NA2 = run(C[-1], Rw + nback * 0.006, Nn[-1], nback, 7)
+            pts = a * (1 - t_) + b * t_
+            for i in range(1, m - 1):
+                o_ = np.array([pts[i][0] * 0.3, pts[i][1], float(env.zcen(pts[i][1]))]); d_ = pts[i] - o_; L_ = np.linalg.norm(d_); d_ /= L_
+                rr = surf_r(o_, d_) + 0.0045
+                if L_ < rr:
+                    pts[i] = o_ + d_ * rr
+            return pts, nn / np.linalg.norm(nn, axis=1, keepdims=True)
+        A1, NA1 = run(Fw, C[0], nback, Nn[0], 6)
+        A2, NA2 = run(C[-1], Rw, Nn[-1], nback, 6)
         Cl = np.concatenate([A1[:-1], C, A2[1:]]); Nl = np.concatenate([NA1[:-1], Nn, NA2[1:]])
+        # even resampling (~14 mm) + light smoothing of the centre line and the strap normal (no kinks / twists)
+        sg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Cl, axis=0), axis=1))]
+        ns = max(int(sg[-1] / 0.014), 8)
+        S_ = np.linspace(0, sg[-1], ns + 1)
+        Cl = np.stack([np.interp(S_, sg, Cl[:, i]) for i in range(3)], 1)
+        Nl = np.stack([np.interp(S_, sg, Nl[:, i]) for i in range(3)], 1)
+        for _ in range(3):
+            Cl[1:-1] = 0.5 * Cl[1:-1] + 0.25 * (Cl[:-2] + Cl[2:])
+            Nl[1:-1] = 0.5 * Nl[1:-1] + 0.25 * (Nl[:-2] + Nl[2:])
+        Nl /= np.linalg.norm(Nl, axis=1, keepdims=True)
         # ---- strap ribbon (closed 4-sided section, 32 x 2.8 mm)
         Tn = np.gradient(Cl, axis=0); Tn /= np.linalg.norm(Tn, axis=1, keepdims=True)
         Sd = np.cross(Tn, Nl); Sd /= np.linalg.norm(Sd, axis=1, keepdims=True)
@@ -492,10 +550,13 @@ def make_slings(R, fac, env, parts, rig, log=print):
         f_c = 1 - _sstep(0.05, 0.22, s_end)
         hw = []
         # slider buckle on the chest + sewn loops at both swivels
-        ib = len(A1) - 1 + int(len(C) * 0.30)
+        ib = int(nc * 0.36)
         hw.append((PO.local_part(PO.rbox(w + 0.007, 0.016, 0.0065, 0.0015, 1), PO.mat4(Cl[ib] + Nl[ib] * 0.0015, Sd[ib], Tn[ib], Nl[ib]), 'sling_metal', 'hard'), ib))
-        for ie in (1, nc - 2):
-            hw.append((PO.local_part(PO.rbox(w * 0.96, 0.034, 0.0060, 0.0015, 1), PO.mat4(Cl[ie] + Nl[ie] * 0.0012, Sd[ie], Tn[ie], Nl[ie]), mat, 'hard'), ie))
+        for ie in (2, nc - 3):            # sewn fold-back loops just short of the swivels
+            hw.append((PO.local_part(PO.rbox(w * 0.98, 0.040, 0.0062, 0.0015, 1), PO.mat4(Cl[ie] + Nl[ie] * 0.0014, Sd[ie], Tn[ie], Nl[ie]), mat, 'hard'), ie))
+        for ie in (0, nc - 1):            # the strap's end wrapped round the swivel bar (no gap to the gun)
+            hw.append((PO.local_part(PO.rbox(w * 0.9, 0.012, 0.009, 0.004, 1), PO.mat4(Cl[ie], Sd[ie], Tn[ie], Nl[ie]), mat, 'hard'), ie))
+        hw.append((PO.local_part(PO.rbox(w + 0.010, 0.022, 0.0055, 0.0015, 1), PO.mat4(Cl[int(nc * 0.72)] + Nl[int(nc * 0.72)] * 0.0015, Sd[int(nc * 0.72)], Tn[int(nc * 0.72)], Nl[int(nc * 0.72)]), 'sling_metal', 'hard'), int(nc * 0.72)))   # adjuster
         sparts = [strap] + [h_ for h_, _ in hw]
         cen_of = [np.repeat(np.arange(nc), 4)] + [np.full(len(h_['pos']), i_) for h_, i_ in hw]
         Ws = []
@@ -558,10 +619,13 @@ def write_body(W, R, fac, vn, mats_cache, lod=False):
 
 
 def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=True, with_lod=False, ao=True, combos_on=True, crew_on=True,
-          thick=True, sling=True, wrist=True):
+          thick=True, sling=True, wrist=True, joints=True):
     R = load()
     if thick:
         thicken_uniform(R)
+    if joints:
+        import joints as JT                   # soldiers_v10: joint weight clean-up (before the wrist hems / gear weights)
+        JT.apply(R)
     sk = R['skel']
     rig = A.Rig(sk, R['hands']['pos'], R['hands']['W'])
     # soldiers_v8: cinched sleeve ends + hems, forearm continued inside the sleeve, glove cuffs (rig built from the original hands)
@@ -629,15 +693,19 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
                 p['pos'] = p['pos'] + np.array([0, 0, dz])
             print(f'{grp}: moved {dz * 100:.1f} cm onto the plate carrier')
     ref_pos = R['variants']['A']['uniform_pos']; ref_W = R['uniform']['W']
-    parts = [PK.finish_uv(p) if ('charts' in p or 'pack_end' in p) else G.box_uv(p, 2.0) if 'local' in p else p for p in parts]   # v9: pack charts
+    import helmets as HG
+    parts = [HG.chart_ab_uv(p) if 'chart_ab' in p else PK.finish_uv(p) if ('charts' in p or 'pack_end' in p) else G.box_uv(p, 2.0) if 'local' in p else p
+             for p in parts]   # v9: pack charts, v10: helmet shell / comms charts
     for p in parts:
         if p['nrm'] is None:
             p['nrm'] = MU.vertex_normals(p['pos'], p['tri'])
     if ao:
         body_tris = [(R['variants']['B']['uniform_pos'], R['uniform']['tri'])]
-        vertex_ao([p for p in parts if not p['group'].startswith('helmet') and not p['group'].startswith('balaclava') and p['group'] != 'headset'], body_tris)
-        for hn in ('helmet_A', 'helmet_B', 'helmet_C', 'helmet_D', 'helmet_assault_A', 'helmet_assault_B'):
-            vertex_ao([p for p in parts if p['group'] == hn], [(R['variants']['B']['head_pos'], R['head']['tri'])])
+        headg = lambda g: g.startswith('helmet') or g.startswith('balaclava') or g == 'headset' or g.startswith('hs_') or g.startswith('retention_')
+        vertex_ao([p for p in parts if not headg(p['group'])], body_tris)
+        for hn in sorted({p['group'] for p in parts if headg(p['group']) and not p['group'].startswith('balaclava')}):
+            bv = hn[-1] if hn.startswith('retention_') else 'B'
+            vertex_ao([p for p in parts if p['group'] == hn], [(R['variants'][bv]['head_pos'], R['head']['tri'])])
     gear_weights(sk, ref_pos, ref_W, parts)
     slings = make_slings(R, fac, env, parts, rig, log=print) if sling else []
     mats = AS.Mats(g, fac)
@@ -652,7 +720,8 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
             Wm = np.concatenate([p['W'] for p in ps])
             prims.append(dict(pos=m['pos'], nrm=m['nrm'], uv=m['uv'], idx=m['tri'], mat=mats(mname), W=Wm, color=m['col']))
             tri_count[gname] = tri_count.get(gname, 0) + len(m['tri'])
-        hidden = gname in ('helmet_B', 'helmet_C', 'helmet_D', 'backpack', 'legband_L', 'kneepads', 'pouches_back') or gname in ASSAULT_NODES or gname.startswith('balaclava')
+        hidden = gname in ('helmet_B', 'helmet_C', 'helmet_D', 'backpack', 'legband_L', 'kneepads', 'pouches_back') or gname in ASSAULT_NODES or gname.startswith('balaclava') \
+            or gname.startswith(('hs_', 'radio_', 'retention_'))     # v10: per preset, used by the combos
         W.skinned(gname, prims, extras={'default_visible': not hidden}, lod=0.28)
     for sl in slings:
         # rifle sling for the rifle slung on the back: separate small node per back-gear depth class, hidden by default (the game
@@ -690,7 +759,7 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
 
 
 ASSAULT_NODES = ('armor_assault', 'armor_groin', 'armor_arms', 'pouches_assault', 'elbowpads', 'backpack_assault',
-                 'helmet_assault_A', 'helmet_assault_B', 'headset')
+                 'helmet_assault_A', 'helmet_assault_B')
 BANDS = ['armband_L', 'armband_R', 'legband_R']
 BASE = ['boots', 'vest', 'pouches_front']
 
@@ -725,14 +794,25 @@ def presets(fac):
     ast = []
     for k, (b, h, hs, bal, pack, groin, arms) in enumerate(as_spec):
         parts = [f'body_{b}', f'helmet_assault_{h}'] + BASE + AB + BANDS + ['legband_L'] + (['armor_groin'] if groin else []) + (['armor_arms'] if arms else [])
-        if hs:
-            parts.append('headset')
         if bal:
             parts.append(f'balaclava_{b}')
         if pack:
             parts.append('backpack_assault')
         ast.append(dict(name=f'assault_combo_{k}', body=f'body_{b}', helmet=f'helmet_assault_{h}', helmet_desc=hdesc[h], headset=hs,
                         balaclava=bal, backpack_assault=pack, gloves=True, groin_protector=groin, shoulder_protectors=arms, parts=parts))
+    # soldiers_v10: retention harness of the preset's helmet on its own head, comms (headset / radio / PTT / cables) per preset
+    import comms as CM
+    for pr in std + ast:
+        pr['parts'] = [n for n in pr['parts'] if n != 'headset']
+        pr['parts'] += [f"retention_{pr['helmet']}_{pr['body'][-1]}", f"hs_{pr['name']}", f"radio_{pr['name']}"]
+        d = CM.describe(fac, pr['name'])
+        if d:
+            pr.update(d)
+            pr['headset'] = d['headset'] != 'no ear protection'
+            pr['comms'] = f"{d['headset']}; {d['radio']}{' + PTT' if d['ptt'] else ''}"
+            for k_ in ('radio', 'ptt'):
+                pr.pop(k_, None)
+            pr['headset_desc'] = d['headset']; pr['radio_desc'] = d['radio']
     return std, ast
 
 

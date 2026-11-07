@@ -150,7 +150,7 @@ def plate_carrier(env, fac):
         # 6Sh117-style: three double AK mag pouches low on the front (belly), radio + grenade pouch above them
         for k, x in enumerate((-0.092, 0.0, 0.092)):
             out += tag(PO.mag_pouch(m, panel_M(ffr, x, fy(1.072))), 'pouches_front')
-        out += tag(PO.radio_pouch(m, panel_M(ffr, 0.075, fy(1.247)), antenna=0.2), 'pouches_front')
+        # (radio pouch: comms.py, per preset - v10)
         out += tag(PO.grenade_pouch(m, panel_M(ffr, -0.075, fy(1.242))), 'pouches_front')
         # sides: grenade pouches (left), IFAK (right)
         out += tag(PO.grenade_pouch(m, side_M(env, 1.25, 1.075, 0.018)), 'pouches_side')
@@ -168,7 +168,7 @@ def plate_carrier(env, fac):
         out += tag([PO.local_part(PO.rbox(0.07, 0.022, 0.003, 0.0, 1), Mf @ PO.T(0, 0.011, 0), m['flag_a'], 'hard'),
                     PO.local_part(PO.rbox(0.07, 0.022, 0.003, 0.0, 1), Mf @ PO.T(0, -0.011, 0), m['flag_b'], 'hard')], 'pouches_front')
         out += tag(PO.tourniquet(m, panel_M(ffr, -0.085, 0.075)), 'pouches_front')
-        out += tag(PO.radio_pouch(m, side_M(env, 1.15, 1.09, 0.015), antenna=0.22), 'pouches_side')
+        # (radio pouch: comms.py, per preset - v10)
         out += tag(PO.ifak(m, side_M(env, -1.75, 1.07, 0.015), w=0.15, cross=True), 'pouches_side')
         out += tag(PO.grenade_pouch(m, side_M(env, -1.25, 1.09, 0.015)), 'pouches_side')
         out += tag(PO.hydration(m, panel_M(bfr, 0, -0.16), w=0.21, h=0.28, d=0.05), 'pouches_back')
@@ -190,7 +190,7 @@ HELMETS = {
     # with a white identification-tape band (2022-23 photos) -> recolourable `tape`
     '6b7': dict(rim_pts=((0, 3), (40, -2), (70, -19), (100, -29), (140, -29), (180, -26)), scale=(1.06, 1.03, 1.06), off=0.040, sq=2.0,
                 cover='fabric', band=True, band_mat='tape', band_el=(15, 22), nvg=False, rails=False, seams=True, pucker=True,
-                skirt=((0, 0.004), (60, 0.006), (110, 0.009), (180, 0.008)), naz=48),
+                skirt=((0, 0.004), (60, 0.006), (110, 0.009), (180, 0.008)), naz=48, scrim=True),
     # SSh-68 (steel, olive paint; mobilised / LDPR troops 2022): steep front, near-vertical lower sides, flared brim all round
     'ssh68': dict(rim_pts=((0, 9), (45, 3), (80, -17), (110, -23), (150, -24), (180, -22)), scale=(1.05, 0.97, 1.07), off=0.033, sq=2.15,
                   cover=None, shell_mat='ssh68_paint', band=False, nvg=False, rails=False, thin=True,
@@ -202,12 +202,14 @@ HELMETS = {
     'fast_hc': dict(rim_pts=((0, -5), (44, -5), (56, -4), (62, 0), (68, 5), (74, 6.5), (106, 6.5), (113, 3), (120, -6), (130, -17),
                              (150, -27), (180, -31)),
                     scale=(1.04, 1.02, 1.05), off=0.031, sq=2.5, cover=None, shell_mat='ranger_gear', band=False, nvg=False,
-                    rails=False, arc=True, shroud=True, velcro=True, cord=True, counterweight=True, naz=120, flare0=0.0, cw_el=-10),
+                    rails=False, arc=True, shroud=True, velcro=True, cord=True, counterweight=True, naz=120, flare0=0.0, cw_el=-10,
+                    velcro_paint=[(np.radians(-32), np.radians(32), np.radians(46), np.radians(70)), (np.radians(70), np.radians(114), np.radians(26), np.radians(36)),
+                                  (np.radians(154), np.radians(181), np.radians(8), np.radians(22))]),
     # standard issue (PASGT-type kevlar / TOR-D): deeper bowl covering the ears, visor lip at the brow, flared skirt at the
     # sides and back; MM-14 cloth cover with an elastic band
     'pasgt': dict(rim_pts=((0, 2), (30, -2), (55, -14), (80, -30), (110, -34), (145, -33), (180, -30)),
                   scale=(1.04, 1.0, 1.06), off=0.034, sq=2.1, cover='fabric', shell_mat='mm14_gear', band=True, nvg=False, rails=False,
-                  skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56, seams=True, pucker=True),
+                  skirt=((0, 0.010), (40, 0.004), (80, 0.013), (130, 0.016), (180, 0.015)), naz=56, seams=True, pucker=True, scrim=True),
     # TOR-D / Kirasa kaska in a MultiCam cover with coyote band and ballistic goggles pushed up (2023-24 photos)
     'pasgt_mc': dict(rim_pts=((0, 2), (30, -2), (55, -14), (80, -30), (110, -34), (145, -33), (180, -30)),
                      scale=(1.04, 1.0, 1.06), off=0.034, sq=2.1, cover='fabric', shell_mat='multicam_gear', band=True, nvg=False, rails=False,
@@ -241,14 +243,15 @@ def rim_el(az, rim):
     return f * w_f + s * w_s + b * w_b
 
 
-def helmet(kind, c, r, mats, fac, trees=None):
+def helmet(kind, c, r, mats, fac, trees=None, retention_ctx=True):
     H = HELMETS[kind]
     m = dict(mats)
     if H.get('shell_mat'):
         m['fabric'] = H['shell_mat']
     out = []
     naz, nel = H.get('naz', 36), 12 if H.get('rim_pts') else 10
-    az = np.linspace(-np.pi, np.pi, naz, endpoint=False)
+    nu = naz + 1                                # soldiers_v10: open seam column at the back (painted shell chart, helmets.py)
+    az = np.linspace(-np.pi, np.pi, nu)
     R = r * H['scale'] + H['off']
     sq = H.get('sq', 2.0)
     def per_az(pts, a):                         # symmetric curve given at 0..180 deg (deg -> value), periodic interpolation
@@ -263,11 +266,15 @@ def helmet(kind, c, r, mats, fac, trees=None):
         return c[None] + np.stack([x, y, z], -1) * (rr + extra)[..., None]
     t = np.linspace(0, 1, nel)
     AZ, TT = np.meshgrid(az, t)
-    re = np.radians(per_az(H['rim_pts'], AZ)) if H.get('rim_pts') else rim_el(AZ, H['rim'])
+    rim_fn = (lambda a: np.radians(per_az(H['rim_pts'], a))) if H.get('rim_pts') else (lambda a: rim_el(a, H['rim']))
+    def flare_fn(AZ_, TT_):
+        f = H.get('flare0', 0.004) * np.clip(1 - TT_ * 4, 0, 1)
+        if H.get('skirt'):                      # flared skirt / visor lip toward the rim
+            f = f + per_az(H['skirt'], AZ_) * np.clip(1 - TT_ * 3.2, 0, 1) ** 2
+        return f
+    re = rim_fn(AZ)
     EL = re + (np.pi / 2 - re) * (1 - (1 - TT) ** 1.3) * 0.985
-    flare = H.get('flare0', 0.004) * np.clip(1 - TT * 4, 0, 1)
-    if H.get('skirt'):                          # flared skirt / visor lip toward the rim
-        flare = flare + per_az(H['skirt'], AZ) * np.clip(1 - TT * 3.2, 0, 1) ** 2
+    flare = flare_fn(AZ, TT)
     band_el = np.radians(H.get('band_el', (18, 26)))
     puck = np.zeros_like(AZ)
     if H.get('pucker') and H.get('cover') == 'fabric':
@@ -279,12 +286,14 @@ def helmet(kind, c, r, mats, fac, trees=None):
         puck = 0.0016 * np.clip(fold, -0.4, 1.0) * np.exp(-((EL - em) / np.radians(11)) ** 2)
     outer = surf(AZ, EL, flare + puck)
     inner = surf(AZ, EL, flare - (0.0035 if H.get('thin') else 0.009))
-    n = naz * nel
-    Tg = G.grid_tris(naz, nel, closed_u=True)
-    pos = np.concatenate([outer.reshape(-1, 3), inner.reshape(-1, 3), [c + [0, R[1] + 0.0, 0], c + [0, R[1] - (0.0035 if H.get('thin') else 0.009), 0]]])
+    n = nu * nel
+    Tg = G.grid_tris(nu, nel, closed_u=False)
+    top_o = np.repeat(c[None] + [0, R[1], 0], naz, 0)
+    top_i = np.repeat(c[None] + [0, R[1] - (0.0035 if H.get('thin') else 0.009), 0], naz, 0)
+    pos = np.concatenate([outer.reshape(-1, 3), inner.reshape(-1, 3), top_o, top_i])
     T = [Tg, Tg[:, ::-1] + n]
-    top = [[(nel - 1) * naz + k, (nel - 1) * naz + (k + 1) % naz, 2 * n] for k in range(naz)]
-    topi = [[n + (nel - 1) * naz + (k + 1) % naz, n + (nel - 1) * naz + k, 2 * n + 1] for k in range(naz)]
+    top = [[(nel - 1) * nu + k, (nel - 1) * nu + k + 1, 2 * n + k] for k in range(naz)]
+    topi = [[n + (nel - 1) * nu + k + 1, n + (nel - 1) * nu + k, 2 * n + naz + k] for k in range(naz)]
     T += [np.array(top), np.array(topi)]
     # rolled rim (rubber edge trim): torus segment joining outer and inner
     rim_o = outer[0]; rim_i = inner[0]
@@ -297,15 +306,24 @@ def helmet(kind, c, r, mats, fac, trees=None):
     rimT = []
     for j in range(2):
         for k in range(naz):
-            a = base + j * naz + k; b = base + j * naz + (k + 1) % naz
-            rimT += [[a, b + naz, b], [a, a + naz, b + naz]]
+            a = base + j * nu + k; b = base + j * nu + k + 1
+            rimT += [[a, b + nu, b], [a, a + nu, b + nu]]
     T.append(np.array(rimT))
     T = np.concatenate(T)
-    uv = np.concatenate([np.stack([AZ.reshape(-1) * 0.1 * 2, -EL.reshape(-1) * 0.1 * 2], 1)] * 2 + [[[0, 0], [0, 0]]] + [np.zeros((3 * naz, 2))])
-    shell = G.part(pos, T, m['fabric'], uv)
+    shell = G.part(pos, T, m['fabric'], np.zeros((len(pos), 2)))
     if G.signed_volume(pos, T) < 0:
         shell['tri'] = shell['tri'][:, ::-1]
     shell['nrm'] = MU.vertex_normals(shell['pos'], shell['tri'])
+    # soldiers_v10: painted shell (helmets.py): charts for the outer grid, the inside and the rim trim in hg_<fac>
+    import helmets as HG
+    co, ci, cr, aw, bh = HG.shell_charts(kind, fac, H, c, surf, rim_fn, flare_fn, m['fabric'], naz, nel, AZ, TT)
+    a_ = ((AZ + np.pi) / (2 * np.pi) * aw).reshape(-1); b_ = (TT * bh).reshape(-1)
+    am = ((az[:-1] + az[1:]) / 2 + np.pi) / (2 * np.pi) * aw
+    shell['chart_ab'] = [(co, np.arange(n), np.stack([a_, b_], 1)), (ci, np.arange(n, 2 * n), np.stack([a_, b_], 1)),
+                         (co, np.arange(2 * n, 2 * n + naz), np.stack([am, np.full(naz, bh)], 1)),
+                         (ci, np.arange(2 * n + naz, 2 * n + 2 * naz), np.stack([am, np.full(naz, bh)], 1)),
+                         (cr, np.arange(base, base + 3 * nu), np.stack([np.tile((az + np.pi) / (2 * np.pi) * aw, 3), np.repeat([0.0, 0.006, 0.012], nu)], 1))]
+    shell['mat'] = HG.key(fac)
     out.append(shell)
     def on(az_, el_, h=0.0):
         p = surf(np.asarray(az_), np.asarray(el_), h)
@@ -319,7 +337,7 @@ def helmet(kind, c, r, mats, fac, trees=None):
         return PO.mat4(p, np.cross(up, nn), up, nn)
     if H.get('band'):
         # elastic foliage band around the crown (6B47 cover: often a black rubber / inner-tube band; 6B7: ID tape)
-        nb_ = max(naz, 72) + 1
+        nb_ = 49                                 # v10: 72 -> 48 segments
         ab = np.linspace(-np.pi, np.pi, nb_)
         e0, e1 = band_el
         hb = 0.0045 if H.get('band_mat') == 'helmet_band' else 0.0035
@@ -330,7 +348,7 @@ def helmet(kind, c, r, mats, fac, trees=None):
         bt = G.grid_tris(nb_, 4)
         band = G.part(bp, bt, H.get('band_mat') or m['webbing'], np.concatenate([np.stack([ab * 0.2, np.full(nb_, k * 0.01)], 1) for k in range(4)]))
         out.append(G.orient_open(band, bp - c))
-    if H.get('seams') and H.get('cover') == 'fabric':
+    if H.get('seams') and H.get('cover') == 'fabric' and H.get('seam_geo'):     # v10: painted (helmets.py)
         # 4-panel cover: raised seams from the crown down the front, back and sides (stop above the rim)
         rim_f = (lambda a: np.radians(per_az(H['rim_pts'], a))) if H.get('rim_pts') else (lambda a: rim_el(a, H['rim']))
         for a in (0.0, np.pi / 2, np.pi, -np.pi / 2):
@@ -365,7 +383,6 @@ def helmet(kind, c, r, mats, fac, trees=None):
                 a = a0 + sgn * np.radians(-12 + k * 7)
                 rail_parts.append(PO.local_part(PO.rbox(0.03, 0.022, 0.009, 0.002, 1), frame(a, np.radians(14), 0.0) @ PO.T(0, 0, 0.0045), m['hardware'], 'hard'))
             out += rail_parts
-    rim_fn = (lambda a: np.radians(per_az(H['rim_pts'], a))) if H.get('rim_pts') else (lambda a: rim_el(a, H['rim']))
     def strip(a0, a1, e_lo, e_hi, h0, h1, mat, n=24):
         """raised strip on the shell between azimuths a0..a1, elevation band (functions of az or constants), heights h0..h1"""
         ab = np.linspace(a0, a1, n)
@@ -389,7 +406,7 @@ def helmet(kind, c, r, mats, fac, trees=None):
         out.append(PO.local_part(PO.rbox(0.026, 0.020, 0.008, 0.004, 1), frame(0.0, np.radians(6), 0.0) @ PO.T(0, -0.004, 0.008), m['hardware'], 'hard'))
         for dx in (-0.024, 0.0, 0.024):
             out.append(PO.local_part(PO.rbox(0.005, 0.005, 0.003, 0.0015, 1), frame(0.0, np.radians(8), 0.0) @ PO.T(dx, 0.016, 0.0065), m['hardware'], 'hard'))
-    if H.get('velcro'):
+    if H.get('velcro') and H.get('velcro_geo'):    # v10: painted (helmets.py, H['velcro_paint'])
         # loop panels: crown panel, one each side above the rails, rear panel
         out.append(strip(np.radians(-32), np.radians(32), np.radians(46), np.radians(70), 0.0006, 0.0024, m['webbing']))
         for sgn in (1, -1):
@@ -400,16 +417,21 @@ def helmet(kind, c, r, mats, fac, trees=None):
         # shock cords from the shroud along the sides (between rails and side velcro) to the back
         for sgn in (1, -1):
             a0, a1 = sorted((sgn * np.radians(22), sgn * np.radians(150)))
-            out.append(strip(a0, a1, np.radians(20.0), np.radians(21.8), 0.002, 0.0055, m['hardware'], n=34))
+            out.append(strip(a0, a1, np.radians(20.0), np.radians(21.8), 0.002, 0.0055, m['hardware'], n=20))
     if H.get('counterweight'):
         out.append(PO.local_part(PO.rbox(0.085, 0.055, 0.028, 0.01, 2), frame(np.pi, np.radians(H.get('cw_el', 5)), 0.0) @ PO.T(0, 0.0, 0.014), m['fabric']))
     if H.get('goggles'):
         out += goggles(on, frame, c, H['goggles'], rim_el0=float((np.radians(per_az(H['rim_pts'], np.array(0.0))) if H.get('rim_pts')
                                                                    else rim_el(np.array(0.0), H['rim']))))
-    if trees is not None:
+    if H.get('scrim'):
+        import helmets as HG
+        out += HG.scrim(on, H, c, rim_fn)
+    if trees is not None and not retention_ctx:
         out += chin_strap(c, rim_fn, on, m, trees, H)
     for p in out:
         p['group'] = 'helmet'
+    if retention_ctx:       # v10: the retention harness is built per body variant (helmets.retention)
+        out[0]['helmet_ctx'] = dict(kind=kind, on=on, frame=frame, rim_fn=rim_fn, H=H, c=c, surf=surf, flare_fn=flare_fn)
     return out
 
 
