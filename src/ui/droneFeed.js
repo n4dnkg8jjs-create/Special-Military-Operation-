@@ -235,7 +235,7 @@ export class DroneFeed {
     const volt = (18.6 + 6.4 * bat / 100 - (fv?.dive || 0) * 0.9).toFixed(1), time = `${pad2(m)}:${pad2(s)}`;   // 6S Li-ion pack, sagging in the dive
     const warn = lq < 35 ? 'RSSI LOW' : bat < 22 ? 'LOW BATTERY' : '';
     this.osdC.draw({ lq: pad2(lq), rssi: `-${Math.round(52 + this.noise * 50)}`, time, volt, mah: String(Math.round((100 - bat) * 78)), alt: String(Math.round(alt)), spd: String(Math.round(sp)),
-      dst: String(dist < 100 ? Math.round(dist) : Math.round(dist / 5) * 5), name: I.num ? `UAV ${pad2(I.num)}` : 'UAV', roll: fv?.roll || 0, pitch: (fv?.pitch || 0) - UPTILT, warn: warn && Math.floor(this.clock * 2.5) % 2 ? warn : '' });
+      dst: String(dist < 100 ? Math.round(dist) : Math.round(dist / 5) * 5), name: I.num ? `FPV ${pad2(I.num)}` : 'FPV', roll: fv?.roll || 0, pitch: (fv?.pitch || 0) - UPTILT, warn: warn && Math.floor(this.clock * 2.5) % 2 ? warn : '' });
     this.rxLine(lq, bat, volt, time, I.num);
   }
   rxLine(lq, bat, volt, time, num) {
