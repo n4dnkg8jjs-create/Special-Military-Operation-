@@ -452,7 +452,7 @@ export class HUD {
     const life = kind === 'bad' ? 7 : kind === 'good' ? 5 : 4.5;
     const el = document.createElement('div'); el.className = `alert ${kind}`; el._msg = msg; el._kind = kind; el._n = 1; el._life = life;
     el.style.setProperty('--life', `${life}s`);
-    el.innerHTML = `<span class="m"></span><span class="n"></span>`; el.firstChild.textContent = msg;
+    const tt = Math.max(0, this.g.time || 0); el.innerHTML = `<span class="t">${String(Math.floor(tt / 60)).padStart(2, '0')}:${String(Math.floor(tt % 60)).padStart(2, '0')}</span><span class="m"></span><span class="n"></span>`; el.querySelector('.m').textContent = msg;   // mission time stamp
     this.alerts.prepend(el);
     while (this.alerts.children.length > 5) { const list = [...this.alerts.children].reverse(); (list.find(a => a._kind !== 'bad') || list[0]).remove(); }
     el._t = setTimeout(() => el.remove(), (life + 0.5) * 1000);

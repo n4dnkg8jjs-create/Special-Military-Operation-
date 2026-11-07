@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { updateLods, LODS } from '../world/instancer.js';
+import { Osd } from './osd.js';
 
 // FPV drone view: a picture-in-picture window with the goggles feed of one of the player's FPV drones while it flies to
 // its target (game/support.js FpvTeam; on the versus joiner the host's snapshot drones of the joiner's own side,
@@ -19,13 +20,17 @@ import { updateLods, LODS } from '../world/instancer.js';
 //     snow and dropout streaks rising with range from the pilot, lost line of sight, low altitude far out and enemy EW
 //     (vehicle jammer kits, the side's trench EW mod, a jammed dive), brief breakups (frozen frame, tearing, roll), and
 //     on impact / shoot-down a burst of static, then SIGNAL LOST, then the window closes or goes to the next drone.
-//   * window: title (team, drone number), hide to a tab (N toggles), cycle (Shift+N), auto-open toggle (localStorage smo_fpvfeed_auto), close (stays shut
-//     until the next launch); a click on the feed jumps the main camera to the drone. ?dronefeed=0: off.
+//   * window: a ground-station monitor (style.css, FPV section): title (team, drone number), the receiver's status line
+//     (band / channel, link bars + LQ, pack voltage, DVR time), the Betaflight-style OSD (ui/osd.js, a canvas over the
+//     picture), a standby scan screen; N toggles, Shift+N cycles, x closes (localStorage smo_fpvfeed_open); a click on
+//     the feed jumps the main camera to the drone. ?dronefeed=0: off.
 // Its CPU time is handed to the adaptive-resolution logic as non-scalable work (renderer.dynFrame), so the fixed-cost
 // PiP does not push the main resolution down.
 const RW = 480, RH = 270, FPS = 30, UPTILT = THREE.MathUtils.degToRad(25), VFOV = 88;   // 88 deg vertical = ~120 deg horizontal at 16:9
 const LOST_STATIC = 0.45, LOST_END = 2.3, FAR = 560, FOG = 0.0034;   // the small camera sees a hazier world (FogExp2 density): ~97 % fog at the far plane
 const PH = ['launch', 'climb', 'cruise', 'dive', 'fall'];
+const RACEBAND = [5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917];   // analog 5.8 GHz video channels (band R): one per drone in turn
+const pad2 = n => String(n).padStart(2, '0');
 export const FEED_PHASE = PH;
 const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -103,35 +108,40 @@ export class DroneFeed {
   // ---------------------------------------------------------------- DOM
   buildDom() {
     const el = this.el = document.createElement('div'); el.id = 'dronefeed'; el.className = 'df hidden';
-    el.innerHTML = `<div class="df-bar"><i class="df-live"></i><span class="df-title">FPV</span><span class="df-sp"></span>
+    el.innerHTML = `<div class="df-head"><div class="df-r1"><i class="df-live"></i><span class="df-title">Drone feed</span><span class="df-num"></span><span class="df-sp"></span>
       <button class="df-cyc" title="Next drone in the air (Shift+N)">Next <b></b></button>
-      <button class="df-x" title="Close the drone view (N)">&times;</button></div>
-      <div class="df-scr" title="Click: move the camera to this drone"><div class="df-osd"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span><span class="cx"></span></div><div class="df-lost">SIGNAL LOST</div></div>`;
+      <button class="df-x" title="Close the drone view (N)" aria-label="Close the drone view">&times;</button></div>
+      <div class="df-r2"><span class="df-ch" title="Video channel (band R)"><span class="v">--</span></span><span class="df-lq" title="Link quality"><i class="df-sig" data-n="0"><b></b><b></b><b></b><b></b></i>LQ <span class="v">--</span></span><span class="df-bat" title="Pack voltage (6S)"><i class="df-cell"><b></b></i><span class="v">--</span></span><span class="df-rec" title="Video recorder"><i></i>REC <span class="v">00:00</span></span></div></div>
+      <div class="df-scr" title="Click: move the camera to this drone"><canvas class="df-osd"></canvas><div class="df-sb"><b>NO SIGNAL</b><span>No drone in the air. Select the FPV team and right-click a target to launch one.</span></div><div class="df-lost"><span>SIGNAL LOST</span></div></div>`;
     const q = s => el.querySelector(s);
-    this.titleEl = q('.df-title'); this.cycEl = q('.df-cyc'); this.cycN = q('.df-cyc b'); this.scr = q('.df-scr'); this.osd = q('.df-osd'); this.lostEl = q('.df-lost');
-    this.osdEl = { tl: q('.tl'), tr: q('.tr'), bl: q('.bl'), br: q('.br') };
+    this.titleEl = q('.df-title'); this.numEl = q('.df-num'); this.cycEl = q('.df-cyc'); this.cycN = q('.df-cyc b'); this.scr = q('.df-scr'); this.osd = q('.df-osd'); this.lostEl = q('.df-lost');
+    this.osdC = new Osd(this.osd);
+    this.rx = { ch: q('.df-ch .v'), sig: q('.df-sig'), lq: q('.df-lq .v'), bat: q('.df-bat'), cell: q('.df-cell b'), v: q('.df-bat .v'), rec: q('.df-rec .v') };
     for (const b of el.querySelectorAll('button')) b.addEventListener('pointerdown', e => e.stopPropagation());
     this.cycEl.addEventListener('click', () => this.cycle(false));
     q('.df-x').addEventListener('click', () => { this.setPanel(false); this.g.sfx?.('ui_click'); });
     // closed: a tab at the right edge (live dot + number of drones in the air); a click (or N) opens the panel
     const pill = this.pill = document.createElement('button'); pill.id = 'dronefeedPill'; pill.className = 'hidden'; pill.title = 'Drone view (N)';
-    pill.innerHTML = '<i class="df-live"></i>FPV <b></b>'; this.pillN = pill.querySelector('b');
+    pill.innerHTML = '<i class="df-live"></i><span>FPV</span><b></b>'; this.pillN = pill.querySelector('b');
     pill.addEventListener('pointerdown', e => e.stopPropagation()); pill.addEventListener('click', () => { this.setPanel(true); this.g.sfx?.('ui_click'); });
     this.scr.addEventListener('pointerdown', e => { e.stopPropagation(); if (e.button === 0) this.jump(); });
     const hud = document.getElementById('hud') || document.body, cmd = document.getElementById('cmd');
     if (cmd && cmd.parentNode === hud) { hud.insertBefore(el, cmd); hud.insertBefore(pill, cmd); } else hud.append(el, pill);   // before the order bar: its tooltips paint over the window
   }
-  // window size: ~360x203 CSS px at 1600 px wide, larger on big screens; integer pixels so the canvas viewport matches
+  // window size: ~344x194 CSS px at 1600 px wide, 288 at 1280, 550 at 2560; whole pixels (size and position: no
+  // transform) so the canvas viewport matches the screen area exactly
   layout() {
-    const w = Math.round(Math.min(480, Math.max(280, innerWidth * 0.16 + 48))), h = Math.round(w * 9 / 16);
+    const w = Math.round(Math.min(560, Math.max(288, innerWidth * 0.215))), h = Math.round(w * 9 / 16);
     if (w !== this._w || h !== this._h) { this._w = w; this._h = h; this.scr.style.width = w + 'px'; this.scr.style.height = h + 'px'; this.el.style.setProperty('--dfw', w + 'px'); }
+    this.osdC.size(w, h, Math.min(2, devicePixelRatio || 1));
+    if (this.visible) { const top = Math.round(Math.max(8, innerHeight * 0.45 - this.el.offsetHeight / 2)); if (top !== this._top) { this._top = top; this.el.style.top = top + 'px'; } }
     this.rectT = 0;
   }
   readRect() {
     const r = this.scr.getBoundingClientRect(), c = this.g.renderer.r.domElement.getBoundingClientRect();
     this.rect = { x: Math.round(r.left - c.left), y: Math.round(r.top - c.top), w: Math.round(r.width), h: Math.round(r.height), H: Math.round(c.height) };
   }
-  show() { if (this.visible) return; this.visible = true; this.el.classList.remove('hidden'); this.layout(); this.readRect(); }
+  show() { if (this.visible) return; this.visible = true; this.el.classList.remove('hidden'); this._top = null; this.layout(); this.readRect(); }
   hide() { if (!this.visible && this.mode === 'off') return; this.visible = false; this.mode = 'off'; this.cur = null; this.el.classList.add('hidden'); }
   setPanel(on) { this.panel = on; savePrefOpen(on); if (!on) this.hide(); }
   toggle() { this.setPanel(!this.panel); }
@@ -163,7 +173,7 @@ export class DroneFeed {
     this.cur = this.lastCur = d; this.mode = 'live'; this.rtOk = false; this.acc = 1; this.brkT = 0; this.brkA = 0; this.roll = 0; this.rollV = 0; this.noise = 0.1; this.losT = 0;
     this.lostEl.classList.remove('show'); this.el.classList.remove('lost');
     d._fv ||= { yaw: 0, pitch: 0, roll: 0, yawRate: 0, dive: 0, init: false, spin: 0 };
-    this.el.classList.remove('standby'); this.show(); this.titleT = 0;
+    this.el.classList.remove('standby'); this.show(); this.titleT = 0; this._rxv = null;
   }
   cycle(fromKey) {
     const L = this.sources(); if (!L.length) { if (fromKey) this.g.hud?.alert?.('No FPV drone in the air'); return; }
@@ -184,7 +194,7 @@ export class DroneFeed {
     this.setPill(this.panel || !this.hasTeam() ? -1 : L.length);
     if (!this.panel) { if (this.visible) this.hide(); return; }
     // open: the drone in the air (the last one watched first), else a standby screen (nothing rendered)
-    if (this.mode === 'off') { if (L.length) this.open(L.includes(this.lastCur) ? this.lastCur : L[0]); else if (!this.visible) { this.show(); this.el.classList.add('standby'); this.titleEl.textContent = 'FPV · standby'; } }
+    if (this.mode === 'off') { if (L.length) this.open(L.includes(this.lastCur) ? this.lastCur : L[0]); else if (!this.visible) { this.standby(); this.show(); } }
     if (this.mode === 'live') {
       const d = this.cur, I = L.includes(d) ? this.info(d) : null;
       if (!I || (I.phase === 'fall' && !I.pilotOk)) { this.mode = 'lost'; this.lostT = 0; this.lostEl.classList.remove('show'); }
@@ -193,35 +203,48 @@ export class DroneFeed {
     if (this.mode === 'lost') {
       this.lostT += dt;
       if (this.lostT > LOST_STATIC) this.lostEl.classList.add('show');
-      if (this.lostT > LOST_END) { this.lostEl.classList.remove('show'); const nx = L.find(x => x !== this.cur); if (nx) this.open(nx); else { this.mode = 'off'; this.cur = null; this.el.classList.remove('lost'); this.el.classList.add('standby'); this.titleEl.textContent = 'FPV · standby'; } }
+      if (this.lostT > LOST_END) { this.lostEl.classList.remove('show'); const nx = L.find(x => x !== this.cur); if (nx) this.open(nx); else { this.mode = 'off'; this.cur = null; this.el.classList.remove('lost'); this.standby(); } }
     }
     if (!this.visible) return;
-    // chrome: title, cycle count, OSD (DOM writes change-guarded, ~10 Hz)
+    // chrome: title, cycle count, receiver line, OSD canvas (DOM writes change-guarded, ~15 Hz)
     if ((this.titleT -= dt) <= 0) {
-      this.titleT = 0.1;
+      this.titleT = 1 / 15;
       const n = L.length, i = Math.max(0, L.indexOf(this.cur)), cyc = n > 1 ? `${i + 1}/${n}` : '';
       if (this.cycN.textContent !== cyc) { this.cycN.textContent = cyc; this.cycEl.disabled = n < 2; }
       if (this.mode === 'live' && this.cur) {
-        const I = this.info(this.cur), t = `${/fpv/i.test(I.name) ? '' : 'FPV · '}${I.name}${I.num ? ` · drone ${I.num}` : ''}`; if (this.titleEl.textContent !== t) this.titleEl.textContent = t;
+        const I = this.info(this.cur), t = I.name, nm = I.num ? `#${pad2(I.num)}` : ''; if (this.titleEl.textContent !== t) this.titleEl.textContent = t; if (this.numEl.textContent !== nm) this.numEl.textContent = nm;
         this.osdText(I);
-      }
+      } else if (this.mode === 'lost') this.rxLine(0, 0, null, null);
       this.el.classList.toggle('lost', this.mode === 'lost');
       this.osd.style.visibility = this.mode === 'live' && !(this.noise > 0.7 && Math.random() < this.noise - 0.55) && this.brkA < 0.8 ? '' : 'hidden';   // the OSD is keyed into the drone's video: it breaks up with it
-      if ((this.rectT -= 0.1) <= 0) { this.rectT = 0.25; this.readRect(); }
+      if ((this.rectT -= 1 / 15) <= 0) { this.rectT = 0.25; this.readRect(); }
     }
+  }
+  standby() {
+    this.el.classList.add('standby'); this.titleEl.textContent = 'Drone feed'; this.numEl.textContent = ''; this.osdC.clear();
+    const R = this.rx; R.ch.textContent = 'SCAN'; R.sig.dataset.n = '0'; R.lq.textContent = '--'; R.v.textContent = '--'; R.cell.style.setProperty('--b', '0%'); R.rec.textContent = '00:00'; R.bat.classList.remove('low'); this._rxv = null;
   }
   setPill(n) {   // n < 0: no tab; 0: the tab, no drone up; n: drones in the air
     if (n !== this._pn) { this._pn = n; this.pill.classList.toggle('hidden', n < 0); this.pill.classList.toggle('idle', n === 0); this.pillN.textContent = n > 1 ? String(n) : ''; }
   }
+  // flight telemetry: the Betaflight OSD in the picture + the receiver's status line in the bezel (DOM writes guarded)
   osdText(I) {
     const fv = this.cur._fv, ground = this.g.city?.terrain?.heightAt?.(I.pos.x, I.pos.z) || 0, alt = Math.max(0, I.pos.y - ground);
     const sp = I.vel.length() * 3.6, dist = I.pos.distanceTo(I.tgt), bat = Math.max(4, Math.round(100 - I.age * 0.55 - (fv?.dive || 0) * 3));
-    const lq = Math.max(0, Math.min(100, Math.round((1.08 - this.noise) * 100))), m = Math.floor(I.age / 60), s = Math.floor(I.age % 60);
-    const set = (k, v) => { const e = this.osdEl[k]; if (e._v !== v) { e._v = v; e.innerHTML = v; } };
-    set('tl', `BAT ${bat}%<br>LQ ${lq}`);
-    set('tr', `${m}:${String(s).padStart(2, '0')}`);
-    set('bl', `ALT ${Math.round(alt)} m<br>SPD ${Math.round(sp)} km/h`);
-    set('br', `DST ${dist < 100 ? dist.toFixed(0) : Math.round(dist / 5) * 5} m`);
+    const lq = Math.max(0, Math.min(99, Math.round((1.08 - this.noise) * 100))), m = Math.floor(I.age / 60), s = Math.floor(I.age % 60);
+    const volt = (18.6 + 6.4 * bat / 100 - (fv?.dive || 0) * 0.9).toFixed(1), time = `${pad2(m)}:${pad2(s)}`;   // 6S Li-ion pack, sagging in the dive
+    const warn = lq < 35 ? 'RSSI LOW' : bat < 22 ? 'LOW BATTERY' : '';
+    this.osdC.draw({ lq: pad2(lq), rssi: `-${Math.round(52 + this.noise * 50)}`, time, volt, mah: String(Math.round((100 - bat) * 78)), alt: String(Math.round(alt)), spd: String(Math.round(sp)),
+      dst: String(dist < 100 ? Math.round(dist) : Math.round(dist / 5) * 5), name: I.num ? `UAV ${pad2(I.num)}` : 'UAV', roll: fv?.roll || 0, pitch: (fv?.pitch || 0) - UPTILT, warn: warn && Math.floor(this.clock * 2.5) % 2 ? warn : '' });
+    this.rxLine(lq, bat, volt, time, I.num);
+  }
+  rxLine(lq, bat, volt, time, num) {
+    const R = this.rx, ch = num ? `R${(num - 1) % 8 + 1} ${RACEBAND[(num - 1) % 8]}` : null, n = lq <= 0 ? 0 : lq < 35 ? 1 : lq < 60 ? 2 : lq < 85 ? 3 : 4;
+    const k = `${lq}|${bat}|${volt}|${time}|${ch}`; if (k === this._rxv) return; this._rxv = k;
+    if (ch) R.ch.textContent = ch;
+    R.sig.dataset.n = String(n); R.lq.textContent = lq > 0 ? String(lq) : '0';
+    if (volt != null) { R.v.textContent = `${volt}V`; R.cell.style.setProperty('--b', `${bat}%`); R.bat.classList.toggle('low', bat < 22); }
+    if (time != null) R.rec.textContent = time;
   }
   // flight camera + link quality for drone d
   track(d, I, dt) {

@@ -43,17 +43,19 @@ export function unitKindOf(u) {
 }
 export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', crew: 'Dismounted crew', btr: 'Wheeled APC', ifv: 'Infantry fighting vehicle', tank: 'Main battle tank', atgm: 'ATGM team', spg: 'Self-propelled howitzer', fpv: 'FPV drone team', medevac: 'Casualty evacuation · pickup' };
 
-// 24×24 stroke icons for the order bar
+// 24×24 stroke icons for the order bar: square caps, mitred joins (style.css #orders .ico); .f = filled part.
+// Fire support keys borrow APP-6 glyphs: mortar = the mortar symbol (tube arrow on its base ring), artillery = the
+// field-artillery dot with the round's trajectory onto a target cross.
 const I = d => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 export const ORDER_ICONS = {
-  run: I('<path d="M5 6l6 6-6 6M12 6l6 6-6 6"/>'),
-  holdfire: I('<circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5 19L19 5"/>'),
-  garrison: I('<path d="M4 20V9l8-5 8 5v11"/><path d="M9.5 20v-5.5h5V20M2.5 20h19"/>'),
-  mount: I('<path d="M3 15.5h18l-2-5H7.5L6 8H3z"/><circle cx="7" cy="18" r="1.6"/><circle cx="12" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/><path d="M14 3v5M11.5 5.5L14 8l2.5-2.5"/>'),
-  resupply: I('<rect x="4" y="9" width="16" height="11"/><path d="M4 13h16M9 5.5h6M12 3v5"/>'),
-  halt: I('<rect x="6" y="6" width="12" height="12"/>'),
-  smoke: I('<path d="M6.5 17a3.5 3.5 0 0 1 .4-7 5 5 0 0 1 9.5-1.2A3.8 3.8 0 0 1 17.5 17z"/><path d="M8 20.5h8"/>'),
-  fireground: I('<path d="M3 19h18"/><circle cx="12" cy="11" r="5"/><path d="M12 3.5v3M12 15.5v3M4.5 11h3M16.5 11h3"/>'),
-  mortar: I('<path d="M3 19C6 7 15 4 20 12"/><path d="M17.5 13.5l2.6-1.4.1 3"/><path d="M3 21h6"/>'),
-  artillery: I('<path d="M2.5 20.5h7M4 18l5.5-3.2L20 7"/><path d="M9.5 14.8l1.6 3.4"/><circle cx="6.5" cy="18.6" r="1.9"/><path d="M15 3.5l.9 1.9 2-.6-.6 2 1.9.9-1.9.9.6 2-2-.6-.9 1.9"/>'),
+  run: I('<path d="M4 6l6 6-6 6M12 6l6 6-6 6"/>'),
+  holdfire: I('<circle cx="12" cy="12" r="6.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4M5.5 18.5l13-13"/>'),
+  garrison: I('<path d="M4 20V10l8-6 8 6v10M2 20h20M9.5 20v-5.5h5V20"/><path d="M7.5 11.5h2M14.5 11.5h2"/>'),
+  mount: I('<path d="M2.5 16h19l-1.5-4.5H8L6.5 9H2.5z"/><path d="M5.5 19h13"/><path d="M15 2.5v5.5M12.5 5.5L15 8l2.5-2.5"/>'),
+  resupply: I('<path d="M3.5 11h17v9h-17zM3.5 14.5h17"/><path d="M7 11V6l1-2 1 2v5M11 11V6l1-2 1 2v5M15 11V6l1-2 1 2v5"/>'),
+  halt: I('<path d="M8.5 3h7L21 8.5v7L15.5 21h-7L3 15.5v-7z"/><path d="M8 12h8"/>'),
+  smoke: I('<path d="M6.5 17a3.5 3.5 0 0 1 .4-7 5 5 0 0 1 9.5-1.2A3.8 3.8 0 0 1 17.5 17z"/><path d="M5 20.5h14"/>'),
+  fireground: I('<path d="M2.5 20.5h19"/><path d="M12 5.5l5.5 5.5-5.5 5.5L6.5 11z"/><path d="M12 2v3.5M12 16.5V20M3 11h3.5M17.5 11H21"/>'),
+  mortar: I('<circle cx="12" cy="17.5" r="3.5"/><path d="M12 14V3M8.5 6.5L12 3l3.5 3.5"/>'),
+  artillery: I('<circle class="f" cx="5" cy="18.5" r="2.6"/><path d="M6.5 15.5C8.5 6 15 3.5 19 11" stroke-dasharray="2.2 1.8"/><path d="M16.5 15.5l5 5M21.5 15.5l-5 5"/>'),
 };
