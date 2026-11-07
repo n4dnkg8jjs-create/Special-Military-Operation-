@@ -263,6 +263,7 @@ export class Soldier {
     if (this.cur && fade > 0) a.crossFadeFrom(this.cur, fade, true); else if (this.cur) this.cur.stop();
     if (!/^(death)/.test(name)) a.time = loop ? Math.random() * (a.getClip().duration || 1) : 0;
     a.play(); this.cur = a; this.curName = name;
+    if (!fade && /^hatch_exit/.test(name)) this.mixer?.update(0);   // pose him in the hatch at once (no frame of the old pose, even when the anim LOD skips)
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
       if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000 / (this.deathTs || 1)));
@@ -433,7 +434,9 @@ export class Soldier {
     if (this.netClip && this.state !== 'dead') { clip = this.netClip; alt = ['idle_rifle']; ts = this.netTs || 1; }   // versus joiner: the host's exact clip
     if (this.mixer) {
       // v8 blend times: snappy into / out of the aim, reload and hit clips, softer between gaits and stances
-      const fade = this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
+      // (the hatch climb-out cuts straight in: blended from the idle he had inside, the first 0.3 s showed that idle pose
+      // standing off the hull side - the hatch warp puts the root low and outboard - before he climbed out)
+      const fade = /^hatch_exit/.test(clip) ? 0 : this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
       if (this.state === 'dead') ts = this.deathTs || 1;
       this.play(clip, fade, ts, alt);
       if (this.netClip && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;
