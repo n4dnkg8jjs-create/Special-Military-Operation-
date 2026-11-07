@@ -647,7 +647,7 @@ export class Combat {
     // it, out to fragR: the fragment zone - each man has a falling chance of being struck by a splinter, mostly
     // wounding (152/155 mm HE: ~50 m lethal / ~100 m casualty radius for men standing in the open; 82 mm mortar ~30 m;
     // prone, trench, cover and buildings cut it hard)
-    const fragR = radius * (power >= 2.5 ? 6.5 : power >= 1 ? 4 : 2.5), supR = Math.max(radius * 3, fragR);
+    const fragR = radius * (power >= 2.5 ? 5.8 : power >= 1 ? 4 : 2.5), supR = Math.max(radius * 3, fragR);
     for (const sq of g.squads) {
       for (const s of sq.soldiers) {
         if (!s.alive || s.inside === 'btr') continue;
