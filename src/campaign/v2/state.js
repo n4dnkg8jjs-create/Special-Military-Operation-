@@ -192,7 +192,7 @@ export class Campaign2 {
     this.note(`${b.name} combined into ${a.name}.`); this.save(); return a;
   }
   transfer(uid, toId) { const from = this.tfOf(uid), to = this.tf(toId); if (!from || !to || from === to) return 'Nothing to transfer'; if (from.cell !== to.cell) return 'Same grid cell only'; if (from.units.length === 1) return this.merge(toId, from.id); const spent = Math.max(this.tfMpMax(from) - from.mp, this.tfMpMax(to) - to.mp, 0); from.units = from.units.filter(u => u !== uid); to.units.push(uid); to.mp = Math.max(0, this.tfMpMax(to) - spent); from.mp = Math.max(0, this.tfMpMax(from) - spent); this.save(); return to; }
-  rename(tfId, name) { const tf = this.tf(tfId); if (tf && name) { tf.name = String(name).slice(0, 32); this.save(); } }
+  rename(tfId, name) { const tf = this.tf(tfId); if (tf && name) { tf.name = String(name).slice(0, 32); tf.autoName = false; this.save(); } }
   setStance(tfId, s) { const tf = this.tf(tfId); if (tf && ['attack', 'hold', 'rest'].includes(s)) { tf.stance = s; this.save(); } }
   tfName() { const names = this.side === 'RU' ? ['Group', 'Detachment'] : ['TF', 'Battlegroup']; let i = this.forces.length + 1; while (this.forces.some(f => f.name === `${names[0]} ${i}`)) i++; return `${names[0]} ${i}`; }
   // ------------------------------------------------------------------ movement
@@ -413,12 +413,16 @@ export class Campaign2 {
   }
   // ------------------------------------------------------------------ the operation goal (content def.goal)
   // { title, text, by, cells:[{cell, pts, name}], total, held, pct (0..1), achieved (date or null), weeksLeft }
+  // versus: the operation's goal (def.vsGoal) from this side's point of view — the attacker takes the squares, the
+  // defender holds them (vs: 'attack' | 'defend'); in versus they count double in the final score (versus.js score)
   goalProgress() {
-    const G = this.def.goal; if (!G) return null;
+    const vs = !this.def.goal && this.def.versus && this.def.vsGoal ? (this.def.vsOp === this.def.id ? 'attack' : 'defend') : null;
+    const G = this.def.goal || (vs ? this.def.vsGoal : null); if (!G) return null;
     const cells = G.cells.map(g => ({ ...g, name: g.name || this.cellName(g.cell), held: this.owner[g.cell] === 'player' }));
     const total = cells.reduce((a, g) => a + g.pts, 0), held = cells.filter(g => g.held).reduce((a, g) => a + g.pts, 0);
     const by = G.by || this.def.start.end;
-    return { title: G.title, text: G.text, by, cells, total, held, pct: total ? held / total : 0, partial: G.partial ?? 0.5, win: G.win ?? 1, achieved: this.goalDone || null, weeksLeft: Math.max(0, Math.ceil((parseDate(by) - parseDate(this.date)) / DAY / (this.def.start.turnDays || 7))) };
+    return { title: vs === 'defend' ? `Hold: ${G.title.replace(/^(Take|Seize|Capture) /i, '')}` : G.title, text: vs === 'defend' ? `The enemy brigade's objective: ${G.text || G.title} Every objective square you still hold at the end counts double in the final score.` : G.text, vs,
+      by, cells, total, held, pct: total ? held / total : 0, partial: G.partial ?? 0.5, win: G.win ?? 1, achieved: vs ? null : this.goalDone || null, weeksLeft: Math.max(0, Math.ceil((parseDate(by) - parseDate(this.date)) / DAY / (this.def.start.turnDays || 7))) };
   }
   // ------------------------------------------------------------------ logistics
   supplyRange() { return SUP.HUB_RANGE.base + (this.mods().supplyRange || 0); }
@@ -500,8 +504,12 @@ export class Campaign2 {
   }
   deliverUnit(rec) {
     const cell = this.deliveryCell(); this.units.push(rec);
+    // a new arrival waits at the HQ in its own task force, named after it (it used to be a second 'Brigade reserve' next to
+    // the brigade's own reserve with other units in it, so a bought team showed up under a name like 'UAV strike platoon');
+    // a second delivery to the same group turns it into a numbered reserve group (never the name of another task force)
     let tf = this.forces.find(f => f.cell === cell && f.reserve);
-    if (!tf) { tf = { id: this.newId('tf'), name: this.side === 'RU' ? 'Reserve group' : 'Brigade reserve', cell, units: [], mp: 0, stance: 'rest', attacked: false, reserve: true, supply: this.supplied?.[cell] ?? 1 }; this.forces.push(tf); }
+    if (!tf) { tf = { id: this.newId('tf'), name: this.freeTfName(rec.name), autoName: true, cell, units: [], mp: 0, stance: 'rest', attacked: false, reserve: true, supply: this.supplied?.[cell] ?? 1 }; this.forces.push(tf); }
+    else if (tf.autoName && tf.units.length) { tf.autoName = false; tf.name = this.freeTfName(this.side === 'RU' ? 'Reserve group' : 'Brigade reserve', tf); }
     tf.units.push(rec.uid);
   }
   // ------------------------------------------------------------------ directives
@@ -963,7 +971,10 @@ export class Campaign2 {
     for (const u of us) { const k = Math.min(n - used, u.menMax - u.men - u.wounded); if (k > 0) { u.men += k; used += k; u.xp = Math.max(0, u.xp - 0.5); } if (used >= n) break; }
     return used;
   }
-  unitName(c) { const n = this.units.filter(u => u.key === c.key).length + 1; return `${c.label} ${n > 1 ? '#' + n : ''}`.trim(); }
+  // a delivered unit is called by what was ordered: the catalog label, numbered among the units of that label only (the
+  // brigade's starting units share catalog keys but carry their own names: 'UAV strike platoon' is key 'fpv' too)
+  unitName(c) { const has = n => this.units.some(u => u.name === n); let n = 1, name = c.label; while (has(name)) name = `${c.label} #${++n}`; return name; }
+  freeTfName(base, self = null) { const has = n => this.forces.some(f => f !== self && f.name === n); let n = 1, name = base; while (has(name)) name = `${base} ${++n}`; return name; }
   note(text, kind = '') { this.logSeq = (this.logSeq || 0) + 1; this.log.push({ turn: this.turn, date: this.date, text, kind, n: this.logSeq }); if (this.log.length > 300) this.log.shift(); }
   // country-level news from the theatre as the date passes
   newsUpTo(date) {

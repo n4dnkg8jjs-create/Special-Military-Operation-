@@ -125,6 +125,13 @@ export class VersusGame {
       const A = this.side[f], D = this.side[OTHER(f)];
       for (const r of A.firePlans || []) {
         const X = r.cell, name = A.cellName(X);
+        // the campaign maps (map3d.js syncFires) draw a week's fire from C.fireLog: the firer's craters for the rest of this
+        // week (the same key as the strike shown when it was planned, ui.js targetClick), and the other commander sees the
+        // shells land on his squares when the next week opens (side 'enemy', next turn) — from the guns' square only if the
+        // battery gave itself away by firing; the battery's id is not his to look up (ids repeat across the two sides)
+        const bat = (A.arty?.player || []).find(b => b.id === r.battery), log = (C, e) => { (C.fireLog ||= []).push(e); if (C.fireLog.length > 60) C.fireLog.shift(); };
+        log(A, { turn: A.turn, side: 'player', kind: r.kind, cell: X, battery: r.battery });
+        log(D, { turn: D.turn + 1, side: 'enemy', kind: r.kind, cell: X, battery: `vs:${r.battery}`, bkind: bat?.kind || null, from: bat && bat.revealed === A.turn ? bat.cell : null });
         if (r.kind === 'suppress') {
           const cur = A.suppressed[X], n = Math.min(F.SUPPRESS_MAX, (cur ? cur.n : 0) + r.n);
           A.suppressed[X] = { n, by: 'player', turn: A.turn }; D.suppressed[X] = { n, by: 'enemy', turn: D.turn };
@@ -146,6 +153,9 @@ export class VersusGame {
         }
       }
       A.firePlans = [];
+      // the week's drone sorties: the other commander sees them circle over his squares next week (map3d setUavs,
+      // C.uav.enemy.log: the same as the single-player enemy's)
+      const U = D.uav?.enemy; if (U) { U.log ||= []; for (const l of A.uavLog || []) if (l.turn === A.turn && !l.lost) U.log.push({ turn: D.turn + 1, cell: l.cell, type: l.type, lost: false }); if (U.log.length > 30) U.log.splice(0, U.log.length - 30); }
     }
     for (const f of ['UA', 'RU']) this.side[f].computeSupply();
   }

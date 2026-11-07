@@ -548,7 +548,7 @@ export class CampaignScreen {
     this.goalEl.appendChild(head);
     if (this.goalOpen) {
       const d = h('div', { class: 'c2-goal-d' }, `<div class="c2-desc">${esc(G.text || '')}</div>
-        <div class="c2-goal-win"><b>Victory:</b> hold every objective square at the end of a week. <b>By ${esc(dateLabel(G.by))}:</b> ${part}%+ of the points = limited success, less = the operation failed.</div>`);
+        <div class="c2-goal-win">${G.vs ? `<b>Versus:</b> the objective squares count double in the final score — ${G.vs === 'attack' ? 'take and hold them' : 'keep the enemy out of them'}; the game is decided on ground and objectives when the operation ends (${esc(dateLabel(G.by))}) or when a brigade is spent.` : `<b>Victory:</b> hold every objective square at the end of a week. <b>By ${esc(dateLabel(G.by))}:</b> ${part}%+ of the points = limited success, less = the operation failed.`}</div>`);
       const row = h('div', { class: 'c2-row' });
       for (const g of G.cells) row.appendChild(h('button', { class: 'c2-chip' + (g.held ? ' ok' : ''), title: `${g.pts} points${g.held ? ' — held' : ''}`, onclick: () => { this.map.flyTo({ ...this.map.cellCenter(g.cell), dist: 9 }, 1); this.clickCell(g.cell); } }, `${g.held ? '✓' : '★'} ${esc(g.name)} · ${g.pts}`));
       d.appendChild(row); this.goalEl.appendChild(d);

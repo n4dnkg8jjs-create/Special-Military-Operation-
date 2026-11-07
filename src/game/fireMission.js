@@ -52,7 +52,7 @@ export function setupFires(game) {
     };
   }
   if (net?.role === 'host') {
-    F.count.enemy = F.count.player; F.remote = net.peer;   // the joiner gets the same number of missions
+    F.count.enemy = Math.max(0, ARTY.missions + (game.mods?.enemy?.artillery || 0)); F.remote = net.peer;   // the joiner's missions: the base allowance + its own upgrades (game.mods.enemy, campaignBattle.js applyMods)
     net.peer.on('arty', ({ x, z }) => { if (game.phase !== 'deploy') F.call('enemy', x, z); });
     const tell = () => net.peer.send('artyN', F.count.enemy);
     net.peer.on('artyQ', tell); Promise.resolve().then(tell);
@@ -123,6 +123,7 @@ class FireMissions {
     // the side under the guns: the adjusting round was the warning
     const os = OTHER(m.side);
     if (os === 'player' && this.nearOwn('player', m.x, m.z, 160)) this.g.hud?.alert('Enemy artillery is ranging on our positions — heavy fire incoming!', 'bad');
+    else if (os === 'enemy' && this.remote && this.nearOwn('enemy', m.x, m.z, 160)) this.remote.send('artyMsg', ['Enemy artillery is ranging on our positions — heavy fire incoming!', 'bad']);   // (versus: the joiner's troops)
   }
   update() {
     const g = this.g, now = g.time;

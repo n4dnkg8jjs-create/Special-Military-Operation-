@@ -615,6 +615,14 @@ export class Vehicle {
       for (const w of this.wreckParts) { w.visible = true; w.traverse(o => { o.visible = !/_LOD1$/i.test(o.name); }); charObject(w, this.ember ||= { value: 1 }, this.burnB); }
     } else { this.burnLook(0, true); if (this.burnApplied !== 'model') { this.model.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; if (ms.some(x => x?.userData?.charred)) this.burnApplied = 'model'; } }); if (this.burnApplied !== 'model') charObject(this.model, this.ember ||= { value: 1 }, this.burnB); } }
   }
+  // ammunition cook-off: the turret thrown into the air (updateWreck lets it fall); also the versus joiner's puppets
+  tossTurret() {
+    if (this.flyer || !this.turret) return;
+    const tw = (this.wreckParts || []).find(w => /turret/i.test(w.name)) || this.turret;
+    const p = tw.getWorldPosition(new THREE.Vector3()); const q = tw.getWorldQuaternion(new THREE.Quaternion());
+    this.game.scene.attach(tw); tw.position.copy(p); tw.quaternion.copy(q);
+    this.flyer = { obj: tw, v: new THREE.Vector3((Math.random() - .5) * 6, 14 + Math.random() * 8, (Math.random() - .5) * 6), w: new THREE.Vector3((Math.random() - .5) * 4, (Math.random() - .5) * 3, (Math.random() - .5) * 4) };
+  }
   knockOut(catastrophic = false) {
     if (this.destroyed) return;
     const crewSurv = catastrophic ? 0 : 0.6;   // the crew's chance to get out; men in the troop compartment get the same (game.passengersOnKill)
@@ -625,11 +633,7 @@ export class Vehicle {
     g.onVehicleLost(this);
     this.showWreck();
     if (catastrophic && this.turret) {
-      // ammunition cook-off: turret thrown into the air
-      const tw = (this.wreckParts || []).find(w => /turret/i.test(w.name)) || this.turret;
-      const p = tw.getWorldPosition(new THREE.Vector3()); const q = tw.getWorldQuaternion(new THREE.Quaternion());
-      g.scene.attach(tw); tw.position.copy(p); tw.quaternion.copy(q);
-      this.flyer = { obj: tw, v: new THREE.Vector3((Math.random() - .5) * 6, 14 + Math.random() * 8, (Math.random() - .5) * 6), w: new THREE.Vector3((Math.random() - .5) * 4, (Math.random() - .5) * 3, (Math.random() - .5) * 4) };
+      this.tossTurret();
       g.fx.explosion(this.pos.clone().setY(1.5), 2.6); g.sfx('explosion_large', this.pos); g.cam.addShake(Math.max(0, 1 - g.camDist(this.pos) / 200));
     } else { g.fx.explosion(this.pos.clone().setY(1.2), 1.2); g.sfx('explosion_medium', this.pos); }
     this.fire = g.fx.emitter(this.pos.clone().setY(1.6), 'fire', this.kind === 'tank' ? 1.5 : 1.2, 120 + Math.random() * 120);

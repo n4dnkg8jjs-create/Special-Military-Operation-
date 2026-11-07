@@ -582,12 +582,12 @@ export class StrategicMap {
         const found = new Set((C.foundBatteries?.() || []).map(b => b.id));
         // queued: played once no modal (the weekly report) covers the map — see frame()
         this.fxPending = cur.filter(l => l.side === 'enemy' && C.cell(l.cell)).slice(0, 10).map((l, i) => { const k = keyOf(l), B = C.battery(l.battery); this.fxLive.add(k); fx.decals.delete(k);
-          return { side: 'enemy', kind: l.kind, bkind: B?.kind, from: found.has(l.battery) ? B?.cell : null, cell: l.cell, key: k, delay: 0.6 + i * 2.6 }; });
+          return { side: 'enemy', kind: l.kind, bkind: l.bkind || B?.kind, from: l.from !== undefined ? l.from : found.has(l.battery) ? B?.cell : null, cell: l.cell, key: k, delay: 0.6 + i * 2.6 }; });   // (versus: l.bkind / l.from, versus.js resolveFires)
       }
     }
     for (const k of [...fx.decals.keys()]) if (!keys.has(k) && !this.fxLive.has(k)) { fx.decals.delete(k); fx.decalDirty = true; }
     for (const l of cur) { const k = keyOf(l); if (fx.decals.has(k) || this.fxLive.has(k) || !C.cell(l.cell)) continue;
-      const B = C.battery(l.battery), D = KIND_FX[B?.kind] || KIND_FX.how122, T = this.cellCenter(l.cell), A = B && C.cell(B.cell) ? this.cellCenter(B.cell) : { x: T.x, z: T.z + 1 };
+      const B = C.battery(l.battery), D = KIND_FX[l.bkind || B?.kind] || KIND_FX.how122, T = this.cellCenter(l.cell), fc = l.from !== undefined ? l.from : B?.cell, A = fc && C.cell(fc) ? this.cellCenter(fc) : { x: T.x, z: T.z + 1 };
       const L = Math.hypot(T.x - A.x, T.z - A.z) || 1, dir = [(T.x - A.x) / L, (T.z - A.z) / L], r = rng(hash(k)), r2 = rng(hash(k + 'd'));
       fx.decals.set(k, []);
       for (const p of this.impactPlan({ side: l.side, kind: l.kind, cell: l.cell }, D, T, dir, [-dir[1], dir[0]], r)) {
@@ -815,7 +815,7 @@ export class StrategicMap {
     // enemy attacks being prepared
     for (const a of C.pendingAttacks) this.arrow(this.cellCenter(a.from), this.cellCenter(a.to), COL.enemy, `${['', 'company', 'reinf. company', 'battalion'][a.strength]} attack expected`);
     // v4: operation-goal squares, own / found enemy batteries, the supply network (Supply view), this week's UAVs
-    for (const g of C.def.goal?.cells || []) { const c = C.cell(g.cell); if (!c) continue; const p = this.cellCenter(g.cell); p.x += this.cw * 0.3; p.z -= this.ch * 0.34; p.y = 0.03;
+    for (const g of (C.def.goal || C.def.vsGoal)?.cells || []) { const c = C.cell(g.cell); if (!c) continue; const p = this.cellCenter(g.cell); p.x += this.cw * 0.3; p.z -= this.ch * 0.34; p.y = 0.03;
       const e = document.createElement('div'); e.className = 'c2-goalm' + (C.owner[g.cell] === 'player' ? ' held' : ''); e.innerHTML = `<i>★</i><span>${g.pts}</span>`; e.title = `Operation goal: ${g.name || C.cellName(g.cell)} (${g.pts} pts)${C.owner[g.cell] === 'player' ? ' — held' : ''}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }
     for (const b of C.batteries?.('player') || []) { const c = C.cell(b.cell); if (!c) continue; const p = this.cellCenter(b.cell); p.x -= this.cw * 0.3; p.z -= this.ch * 0.3; p.y = 0.03;
       const e = document.createElement('div'); e.className = 'c2-bat own' + (b.down ? ' down' : b.acted === C.turn ? ' used' : '') + (this.targeting?.bat === b.id ? ' sel' : ''); e.innerHTML = `<svg viewBox="0 0 24 18" width="22" height="16"><rect x="1" y="1" width="22" height="16" fill="${COL.own}" stroke="#0d1520" stroke-width="1.6"/><circle cx="12" cy="9" r="3" fill="#0d1520"/></svg>`; e.title = `${b.name}${b.down ? ' (being rebuilt)' : b.acted === C.turn ? ' (acted this week)' : ''}`; this.labels.appendChild(e); this.badges.push({ e, pos: p }); }

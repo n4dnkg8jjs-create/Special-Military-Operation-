@@ -21,7 +21,8 @@ import { TUNING } from '../config.js';
 // stay drawn on the bed; the medics' squad is driven from here (Squad.update hook: squad.medevac).
 
 export const CAP = 3, PICKUP_R = 45, TRIP = [60, 90];
-const MEDIC_ROLES = [
+export const MSTATES = ['ready', 'evac', 'exiting', 'away', 'returning'];   // (net/battle.js snapshots)
+export const MEDIC_ROLES = [
   { role: 'Driver', weapon: 'ak74m', mags: 4, grenades: 0, leader: true, armor: 'light' },
   { role: 'Medic', weapon: 'ak74m', mags: 4, grenades: 0, medic: true, armor: 'light' },
   { role: 'Medic', weapon: 'ak74m', mags: 4, grenades: 0, medic: true, second: true, armor: 'light' },
@@ -482,12 +483,19 @@ export class MedevacTruck extends Vehicle {
 
 // ---------------------------------------------------------------------------------------------- manager: trucks, exits, HUD bits, AI
 export class Medevac {
-  constructor(game) {
-    this.g = game; this.trucks = []; this.exits = {};
-    for (const side of ['player', 'enemy']) this.exits[side] = this.findExit(side);
-    for (const side of ['player', 'enemy']) this.spawn(side);
+  // puppets (versus joiner, net/battle.js clientBattle): the host's two pickups, already built from the spawn manifest. They
+  // are driven by the host's snapshots; the exits are the host's (the deploy zones are not swapped yet when this runs, so
+  // the joiner's own road out is the host's 'enemy' one)
+  constructor(game, puppets = null) {
+    this.g = game; this.trucks = []; this.exits = {}; this.client = !!puppets;
+    if (puppets) { this.exits.player = this.findExit('enemy'); this.exits.enemy = this.findExit('player'); for (const v of puppets) { v.mgr = this; this.trucks.push(v); } }
+    else {
+      for (const side of ['player', 'enemy']) this.exits[side] = this.findExit(side);
+      for (const side of ['player', 'enemy']) this.spawn(side);
+    }
     if (!game.noRender) this.marker();
     this.aiT = 0;
+    if (puppets) return;
     // per-tick bookkeeping after the game's own update (the trip timer runs on game time: paused = stopped)
     const up = game.update.bind(game);
     game.update = dt => { up(dt); this.tick(); };
@@ -499,6 +507,7 @@ export class Medevac {
       if (t.mstate === 'away') { t.tripT = t.backAt - g.time; if (t.tripT <= 0) t.comeBack(); }
     }
     if (g.phase === 'deploy' || g.time < (this.aiAt || 0)) return; this.aiAt = g.time + 3;
+    if (g.opts?.net) return;   // versus: the 'enemy' pickup is the other player's (orders from the joiner, net/battle.js)
     for (const t of this.trucks) if (t.side === 'enemy' && !t.destroyed && t.mstate === 'ready' && !t.medicsOut()) this.ai(t);
   }
   // the road on which reinforcements arrive: the side's spawn point on a road nearest its staging ground, leaving by the closest edge
@@ -630,8 +639,19 @@ export class Medevac {
   }
 }
 
-// game.js: this.medevac = setupMedevac(this) after deploy (skirmish + campaign; not in versus)
+// game.js: this.medevac = setupMedevac(this) after deploy (skirmish, campaign, versus host; the versus joiner's puppets
+// are made by clientBattle during deploy: medevacPuppet + clientMedevac)
 export function setupMedevac(game) {
-  if (game.opts?.net) return null;
+  if (game.opts?.net?.role === 'client') return game.medevac || null;
   try { return new Medevac(game); } catch (e) { console.warn('medevac setup failed', e); return null; }
+}
+// versus joiner: one of the host's pickups (spawn manifest entry vm: x, z, h; side already from the joiner's point of view)
+export function medevacPuppet(game, side, vm) {
+  const v = new MedevacTruck(game, side, side === 'player' ? game.playerFaction : game.enemyFaction, null);
+  v.medicsOut = () => !!v._mOut;   // (the medics' tasks run on the host: net/battle.js snapshots)
+  v.place(vm.x, vm.z, vm.h); game.vehicles.push(v); return v;
+}
+export function clientMedevac(game, trucks) {
+  if (!trucks.length) return null;
+  try { return new Medevac(game, trucks); } catch (e) { console.warn('medevac (joiner) setup failed', e); return null; }
 }

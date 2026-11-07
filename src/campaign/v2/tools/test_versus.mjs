@@ -155,5 +155,57 @@ for (const op of ['UA', 'RU']) {
   } else ok(true, `${op}: (no open/held pair to compare)`);
 }
 
+// ------------------------------------------------------------------ purchases arrive under the name that was ordered
+// (a bought team used to land in a second 'Brigade reserve' next to the brigade's own, which holds the starting 'UAV
+// strike platoon', and was numbered among start units of other names: 'Stugna-P ATGM team #3'). Single player, versus
+// (host and the joiner's mirror) for both sides.
+{ const { Campaign2 } = await import('../state.js');
+  const checkNames = (C, before, where) => {
+    const fresh = C.units.filter(u => !before.has(u.uid)), names = C.forces.map(t => t.name);
+    ok(fresh.length >= 4, `${where}: ${fresh.length} units delivered`);
+    for (const u of fresh) { const c = C.catalogItem(u.key); ok(c && (u.name === c.label || new RegExp(`^${c.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} #\\d+$`).test(u.name)) && c.kind === u.kind, `${where}: ${u.key} arrives as '${u.name}' (ordered '${c?.label}')`); }
+    ok(new Set(names).size === names.length, `${where}: task force names are unique (${names.join(' / ')})`);
+    for (const u of fresh) { const t = C.tfOf(u.uid); ok(t && (!t.autoName || (t.units.length === 1 && t.name === u.name)), `${where}: '${u.name}' waits in '${t?.name}'`); }
+    ok(new Set(C.units.map(u => u.name)).size === C.units.length, `${where}: unit names are unique`);
+  };
+  const buyAll = (C, buy) => { C.lp = 5000; C.unlocked.push(...C.def.tech.map(t => t.id).filter(id => !C.unlocked.includes(id))); for (const c of C.def.catalog) if (!C.available.includes(c.key)) C.available.push(c.key);
+    for (const c of C.def.catalog) if (c.kind !== 'replacements' && C.catalogAvailable(c)) buy(c.key); };
+  for (const f of ['UA', 'RU']) {
+    const C = new Campaign2(defs[f]), before = new Set(C.units.map(u => u.uid)); buyAll(C, k => ok(C.orderUnit(k) === null, `${f}: order ${k}`));
+    for (let i = 0; i < 5; i++) C.endTurn();
+    checkNames(C, before, `single player ${f}`);
+    // one delivery alone: its own group, named after it — not the brigade's reserve holding other units
+    const D = new Campaign2(defs[f]); D.lp = 500; D.unlocked.push(...D.def.tech.map(t => t.id)); D.available.push('fpv_plus'); D.orderUnit('fpv_plus'); D.endTurn();
+    const u = D.units.find(x => x.key === 'fpv_plus'), t = D.tfOf(u.uid); ok(t.units.length === 1 && t.name === D.catalogItem('fpv_plus').label, `${f}: a bought FPV team waits as '${t.name}' [${D.tfUnits(t).map(x => x.name)}]`);
+  }
+  for (const op of ['UA', 'RU']) {
+    const V = new VersusGame(defs, op, op), before = { UA: new Set(V.side.UA.units.map(u => u.uid)), RU: new Set(V.side.RU.units.map(u => u.uid)) };
+    for (const f of ['UA', 'RU']) buyAll(V.side[f], k => ok(V.apply(f, 'orderUnit', [k]) === null, `versus ${op} ${f}: order ${k}`));
+    for (let w = 0; w < 5; w++) { V.setReady('UA', true); V.setReady('RU', true); V.buildQueue(); while (V.nextAttack()); V.endWeek(); }
+    for (const f of ['UA', 'RU']) { checkNames(V.side[f], before[f], `versus ${op} ${f}`);
+      const M = mirror2(defs, JSON.parse(JSON.stringify(V.view(f))));
+      ok(JSON.stringify(M.units.map(u => [u.uid, u.key, u.name])) === JSON.stringify(V.side[f].units.map(u => [u.uid, u.key, u.name])) && JSON.stringify(M.forces.map(t => [t.id, t.name])) === JSON.stringify(V.side[f].forces.map(t => [t.id, t.name])), `versus ${op} ${f}: the joiner's mirror has the same units and groups`); }
+  }
+}
+// ------------------------------------------------------------------ versus: the operation goal and the week's fire on both maps
+for (const op of ['UA', 'RU']) {
+  setRandom(seeded(321)); const V = new VersusGame(defs, op, op), A = V.side[op], D = V.side[OTHER(op)], G = V.sdef[op].vsGoal;
+  const ga = A.goalProgress(), gd = D.goalProgress();
+  ok(ga && gd && ga.vs === 'attack' && gd.vs === 'defend', `${op}: both commanders have the operation goal (attack / defend)`);
+  ok(ga.cells.length === G.cells.length && ga.cells.every((c, i) => c.held !== gd.cells[i].held), `${op}: goal squares held by exactly one side`);
+  ok(!A.outcome() && !D.outcome(), `${op}: the goal does not end a versus week by itself`);
+  const M = mirror2(defs, JSON.parse(JSON.stringify(V.view(OTHER(op))))); ok(M.goalProgress()?.vs === 'defend' && M.goalProgress().cells.length === G.cells.length, `${op}: the joiner's mirror shows the goal`);
+  // a fire mission planned this week: the firer's map keeps its craters this week, the target's commander sees it land next week
+  let fired = null;
+  for (const b of A.batteries()) { const c = A.def.aor.cells.find(x => !A.fireCheck(b.id, 'suppress', x.id)); if (c) { const r = V.apply(op, 'fire', [b.id, 'suppress', c.id]); if (r?.ok) { fired = { b, cell: c.id, turn: A.turn }; break; } } }
+  ok(!!fired, `${op}: a fire mission planned`);
+  V.setReady('UA', true); V.setReady('RU', true); V.buildQueue(); while (V.nextAttack()); 
+  ok(A.fireLog.some(l => l.turn === fired.turn && l.side === 'player' && l.cell === fired.cell && l.battery === fired.b.id), `${op}: the firer's fire log has the mission (this week)`);
+  V.endWeek();
+  const seen = D.fireLog.filter(l => l.turn === D.turn && l.side === 'enemy' && l.cell === fired.cell);
+  ok(seen.length === 1 && seen[0].bkind === fired.b.kind && !D.battery(seen[0].battery), `${op}: the other commander's map plays it at the start of the next week (${JSON.stringify(seen[0])})`);
+  const M2 = mirror2(defs, JSON.parse(JSON.stringify(V.view(OTHER(op))))); ok(M2.fireLog.some(l => l.turn === M2.turn && l.side === 'enemy'), `${op}: in the joiner's mirror too`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
