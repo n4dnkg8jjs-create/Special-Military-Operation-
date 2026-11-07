@@ -627,8 +627,11 @@ def mtz80(name, burnt=False, seed=60):
             mb.poly(P[::-1], G.fit('glass_dark', (1.2, 1.3), stretch=True))
     # seat + steering wheel
     tbox(mb, (-0.22, cy0, cz0 + 0.25), (0.22, cy0 + 0.45, cz0 + 0.6), 'rubber' if not burnt else 'ash', (1, 1))     # seat on its pedestal
-    Msw = T(0, cy0 + 0.98, cz1 - 0.13) @ mat_trs((0, 0, 0), (0.9, 0, 0))
-    G.tube(mb, [(0, cy0 - 0.01, cz1 - 0.45), (0, cy0 + 0.98, cz1 - 0.13)], 0.025, 4, dark)                          # column floor -> wheel hub
+    # the column rises from the front of the cab (firewall / dash) and leans back toward the seat; the wheel faces the
+    # driver (tilted up and back), its hub ~0.35 m ahead of the seat's front edge (was mirrored: column leaning away, wheel
+    # facing the windscreen)
+    Msw = T(0, cy0 + 0.98, cz1 - 0.42) @ mat_trs((0, 0, 0), (-0.6, 0, 0))
+    G.tube(mb, [(0, cy0 + 0.2, cz1 - 0.06), (0, cy0 + 0.98, cz1 - 0.42)], 0.025, 4, dark)                           # column dash -> wheel hub
     G.lathe(mb, [(0.2, -0.02), (0.22, 0.0), (0.2, 0.02)], 10, 'rubber' if not burnt else 'burnt_metal', M=Msw)
     for sp in ((0.21, 0, 0), (-0.21, 0, 0), (0, 0, -0.21)):                                                         # spokes
         G.tube(mb, [xform(np.array([(0, 0, 0)]), Msw)[0], xform(np.array([sp]), Msw)[0]], 0.012, 3, dark)
