@@ -2,6 +2,7 @@
 // The engine loads this through v2/index.js (loadCampaigns -> CAMPAIGNS2). Node check:
 //   node -e "import('./src/campaign/v2/content_index.js').then(m => { for (const d of Object.values(m.CAMPAIGNS2)) console.log(d.id, m.validate2(d)); })"
 import { MODS } from '../schema.js';
+import { CAMPAIGN_MODS } from './state.js';
 import { CAMPAIGN2_UA } from './content_ua.js';
 import { CAMPAIGN2_RU } from './content_ru.js';
 
@@ -80,7 +81,7 @@ export function validate2(def) {
     for (const r of t.req || []) if (!tech.has(r)) err(`tech ${t.id} req ${r} unknown`);
     if (!['unlock', 'upgrade'].includes(t.kind)) err(`tech ${t.id} kind`);
     for (const k of t.unlock || []) if (!cat.has(k)) err(`tech ${t.id} unlocks unknown ${k}`);
-    for (const k of Object.keys(t.mods || {})) if (!(k in MODS)) err(`tech ${t.id} mod ${k} not in MODS`);
+    for (const k of Object.keys(t.mods || {})) if (!(k in MODS) && !CAMPAIGN_MODS.includes(k)) err(`tech ${t.id} mod ${k} not in MODS / CAMPAIGN_MODS`);
     if (t.date && !inRange(t.date)) err(`tech ${t.id} date ${t.date} outside campaign`);
   }
   for (const k of S.available || []) if (!cat.has(k)) err(`start.available ${k} not in catalog`);

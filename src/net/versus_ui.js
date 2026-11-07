@@ -394,7 +394,7 @@ async function guestSession(peer, defs, code) {
       outbox = outbox.filter(c => c.seq > s.ack);
       const d0 = C.date; C = mirror2(defs, s, cache); ui.setCampaign(C);
       if (newTurn) { const from = markN; markN = C.logSeq || 0; lastTurn = s.turn; outbox = []; weekReport(ui, C, from, d0); markN = C.logSeq || 0; }
-    } else { C.foes = s.foes; ui.map.refresh(); }
+    } else { C.foes = s.foes; C.vsCover = s.c?.vsCover || C.vsCover; C.vsSeen = s.c?.vsSeen || C.vsSeen; ui.map.refresh(); }   // (the host's picture of the held squares: versus.js refreshCover)
     if (s.battle && (!S.frame || S.battleId !== s.battle.id)) openBattle(s.battle);
     if (!s.battle && S.frame) { S.closeFrame(); S.battleId = null; }
     ui.renderTop();

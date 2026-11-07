@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING } from '../config.js';
 import { ContactMarkers } from '../ui/contactMarkers.js';
 import { MEDIC_ROLES, MSTATES, medevacPuppet, clientMedevac } from '../game/medevac.js';
+import { attachKits } from '../game/vehicleKit.js';
 
 const DRONE_PHASE = ['launch', 'climb', 'cruise', 'dive', 'fall'];   // (= game/support.js FpvTeam drone phases)
 const STANCE = ['stand', 'crouch', 'prone'], STATE = ['ok', 'light', 'critical', 'stable', 'dead', 'evac'];
@@ -79,7 +80,7 @@ const squadManifest = sq => ({ id: sq.id, side: sq.side, kind: sq.kind, name: sq
 export function manifest(game) {
   return {
     squads: game.squads.map(squadManifest),
-    vehicles: game.vehicles.map(v => ({ id: v.id, side: v.side, kind: v.kind, name: v.name, hp: v.hp, x: v.pos.x, z: v.pos.z, h: v.heading })),
+    vehicles: game.vehicles.map(v => ({ id: v.id, side: v.side, kind: v.kind, name: v.name, hp: v.hp, x: v.pos.x, z: v.pos.z, h: v.heading, kits: v.kits?.length ? v.kits : undefined })),   // kits: campaign tech-tree kits (meshes on the joiner's copy)
     mortars: game.mortars,
   };
 }
@@ -132,6 +133,9 @@ export function clientBattle(game, peer) {
     const v = vm.kind === 'medevac' ? medevacPuppet(game, flip(vm.side), vm) : game.makeVehicle(flip(vm.side), vm.kind, vm.x, vm.z, vm.h);
     if (vm.kind === 'medevac') trucks.push(v); else v.name = vm.name;
     v.hp = vm.hp; v.netId = vm.id; game.netMap.set(vm.id, v);
+    // the host's campaign kits (cope cages, ERA, the casevac pickup's net ...): the same meshes on the joiner's copy (the
+    // effects are the host's: it resolves every hit)
+    if (vm.kits?.length && !v.fallback && !v.kitDone) { v.kitDone = true; v.kits = [...vm.kits]; v.cageMesh = null; try { attachKits(v.model, vm.kits, { wheeled: !!v.def?.wheeled || v.kind === 'btr', kind: v.kind }); } catch (e) { console.warn('joiner kits', e); } }
   }
   for (const sm of M.squads) {
     const sq = netSquad(game, sm);

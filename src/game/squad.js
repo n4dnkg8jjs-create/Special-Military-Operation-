@@ -1083,7 +1083,7 @@ export class Squad {
       w.vel.set(0, 0, 0);
       if (!s.path || s.pathI >= (s.path?.length || 0)) {
         if (s.dragTarget === 'carrier' && this.carrier && this.carrier.pos.distanceTo(s.pos) < 5) { this.evacuate(w); s.dragging = null; s.dragPhase = null; this.game.hud && this.side === 'player' && this.game.hud.alert(`${this.name}: casualty evacuated`, 'good'); }
-        else { s.dragPhase = 'treat'; s.treatT = 7 + Math.random() * 4; }
+        else { s.dragPhase = 'treat'; s.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, this.game.mods?.[this.side]?.medTreat || 0)); }   // campaign tech: combat-lifesaver training (tech.js Medical)
       }
     } else if (s.dragPhase === 'treat') {
       s.treatT -= dt; s.vel.set(0, 0, 0); s.stance = 'crouch';

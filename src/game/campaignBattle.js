@@ -96,7 +96,8 @@ export function collectResult(game, side = 'player') {
   const rec = uid => (units[uid] ||= { uid, alive: 0, wounded: 0, saved: 0, diedOfWounds: 0, kills: 0, vehLost: false, vehHp: 1 });
   // wounded still lying out on the field at the end (never evacuated) may not make it: more of them when the ground is lost;
   // men evacuated (state 'evac': by their carrier or the medevac pickup, game/medevac.js -> soldier.saved) all come back
-  const won = side === 'player' ? !!game.result?.win : !game.result?.win, dow = s => s.state === 'critical' ? (won ? 0.25 : 0.6) : s.state === 'stable' ? (won ? 0.05 : 0.3) : 0;
+  // (campaign tech medSave — stabilisation point, blood forward, armoured ambulances: fewer of them die of their wounds)
+  const care = 1 - Math.min(0.75, modOf(game, side, 'medSave')), won = side === 'player' ? !!game.result?.win : !game.result?.win, dow = s => (s.state === 'critical' ? (won ? 0.25 : 0.6) : s.state === 'stable' ? (won ? 0.05 : 0.3) : 0) * care;
   for (const sq of game.squads) {
     if (sq.side !== side || sq.rec == null) continue;
     const u = rec(sq.rec);

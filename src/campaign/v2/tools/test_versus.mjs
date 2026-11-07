@@ -207,5 +207,50 @@ for (const op of ['UA', 'RU']) {
   const M2 = mirror2(defs, JSON.parse(JSON.stringify(V.view(OTHER(op))))); ok(M2.fireLog.some(l => l.turn === M2.turn && l.side === 'enemy'), `${op}: in the joiner's mirror too`);
 }
 
+// ------------------------------------------------------------------ parity with single player (v7): not every square holds a
+// company — squares no task force / gun line / HQ / starting line covers are empty and occupied without a battle; the
+// map's picture of the other side (vsCover / vsPresence) is the same on the host and in the joiner's mirror; the defence
+// gets the single-player kinds of orders (recon, destroy); the operation goal decides as in single player
+for (const op of ['UA', 'RU']) {
+  setRandom(seeded(4242)); const V = new VersusGame(defs, op, op), A = V.side[op], dn = OTHER(op), D = V.side[dn];
+  const held = id => !!A.vsCover[id], enemyCells = A.def.aor.cells.filter(c => A.owner[c.id] !== 'player').map(c => c.id);
+  ok(enemyCells.some(held) && enemyCells.some(id => !held(id)), `${op}: some of the defender's squares are held, some empty (${enemyCells.filter(held).length}/${enemyCells.length} held)`);
+  ok(V.line[dn].length > 4 && V.line[dn].every(id => V.holds(dn, id)), `${op}: the defender's starting line is held (${V.line[dn].length} squares)`);
+  ok(D.forces.every(t => V.holds(dn, t.cell) === 't' && D.neighbors(t.cell).filter(n => V.own[n] === dn).every(n => V.holds(dn, n))), `${op}: every square under a defending task force's cover is held`);
+  ok(V.holds(dn, D.hq) && D.batteries().every(b => V.holds(dn, b.cell)), `${op}: the defender's HQ and gun positions are held`);
+  // the picture the map draws: no per-square company — known empty squares drop their badge (ui.enemyLayer: P.empty)
+  const P0 = enemyCells.filter(id => A.fresh(id)).map(id => A.enemyPresence(id));
+  ok(P0.length && P0.every(p => p && p.fresh && (p.covered || p.empty)), `${op}: every square the attacker sees is either held or empty (${P0.filter(p => p.empty).length} empty, ${P0.filter(p => p.covered).length} held)`);
+  // break the line: an empty square behind it, next to an own square, is taken by moving in
+  const tgt = enemyCells.find(id => !held(id) && id !== D.hq && A.cell(id).terrain !== 'water' && A.neighbors(id).some(n => A.owner[n] !== 'player' && A.cell(n).terrain !== 'water' && !D.forcesAt(n).length));
+  ok(!!tgt, `${op}: an empty square behind the defender's line`);
+  if (tgt) {
+    const st = A.neighbors(tgt).find(n => A.owner[n] !== 'player' && A.cell(n).terrain !== 'water' && !D.forcesAt(n).length);
+    V.own[st] = op; V.sync();
+    const T = A.forces[0]; T.cell = st; T.mp = A.tfMpMax(T); V.sync();
+    ok(!held(tgt), `${op}: ${tgt} is still empty after the breakthrough`);
+    const p = A.plan(T.id, tgt); ok(p.ok && p.occupy && !p.attack, `${op}: moving into the empty square ${tgt} occupies it (${p.why || ''})`);
+    const M = mirror2(defs, JSON.parse(JSON.stringify(V.view(op)))), pm = M.plan(T.id, tgt); ok(pm.ok && pm.occupy, `${op}: the joiner's mirror predicts the same occupation`);
+    const h0 = V.history.length, r = V.apply(op, 'move', [T.id, tgt]);
+    ok(r?.ok && r.occupy && V.own[tgt] === op && A.owner[tgt] === 'player' && D.owner[tgt] === 'enemy' && V.history.length === h0 + 1 && V.history.at(-1).occupy, `${op}: ${tgt} occupied without a battle on both maps`);
+    ok(A.tf(T.id).cell === tgt && A.tf(T.id).mp === 0, `${op}: occupying takes the task force's week`);
+    ok(D.log.some(l => /occupied/.test(l.text) && l.text.includes(D.cellName(tgt))), `${op}: the defender is told`);
+    invariants(V, `${op} after occupation`);
+    // a held square still needs an attack
+    const hs = enemyCells.find(id => V.own[id] === dn && held(id) && A.adjacent(id, tgt) && A.cell(id).terrain !== 'water');
+    if (hs) { const T2 = A.forces.find(t => t.id !== T.id); T2.cell = tgt; T2.mp = A.tfMpMax(T2); T2.attacked = false; V.sync(); const p2 = A.plan(T2.id, hs); ok(!p2.occupy && p2.attack, `${op}: the held square ${hs} (${A.vsCover[hs]}) needs an attack`); }
+  }
+  // the defence gets recon / destroy orders like a single-player brigade
+  const kinds = new Set(D.def.directives.map(d => d.kind)); ok(kinds.has('hold') && kinds.has('recon') && kinds.has('destroy') && kinds.has('capture'), `${op}: the defender's orders: ${[...kinds].join(', ')}`);
+  ok(D.directives.some(a => a.id === 'vs_recon') && D.directives.some(a => a.id === 'vs_attrit'), `${op}: recon and attrition orders issued at the start`);
+  // the operation goal decides as in single player: its squares held at the end of a week = the attacker's victory
+  const W = new VersusGame(defs, op, op), G = W.sdef[op].vsGoal;
+  for (const g of G.cells) W.own[g.cell] = op; W.sync();
+  for (const t of W.side[dn].forces) if (W.side[dn].owner[t.cell] !== 'player') W.side[dn].retreat(t);
+  W.setReady('UA', true); W.setReady('RU', true); W.buildQueue(); while (W.nextAttack()); W.endWeek();
+  ok(W.phase === 'over' && W.result?.win === op && /goal achieved/.test(W.result.why), `${op}: taking the operation goal wins the versus game (${W.result?.why})`);
+  ok(W.side[op].outcome()?.win && !W.side[dn].outcome()?.win, `${op}: both sides see the result`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

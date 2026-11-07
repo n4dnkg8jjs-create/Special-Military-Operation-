@@ -16,6 +16,8 @@ const h = (tag, attrs = {}, html = '') => { const e = document.createElement(tag
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = v => (Math.round(v * 10) / 10).toString();
 const STRENGTH = ['—', 'company', 'reinforced company', 'battalion'];
+// versus: why a square of the other player is held without a task force in it (versus.js holds)
+const VS_HELD = { t: 'covered by an enemy task force next to it', g: 'his gun positions', h: 'his brigade headquarters', l: 'his line: outposts and line troops dug in since the start' };
 const TERRAIN = { fields: 'Open fields', forest: 'Woods', urban: 'Town', industrial: 'Industrial zone', village: 'Village', water: 'Water', heights: 'Heights', balka: 'Balka (gully)' };
 const KIND = { mech: 'Mech. infantry', imech: 'Mech. infantry (IFV)', assault: 'Assault infantry', tank: 'Tank', atgm: 'ATGM team', fpv: 'FPV drone team', spg: 'Self-propelled gun', replacements: 'Replacements' };
 const KIND_ICON = { mech: '⊠', imech: '⊠', assault: '✕', tank: '⬭', atgm: '△', fpv: '≈', spg: '●', replacements: '+' };
@@ -80,7 +82,7 @@ export class CampaignScreen {
     root.innerHTML = '';
     this.mapEl = h('div', { class: 'c2-map' }); root.appendChild(this.mapEl);
     this.osm = osm; this.geo = geo;
-    this.map = new StrategicMap(this.mapEl, C, osm, geo); this.hookEnemyLayer();
+    this.map = new StrategicMap(this.mapEl, C, osm, geo); this.hookEnemyLayer(); try { this.enemyLayer(); } catch (e) { console.warn('enemy layer', e); }   // (the map's first refresh ran before the hook)
     this.map.viewOffset = 190; this.map.resize();   // keep the camera's centre in the part of the screen the side panel leaves free
     this.map.on = { select: id => this.select(id), cell: id => this.clickCell(id), order: (id, tfId) => this.order(id, tfId), hover: id => this.hoverCell(id), regrid: () => this.regrid() };
     this.top = h('div', { class: 'c2-top' }); this.left = h('div', { class: 'c2-left' }); this.right = h('div', { class: 'c2-right hidden' });
@@ -130,12 +132,13 @@ export class CampaignScreen {
     if (!P) return STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))];
     if (P.empty) return 'no enemy force seen';
     const fs = (C.foes || []).filter(f => f.cell === id), n = fs.reduce((a, f) => a + f.n, 0);
-    if (fs.length) return `${fs.map(f => esc(f.name)).join(', ')} (${n} coy${n === 1 ? '' : 's'})`;
+    if (fs.length) return this.vs ? `enemy task force${fs.length > 1 ? 's' : ''} (${n} unit${n === 1 ? '' : 's'})` : `${fs.map(f => esc(f.name)).join(', ')} (${n} coy${n === 1 ? '' : 's'})`;
+    if (P.why) return VS_HELD[P.why] + (P.fresh ? '' : ' (last report)');
     if (P.fresh && P.covered) return 'outposts — covered by a battalion next to it';
     return STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[id] || 1)))] + (P.fresh ? '' : ' (last report)');
   }
   hookEnemyLayer() {
-    const m = this.map; if (!m || m.__v7enemy || this.vs) return; m.__v7enemy = true;
+    const m = this.map; if (!m || m.__v7enemy) return; m.__v7enemy = true;   // (versus too: the other player's brigade is not in every square either)
     const orig = m.refresh.bind(m);
     m.refresh = (...a) => { const r = orig(...a); try { this.enemyLayer(); } catch (e) { console.warn('enemy layer', e); } return r; };
     // guard for a map3d race: two overlapping 'squares opened' fades (more frequent now that squares are occupied
@@ -145,7 +148,7 @@ export class CampaignScreen {
     Object.defineProperty(m, 'fade', { configurable: true, get: () => fade || none, set: v => { fade = v; } });
   }
   enemyLayer() {
-    const C = this.C, m = this.map; if (!C?.enemyPresence || !m?.badges || this.vs) return;
+    const C = this.C, m = this.map; if (!C?.enemyPresence || !m?.badges) return;
     const key = p => `${p.x.toFixed(3)},${p.z.toFixed(3)}`, at = new Map();
     for (const c of C.def.aor.cells) if (C.owner[c.id] !== 'player') at.set(key(m.cellCenter(c.id)), c.id);
     m.badges = m.badges.filter(b => {
@@ -153,7 +156,8 @@ export class CampaignScreen {
       const id = at.get(key(b.pos)), P = id && C.enemyPresence(id); if (!P) return true;
       if (P.empty) { b.e.remove(); return false; }
       if (P.fresh && !P.forces.length && P.covered) {   // no force in it: only the outposts of the battalion next door — a faint marker
-        b.e.title = `${C.cellName(id)}: no enemy force in the square — covered by a battalion next to it (outposts, counterattack company)${C.fort[id] ? `; fortifications ${C.fort[id]}` : ''}`;
+        b.e.title = P.why ? `${C.cellName(id)}: no enemy task force in the square — ${VS_HELD[P.why]}${C.fort[id] ? `; fortifications ${C.fort[id]}` : ''}. Taking it needs an attack.`
+          : `${C.cellName(id)}: no enemy force in the square — covered by a battalion next to it (outposts, counterattack company)${C.fort[id] ? `; fortifications ${C.fort[id]}` : ''}`;
         b.e.style.opacity = '0.4'; const ech = b.e.querySelector('.c2-en-ech'); if (ech) ech.textContent = '·';
       }
       return true;
@@ -394,14 +398,15 @@ export class CampaignScreen {
     const C = this.C, us = C.battleUnits(tf.units), sup = tf.supply ?? 1, fort = C.fort[cellId] || 0, c = C.cell(cellId);
     const urban = ['urban', 'industrial'].includes(c.terrain) ? 1 : c.terrain === 'village' || c.terrain === 'forest' ? 0.5 : 0;
     const foes = (C.foes || []).filter(f => f.cell === cellId);
-    const mine = us.reduce((a, u) => a + C.unitPower(u), 0) * (0.6 + 0.4 * sup), theirs = (foes.length ? foes.reduce((a, f) => a + f.power, 0) + 1.2 : Math.max(0.5, C.garrison[cellId] || 1) * 2.1) + fort * 0.6 + urban * 0.8;
+    const mine = us.reduce((a, u) => a + C.unitPower(u), 0) * (0.6 + 0.4 * sup), why = this.vs ? C.vsPresence?.(cellId)?.why : 't', zoc = why === 't' ? 1 : why ? 0.7 : 0.4;   // (versus.js autoBattle: line troops under a task force's cover / on the line / thin rear security)
+    const theirs = (foes.length ? foes.reduce((a, f) => a + f.power, 0) + 1.2 : Math.max(0.5, C.garrison[cellId] || 1) * 2.1 * zoc) + fort * 0.6 + urban * 0.8;
     const r = mine / theirs; return { mine, theirs, r, label: r > 1.5 ? 'Favourable' : r > 1.1 ? 'Slight advantage' : r > 0.85 ? 'Even' : r > 0.6 ? 'Unfavourable' : 'Very unfavourable', cls: r > 1.1 ? 'good' : r > 0.85 ? 'warn' : 'bad', units: us };
   }
   attackModal(tf, cellId, plan) {
     const C = this.C, c = C.cell(cellId), est = this.estimate(tf, cellId), known = C.known(cellId);
     const m = this.modal(`<div class="c2-k">ATTACK ORDER · ${esc(dateLabel(C.date))}</div><h2>${esc(tf.name)} → ${esc(cellRef(C, cellId))}</h2>
       <div class="c2-two"><div><div class="c2-sub">Own force (${est.units.length} of ${tf.units.length} units deploy, max ${MAX_BATTLE})</div>${est.units.map(u => `<div class="c2-li"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${u.menMax ? `${u.men}/${u.menMax}` : ''}${u.veh ? ` · ${u.veh.lost ? 'no veh.' : Math.round(u.veh.hp * 100) + '%'}` : ''} · ${XP_NAMES[xpLevel(u.xp)]}</small></div>`).join('')}${(tf.supply ?? 1) < 0.5 ? '<div class="c2-li bad">Out of supply: less ammunition, fewer drones, lower morale</div>' : ''}</div>
-      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${this.vs && (C.foes || []).some(f => f.cell === cellId) ? `${(C.foes || []).filter(f => f.cell === cellId).reduce((a, f) => a + f.n, 0)} units of the other player` : this.vs ? `line battalions${known ? ` (${STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))]})` : ''}` : known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(this.battleText(c))}</b></div>
+      <div><div class="c2-sub">Objective</div><div class="c2-li">${esc(TERRAIN[c.terrain] || c.terrain)}${c.settlement ? ` · ${esc(c.settlement.name)}` : ''}</div><div class="c2-li">Enemy: <b>${this.vs && (C.foes || []).some(f => f.cell === cellId) ? `${(C.foes || []).filter(f => f.cell === cellId).reduce((a, f) => a + f.n, 0)} units of the other player` : this.vs ? (known ? this.enemyHere(cellId) : 'line battalions (unknown strength)') : known ? STRENGTH[Math.max(1, Math.min(3, Math.round(C.garrison[cellId] || 1)))] : 'unknown'}</b></div><div class="c2-li">Fortifications: <b>${known ? ['none', 'trenches', 'dug in', 'fortified line'][C.fort[cellId] || 0] : 'unknown'}</b></div><div class="c2-li">Battle map: <b>${esc(this.battleText(c))}</b></div>
       <div class="c2-odds ${est.cls}">${known ? `Staff estimate: <b>${est.label}</b>` : 'Staff estimate: <b>no reliable intelligence</b>'}</div></div></div>
       <div class="c2-note">${this.vs ? `The task force moves to ${esc(C.cellName(plan.stage))} now and attacks when both commanders have ended the week. Against the other player's task forces it becomes a real battle for both of you (unless you leave it to the staff); squares held only by line battalions are staff-resolved.` : `The task force moves to ${esc(C.cellName(plan.stage))} and attacks. Fight the battle yourself on the RTS map, or let the staff auto-resolve it (less LP, rougher losses). Win and the square is yours; the task force moves in.`}</div>`,
       this.vs ? [['PLAN ATTACK', 'pri', () => this.planAttack(tf, cellId, false)], ['Plan — staff-resolved', '', () => this.planAttack(tf, cellId, true)], ['Cancel', 'cancel', () => {}]]

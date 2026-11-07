@@ -339,5 +339,40 @@ for (const def of (process.argv[2] === 'content' ? Object.values(defs) : []).fil
   // older saves (forces with str only) are migrated to companies
   { const C = new Campaign2(def); const f = C.eforces[0]; delete f.coys; f.str = 1.2; AI7.migrate(f); ok(f.coys.length === 4 && Math.abs(f.str - 1.2) < 0.05, 'old force record migrated (str 1.2 -> 4 coys)'); }
 }
+// ------------------------------------------------------------------ v8: the tech tree — every node does something, the
+// medical branch and the casevac pickup's line (src/game/medevac.js) on both sides, and the campaign-side medical effects
+if (process.argv[2] === 'content') {
+  const T = await import('../tech.js'), { MODS } = await import('../../schema.js'), { CAMPAIGN_MODS, woundedShare } = await import('../state.js');
+  const MED = ['medevac', 'medTreat', 'medTrip', 'medSave', 'medReturn'];
+  for (const side of ['UA', 'RU']) {
+    const def = defs[side]; if (!def) continue;
+    console.log(`== ${side}: tech tree and medical branch`);
+    for (const t of def.tech) {
+      ok(T.effectLines(t).length > 0 || (t.unlock || []).length > 0 || t.battery, `${side} ${t.id}: has an effect (${t.name})`);
+      for (const k of Object.keys(t.mods || {})) ok(k in MODS || CAMPAIGN_MODS.includes(k), `${side} ${t.id}: mod ${k} is understood`);
+      if (t.kit) ok(T.KITS[t.kit] && T.LINES[side].some(L => L.id === t.line && L.vk === t.vk), `${side} ${t.id}: kit ${t.kit} on its line's vehicle`);
+      ok(!t.date || (t.date >= def.start.date && t.date <= def.start.end), `${side} ${t.id}: date ${t.date} inside the campaign`);
+      ok(t.desc && t.desc.length > 30, `${side} ${t.id}: description`);
+    }
+    const L = T.LINES[side].find(x => x.vk === 'medevac'); ok(L && L.asset === 'pickup', `${side}: a casevac pickup line`);
+    const kits = def.tech.filter(t => t.line === L?.id && t.kit).map(t => t.kit); ok(['plate', 'cage', 'ew'].every(k => kits.includes(k)), `${side}: casevac kits ${kits.join(', ')}`);
+    const med = def.tech.filter(t => t.branch === 'Medical' || t.line === L?.id);
+    ok(T.BRANCHES[side].includes('Medical') && def.tech.filter(t => t.branch === 'Medical').length >= 4, `${side}: Medical branch (${def.tech.filter(t => t.branch === 'Medical').map(t => t.name).join(' / ')})`);
+    for (const k of MED) ok(med.some(t => (t.mods || {})[k] > 0), `${side}: some medical node gives ${k}`);
+    // the medical effects reach the rules: kits on the pickup (battle: game.mods.kits.medevac), wounded back, auto-resolve care
+    const C = new Campaign2(def); const m0 = C.mods();
+    C.unlocked.push(...med.map(t => t.id).filter(id => !C.unlocked.includes(id))); const m1 = C.mods();
+    ok((m1.kits?.medevac || []).length === 3 && m1.medTrip > 0 && m1.medSave > 0 && m1.medTreat > 0 && m1.medReturn > 0 && m1.medevac > (m0.medevac || 0), `${side}: all medical tech -> ${JSON.stringify({ kits: m1.kits?.medevac, medTrip: m1.medTrip, medSave: m1.medSave, medTreat: m1.medTreat, medReturn: m1.medReturn, medevac: m1.medevac })}`);
+    ok(woundedShare(m1) > woundedShare(m0), `${side}: staff-resolved battles: more casualties wounded rather than killed (${woundedShare(m0)} -> ${woundedShare(m1).toFixed(2)})`);
+    const ret = C2 => { const u = C2.units.find(x => x.menMax >= 6); u.men = u.menMax - 5; u.wounded = 5; u.woundedT = 1; C2.pendingAttacks = []; const tf = C2.tfOf(u.uid); tf.cell = C2.deliveryCell(); C2.computeSupply(); C2.endTurn(); return u.men - (u.menMax - 5); };
+    setRandom(seeded(7)); const a = ret(new Campaign2(def)); setRandom(seeded(7)); const C3 = new Campaign2(def); C3.unlocked.push(...med.map(t => t.id)); const b = ret(C3);
+    ok(b > a, `${side}: hospitals / rehabilitation: more wounded back to their unit (${a} -> ${b} of 5)`);
+  }
+  // battle side: the pickup's armour kit and the joiner's copy (vehicleKit.js applyKitFx)
+  const VK = await import('../../../game/vehicleKit.js');
+  const v = { kind: 'medevac', def: { hp: 160, speed: 16.5, accel: 5 }, hp: 160, eraLeft: {}, zones: [{ name: 'cab', faces: { side: { ke: 1, ce: 1 } } }, { name: 'wheels_l', faces: { side: { ke: 1, ce: 1 } } }] };
+  VK.applyKitFx(v, ['plate', 'cage', 'ew']);
+  ok(v.hp > 160 && v.def.hp === v.hp && v.def.speed < 16.5 && v.zones[0].faces.side.ke >= 9 && v.zones[1].faces.side.ke === 1 && v.cage > 0.2, `casevac pickup with armour, net and jammer: hp ${v.hp}, speed ${v.def.speed.toFixed(1)}, cab side ${v.zones[0].faces.side.ke} mm, cage ${v.cage.toFixed(2)}`);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

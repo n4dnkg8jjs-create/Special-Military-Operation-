@@ -37,13 +37,15 @@ const CLIP = {
 const clipOf = k => CLIP[k].find(hasClip) || CLIP[k][0];
 const dur = (k, d) => clipDuration(clipOf(k), d);
 
+// the HUD's vehicle line: what the campaign has done to the pickup (tech.js medevac line: kits plate / cage / ew)
+const vehLabel = v => { const k = v.kits || []; return `${k.includes('plate') ? 'pickup · armoured cab and bed' : 'civilian pickup · unarmoured'}${k.includes('cage') ? ' · anti-drone net' : ''}${k.includes('ew') ? ' · jammer' : ''}`; };
 export class MedevacTruck extends Vehicle {
   constructor(game, side, faction, mgr) {
     super(game, side, faction, 'medevac');
     this.mgr = mgr; this.noncombat = true;
     this.name = side === 'player' ? 'Medevac pickup' : 'Enemy medevac pickup';
     this.weapons = [{ key: 'pm', ammo: 0, cd: 0, burst: 0 }, { key: 'pkt', ammo: 0, cd: 0, burst: 0, coax: true }];
-    this.supply = null; this.cage = 0;
+    this.supply = null; this.cage = this.kitFx?.cage ? Math.min(0.7, this.kitFx.cage) : 0;   // (campaign kits on the pickup: vehicleKit.js applyVehicleKits ran in the Vehicle constructor — net / jammer)
     this.load = [];                 // casualties on the bed: soldier objects (slot = index)
     this.mstate = 'ready';          // ready | evac (heading for the exit) | exiting | away | returning
     this.medics = []; this.crewSq = null; this.tripT = 0; this.saved = 0;
@@ -97,7 +99,7 @@ export class MedevacTruck extends Vehicle {
       + meter('Casualties', this.load.length / CAP, `${this.load.length}/${CAP}`, this.load.length >= CAP ? 'warn' : 'ok')
       + meter('Medics', med / 2, `${med}/2`, med < 2 ? 'warn' : 'ok');
     let rows = row('Status', this.moraleState().toLowerCase());
-    rows += row('Vehicle', 'civilian pickup · unarmoured');
+    rows += row('Vehicle', vehLabel(this));
     if (this.mstate === 'away') rows += row('Trip', `aid station · back in ${Math.max(0, Math.ceil(this.tripT))} s`);
     rows += row('Saved this battle', `${this.saved}`);
     const near = this.side === 'player' ? this.mgr.candidates(this, PICKUP_R * 4).length : 0;
@@ -434,6 +436,7 @@ export class MedevacTruck extends Vehicle {
   goAway() {
     const g = this.game;
     this.scripted = null; this.mstate = 'away'; this.speed = 0; this.root.visible = false; for (const m of this.medics) m.s.inCab = false; this.tripT = TRIP[0] + Math.random() * (TRIP[1] - TRIP[0]);
+    this.tripT *= 1 - Math.min(0.6, g.mods?.[this.side]?.medTrip || 0);   // campaign tech: stabilisation point forward, armoured ambulances take over at the casualty collection point
     this.awayPos = this.pos.clone(); this.backAt = g.time + this.tripT; this.leaving = true;   // Medevac.tick takes it out of game.vehicles (nobody can see / shoot it)
     this.target = null; this.seenBy = {}; this.detect = {}; this.spotted = false;
     const b = g.hud?.banners?.get(this); if (b) { b.el._sdisplay = 'none'; b.el.style.display = 'none'; }
@@ -648,6 +651,7 @@ export function setupMedevac(game) {
 // versus joiner: one of the host's pickups (spawn manifest entry vm: x, z, h; side already from the joiner's point of view)
 export function medevacPuppet(game, side, vm) {
   const v = new MedevacTruck(game, side, side === 'player' ? game.playerFaction : game.enemyFaction, null);
+  if (vm.kits?.length) v.kits = [...vm.kits];   // (the host's campaign kits: HUD label; the meshes: net/battle.js clientBattle)
   v.medicsOut = () => !!v._mOut;   // (the medics' tasks run on the host: net/battle.js snapshots)
   v.place(vm.x, vm.z, vm.h); game.vehicles.push(v); return v;
 }

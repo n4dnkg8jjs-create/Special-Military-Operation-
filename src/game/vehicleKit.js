@@ -931,6 +931,11 @@ export function applyKitFx(v, kits) {
   const fx = {}; for (const k of new Set(kits)) for (const [a, b] of Object.entries(KITS[k]?.fx || {})) fx[a] = (fx[a] || 0) + b;
   v.kits = [...new Set(kits)]; v.kitFx = fx;
   if (fx.cage) v.cage = Math.min(0.7, (v.cage || 0) + fx.cage);   // capped: screens and jammers never make a vehicle drone-proof
+  // (v8) bolt-on steel (the casevac pickup's armoured cab and bed): mm on every face of the cab / bed zones, hull strength
+  if (fx.hp) { v.def = { ...v.def, hp: Math.round(v.def.hp * (1 + fx.hp)) }; v.hp = Math.round(v.hp * (1 + fx.hp)); }
+  if (fx.plate && v.zones) {
+    v.zones = v.zones.map(z => (/^(cab|bed|hull|body)/i.test(z.name) ? { ...z, faces: Object.fromEntries(Object.entries(z.faces).map(([f, a]) => [f, { ...a, ke: (a.ke || 0) + fx.plate, ce: (a.ce || 0) + fx.plate }])) } : z));
+  }
   if (fx.speed || fx.accel || fx.turret) {
     v.def = { ...v.def };
     if (fx.speed) v.def.speed *= 1 + fx.speed;

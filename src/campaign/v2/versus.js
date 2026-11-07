@@ -6,7 +6,7 @@
 // resolves the week when both are ready (attacks in turn order: against a cell held only by line battalions or when
 // the attacker chose auto-resolve, the staff resolves it; against the other player's task forces it is a real battle
 // for both players), runs both sides' end of week and decides the outcome.
-import { Campaign2, setRandom } from './state.js';
+import { Campaign2, setRandom, woundedShare } from './state.js';
 import * as F from './fires.js';
 import { normalize } from './index.js';
 import { nextBand, applyBand } from './growth.js';
@@ -40,6 +40,7 @@ export function sideDef2(defs, opId, faction) {
   const enemyCells = cells.filter(c => c.owner !== 'player');
   const dEnemy = c => Math.min(99, ...enemyCells.map(e => Math.max(Math.abs(e.col - c.col), Math.abs(e.row - c.row))));
   const ownCells = cells.filter(c => c.owner === 'player');
+  const ownAll = cells.filter(c => c.owner === 'player'), dEnemy2 = c => Math.min(99, ...ownAll.map(e => Math.max(Math.abs(e.col - c.col), Math.abs(e.row - c.row))));   // (distance of an enemy square from our line)
   // HQ and the task forces of the side that does not own the operation: HQ in the safest town, two task forces one
   // square behind the front (spread across the sector), the third with the HQ
   let start;
@@ -70,6 +71,15 @@ export function sideDef2(defs, opId, faction) {
     directives = key.map((c, i) => ({ id: `vs_hold${i}`, issue: { date: op.start.date }, from, kind: 'hold', targets: [c.id], count: 6 + i * 3, deadline: 8 + i * 4,
       title: `Hold ${c.settlement?.name || c.name || 'the line'}`, text: `${c.settlement?.name || 'This sector'} must not fall. Hold it for ${6 + i * 3} weeks in a row; counterattack at once if it is lost.`, reward: { lp: 25 + i * 10 }, penalty: { lp: 10 } }));
     for (const c of key.slice(0, 2)) directives.push({ id: `vs_retake_${c.id}`, issue: { when: `lost:${c.id}` }, from, kind: 'capture', targets: [c.id], deadline: 4, title: `Retake ${c.settlement?.name || 'the position'}`, text: 'The position has been lost. Retake it before the enemy digs in.', reward: { lp: 40 }, penalty: { lp: 15 } });
+    // the same kinds of orders a single-player brigade gets (content directives: recon / destroy), for the defence:
+    // find the attacker's staging areas, then wear down his armour as the offensive comes on
+    const staging = cells.filter(c => c.owner !== 'player' && dEnemy2(c) === 2 && c.terrain !== 'water').sort((a, b) => (b.vp || 0) + (b.settlement ? 1 : 0) + (b.road || 0) * 0.5 - ((a.vp || 0) + (a.settlement ? 1 : 0) + (a.road || 0) * 0.5) || a.id.localeCompare(b.id)).slice(0, 3);
+    if (staging.length) directives.push({ id: 'vs_recon', issue: { date: op.start.date }, from: `${from} — Intelligence`, kind: 'recon', targets: staging.map(c => c.id), deadline: 6,
+      title: 'Find the enemy\'s staging areas', text: `Higher command needs to know where the enemy is massing for the offensive. Put drones over ${staging.map(c => c.settlement?.name || c.name || 'the squares').filter((x, i, a) => a.indexOf(x) === i).join(', ')} behind his line.`, reward: { lp: 30 }, penalty: { lp: 5 } });
+    directives.push({ id: 'vs_attrit', issue: { date: op.start.date }, from: `${from} — Fires`, kind: 'destroy', targets: [], count: 4, deadline: 12,
+      title: 'Attrit the attacking armour', text: 'Destroy enemy armoured vehicles wherever they come on: ATGM ambushes, drones, mines and artillery.', reward: { lp: 35 }, penalty: { lp: 5 }, next: { success: 'vs_attrit2' } });
+    directives.push({ id: 'vs_attrit2', from: `${from} — Fires`, kind: 'destroy', targets: [], count: 6, deadline: 14,
+      title: 'Break the offensive\'s armour', text: 'The enemy is feeding in his reserves. Keep destroying his armoured vehicles before they reach the main belt.', reward: { lp: 50 }, penalty: { lp: 10 } });
   }
   const def = { ...own, goal: null, vsGoal: op.goal || null, id: faction, version: 2, title: `${op.title} — versus`, region: op.region, mapId: opId, vsOp: opId, versus: true,
     aor, start, directives, theatre: op.theatre, intro: { place: op.intro?.place || A.name, date: op.intro?.date || '', lines: [] },
@@ -84,11 +94,13 @@ export class VersusGame {
     this.sdef = { UA: sideDef2(defs, opId, 'UA'), RU: sideDef2(defs, opId, 'RU') };
     if (saved) {
       this.side = { UA: new Campaign2(this.sdef.UA, saved.sides.UA), RU: new Campaign2(this.sdef.RU, saved.sides.RU) };
-      Object.assign(this, { own: saved.own, turn: saved.turn, ready: saved.ready || {}, phase: saved.phase === 'battle' || saved.phase === 'resolve' ? 'resolve' : saved.phase, queue: saved.queue || null, qi: saved.qi || 0, initiative: saved.initiative || opId, acks: saved.acks || {}, result: saved.result || null, history: saved.history || [], pendingBattle: saved.pendingBattle || null });
+      Object.assign(this, { own: saved.own, turn: saved.turn, ready: saved.ready || {}, phase: saved.phase === 'battle' || saved.phase === 'resolve' ? 'resolve' : saved.phase, queue: saved.queue || null, qi: saved.qi || 0, initiative: saved.initiative || opId, acks: saved.acks || {}, result: saved.result || null, history: saved.history || [], pendingBattle: saved.pendingBattle || null, line: saved.line || null });
+      this.line ||= this.startLine();
     } else {
       this.side = { UA: new Campaign2(this.sdef.UA), RU: new Campaign2(this.sdef.RU) };
       this.own = {}; for (const c of this.sdef[opId].aor.cells) this.own[c.id] = c.owner === 'player' ? opId : OTHER(opId);
       this.turn = 1; this.ready = {}; this.phase = 'plan'; this.queue = null; this.qi = 0; this.initiative = opId; this.acks = {}; this.result = null; this.history = [];
+      this.line = this.startLine();
       for (const f of ['UA', 'RU']) { const C = this.side[f]; C.log = []; C.note(`Versus: ${C.def.brigade?.name || f} takes over the ${f === opId ? 'attack' : 'defence'} of the ${this.sdef[opId].aor.name || 'sector'}. The enemy brigade is commanded by another player.`); }
     }
     this.sync();
@@ -118,6 +130,44 @@ export class VersusGame {
       const A = this.side[f], D = this.side[OTHER(f)];
       A.arty.enemy = (D.arty?.player || []).filter(b => !b.down && b.hp > 0 && ((b.revealed != null && b.revealed >= D.turn - 1) || (A.recon[b.cell] ?? -9) >= A.turn - 1)).map(b => ({ id: b.id, kind: b.kind, name: b.name, cell: b.cell, hp: b.hp, revealed: b.revealed != null ? A.turn : null, down: 0, acted: 0 }));
     }
+    this.refreshCover();
+  }
+  // ---- v7 parity with single player: not every square holds a company. A square is HELD by its side where one of its
+  // task forces stands in it or next to it (zone of control), where its guns or its HQ are, or on the side's starting
+  // line (the outposts and line battalions dug in there from the start, as the single-player enemy's outposts fill the
+  // gaps of its line). Everything else is empty: the other side occupies it by moving in, without a battle
+  // (Campaign2.plan occupy, as against the single-player enemy brigade); a staff-resolved attack on a square held only by
+  // the line or outposts meets weaker resistance than one under a task force's cover.
+  // Returns null (empty) or why it is held: 't' task force, 'g' guns, 'h' HQ, 'l' starting line.
+  startLine() { const out = {}; for (const f of ['UA', 'RU']) { const C = this.side[f]; out[f] = Object.keys(this.own).filter(id => this.own[id] === f && C.cell(id) && C.frontline(id)).sort(); } return out; }
+  holds(f, cell) {
+    const D = this.side[f]; if (this.own[cell] !== f) return null;
+    if (D.forcesAt(cell).length || D.neighbors(cell).some(n => D.forcesAt(n).length)) return 't';
+    if ((D.arty?.player || []).some(b => b.cell === cell && !b.down && b.hp > 0)) return 'g';
+    if (cell === (D.hq || D.def.start.hq)) return 'h';
+    if ((this.line?.[f] || []).includes(cell)) return 'l';
+    return null;
+  }
+  // each commander's picture of which of the other side's squares are held (C.vsCover { cell: why }, used by his own
+  // Campaign2.plan / enemyPresence, and by the joiner's mirror the same way) and the last thing seen in each square he
+  // has looked at (C.vsSeen { cell: { turn, held, n } }): host only, after every change
+  refreshCover() {
+    for (const f of ['UA', 'RU']) {
+      const A = this.side[f], o = OTHER(f), cov = {}; A.vsSeen ||= {};
+      for (const id of Object.keys(this.own)) { if (this.own[id] !== o) continue; const w = this.holds(o, id); if (w) cov[id] = w; }
+      A.vsCover = cov;
+      for (const id of Object.keys(this.own)) if (this.own[id] === o && A.cell(id) && A.fresh(id)) A.vsSeen[id] = { turn: A.turn, held: cov[id] || null, n: this.side[o].forcesAt(id).length };
+    }
+  }
+  // a square taken without a fight (Campaign2.occupy on the occupier's side, here: the canonical owner, the other side)
+  occupied(f, cell) {
+    const A = this.side[f], D = this.side[OTHER(f)];
+    this.own[cell] = f;
+    D.note(`The enemy has occupied ${D.cellName(cell)} without a fight: none of our task forces covered it.`, 'bad');
+    D.loseCell(cell, 1, false);
+    this.sync(); this.grow();
+    for (const S of [A, D]) for (const t of [...S.forces]) if (S.owner[t.cell] !== 'player') S.retreat(t);
+    this.history.push({ turn: this.turn, f, cell, win: true, occupy: true });
   }
   // ---- the week's fire missions (planned by both commanders during the week) land before the attacks
   resolveFires() {
@@ -142,11 +192,11 @@ export class VersusGame {
           A.note(`The roads through ${name} are under our fire this week.`, 'good'); D.note(`Enemy fire interdicts the roads through ${name}: our supply through it is cut back.`, 'bad');
         } else if (r.kind === 'counterbattery') {
           const hits = [];
-          for (const b of D.arty?.player || []) {
+          for (const b of D.arty?.player || []) {   // (+ tech cbBonus, as in single player: state.js applyFire)
             if (b.cell !== X || b.down || b.hp <= 0) continue;
             const intel = (A.recon[X] ?? -9) >= A.turn - 1;
             if (!(b.revealed != null && b.revealed >= D.turn - 1) && !intel) continue;
-            if (Math.random() < F.CB_HIT + (intel ? F.CB_INTEL : 0) + (r.cb || 0)) { b.hp = Math.round((b.hp - F.CB_DMG) * 100) / 100; if (b.hp <= 0) { b.hp = 0; b.down = F.REBUILD; } hits.push(b); }
+            if (Math.random() < F.CB_HIT + (intel ? F.CB_INTEL : 0) + (r.cb || 0) + (A.mods().cbBonus || 0)) { b.hp = Math.round((b.hp - F.CB_DMG) * 100) / 100; if (b.hp <= 0) { b.hp = 0; b.down = F.REBUILD; } hits.push(b); }
           }
           A.note(hits.length ? `Counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed' : 'damaged'}`).join(', ')}.` : `Counter-battery fire on ${name}: no confirmed hits.`, hits.length ? 'good' : '');
           if (hits.length) D.note(`Enemy counter-battery fire on ${name}: ${hits.map(h => `${h.name} ${h.down ? 'destroyed — rebuilt in ' + F.REBUILD + ' weeks' : 'damaged'}`).join(', ')}.`, 'bad');
@@ -166,6 +216,8 @@ export class VersusGame {
     if (!COMMANDS.includes(name)) return 'Unknown command';
     const C = this.side[f]; let r;
     try { r = C[name](...(args || [])); } catch (e) { console.warn('versus command', name, e); return 'Command failed'; }
+    if (name === 'move' && r && r.ok && r.occupy) this.occupied(f, args[1]);
+    else this.refreshCover();
     return r;
   }
   setReady(f, v) { if (this.phase !== 'plan') return; this.ready[f] = !!v; }
@@ -185,12 +237,12 @@ export class VersusGame {
   }
   // the state the joiner (or a reconnecting joiner) needs
   view(f) {
-    const C = this.side[f], { def, baseDef, cellById, grid, blocked, ...rest } = C;
-    return { opId: this.opId, faction: f, turn: this.turn, phase: this.phase, c: JSON.parse(JSON.stringify(rest)), foes: this.foes(f), ready: !!this.ready[f], oppReady: !!this.ready[OTHER(f)], ack: this.acks[f] || 0, result: this.result, battle: this.battle ? { ...this.battle } : null };
+    const foes = this.foes(f), C = this.side[f], { def, baseDef, cellById, grid, blocked, ...rest } = C;
+    return { opId: this.opId, faction: f, turn: this.turn, phase: this.phase, c: JSON.parse(JSON.stringify(rest)), foes, ready: !!this.ready[f], oppReady: !!this.ready[OTHER(f)], ack: this.acks[f] || 0, result: this.result, battle: this.battle ? { ...this.battle } : null };
   }
   save() {
     const ser = C => { const { def, baseDef, cellById, grid, blocked, ...rest } = C; return JSON.parse(JSON.stringify(rest)); };
-    return { v: 2, opId: this.opId, host: this.host, turn: this.turn, own: this.own, ready: this.ready, phase: this.phase, queue: this.queue, qi: this.qi, initiative: this.initiative, acks: this.acks, result: this.result, history: this.history, pendingBattle: this.pendingBattle || null, sides: { UA: ser(this.side.UA), RU: ser(this.side.RU) } };
+    return { v: 2, opId: this.opId, host: this.host, turn: this.turn, own: this.own, ready: this.ready, phase: this.phase, queue: this.queue, qi: this.qi, initiative: this.initiative, acks: this.acks, result: this.result, history: this.history, pendingBattle: this.pendingBattle || null, line: this.line, sides: { UA: ser(this.side.UA), RU: ser(this.side.RU) } };
   }
   // ---- end of the week: the attack queue (alternating sides, the initiative alternates weekly)
   buildQueue() {
@@ -223,12 +275,13 @@ export class VersusGame {
     const pa = au.reduce((s, u) => s + A.unitPower(u), 0) * (0.6 + 0.4 * sup(A, au));
     // (v7) line battalions hold a square at full strength only where a task force of the defender covers it (in it or
     // next to it, zone of control); squares behind the front with no task force near are thinly held (rear security)
-    const zoc = D.neighbors(b.cell).some(n => D.forcesAt(n).length) || D.forcesAt(b.cell).length > 0;
-    const line = du.length ? 0 : Math.max(0.5, A.garrison[b.cell] || 1) * 2.1 * (zoc ? 1 : 0.4);
+    // (a square on the defender's starting line, with his guns or his HQ: the line battalions / outposts, 0.7)
+    const why = this.holds(OTHER(b.f), b.cell), zoc = why === 't' ? 1 : why ? 0.7 : 0.4;
+    const line = du.length ? 0 : Math.max(0.5, A.garrison[b.cell] || 1) * 2.1 * zoc;
     const pd = (du.reduce((s, u) => s + D.unitPower(u), 0) * (0.6 + 0.4 * sup(D, du)) + (du.length ? 1.2 : 0) + line) * F.suppressMul(A, b.cell, 'player') + fort * (urban >= 1 ? 1.0 : 0.6) + urban * 0.8;
     const win = pa * rnd(0.75, 1.25) > pd * rnd(0.75, 1.25);
-    const cas = (us, won) => us.map(u => { const k = Math.round(u.men * rnd(0.04, won ? 0.22 : 0.4)); return { uid: u.uid, alive: Math.max(0, u.men - k), wounded: Math.min(k, Math.round(k * 0.6)), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && Math.random() < (won ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; });
-    const ra = cas(au, win), rd = cas(du, !win);
+    const cas = (us, won, C) => us.map(u => { const k = Math.round(u.men * rnd(0.04, won ? 0.22 : 0.4)); return { uid: u.uid, alive: Math.max(0, u.men - k), wounded: Math.min(k, Math.round(k * woundedShare(C.mods()))), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && Math.random() < (won ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; });
+    const ra = cas(au, win, A), rd = cas(du, !win, D);
     const lost = (rs, us) => rs.reduce((s, r) => { const u = us.find(x => x.uid === r.uid); return s + Math.max(0, (u?.men || 0) - r.alive); }, 0) + Math.round(rnd(0, 3));
     const vl = rs => rs.filter(r => r.vehLost).length;
     const rAtt = { sector: b.cell, mode: 'attack', win, auto: true, units: ra, enemyKia: du.length ? lost(rd, du) : Math.round(rnd(2, 6)), enemyVehLost: vl(rd), objectivesHeld: win ? 2 : 0 };
@@ -275,9 +328,20 @@ export class VersusGame {
     const down = f => { const C = this.side[f], o = C.baseOutcome(); return o && !o.win && /DEFEAT/.test(o.title) ? o : null; };
     const dUA = down('UA'), dRU = down('RU'), C0 = this.side[this.opId], end = C0.date >= C0.def.start.end || C0.turn > C0.maxTurn;
     let win = null, why = '';
+    // the operation goal decides as in single player (Campaign2.baseOutcome): its squares held (G.win of the points) at
+    // the end of a week = the attacker's victory at once; at the end of the operation below G.partial = the defence
+    // has held; in between, the score
+    const G = this.sdef[this.opId].vsGoal, att = this.opId, dfd = OTHER(att), gs = this.goalStatus();
+    const pct = gs ? gs.cells.filter(x => x.holder === att).reduce((a, x) => a + x.pts, 0) / Math.max(1, gs.cells.reduce((a, x) => a + x.pts, 0)) : null;
+    const nm = f => (f === 'UA' ? 'Ukraine' : 'Russia');
     if (dUA && !dRU) { win = 'RU'; why = dUA.text; } else if (dRU && !dUA) { win = 'UA'; why = dRU.text; }
     else if (dUA && dRU) { win = 'draw'; why = 'Both brigades are spent.'; }
-    else if (end) { const a = this.score('UA'), b = this.score('RU'); win = a > b ? 'UA' : b > a ? 'RU' : 'draw'; why = `The operation ends on schedule. Score: Ukraine ${a}, Russia ${b}.`; }
+    else if (G && pct >= (G.win ?? 1) - 1e-9) { win = att; why = `${C0.dateLabel}: operation goal achieved — ${G.title} (${Math.round(pct * 100)}% of the objective points held by ${nm(att)}).`; }
+    else if (end) {
+      const a = this.score('UA'), b = this.score('RU'), sc = `Score: Ukraine ${a}, Russia ${b}.`;
+      if (G && pct < (G.partial ?? 0.5) - 1e-9) { win = dfd; why = `The operation ends with only ${Math.round(pct * 100)}% of its goal (${G.title}) in the attacker's hands: the defence has held. ${sc}`; }
+      else { win = a > b ? 'UA' : b > a ? 'RU' : 'draw'; why = `The operation ends on schedule${G ? ` with ${Math.round(pct * 100)}% of its goal taken (limited success)` : ''}. ${sc}`; }
+    }
     if (!win) return null;
     this.result = { win, why, score: { UA: this.score('UA'), RU: this.score('RU') } }; this.phase = 'over';
     for (const f of ['UA', 'RU']) this.side[f].vsOutcome = { win: win === f, title: win === 'draw' ? 'DRAW' : win === f ? 'VICTORY' : 'DEFEAT', text: why };

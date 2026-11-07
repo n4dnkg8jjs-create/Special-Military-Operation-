@@ -41,7 +41,7 @@ export const TERRAIN_COST = { fields: 2, village: 2, heights: 2.5, balka: 2.5, f
 export const VEH_MP = { btr: 4, spg: 3, ifv: 3, tank: 3 };
 export const FOOT_MP = 2;
 // tech effects the campaign layer understands (on top of the battle MODS in schema.js): see PROGRESS_RULES.md
-export const CAMPAIGN_MODS = ['supplyRange', 'uavSorties', 'ammoAlloc', 'ammoMax', 'cbBonus'];
+export const CAMPAIGN_MODS = ['supplyRange', 'uavSorties', 'ammoAlloc', 'ammoMax', 'cbBonus', 'medReturn'];   // medReturn: + share of the wounded back to their unit (endTurn)
 const ROAD_COST = [Infinity, 1.5, 1];
 const FOOT_KINDS = new Set(['assault', 'atgm', 'fpv']);
 
@@ -251,7 +251,8 @@ export class Campaign2 {
     if (!this.isOpen(toId)) return { ok: false, attack: true, why: 'Beyond the brigade\'s area of responsibility' };
     // (v7) a square no enemy force holds or covers (and the brigade can see that): occupied by moving in, no battle;
     // clearing it takes the rest of the task force's week
-    if (tgt === 'enemy' && AI.undefended(this, toId) && this.fresh(toId)) {
+    // (versus: the host's picture of which of the other player's squares are held, C.vsCover — versus.js holds)
+    if (tgt === 'enemy' && (this.def.versus ? !this.vsHeld(toId) : AI.undefended(this, toId)) && this.fresh(toId)) {
       let best = null;
       for (const n of this.neighbors(toId)) { if (dist[n] == null) continue; const c = dist[n] + this.enterCost(n, toId); if (!isFinite(c)) continue; if (!best || c < best.c) best = { n, c }; }
       if (best) {
@@ -758,7 +759,7 @@ export class Campaign2 {
     if (enemyStrength == null || (B.mode === 'defend' && pa?.power != null)) enemyStrength = B.mode === 'attack' ? Math.max(0.5, this.defenderStrength(cellId)) : (pa?.power != null ? pa.power / 2.1 : (pa?.strength || 1));
     const sp = this.suppressed[cellId];
     if (B.mode === 'attack') enemyStrength *= F.suppressMul(this, cellId, 'player');
-    const units = this.battleUnits(uids).slice(0, FRONTAGE), tf = units.length ? this.tfOf(units[0].uid) : null;
+    const units = this.battleUnits(uids).slice(0, FRONTAGE), tf = units.length ? this.tfOf(units[0].uid) : null, wsh = woundedShare(this.mods());
     const supply = tf ? (tf.supply ?? 1) : 1, fort = this.fort[cellId] || 0;
     const c = this.cell(cellId), urban = ['urban', 'industrial'].includes(c?.terrain) ? 1 : c?.terrain === 'village' || c?.terrain === 'forest' ? 0.5 : 0;
     let power = units.reduce((a, u) => a + this.unitPower(u), 0) * (0.6 + 0.4 * supply) + (B.mode === 'defend' ? 1.2 + fort * 0.6 + urban : 0);
@@ -772,7 +773,7 @@ export class Campaign2 {
     const line = lineOnly ? (cov || !AI.aiCampaign(this) ? 2.0 : 1.3) * F.suppressMul(this, cellId, 'enemy') : 0;
     const win = (power + line) * rnd(0.75, 1.25) > enemy * rnd(0.75, 1.25);
     const r = { sector: cellId, mode: B.mode, win, auto: true, lineOnly, enemyKia: Math.round(rnd(2, 6) * enemyStrength), enemyVehLost: (RND() < 0.3 * enemyStrength ? 1 : 0) + (win && RND() < 0.12 * enemyStrength ? 1 : 0), objectivesHeld: win ? 2 : (RND() < 0.4 ? 1 : 0),
-      units: units.map(u => { const cas = Math.round(u.men * rnd(0.04, win ? 0.22 : 0.4)); const w = Math.round(cas * 0.6); return { uid: u.uid, alive: Math.max(0, u.men - cas), wounded: Math.min(cas, w), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && RND() < (win ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; }) };
+      units: units.map(u => { const cas = Math.round(u.men * rnd(0.04, win ? 0.22 : 0.4)); const w = Math.round(cas * wsh); return { uid: u.uid, alive: Math.max(0, u.men - cas), wounded: Math.min(cas, w), kills: Math.round(rnd(0, 3)), vehLost: !!(u.veh && !u.veh.lost && RND() < (win ? 0.08 : 0.25)), vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.4), 0.1, 1)) : 1 }; }) };
     // casualties stay casualties: alive + wounded never exceed men
     for (const ur of r.units) { const u = this.unit(ur.uid); ur.wounded = Math.min(ur.wounded, Math.max(0, u.men - ur.alive)); }
     return this.applyResult(r);
@@ -886,7 +887,18 @@ export class Campaign2 {
   get foes() { return this.def?.versus ? this._foes : (AI.aiCampaign(this) ? this.visibleEnemy() : undefined); }
   set foes(v) { this._foes = v; }
   // the brigade's picture of an enemy-held square: { known, fresh, forces:[ids], screen, empty, covered, def } (null for own)
-  enemyPresence(cellId) { return AI.aiCampaign(this) ? AI.presence(this, cellId) : null; }
+  enemyPresence(cellId) { return this.def.versus ? this.vsPresence(cellId) : AI.aiCampaign(this) ? AI.presence(this, cellId) : null; }
+  // versus: is a square of the other player held (versus.js holds: 't' task force, 'g' guns, 'h' HQ, 'l' starting line)?
+  vsHeld(cellId) { return this.owner[cellId] !== 'player' && !!this.vsCover?.[cellId]; }
+  // versus: the same picture as enemyPresence gives in single player, from the host's C.vsCover / C.vsSeen and the
+  // other player's task forces this side sees (C.foes)
+  vsPresence(cellId) {
+    if (this.owner[cellId] === 'player') return null;
+    const fresh = this.fresh(cellId), seen = this.vsSeen?.[cellId], ids = (this._foes || []).filter(f => f.cell === cellId).map(f => f.id);
+    if (fresh) { const why = this.vsCover?.[cellId] || null; return { known: true, fresh: true, forces: ids, screen: false, empty: !ids.length && !why, covered: !!why, why, def: null }; }
+    if (!seen) return { known: false, fresh: false, forces: ids, screen: false, empty: false, covered: null, why: null, def: null };
+    return { known: true, fresh: false, forces: ids, screen: false, empty: !ids.length && !seen.held && !seen.n, covered: !!seen.held, why: seen.held, def: null, age: this.turn - seen.turn };
+  }
   // C.garrison in task-force campaigns = the brigade's PICTURE of the enemy strength in each square (map badges, old
   // UI): live where observed / in contact, else the last intel; the rules use ai.js defPower
   refreshPresence() {
@@ -936,7 +948,7 @@ export class Campaign2 {
       const sup = tf.supply ?? 0;
       for (const u of this.tfUnits(tf)) {
         if (u.status !== 'ready' && --u.eta <= 0) u.status = 'ready';
-        if (u.wounded && sup >= 0.5 && --u.woundedT <= 0) { const back = Math.ceil(u.wounded * 0.6); u.men = Math.min(u.menMax, u.men + back); u.wounded = 0; }
+        if (u.wounded && sup >= 0.5 && --u.woundedT <= 0) { const back = Math.ceil(u.wounded * Math.min(0.9, 0.6 + (this.mods().medReturn || 0))); u.men = Math.min(u.menMax, u.men + back); u.wounded = 0; }
         if (sup < 0.5 && u.veh && !u.veh.lost) u.veh.hp = Math.max(0.2, u.veh.hp - 0.04);
       }
       if (sup < 0.5) this.note(`${tf.name} is out of supply at ${this.cellName(tf.cell)}: no fuel, ammunition or replacements.`, 'bad');
@@ -1017,4 +1029,7 @@ export class Campaign2 {
   }
 }
 const fmt = v => (Math.round(v * 10) / 10).toString();
+// share of a staff-resolved battle's casualties who are wounded rather than killed: better casualty care (tech mods
+// medSave: stabilisation points, blood forward, armoured ambulances) keeps more of them alive (versus.js autoBattle too)
+export const woundedShare = (m = {}) => Math.min(0.8, 0.6 + 0.25 * (m.medSave || 0));
 const VIS = new WeakMap();   // visibleEnemy() cache (not saved)
