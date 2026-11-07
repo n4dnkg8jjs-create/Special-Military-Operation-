@@ -327,9 +327,11 @@ export class FpvTeam {
     if ((this.scanT -= dt) > 0 || moving) return;
     this.scanT = 1.5;
     // targets: ordered focus, then vehicles (prefer moving/exposed), then infantry in the open
+    // the pilot needs no line of sight of his own: anything his side has spotted in the last ~25 s (recon drones,
+    // observers, other units) is a target - the drone finds it on its own camera on the way in
     const from = p.pos; let best = null, bs = -1e9;
     for (const u of g.enemiesOf(sq.side)) {
-      if (u.destroyed || !g.seen(sq.side, u, from)) continue;
+      if (u.destroyed || !(u.seenBy?.[sq.side] != null && g.time - u.seenBy[sq.side] < 25 || g.seen(sq.side, u, from))) continue;
       const c = u.type === 'vehicle' ? u.pos : u.center(); const d = c.distanceTo(from); if (d > this.W.range || d < 30) continue;
       // squads in panel blocks are out of reach; men at the windows of a cottage are not (fly it in through the window) -
       // unless they are down in the cellar
