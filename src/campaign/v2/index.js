@@ -26,7 +26,13 @@ export function normalize(def) {
     c.id ||= `c${c.col}_${c.row}`;
     c.terrain ||= 'fields'; c.road ??= 0; c.fort ??= 0; c.vp ??= 0; c.lp ??= 0; c.owner ||= 'enemy';
     if (!c.latlon) c.latlon = [latN - (c.row + 0.5) * (latN - latS) / A.rows, lonW + (c.col + 0.5) * (lonE - lonW) / A.cols];
-    c.battleMap ||= def.id === 'RU' ? 'avdiivka' : 'robotyne';
+    // RTS map for a battle here: the real-geography maps only for their own town (Avdiivka incl. the coke plant / Robotyne);
+    // every other square uses the stand-in maps - towns and industrial areas the city map, everything else farmland
+    {
+      const nm = `${c.name || ''} ${c.settlement?.name || ''}`, own = { avdiivka: /Avdiivka/i, robotyne: /Robotyne/i };
+      const urban = ['urban', 'industrial'].includes(c.terrain) || ['town', 'industrial', 'city'].includes(c.settlement?.kind);
+      c.battleMap = Object.keys(own).find(k => own[k].test(nm)) || (urban ? 'city' : 'farmland');
+    }
   }
   A.supplySources = (A.supplySources || []).filter(id => A.cells.some(c => c.id === id));
   if (!A.supplySources.length) {   // the own map edge opposite the enemy
