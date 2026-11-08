@@ -169,6 +169,9 @@ export class Vehicle {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = true;
         const ms = Array.isArray(o.material) ? o.material : [o.material];
+        // lamp lenses sit a few mm proud of their housings: pull them a hair toward the camera so the decimated LOD1 copies
+        // (and depth precision at RTS range) never z-fight with the paint behind them (lights_v1)
+        for (const m of ms) if (/light_lens/i.test(m.name) && !m.polygonOffset) { m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; }
         ms.forEach((m, i) => { if (/track/i.test(m.name) && m.map) { const c = m.clone(); c.map = m.map.clone(); c.map.wrapS = THREE.RepeatWrapping; if (c.normalMap) { c.normalMap = m.normalMap.clone(); c.normalMap.wrapS = THREE.RepeatWrapping; } if (c.alphaMap) { c.alphaMap = m.alphaMap.clone(); c.alphaMap.wrapS = THREE.RepeatWrapping; } if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; this.trackMats.push(c); } });
       }
       if (o.userData?.hidden) o.visible = false;

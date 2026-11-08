@@ -75,7 +75,7 @@
    "file_mb": 4.78,
    "tris": {
     "lod0": 81399,
-    "lod1": 24366,
+    "lod1": 24365,
     "hull_wreck": 16830,
     "turret_wreck": 3020
    },
@@ -529,7 +529,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 7676,
+        "tris": 7675,
         "pos": [
          0.0,
          0.0,
@@ -1051,7 +1051,7 @@
    ],
    "markings": "white crosses on both hull sides, rear plate and roof; green base with brown + khaki disruptive patches",
    "file": "assets/vehicles/btr80_ua.glb",
-   "file_mb": 4.24,
+   "file_mb": 4.23,
    "tris": {
     "lod0": 74797,
     "lod1": 22410,

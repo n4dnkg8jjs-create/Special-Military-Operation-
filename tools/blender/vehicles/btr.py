@@ -305,7 +305,7 @@ def headlight_cluster(side):
     # main headlight
     hl = lathe([(0, -0.07), (0.07, -0.07), (0.085, -0.02), (0.088, 0.05), (0.08, 0.06)], 20, 'y')
     hl.add(lathe([(0.0, 0.07), (0.075, 0.058)], 20, 'y', mat='light', cap=False))
-    hl.add(cyl(0.075, 0.004, 20, 'y', c=(0, 0.058, 0), mat='light'))
+    hl.add(cyl(0.075, 0.004, 20, 'y', c=(0, 0.0625, 0), mat='light'))   # lights_v1: lens disc y 0.0605-0.0645, clear of the housing cap (y 0.06), was coplanar -> z-fight
     hl.move(-0.06 * side, 0.0, 0.12)
     b.add(hl)
     # blackout/marker light
@@ -1037,7 +1037,7 @@ def hull_btr82a(is82=True):
     if is82:
         lp = V((0.42, 2.40, ROOF + 0.30))
         sl = lathe([(0, -0.09), (0.085, -0.09), (0.11, -0.04), (0.115, 0.05), (0.105, 0.065)], 20, 'y')
-        sl.add(cyl(0.098, 0.006, 20, 'y', c=(0, 0.062, 0), mat='light'))
+        sl.add(cyl(0.098, 0.006, 20, 'y', c=(0, 0.0685, 0), mat='light'))   # lights_v1: lens y 0.0655-0.0715, clear of the housing cap (y 0.065), was coplanar -> z-fight
         sl.add(lathe([(0.108, 0.06), (0.12, 0.07), (0.12, 0.085), (0.105, 0.085)], 20, 'y', cap=False))
         for a_ in range(4):
             ang = a_ * math.pi / 2 + math.pi / 4
