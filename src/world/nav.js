@@ -16,7 +16,7 @@ export const VEH_COST = {
 // heurThr 1.6 cut the exposed share of routes from 52 % to 45 % for 1 % more length, ~1.6 ms a query). thrIter: a threat
 // query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
 // exposed, the search would flood the map).
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2, trenchOut: 9, trenchLip: 1.5 };
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2, trenchOut: 9, trenchLip: 1.5, dynPad: 10 };   // dynPad: per metre in the margin round a parked hull / wreck (nav.dyn)
 // barbed wire (this.wire, per-metre extra cost for men only, set by world/battlefieldDetail.js): an intact belt is a real
 // obstacle on foot (~3 m of belt = a 100 m detour), so routes go through the gaps / passages; vehicles ignore it (they
 // flatten the coil: crushed cells drop to a low value).  Values: 0 none, WIRE_COST.belt intact, .crushed / .loose.
@@ -52,6 +52,12 @@ export class NavGrid {
     //   veh[i]    0 = any vehicle, 1 = wheeled vehicles can't cross (trench; tanks cross slowly), 2 = no vehicle (AT ditch,
     //             dragon's teeth, dugout roofs, dense forest)
     //   trench[i] trench / ditch floor depth in dm (0 = not in a cut); infantry there is in cover (coverFrom = 1)
+    // dyn[i]: live vehicles standing still (and wrecks) stamped over cell i (hull footprint + 0.8 m), dynC[i]: the same for the
+    // hull itself (+ 0.4 m, the men's hull push zone) - for INFANTRY planning only: a parked hull is not in cost[] (vehicles plan
+    // round each other themselves, and a hull would block its own start), so foot routes used to run straight through it and the
+    // men slid round it greedily. A* never enters dynC and pays INF_COST.dynPad per metre in the margin (a man standing at the
+    // hull walks out of it, a gap between two hulls stays open); slots / goals / lineFree keep out of the whole stamp.
+    this.dyn = null; this.dynC = null; this.dynStamps = new Map();
     this.veh = null; this.trench = null; this.clearV = null; this.clearT = null; this.terrain = null; this.terrainLOS = true;
     this.g = new Float32Array(N); this.from = new Int32Array(N); this.stamp = new Uint32Array(N); this.closed = new Uint32Array(N); this.gen = 1;
     this.occluders = []; // {cx,cz,hx,hz,cos,sin,h, ref}
@@ -198,6 +204,49 @@ export class NavGrid {
     if (m & (1 << q)) return 1; if (m & (1 << ((q + 1) % 8)) || m & (1 << ((q + 7) % 8))) return 0.55; return 0;
   }
   passable(i, clearance) { return i >= 0 && this.cost[i] !== BLOCK && this.clear[i] >= clearance; }
+  // infantry: also off the cells of parked vehicles / wrecks (dyn layer)
+  passableI(i, clearance) { return this.passable(i, clearance) && !(this.dyn && this.dyn[i]); }
+  passableIC(i, clearance) { return this.passable(i, clearance) && !(this.dynC && this.dynC[i]); }   // (A*: only the hull core is closed)
+  // stamp vehicle key's hull footprint (oriented box in its own frame: x = left, z = forward; b = {x0, x1, z0, z1}) plus pad m
+  // into the infantry layer; replaces the key's previous stamp. Returns the stamped cells' count.
+  stampDyn(key, x, z, h, b, pad = 0.8) {
+    this.unstampDyn(key);
+    const D = this.dyn ||= new Uint8Array(this.n * this.n), C = this.dynC ||= new Uint8Array(this.n * this.n), sh = Math.sin(h), ch = Math.cos(h), cells = [], core = [], pc = 0.4;
+    const r = Math.max(Math.abs(b.x0), Math.abs(b.x1), Math.abs(b.z0), Math.abs(b.z1)) * 1.42 + pad + this.cell;
+    const i0 = Math.max(0, Math.floor((x - r + this.half) / this.cell)), i1 = Math.min(this.n - 1, Math.floor((x + r + this.half) / this.cell));
+    const j0 = Math.max(0, Math.floor((z - r + this.half) / this.cell)), j1 = Math.min(this.n - 1, Math.floor((z + r + this.half) / this.cell));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const k = j * this.n + i, dx = this.cx(k) - x, dz = this.cz(k) - z, lf = dx * sh + dz * ch, ll = dx * ch - dz * sh;
+      if (lf < b.z0 - pad || lf > b.z1 + pad || ll < b.x0 - pad || ll > b.x1 + pad) continue;
+      if (D[k] < 255) D[k]++; cells.push(k);
+      if (lf >= b.z0 - pc && lf <= b.z1 + pc && ll >= b.x0 - pc && ll <= b.x1 + pc) { if (C[k] < 255) C[k]++; core.push(k); }
+    }
+    this.dynStamps.set(key, { cells, core, x, z, h, b, pad });
+    return cells.length;
+  }
+  unstampDyn(key) { const S = this.dynStamps.get(key); if (!S) return; for (const k of S.cells) if (this.dyn[k]) this.dyn[k]--; for (const k of S.core) if (this.dynC[k]) this.dynC[k]--; this.dynStamps.delete(key); }
+  // does the segment a->b cross the stamp of key (its footprint + pad)?
+  segHitsDyn(key, ax, az, bx, bz) {
+    const S = this.dynStamps.get(key); if (!S) return false;
+    const sh = Math.sin(S.h), ch = Math.cos(S.h), p = S.pad - 0.1, loc = (x, z) => { const dx = x - S.x, dz = z - S.z; return [dx * sh + dz * ch, dx * ch - dz * sh]; };
+    const [f0, l0] = loc(ax, az), [f1, l1] = loc(bx, bz);
+    let t0 = 0, t1 = 1;   // slab clip of the segment against the padded box
+    for (const [a, d, lo, hi] of [[f0, f1 - f0, S.b.z0 - p, S.b.z1 + p], [l0, l1 - l0, S.b.x0 - p, S.b.x1 + p]]) {
+      if (Math.abs(d) < 1e-9) { if (a < lo || a > hi) return false; continue; }
+      let u = (lo - a) / d, v = (hi - a) / d; if (u > v) [u, v] = [v, u]; t0 = Math.max(t0, u); t1 = Math.min(t1, v); if (t0 > t1) return false;
+    }
+    return true;
+  }
+  // nearestFree for infantry (also off parked vehicles / wrecks; core: only off the hull itself)
+  nearestFreeI(x, z, clearance = 0.5, maxR = 30, core = false) {
+    const ok = i => core ? this.passableIC(i, clearance) : this.passableI(i, clearance);
+    let i = this.idx(x, z); if (ok(i)) return [x, z];
+    for (let r = 1; r <= maxR; r++) for (let a = 0; a < 16 + r * 4; a++) {
+      const t = a / (16 + r * 4) * Math.PI * 2, px = x + Math.cos(t) * r * this.cell, pz = z + Math.sin(t) * r * this.cell;
+      i = this.idx(px, pz); if (ok(i)) return [this.cx(i), this.cz(i)];
+    }
+    return this.nearestFree(x, z, clearance, maxR);
+  }
   // vehicle passability: also keeps the hull clear of trenches (wheeled) / ditches, teeth, forest (tracked)
   passableV(i, clearance, tracked) { if (!this.passable(i, clearance)) return false; const cv = tracked ? this.clearT : this.clearV; return !cv || cv[i] >= clearance * 10 * 0.8; }
   nearestFree(x, z, clearance = 0.5, maxR = 30) {
@@ -228,6 +277,7 @@ export class NavGrid {
     // pick their way over a ruin or through a gap in a heap instead of a long detour round it
     let c = (this.low[k] && this.cost[k] > INF_COST.rubble ? INF_COST.rubble : this.cost[k]) + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
     if (this.wire && this.wire[k]) c += this.wire[k];
+    if (this.dyn && this.dyn[k]) c += INF_COST.dynPad;
     if (this._thr) c += this.exposed(k) * INF_COST.threat;
     if (this._cc) c += this._cc(k);   // opts.conceal (enemy AI, ai_tactics.concealCost): open ground dearer than tree belts / walls
     if (this._trm) c = this.trenchCost(k, c);
@@ -285,7 +335,7 @@ export class NavGrid {
     return (this._exV[k] = v);
   }
   findPathInf(sx, sz, tx, tz, clearance, maxIter, opts) {
-    [sx, sz] = this.nearestFree(sx, sz, clearance, 6); [tx, tz] = this.nearestFree(tx, tz, clearance, 40);
+    [sx, sz] = this.nearestFreeI(sx, sz, clearance, 6, true); [tx, tz] = this.nearestFreeI(tx, tz, clearance, 40);   // (a goal on a parked hull / in its margin: the nearest free cell beside it; a start only off the hull itself)
     const s = this.idx(sx, sz), t = this.idx(tx, tz); if (s < 0 || t < 0) return null;
     if (s === t) return [[tx, tz]];
     const n = this.n, gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed;
@@ -305,8 +355,8 @@ export class NavGrid {
         for (let q = 0; q < 8; q++) {
           const kk = k + D[q]; if (kk < 0 || kk >= n * n) continue;
           const kki = kk % n; if (Math.abs(kki - ki) > 1) continue;
-          if (!this.passable(kk, clearance)) continue;
-          if (q >= 4 && (!this.passable(k + DX[q], clearance) || !this.passable(k + DZ[q] * n, clearance))) continue;
+          if (!this.passableIC(kk, clearance)) continue;
+          if (q >= 4 && (!this.passableIC(k + DX[q], clearance) || !this.passableIC(k + DZ[q] * n, clearance))) continue;
           const ng = g[k] + C[q] * this.infCost(kk);
           if (st[kk] !== gen || ng < g[kk]) { st[kk] = gen; g[kk] = ng; from[kk] = k; heap.push(ng + h(kk), kk); }
         }
@@ -382,7 +432,7 @@ export class NavGrid {
     [sx, sz] = vrest ? this.nearestFreeV(sx, sz, clearance, tracked, 8) : this.nearestFree(sx, sz, clearance, 8);
     [tx, tz] = vrest ? this.nearestFreeV(tx, tz, clearance, tracked, 40) : this.nearestFree(tx, tz, clearance, 40);
     const s0 = this.idx(sx, sz), t0 = this.idx(tx, tz); if (s0 < 0 || t0 < 0) return null;
-    this.roadDist(); this._pv = vrest ? tracked : null;
+    this.roadDist(); this._pv = vrest ? tracked : null; this._vq = true;   // (_vq: a vehicle query - lineFree ignores the infantry dyn layer)
     try {
       const dd = Math.hypot(tx - sx, tz - sz);
       if (s0 === t0 || (dd < 14 && this.lineFree(sx, sz, tx, tz, clearance))) return [[sx, sz], [tx, tz]];
@@ -442,7 +492,7 @@ export class NavGrid {
         return this.smoothV(pts, clearance, tracked);
       }
       return null;
-    } finally { this._pv = null; }
+    } finally { this._pv = null; this._vq = false; }
   }
   smoothV(p, clearance, tracked) {
     if (p.length < 3) return p;
@@ -477,8 +527,8 @@ export class NavGrid {
     return p;
   }
   lineFree(ax, az, bx, bz, clearance) {
-    const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5)), pv = this._pv;
-    for (let i = 1; i < steps; i++) { const f = i / steps, k = this.idx(ax + (bx - ax) * f, az + (bz - az) * f); if (pv === null || pv === undefined ? !this.passable(k, clearance) : !this.passableV(k, clearance, pv)) return false; if (pv === false && this.veh[k] === 1) return false; }
+    const d = Math.hypot(bx - ax, bz - az), steps = Math.ceil(d / (this.cell * 0.5)), pv = this._pv, dy = pv == null && !this._vq ? this.dyn : null;   // (infantry: parked hulls / wrecks block the line too)
+    for (let i = 1; i < steps; i++) { const f = i / steps, k = this.idx(ax + (bx - ax) * f, az + (bz - az) * f); if (pv === null || pv === undefined ? !this.passable(k, clearance) : !this.passableV(k, clearance, pv)) return false; if (pv === false && this.veh[k] === 1) return false; if (dy && dy[k] && f * d > 1) return false; }   // (not the first metre: a man standing at a hull can still walk away from it)
     return true;
   }
   smooth(p, clearance, end, hug = false) {

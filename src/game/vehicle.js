@@ -795,6 +795,7 @@ export class Vehicle {
     g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 0.3, 255); g.nav.circle(this.pos.x, this.pos.z, this.def.radius + 1.2, 7, true);
     g.nav.rect(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 255, 0.15);   // the whole hull (the circle missed bow and stern: paths ran through the wreck)
     g.nav.addOccluder(this.pos.x, this.pos.z, this.def.width / 2, this.def.length / 2, this.heading, 2.2, this);
+    { const r = this.def.length / 2 + 2; g.nav.refreshArea(this.pos.x - r, this.pos.z - r, this.pos.x + r, this.pos.z + r); }   // v8: clearance round the new wreck (stale: routes hugged it at 0 m, waypoints inside the men's hull push zone)
     this.engine?.stop(); this.engineDrive?.stop(); this.tracks?.stop(); this.traverseSnd?.stop(); this.engine = this.traverseSnd = null;
     this.wreck = true;
   }

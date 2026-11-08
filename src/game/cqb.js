@@ -72,6 +72,7 @@ export class CQB {
     // breach: pick the entry team, frag the doorway
     const D = this.door(b, O.entrance);
     const pool = sq.effective.filter(s => !s.dragging && !s.aboard).sort((p, q) => (q.assault ? 2 : 0) + (q.role?.leader ? 1 : 0) - (p.assault ? 2 : 0) - (p.role?.leader ? 1 : 0) + (p.pos.distanceTo(D.out) - q.pos.distanceTo(D.out)) * 0.1);
+    if (!pool.length) return;   // nobody free to go in (all down / dragging / aboard): wait
     C.file = pool.slice(0, Math.min(4, pool.length)); C.D = D; C.p = 0; C.floor = 0;
     const lead = C.file[0];
     C.R = route(b.house && D.d?.thr ? [v3(lead.pos), ...b.entryRoute(D.d, D.in).slice(0, 4)] : [v3(lead.pos), v3(D.out), v3(D.in)]); C.legEnd = C.R.total;   // (a house: up the porch steps, through its real door)

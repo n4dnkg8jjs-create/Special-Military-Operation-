@@ -10,7 +10,7 @@ import { Farmland } from '../world/farmland.js';
 import { updateLods, simplifierReady, PLACED } from '../world/instancer.js';
 import { FX } from '../fx/particles.js';
 import { Audio } from '../audio/sfx.js';
-import { Squad } from './squad.js';
+import { Squad, hullBox } from './squad.js';
 import { Vehicle } from './vehicle.js';
 import { Combat } from './combat.js';
 import { CQB } from './cqb.js';
@@ -216,7 +216,52 @@ export class Game {
       if (!p || !p.length) p = this.nav.findPath(r.sx, r.sz, r.tx, r.tz, Math.max(0.4, r.clearance * 0.75), r.vehicle, undefined, r.opts);
       // no route: never walk a straight line through walls — only go direct if that line is actually clear
       if (!p || !p.length) p = this.nav.lineFree(r.sx, r.sz, r.tx, r.tz, Math.min(0.45, r.clearance)) ? [[r.tx, r.tz]] : null;
-      e.path = p; e.pathI = p && p.length > 1 ? 1 : 0; e.pathFail = !p;
+      // (p[0] is the start: skipped, unless it was moved off a parked hull / wreck he stands against - then he walks out to it first)
+      e.path = p; e.pathI = p && p.length > 1 && (r.vehicle || Math.hypot(p[0][0] - r.sx, p[0][1] - r.sz) < 0.7) ? 1 : 0; e.pathFail = !p;
+      // v8: his goal is on a parked vehicle / wreck (a slot laid out before it stopped there, a door): the route ends at the nearest
+      // free cell beside it - that is his goal now (he used to arrive, find himself > 1.6 m off the goal and ask again for good)
+      if (p && !r.vehicle && e.goal && e.squad && Math.hypot(e.goal[0] - r.tx, e.goal[1] - r.tz) < 0.1) {
+        const end = p[p.length - 1], k = this.nav.idx(r.tx, r.tz);
+        if (k >= 0 && this.nav.dyn?.[k] && Math.hypot(end[0] - r.tx, end[1] - r.tz) > 0.3) e.goal = [end[0], end[1]];
+      }
+    }
+  }
+  // v8: live vehicles standing still (and wrecks) are stamped into the nav grid's infantry layer (nav.dyn) so foot routes go
+  // round them instead of through them (a live hull was never in the grid: the men walked into it and slid round it greedily,
+  // often for good). Every 0.25 s: a vehicle that has stood still for ~0.75 s (speed and heading steady) is stamped, one that
+  // moves is lifted; on a new stamp the men whose route runs through it ask for a new one (time-sliced path queue). Host only.
+  vehObstacles(dt) {
+    if ((this.vobT = (this.vobT || 0) - dt) > 0) return; this.vobT = 0.25;
+    const nav = this.nav, t = this.time;
+    for (const k of nav.dynStamps.keys()) if (!this.vehicles.includes(k)) nav.unstampDyn(k);   // (taken out of game.vehicles: a medevac truck gone to the aid station)
+    for (const v of this.vehicles) {
+      const gone = v.destroyed && !v.wreck, still = v.wreck || (!v.destroyed && Math.abs(v.speed) < 0.3 && Math.abs((v.heading - (v._vobH ?? v.heading))) < 0.02);
+      v._vobH = v.heading;
+      const S = nav.dynStamps.get(v);
+      if (gone || (!still && !(v.dynForceT > t))) { if (S) nav.unstampDyn(v); v._stillT = 0; continue; }
+      v._stillT = (v._stillT || 0) + 0.25;
+      if (S && Math.hypot(S.x - v.pos.x, S.z - v.pos.z) < 0.3 && Math.abs(S.h - v.heading) < 0.06) continue;
+      if (!S && v._stillT < 0.75 && !(v.dynForceT > t)) continue;
+      const B = hullBox(v); nav.stampDyn(v, v.pos.x, v.pos.z, v.heading, { x0: B.min.x, x1: B.max.x, z0: B.min.z, z1: B.max.z }, 0.8);
+      this.vehStamps = (this.vehStamps || 0) + 1;
+      // routes through the new stamp: re-planned (from where each man stands; the next three legs are checked)
+      const R2 = (v.def.length + 40) ** 2;
+      for (const sq of this.squads) for (const s of sq.soldiers) {
+        if (!s.effective || !s.path || s.pathI >= s.path.length || !s.goal || s.pathReq || s.aboard || s.rampWalk) continue;
+        if ((s.pos.x - v.pos.x) ** 2 + (s.pos.z - v.pos.z) ** 2 > R2) continue;
+        let px = s.pos.x, pz = s.pos.z, hit = false;
+        for (let j = s.pathI; j < Math.min(s.path.length, s.pathI + 3) && !hit; j++) { hit = nav.segHitsDyn(v, px, pz, s.path[j][0], s.path[j][1]); px = s.path[j][0]; pz = s.path[j][1]; }
+        if (hit) { this.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, sq.pathOpts?.()); this.vehRepaths = (this.vehRepaths || 0) + 1; }
+      }
+    }
+  }
+  // a man stuck (squad.moveStep watchdog) against a vehicle that is creeping / jittering (not stamped yet): stamp it for a few
+  // seconds so his new route goes round it
+  vehBlockNear(s) {
+    for (const v of this.vehicles) {
+      if (v.destroyed || Math.abs(v.speed) > 1.5 || this.nav.dynStamps.has(v)) continue;
+      const d = Math.hypot(v.pos.x - s.pos.x, v.pos.z - s.pos.z) - Math.max(v.def.length, v.def.width) / 2; if (d > 2.5) continue;
+      v.dynForceT = this.time + 5; v._stillT = 1; this.vobT = 0; this.vehObstacles(0);
     }
   }
   // ---------------------------------------------------------------- casualties / events
@@ -592,6 +637,7 @@ export class Game {
       else if (!sq.medevac) for (const s of sq.soldiers) if ((s.state === 'dead' && !s.corpseDone) || s.onBed) { s.vel.set(0, 0, 0); s.animate(dt, this.camDist(s.pos)); s.sync(); }
     }
     for (const v of this.vehicles) v.update(dt);
+    this.vehObstacles(dt);
     // deck riders follow their vehicle's NEW position (squads update before the vehicles: placed against last frame's hull
     // they hung ~0.4 m behind their seats at speed)
     for (const sq of this.squads) if (sq.mounted && sq.carrier && !sq.carrier.destroyed) for (const s of sq.soldiers) if (s.inside === 'ride' && s.seat && s.effective) { const w = sq.carrier.seatWorld(s.seat.i); s.pos.copy(w.pos); s.sync(); }

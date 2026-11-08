@@ -20,7 +20,7 @@ function jumpClip(v, rear) {
   return 'dismount_jump';
 }
 // hull footprint in the vehicle's own frame (x = left, z = forward; hull meshes only, no gun barrel), cached on the vehicle
-function hullBox(v) {
+export function hullBox(v) {
   if (v._dmBox) return v._dmBox;
   const box = new THREE.Box3(), inv = new THREE.Matrix4(), p = new THREE.Vector3();
   v.root.updateMatrixWorld(true); inv.copy(v.root.matrixWorld).invert();
@@ -97,7 +97,7 @@ export class Squad {
     // ordered up to a building's wall: the men line up along THAT wall (its length, a little past the corners at most), backs to
     // it - the 18 m line used to stick out past the corners of a short end wall and half the squad went round to the next facade
     const W = this.wallAt(ax, az);
-    const sameSide = (px, pz) => nav.lineFree(ax, az, px, pz, 0.4) && nav.passable(nav.idx(px, pz), 0.4) && (!W || W.on(px, pz));
+    const sameSide = (px, pz) => nav.lineFree(ax, az, px, pz, 0.4) && nav.passableI(nav.idx(px, pz), 0.4) && (!W || W.on(px, pz));   // (passableI: no slot on a parked hull / wreck)
     const pullBack = (px, pz) => { const d = Math.hypot(px - ax, pz - az); for (let f = 1; f > 0; f -= Math.min(0.5, 0.5 / Math.max(1, d))) { const qx = ax + (px - ax) * f, qz = az + (pz - az) * f; if (sameSide(qx, qz)) return [qx, qz]; } return [ax, az]; };
     let wallSlot = null;
     if (W) {
@@ -129,7 +129,7 @@ export class Squad {
       const R0 = W ? 2.2 : nearWall ? 5 : 3.5;
       for (let r = 0; r <= R0; r += 0.9) for (let a = 0; a < 8; a++) {
         const cx = px + Math.cos(a * 0.785) * r, cz = pz + Math.sin(a * 0.785) * r, idx = nav.idx(cx, cz);
-        if (!nav.passable(idx, 0.4)) continue;
+        if (!nav.passableI(idx, 0.4)) continue;
         if (out.some(o => Math.hypot(o[0] - cx, o[1] - cz) < 1.1)) continue;
         if (!nav.lineFree(ax, az, cx, cz, 0.4) || (W && !W.on(cx, cz))) continue;
         const sc = nav.coverFrom(cx, cz, cx + fwd[0] * 50, cz + fwd[1] * 50) * 2 - r * 0.25 + (nearWall && nav.clear[idx] < 1.4 ? 1.1 : 0);
@@ -152,7 +152,7 @@ export class Squad {
     T.push([ax + fwd[0] * 60, az + fwd[1] * 60, thr ? 0.35 : 1]);
     const wsum = T.reduce((a, t) => a + t[2], 0);
     const covAt = (cx, cz) => { let c = 0; for (const t of T) c += nav.coverFrom(cx, cz, t[0], t[1]) * t[2]; return c / wsum; };
-    const reach = new Map(), ok = k => { let v = reach.get(k); if (v === undefined) { const cx = nav.cx(k), cz = nav.cz(k); v = nav.passable(k, 0.4) && nav.lineFree(ax, az, cx, cz, 0.4) && (!W || W.on(cx, cz)); reach.set(k, v); } return v; };
+    const reach = new Map(), ok = k => { let v = reach.get(k); if (v === undefined) { const cx = nav.cx(k), cz = nav.cz(k); v = nav.passableI(k, 0.4) && nav.lineFree(ax, az, cx, cz, 0.4) && (!W || W.on(cx, cz)); reach.set(k, v); } return v; };
     const pairs = [];
     for (let i = 0; i < n; i++) {
       const [px, pz] = nominal[i], ci = nav.idx(px, pz), nearWall = ci >= 0 && nav.clear[ci] < 6, R = W ? 2.6 : nearWall ? 5 : 4.2;
@@ -277,10 +277,10 @@ export class Squad {
   }
   // the ordered spot itself, moved out of a wall / building it lies in towards the side the squad comes from
   orderAnchor(x, z) {
-    const nav = this.game.nav; if (nav.passable(nav.idx(x, z), 0.4)) return [x, z];
+    const nav = this.game.nav; if (nav.passableI(nav.idx(x, z), 0.4)) return [x, z];   // (passableI: ordered onto a parked vehicle / wreck -> its near side)
     const c = this.center(), d = Math.hypot(c.x - x, c.z - z);
-    if (d > 0.5) for (let k = 0.5; k < Math.min(d, 40); k += 0.5) { const px = x + (c.x - x) / d * k, pz = z + (c.z - z) / d * k; if (nav.passable(nav.idx(px, pz), 0.4)) return [px, pz]; }
-    return nav.nearestFree(x, z, 0.4, 8);
+    if (d > 0.5) for (let k = 0.5; k < Math.min(d, 40); k += 0.5) { const px = x + (c.x - x) / d * k, pz = z + (c.z - z) / d * k; if (nav.passableI(nav.idx(px, pz), 0.4)) return [px, pz]; }
+    return nav.nearestFreeI(x, z, 0.4, 8);
   }
   orderMove(x, z, facing = null, width = 18, run = false, queued = false, bound = false) {
     if (this.routing) return;
@@ -715,7 +715,7 @@ export class Squad {
       s.idleGoalT = 0; s.goalRetry = (s.goalRetry || 0) + 1; this.idleRetries = (this.idleRetries || 0) + 1;
       if (s.goalRetry <= 2) g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], s.goalRetry === 1 ? 0.45 : 0.4, false, this.pathOpts?.());
       else if (s.goalRetry <= 4) {
-        const [sx, sz] = nav.nearestFree(s.pos.x, s.pos.z, 0.6, 4), [gx, gz] = nav.nearestFree(s.goal[0], s.goal[1], 0.5, 8);
+        const [sx, sz] = nav.nearestFreeI(s.pos.x, s.pos.z, 0.6, 4), [gx, gz] = nav.nearestFreeI(s.goal[0], s.goal[1], 0.5, 8);   // (I: a goal on a parked hull / wreck moves beside it)
         s.goal = [gx, gz];
         if (Math.hypot(sx - s.pos.x, sz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, sx, sz, 0.3)) { s.path = [[sx, sz]]; s.pathI = 0; s.resumeGoal = true; }
         else g.requestPath(s, s.pos.x, s.pos.z, gx, gz, 0.4);
@@ -1004,6 +1004,15 @@ export class Squad {
       const dx = s.pos.x - v.pos.x, dz = s.pos.z - v.pos.z, R = v.def.length * 0.5 + 1.5; if (dx * dx + dz * dz > R * R) continue;
       const sh = Math.sin(v.heading), ch = Math.cos(v.heading), B = hullBox(v), lf = dx * sh + dz * ch, ll = dx * ch - dz * sh;   // root frame: +Z forward (sin h, cos h), +X = the vehicle's left (cos h, -sin h)
       const gentle = v === s.vehFrom, M = gentle ? 0.25 : 0.35;   // just jumped off it: gently, no shove off the landing point
+      // v8: his next waypoint lies on / against this hull (a route planned before it stopped there, a slot next to a moving one, a
+      // goal by a door): within 0.4 m of it he never got, so he circled the hull for good -> skip it, or (the last one) move it off
+      if (moving && s.path && !gentle) {
+        const wp = s.path[s.pathI], last = s.pathI >= s.path.length - 1, [ox, oz] = wp ? outsideHull(v, wp[0], wp[1], last ? M + 0.3 : M + 0.05) : [0, 0];
+        if (wp && (ox !== wp[0] || oz !== wp[1])) {
+          if (!last) s.pathI++;
+          else { if (s.goal && Math.hypot(s.goal[0] - wp[0], s.goal[1] - wp[1]) < 0.6) s.goal = [ox, oz]; s.path[s.pathI] = [ox, oz]; }
+        }
+      }
       const pf = Math.min(lf - (B.min.z - M), B.max.z + M - lf), pl = Math.min(ll - (B.min.x - M), B.max.x + M - ll);
       if (pf <= 0 || pl <= 0) continue;
       const side = pl < pf, sg = side ? (ll - (B.min.x - M) < B.max.x + M - ll ? -1 : 1) : (lf - (B.min.z - M) < B.max.z + M - lf ? -1 : 1);
@@ -1012,13 +1021,28 @@ export class Squad {
       const vn = s.vel.x * nx + s.vel.z * nz;
       if (moving && vn < 0) {
         let tx = side ? sh : ch, tz = side ? ch : -sh;   // along the face (+forward on a side face, +left on the bow / stern)
-        const wp = moving && s.path ? s.path[s.pathI] || null : null, along = side ? lf : ll, lo = side ? B.min.z : B.min.x, hi = side ? B.max.z : B.max.x;
-        let want = wp ? (wp[0] - s.pos.x) * tx + (wp[1] - s.pos.z) * tz : s.vel.x * tx + s.vel.z * tz;
-        const wd = wp ? Math.hypot(wp[0] - s.pos.x, wp[1] - s.pos.z) : s.vel.length();
-        if (Math.abs(want) < 0.35 * wd) want = along - lo < hi - along ? -1 : 1;   // heading for the middle: round the nearer end
-        if (want < 0) { tx = -tx; tz = -tz; }
-        const sp = Math.max(Math.hypot(s.vel.x, s.vel.z), 0.6);
+        // v8: one way round, held: the sense of rotation round the hull (clockwise / anticlockwise) is picked once on contact and
+        // kept while he is against this hull, through its corners (picked afresh every frame it flipped at the corners and near the
+        // middle of a face: slid to and fro there for good). Picked: towards his waypoint, else round the nearer end; not into a wall.
+        const rs = Math.sign(dx * tz - dz * tx) || 1;   // +t is this sense of rotation round the hull centre
+        let sense = s.vSlide && s.vSlide.v === v && g.time - s.vSlide.t < 3 ? s.vSlide.sense : 0;
+        if (!sense) {
+          const wp = s.path ? s.path[s.pathI] || null : null, along = side ? lf : ll, lo = side ? B.min.z : B.min.x, hi = side ? B.max.z : B.max.x;
+          let want = wp ? (wp[0] - s.pos.x) * tx + (wp[1] - s.pos.z) * tz : s.vel.x * tx + s.vel.z * tz;
+          const wd = wp ? Math.hypot(wp[0] - s.pos.x, wp[1] - s.pos.z) : s.vel.length();
+          if (Math.abs(want) < 0.35 * wd) want = along - lo < hi - along ? -1 : 1;   // heading for the middle: round the nearer end
+          let dir = want < 0 ? -1 : 1;
+          if (!free(s.pos.x + tx * dir * 1.2, s.pos.z + tz * dir * 1.2) && free(s.pos.x - tx * dir * 1.2, s.pos.z - tz * dir * 1.2)) dir = -dir;
+          sense = rs * dir;
+        }
+        s.vSlide = { v, sense, t: g.time };
+        if (rs !== sense) { tx = -tx; tz = -tz; }
+        const sp = Math.max(Math.hypot(s.vel.x, s.vel.z), Math.min(speed || 1, 1.1));   // (round it at a walk: the old 0.6 m/s floor crept round a tank in 15 s)
         s.vel.x = tx * sp; s.vel.z = tz * sp;
+        // a parked hull (in the infantry layer) and his route still runs through it (planned before it stopped there): a new route
+        if (s.goal && !s.pathReq && g.nav.dynStamps.has(v) && g.time > (s.vRepT ?? 0) && s.path) {
+          const wp = s.path[s.pathI]; if (wp && g.nav.segHitsDyn(v, s.pos.x, s.pos.z, wp[0], wp[1])) { s.vRepT = g.time + 2; this.vehRepaths = (this.vehRepaths || 0) + 1; g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45, false, this.pathOpts()); }
+        }
       }
     }
     // already inside a blocked cell (pushed, collapsed rubble, spawned badly): step out to the nearest free spot
@@ -1038,12 +1062,19 @@ export class Squad {
     // watchdog: wanted to move but made no progress for a while -> replan from where we stand
     if (moving) {
       s.wdT = (s.wdT || 0) + dt;
-      if (s.wdT > 2.5) { const moved = s.wdP ? Math.hypot(s.pos.x - s.wdP[0], s.pos.z - s.wdP[1]) : 9; s.wdP = [s.pos.x, s.pos.z]; s.wdT = 0;
+      if (s.wdT > 2.5) { let moved = s.wdP ? Math.hypot(s.pos.x - s.wdP[0], s.pos.z - s.wdP[1]) : 9; s.wdP = [s.pos.x, s.pos.z]; s.wdT = 0;
+        // v8: moving is not getting anywhere - sliding to and fro along a hull / between two of them moved him every check while
+        // he got no nearer for good. Progress = the route left to walk; none for 7.5 s on the same route counts as stuck too
+        if (s.path) {
+          let rem = 0, px = s.pos.x, pz = s.pos.z; for (let j = s.pathI; j < s.path.length; j++) { rem += Math.hypot(s.path[j][0] - px, s.path[j][1] - pz); px = s.path[j][0]; pz = s.path[j][1]; }
+          if (s.wdPath !== s.path || rem < s.wdRem - 0.5) { s.wdPath = s.path; s.wdRem = rem; s.wdNP = 0; }
+          else if (++s.wdNP >= 3) { s.wdNP = 0; s.wdPath = null; moved = 0; this.oscN = (this.oscN || 0) + 1; }
+        }
         // v6 stuck recovery, escalating: replan; replan giving obstacles a wider berth (0.6 m); walk out to the nearest open
         // cell (1 m clear, away from the corner / fence / wreck he is caught on) and replan from there; give up the goal
-        if (moved < 0.6 && s.goal) { s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0; this.stuckN = (this.stuckN || 0) + 1;
+        if (moved < 0.6 && s.goal) { g.vehBlockNear?.(s); s.stuckN = (s.stuckN || 0) + 1; s.path = null; s.blockedT = 0; this.stuckN = (this.stuckN || 0) + 1;
           if (s.stuckN > 5) { s.goal = null; s.stuckN = 0; }
-          else if (s.stuckN >= 3) { const [fx, fz] = nav.nearestFree(s.pos.x, s.pos.z, 1.0, 5); if (Math.hypot(fx - s.pos.x, fz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, fx, fz, 0.3)) { s.path = [[fx, fz]]; s.pathI = 0; s.resumeGoal = true; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.4, false, this.pathOpts()); }
+          else if (s.stuckN >= 3) { const [fx, fz] = nav.nearestFreeI(s.pos.x, s.pos.z, 1.0, 5); if (Math.hypot(fx - s.pos.x, fz - s.pos.z) > 0.3 && nav.lineFree(s.pos.x, s.pos.z, fx, fz, 0.3)) { s.path = [[fx, fz]]; s.pathI = 0; s.resumeGoal = true; } else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.4, false, this.pathOpts()); }
           else g.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], s.stuckN === 2 ? 0.6 : 0.45, false, this.pathOpts()); }
         else if (moved >= 0.6) s.stuckN = 0; }
     } else { s.wdT = 0; s.wdP = null; }
