@@ -563,6 +563,7 @@ export class Vehicle {
     if (!out.length) return;
     const roles = out.map(c => CREW_ROLES.find(r => r.role.toLowerCase().includes(c.role === 'driver' ? 'driver' : c.role)) || CREW_ROLES[2]);
     const sq = new Squad(g, this.side, this.faction, `${this.name} crew`, 'crew', roles); sq.name = `${this.name} crew`;
+    if (this.rec != null) sq.crewOf = this.rec;   // a campaign vehicle's crew: counted back to a tank / SPG unit (campaignResult.js)
     const right = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading)), fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
     // hatch_exit clips: each man's root goes out from his own hatch (hatch_<role> rim empties), facing away from the
     // vehicle in the frame the hatch sits in — the turret's frame for turret hatches, so a traversed turret sends the

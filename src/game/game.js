@@ -271,6 +271,8 @@ export class Game {
     const sq = v.passengers; if (!sq) return;
     const R = TUNING.riderKillSurvival || { normal: 0.85, catastrophic: 0.65 };
     const fate = new Map();
+    // wounded men lying in the troop compartment (hit inside, passengerCasualties) cannot get themselves out: the same roll
+    for (const s of sq.soldiers) if (s.aboard && (s.state === 'critical' || s.state === 'stable') && s.inside !== 'ride' && Math.random() >= crewSurvival) { s.wasDown = true; s.die(null, { blast: true }); s.inside = 'btr'; s.lostInVeh = true; this.onDeath(s, owner, false); }
     for (const s of sq.soldiers) if (s.aboard && s.effective) fate.set(s, s.inside === 'ride' ? (Math.random() < (catastrophic ? R.catastrophic : R.normal) ? 'ok' : 'hurt') : (Math.random() < crewSurvival ? 'out' : 'lost'));
     (this.vkLog ||= []).push({ v: v.kind, cat: catastrophic, inside: [...fate.values()].filter(f => f === 'out' || f === 'lost').length, out: [...fate.values()].filter(f => f === 'out').length, ride: [...fate.values()].filter(f => f === 'ok' || f === 'hurt').length, rideOk: [...fate.values()].filter(f => f === 'ok').length });
     sq.dismount(v.heading + Math.PI);

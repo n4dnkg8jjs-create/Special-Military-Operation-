@@ -429,5 +429,53 @@ if (process.argv[2] === 'content') {
     const Z = new Campaign2(defs.RU), z = Z.directiveDef('ru_zenit'); ok(z.kind === 'isolate', 'ru_zenit: take or cut off');
   }
 }
+// ---- fought battles: each unit's men / wounded / vehicle after the battle are what happened on the map
+// (fake battle maps, tools/fake_battle.mjs, through the real collectResult -> storeResult / takeResult -> applyResult)
+{
+  const FB = await import('./fake_battle.mjs');
+  for (const side of Object.keys(defs)) for (const off of [0, 1, 2]) {
+    setRandom(seeded(7 + off)); console.log(`== fought battle results: ${side} (fates set ${off})`);
+    const C = new Campaign2(defs[side]), tf = C.forces[0];
+    // a task force with every kind of unit: tanks and a gun (the men are the crew), carriers with their squads, foot squads
+    for (const u of [{ kind: 'tank', men: 3, veh: { kind: 'tank' }, name: 'Tank A' }, { kind: 'tank', men: 3, veh: { kind: 'tank' }, name: 'Tank B' }, { kind: 'spg', men: 5, veh: { kind: 'spg' }, name: 'Gun' },
+      { kind: 'mech', men: 8, veh: { kind: 'btr' }, name: 'Mech A' }, { kind: 'imech', men: 6, veh: { kind: 'ifv' }, name: 'Mech B' }, { kind: 'assault', men: 6, name: 'Assault A' }, { kind: 'assault', men: 6, name: 'Assault B' }, { kind: 'atgm', men: 3, name: 'ATGM' }]) {
+      const r = C.record(u); C.units.push(r); tf.units.unshift(r.uid);
+    }
+    const cell = C.def.aor.cells.find(c => C.owner[c.id] === 'enemy').id;
+    C.battle = { mode: 'attack', tf: tf.id, cell, from: tf.cell };
+    const setup = C.battleSetup(cell, tf.units, 'attack'); C.launch(setup);
+    const g = FB.fakeGame(C, 'attack', cell); g.campaign.force = setup.force;
+    FB.deploy(g, 'player', setup.force);
+    const plan = FB.fight(g, 'player', setup.force, off);
+    const fates = new Set(plan.map(p => p.fate));
+    ok(['wiped', 'evac', 'mountedKilled', 'bailed', 'brewup', 'intact'].filter(f => fates.has(f)).length >= 4, `${side}/${off}: the battle covers the fates (${[...fates]})`);
+    const res = FB.collectResult(g, 'player');
+    ok(setup.force.every(u => res.units.some(x => x.uid === u.uid)), `${side}/${off}: every deployed unit is in the result (${res.units.length}/${setup.force.length})`);
+    Campaign2.storeResult(res);
+    const C2 = Campaign2.load(defs); const rr = Campaign2.takeResult(); C2.applyResult(rr);
+    FB.verify(C2, plan, ok, `${side}/${off}`);
+    // the bailed-out crew of a lost tank waits for a vehicle (not a foot squad); a crew killed with its vehicle = unit gone
+    for (const p of plan.filter(p => p.fate === 'bailed' || p.fate === 'brewup')) { const u = C2.unit(p.uid); ok(!C2.combatReady(u), `${side}/${off}: ${p.name} without its vehicle is not combat ready`); }
+    C2.endTurn();
+    for (const p of plan.filter(p => p.fate === 'brewup')) ok(!C2.unit(p.uid), `${side}/${off}: ${p.name} (crew killed with the vehicle) is struck off`);
+    for (const p of plan.filter(p => p.fate === 'bailed')) ok(C2.unit(p.uid)?.men === p.exp.men, `${side}/${off}: ${p.name}'s surviving crew is still on the roll`);
+    // a wounded man of the past battle is never "back" in the same week, and wounded returning never lift a unit past its strength
+    ok(C2.units.every(u => u.men + u.wounded <= u.menMax), `${side}/${off}: men + wounded <= strength after the week`);
+  }
+  // a battle left without its end screen (reload / closed tab): withdrawn with the losses it had so far (main.js storeLive)
+  {
+    setRandom(seeded(3)); const side = Object.keys(defs)[0], C = new Campaign2(defs[side]), tf = C.forces[0];
+    const cell = C.def.aor.cells.find(c => C.owner[c.id] === 'enemy').id;
+    C.battle = { mode: 'attack', tf: tf.id, cell, from: tf.cell }; const setup = C.battleSetup(cell, tf.units, 'attack'); C.launch(setup);
+    const g = FB.fakeGame(C, 'attack', cell); FB.deploy(g, 'player', setup.force);
+    const sq = g.squads.find(s => s.side === 'player' && s.rec != null && s.soldiers.length >= 3);
+    if (sq) {
+      for (const s of sq.soldiers) s.state = 'dead';
+      Campaign2.storeLive(FB.collectResult(g, 'player'));
+      const C2 = Campaign2.load(defs); C2.withdrawBattle();
+      ok(C2.unit(sq.rec).men === 0, `withdrawn after a fight: the squad wiped out on the map stays wiped out (${C2.unit(sq.rec).men})`);
+    }
+  }
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

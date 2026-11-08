@@ -252,5 +252,37 @@ for (const op of ['UA', 'RU']) {
   ok(W.side[op].outcome()?.win && !W.side[dn].outcome()?.win, `${op}: both sides see the result`);
 }
 
+// ---- a battle fought on the map by both players: the host's units are 'player' on the host's battle map, the joiner's
+// 'enemy' (deployCampaign with the joiner's records); both results (collectResult) go to the right side (applyBattle),
+// and the joiner's copy (mirror2 of the host's view) shows the same men / wounded / vehicles
+{
+  const FB = await import('./fake_battle.mjs');
+  const KINDS = [{ kind: 'tank', men: 3, veh: { kind: 'tank' }, name: 'Tank A' }, { kind: 'tank', men: 3, veh: { kind: 'tank' }, name: 'Tank B' }, { kind: 'spg', men: 5, veh: { kind: 'spg' }, name: 'Gun' },
+    { kind: 'mech', men: 8, veh: { kind: 'btr' }, name: 'Mech A' }, { kind: 'imech', men: 6, veh: { kind: 'ifv' }, name: 'Mech B' }, { kind: 'assault', men: 6, name: 'Assault A' }, { kind: 'assault', men: 6, name: 'Assault B' }];
+  for (const op of ['RU', 'UA']) for (const host of ['UA', 'RU']) for (const off of [0, 1]) {
+    setRandom(seeded(5 + off)); const tag = `versus ${op} op, host ${host}, fates ${off}`; console.log(`== fought battle results: ${tag}`);
+    const V = new VersusGame(defs, op, host), guest = OTHER(host), att = off ? OTHER(op) : op, dfd = OTHER(att);
+    const A = V.side[att], D = V.side[dfd], T = A.forces[0], TD = D.forces[0];
+    for (const C of [A, D]) { const t = C === A ? T : TD; for (const u of KINDS) { const r = C.record(u); C.units.push(r); t.units.unshift(r.uid); } }
+    const b = { id: `vbT${off}`, f: att, tf: T.id, cell: TD.cell, stage: T.cell, defTfs: [TD.id], defUids: [...TD.units] };
+    // as versus_ui.js fight(): the host's setup, the joiner's records as the host's 'enemy'
+    const hostAtt = b.f === host, HC = V.side[host], GC = V.side[guest];
+    const hostUids = hostAtt ? HC.tf(b.tf).units : b.defUids, guestUids = hostAtt ? b.defUids : GC.tf(b.tf).units;
+    const setup = HC.battleSetup(b.cell, hostUids, hostAtt ? 'attack' : 'defend'), enemyForce = JSON.parse(JSON.stringify(GC.battleUnits(guestUids)));
+    const g = FB.fakeGame(HC, setup.mode, b.cell); g.campaign.force = setup.force; g.opts = { net: { role: 'host', enemyForce } };
+    FB.deploy(g, 'player', setup.force); FB.deploy(g, 'enemy', enemyForce);
+    const pH = FB.fight(g, 'player', setup.force, off), pG = FB.fight(g, 'enemy', enemyForce, off + 1);
+    const rHost = FB.collectResult(g, 'player'), rGuest = FB.collectResult(g, 'enemy');
+    ok(setup.force.every(u => rHost.units.some(x => x.uid === u.uid)) && enemyForce.every(u => rGuest.units.some(x => x.uid === u.uid)), `${tag}: every deployed unit of both players is in its result`);
+    V.applyBattle(b, hostAtt ? rHost : rGuest, hostAtt ? rGuest : rHost);
+    FB.verify(HC, pH, ok, `${tag} host`);
+    FB.verify(GC, pG, ok, `${tag} joiner`);
+    const M = mirror2(defs, JSON.parse(JSON.stringify(V.view(guest))));
+    FB.verify(M, pG, ok, `${tag} joiner's screen`);
+    // saved and restored (a host reload) keeps it
+    const V2 = new VersusGame(defs, V.opId, V.host, JSON.parse(JSON.stringify(V.save())));
+    FB.verify(V2.side[host], pH, ok, `${tag} host restored`);
+  }
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

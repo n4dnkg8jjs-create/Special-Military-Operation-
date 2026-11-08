@@ -318,8 +318,9 @@ async function hostSession(peer, defs, opId, faction, saved = null) {
     resolving = true; const C = V.side[me], fromN = C.logSeq || 0, d0 = C.date;
     if (!resume) V.buildQueue();
     pushState(true); ui?.renderTop();
-    if (resume && V.pendingBattle) { await fight(V.pendingBattle); refresh(); }
-    for (;;) { const b = V.nextAttack(); persist(); refresh(); if (!b) break; pushState(true); await fight(b); refresh(); }
+    if (resume && V.pendingBattle) { await fight(V.pendingBattle); if (ui) ui.setCampaign(mine()); }
+    // (after a fought battle the unit panels are drawn again: men / wounded / vehicles as the battle left them)
+    for (;;) { const b = V.nextAttack(); persist(); refresh(); if (!b) break; pushState(true); await fight(b); if (ui) ui.setCampaign(mine()); }
     V.endWeek(); persist(); pushState(true);
     resolving = false; ui.setCampaign(mine()); weekReport(ui, V.side[me], fromN, d0);
   }

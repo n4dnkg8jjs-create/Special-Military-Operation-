@@ -175,7 +175,13 @@ if (Q.has('ctest')) {   // headless test of a campaign battle without a stored c
 }
 if (Q.has('cbattle')) {
   const setup = Campaign2.pendingBattle() || Campaign.pendingBattle();
-  if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: MAPS[setup.map] ? setup.map : (setup.mapFallback || setup.map), campaign: setup });
+  if (setup) start({ side: setup.side, minutes: 12, quality: Q.get('quality') || localStorage.getItem('smo_quality') || 'medium', map: MAPS[setup.map] ? setup.map : (setup.mapFallback || setup.map), campaign: setup }).then(() => {
+    // the battle as it stands, kept while it runs: a battle left without its end screen (reload, back button, closed tab)
+    // is withdrawn on the sector map with the losses it really had so far (Campaign2.withdrawBattle), not a fresh force
+    const g = window.game; if (!g?.campaign?.v2 || Q.has('sim')) return;
+    const keep = () => { if (g.phase !== 'deploy' && !g.over) Campaign2.storeLive(collectResult(g)); };
+    setInterval(keep, 5000); window.addEventListener('pagehide', keep);
+  });
   else openCampaign();
 }
 // ---------------------------------------------------------------- versus (2 players): lobby, and battles in an iframe

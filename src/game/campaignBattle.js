@@ -6,6 +6,7 @@ import { MAP, DEPLOY_ZONES, OBJECTIVES } from '../world/city.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
 import { xpLevel } from '../campaign/state.js';
 import { applyVehicleKits } from './vehicleKit.js';
+import { crewUnit } from './campaignResult.js';
 
 const ROLES = { mech: SQUAD_ROLES, imech: SQUAD_ROLES, assault: ASSAULT_ROLES, atgm: ATGM_ROLES, fpv: FPV_ROLES };
 
@@ -20,7 +21,10 @@ export function deployCampaign(game, side = 'player', forceOverride = null, mods
   const C = game.campaign, N = side === 'player' ? Math.PI : 0, pf = side === 'player' ? game.playerFaction : game.enemyFaction;
   if (side === 'player') game.playerUnits = [];
   const list = side === 'player' ? game.playerUnits : (game.enemyUnits = []);
-  const recs = (forceOverride || C.force).filter(u => u.men > 0 || (u.veh && !u.veh.lost));
+  // (a tank / SPG unit whose vehicle was lost: its surviving crew waits for a new one, it does not fight on foot)
+  const recs = (forceOverride || C.force).filter(u => crewUnit(u) ? !u.veh.lost : (u.men > 0 || (u.veh && !u.veh.lost)));
+  // the records that went in (collectResult: every deployed unit gets a result entry; crews scaled to the unit's men)
+  (game.campRecs ||= {})[side] = recs.map(u => ({ uid: u.uid, kind: u.kind, men: u.men || 0, veh: u.veh ? { kind: u.veh.kind, hp: u.veh.hp, lost: !!u.veh.lost } : null }));
   // order: carriers with their squads, tanks, assault, support, guns
   const rank = { mech: 0, imech: 0, tank: 1, assault: 2, atgm: 3, fpv: 3, spg: 4 };
   recs.sort((a, b) => (rank[a.kind] ?? 5) - (rank[b.kind] ?? 5));
@@ -90,35 +94,10 @@ export function applyMods(game, M, side) {
   if (side === 'player' && M.mortar) game.mortars += M.mortar;
 }
 
-// what happened to each persistent unit
-export function collectResult(game, side = 'player') {
-  const C = game.campaign, os = side === 'player' ? 'enemy' : 'player', P = game.stats[side], E = game.stats[os], units = {};
-  const rec = uid => (units[uid] ||= { uid, alive: 0, wounded: 0, saved: 0, diedOfWounds: 0, kills: 0, vehLost: false, vehHp: 1 });
-  // wounded still lying out on the field at the end (never evacuated) may not make it: more of them when the ground is lost;
-  // men evacuated (state 'evac': by their carrier or the medevac pickup, game/medevac.js -> soldier.saved) all come back
-  // (campaign tech medSave — stabilisation point, blood forward, armoured ambulances: fewer of them die of their wounds)
-  const care = 1 - Math.min(0.75, modOf(game, side, 'medSave')), won = side === 'player' ? !!game.result?.win : !game.result?.win, dow = s => (s.state === 'critical' ? (won ? 0.25 : 0.6) : s.state === 'stable' ? (won ? 0.05 : 0.3) : 0) * care;
-  for (const sq of game.squads) {
-    if (sq.side !== side || sq.rec == null) continue;
-    const u = rec(sq.rec);
-    for (const s of sq.soldiers) {
-      if (s.state === 'dead') continue;
-      if (s.state === 'critical' || s.state === 'stable' || s.state === 'evac') { if (s.state !== 'evac' && Math.random() < dow(s)) { u.diedOfWounds++; continue; } u.wounded++; if (s.saved || s.onBed) u.saved++; }
-      else u.alive++;
-    }
-    u.kills += Math.round(sq.stats.kills || 0);
-  }
-  for (const v of game.vehicles) {
-    if (v.side !== side || v.rec == null) continue;
-    const u = rec(v.rec); u.vehLost = v.destroyed; u.vehHp = v.destroyed ? 0 : Math.max(0, v.hp / v.def.hp); u.kills += Math.round(v.stats?.kills || 0);
-    // crew: bailed-out crews that survived come back to the vehicle unit; vehicle-only units count crew as men
-  }
-  const win = side === 'player' ? !!game.result?.win : !game.result?.win;
-  return { sector: C.sector, mode: side === 'player' ? C.mode : (C.mode === 'attack' ? 'defend' : 'attack'), win, units: Object.values(units), enemyKia: E.kia, enemyVehLost: E.vehLost,
-    objectivesHeld: game.objectives.filter(o => o.owner === side).length, losses: P.kia, time: game.time };
-}
+// what happened to each persistent unit: campaignResult.js (no three.js imports: the node rule tests run it)
+export { collectResult } from './campaignResult.js';
 
 // small helpers for upgrade effects elsewhere in the battle code
-export const modOf = (game, side, key, dflt = 0) => game.mods?.[side]?.[key] ?? dflt;
+export { modOf } from './campaignResult.js';
 export const vetOf = u => (u?.squad?.vet ?? u?.vet ?? 0);
 export { THREE };

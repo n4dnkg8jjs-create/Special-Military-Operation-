@@ -44,6 +44,7 @@ export const FOOT_MP = 2;
 export const CAMPAIGN_MODS = ['supplyRange', 'uavSorties', 'ammoAlloc', 'ammoMax', 'cbBonus', 'medReturn'];   // medReturn: + share of the wounded back to their unit (endTurn)
 const ROAD_COST = [Infinity, 1.5, 1];
 const FOOT_KINDS = new Set(['assault', 'atgm', 'fpv']);
+const CREW_KINDS = new Set(['tank', 'spg']);          // men = the vehicle's crew (src/game/campaignResult.js)
 
 export class Campaign2 {
   constructor(def, saved = null) {
@@ -128,9 +129,12 @@ export class Campaign2 {
     try { const raw = L.getItem(KEY2); if (!raw) return null; const s = JSON.parse(raw); const def = defs[s.side]; if (!def) return null; const C = new Campaign2(def, s); return C.sig === C.signature() ? C : null; } catch (e) { console.warn('campaign v2 load failed', e); return null; }
   }
   save() { if (this.def.versus) return; const { def, baseDef, cellById, grid, blocked, ...rest } = this; try { ls()?.setItem(KEY2, JSON.stringify(rest)); } catch (e) { console.warn('campaign save failed', e); } }
-  static clear() { const L = ls(); try { for (const k of ['', '.battle', '.result']) L?.removeItem(KEY2 + k); } catch {} }
+  static clear() { const L = ls(); try { for (const k of ['', '.battle', '.result', '.live']) L?.removeItem(KEY2 + k); } catch {} }
   static pendingBattle() { try { return JSON.parse(ls()?.getItem(KEY2 + '.battle') || 'null'); } catch { return null; } }
-  static storeResult(r) { try { ls()?.setItem(KEY2 + '.result', JSON.stringify(r)); ls()?.removeItem(KEY2 + '.battle'); } catch {} }
+  static storeResult(r) { try { ls()?.setItem(KEY2 + '.result', JSON.stringify(r)); ls()?.removeItem(KEY2 + '.battle'); ls()?.removeItem(KEY2 + '.live'); } catch {} }
+  // a battle in progress, as it stands (main.js, every few seconds): what withdrawBattle applies when it never reported back
+  static storeLive(r) { try { ls()?.setItem(KEY2 + '.live', JSON.stringify(r)); } catch {} }
+  static takeLive() { try { const r = JSON.parse(ls()?.getItem(KEY2 + '.live') || 'null'); ls()?.removeItem(KEY2 + '.live'); return r; } catch { return null; } }
   static takeResult() { try { const r = JSON.parse(ls()?.getItem(KEY2 + '.result') || 'null'); ls()?.removeItem(KEY2 + '.result'); return r; } catch { return null; } }
   // ------------------------------------------------------------------ time
   get date() { return addDays(this.def.start.date, (this.turn - 1) * (this.def.start.turnDays || 7)); }
@@ -160,7 +164,8 @@ export class Campaign2 {
   forcesAt(cellId) { return this.forces.filter(f => f.cell === cellId); }
   tfUnits(tf) { tf = typeof tf === 'string' ? this.tf(tf) : tf; return tf ? tf.units.map(id => this.unit(id)).filter(Boolean) : []; }
   alive(u) { return u.men > 0 || (u.veh && !u.veh.lost) || u.wounded > 0; }
-  combatReady(u) { return u.status === 'ready' && (u.men > 0 || (u.veh && !u.veh.lost)); }
+  // (a tank / SPG unit is its vehicle: a crew without one waits for a replacement vehicle, campaignResult.js CREW_KINDS)
+  combatReady(u) { return u.status === 'ready' && (CREW_KINDS.has(u.kind) && u.veh ? !u.veh.lost : (u.men > 0 || (u.veh && !u.veh.lost))); }
   unitPower(u) { return (u.men * 0.12 + (u.veh && !u.veh.lost ? (u.veh.kind === 'tank' ? 1.4 : u.veh.kind === 'spg' ? 1.0 : 0.8) * (0.5 + 0.5 * u.veh.hp) : 0)) * (1 + xpLevel(u.xp) * 0.12); }
   tfPower(tf) { return this.tfUnits(tf).filter(u => this.combatReady(u)).reduce((a, u) => a + this.unitPower(u), 0); }
   unitMp(u) { if (u.veh && !u.veh.lost) return VEH_MP[u.veh.kind] || 3; return FOOT_MP; }
@@ -646,8 +651,8 @@ export class Campaign2 {
     this.battle = { mode: 'defend', cell: a.to, attack: a.id, from: a.from };
     return this.battleSetup(a.to, uids, 'defend', a);
   }
-  launch(setup) { try { ls()?.setItem(KEY2 + '.battle', JSON.stringify(setup)); } catch {} this.save(); }
-  cancelBattle() { this.battle = null; try { ls()?.removeItem(KEY2 + '.battle'); } catch {} this.save(); }
+  launch(setup) { try { ls()?.setItem(KEY2 + '.battle', JSON.stringify(setup)); ls()?.removeItem(KEY2 + '.live'); } catch {} this.save(); }
+  cancelBattle() { this.battle = null; try { ls()?.removeItem(KEY2 + '.battle'); ls()?.removeItem(KEY2 + '.live'); } catch {} this.save(); }
   // a launched battle that never reported back (reload / back button / closed tab): the task group pulled out —
   // counted as a lost battle with light losses (same as the Withdraw button on the battle map)
   withdrawBattle() {
@@ -655,6 +660,12 @@ export class Campaign2 {
     const uids = B.mode === 'attack' ? (this.tf(B.tf)?.units || []) : this.forcesAt(B.cell).flatMap(f => f.units);
     const r = { sector: B.cell, mode: B.mode, win: false, withdrawn: true, enemyKia: Math.round(rnd(0, 3)), enemyVehLost: 0, objectivesHeld: 0,
       units: this.battleUnits(uids).map(u => { const cas = Math.round(u.men * rnd(0.04, 0.14)); return { uid: u.uid, alive: Math.max(0, u.men - cas), wounded: Math.min(cas, Math.round(cas * 0.6)), kills: 0, vehLost: false, vehHp: u.veh ? (u.veh.lost ? 0 : clamp(u.veh.hp - rnd(0, 0.15), 0.1, 1)) : 1 }; }) };
+    // the battle was fought for a while (main.js keeps it as it stands): its losses so far, not a fresh pull-out
+    const live = Campaign2.takeLive();
+    if (live && live.sector === B.cell && Array.isArray(live.units)) {
+      for (const lu of live.units) { const i = r.units.findIndex(x => x.uid === lu.uid); const e = { uid: lu.uid, alive: lu.alive, wounded: lu.wounded, kills: lu.kills || 0, vehLost: !!lu.vehLost, vehHp: lu.vehHp ?? 1 }; if (i >= 0) r.units[i] = e; else r.units.push(e); }
+      r.enemyKia = live.enemyKia || 0; r.enemyVehLost = live.enemyVehLost || 0;
+    }
     try { ls()?.removeItem(KEY2 + '.battle'); } catch {}
     return this.applyResult(r);
   }
@@ -667,9 +678,14 @@ export class Campaign2 {
     for (const ur of r.units || []) {
       const u = this.unit(ur.uid); if (!u) continue;
       u.battles++; u.kills += ur.kills || 0; this.stats.kills += ur.kills || 0;
-      const lost = Math.max(0, u.men - ur.alive - ur.wounded); this.stats.losses += lost;
-      u.men = ur.alive; u.wounded += ur.wounded; u.woundedT = 2;
-      if (u.veh) { if (ur.vehLost && !u.veh.lost) { u.veh.lost = true; u.veh.hp = 0; this.stats.vehLost++; } else if (!u.veh.lost) u.veh.hp = clamp(ur.vehHp + (mods.repair || 0) * (1 - ur.vehHp), 0, 1); }
+      // casualties stay casualties: never more men back (fit + wounded) than went in
+      const alive = clamp(Math.round(ur.alive || 0), 0, u.men), wounded = clamp(Math.round(ur.wounded || 0), 0, u.men - alive);
+      ur.alive = alive; ur.wounded = wounded;
+      const lost = Math.max(0, u.men - alive - wounded); this.stats.losses += lost;
+      u.men = alive; if (wounded) { u.wounded += wounded; u.woundedT = 2; }
+      // a vehicle knocked out (or burnt out at 0 hp) is lost: never a live vehicle at 0 %
+      const vhp = Number.isFinite(ur.vehHp) ? ur.vehHp : 1;
+      if (u.veh) { if ((ur.vehLost || vhp <= 0.02) && !u.veh.lost) { u.veh.lost = true; u.veh.hp = 0; ur.vehLost = true; this.stats.vehLost++; } else if (!u.veh.lost) u.veh.hp = clamp(vhp + (mods.repair || 0) * (1 - vhp), 0.1, 1); }
       u.xp += (ur.alive > 0 || (u.veh && !u.veh.lost) ? 1 : 0) + (r.win ? 1 : 0) + Math.min(2, (ur.kills || 0) / 4);
     }
     this.stats.vehKills += r.enemyVehLost || 0;
