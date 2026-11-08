@@ -4,7 +4,7 @@ import { MAP } from '../world/city.js';
 import { trunkHit } from '../world/vegetation.js';
 
 // Support teams: ATGM (Kornet for Russia / Stugna-P for Ukraine, 3 men) and FPV drone teams (2 men, 10 drones).
-const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
 // FPV flight model: a quad steers by tilting its thrust - acceleration-limited (~2.6 g sideways, more in the dive),
 // the airframe banks / pitches into the acceleration and yaws smoothly into the flight path, with a little turbulence
 const FPV_ACC = 34, FPV_ACC_DIVE = 46;   // (a racing quad: ~3.5 g sideways, snappy - no floaty drift)
@@ -263,7 +263,10 @@ export class AtgmTeam {
   flyMissile(dt) {
     const m = this.missile, g = this.g, W = this.W;
     m.age += dt;
-    const guided = m.gun.effective && !this.abandoned && this.launcher;
+    // command guidance (Kornet laser beam-riding, Stugna laser / TV): the operator must keep the target in his sight the whole
+    // flight -- a tree belt, a building or smoke between launcher and target and the missile flies on blind
+    if ((m.losT = (m.losT ?? 0) - dt) <= 0 && !m.t.destroyed) { m.losT = 0.3; const o = this.muzzle ? this.muzzle.getWorldPosition(tmpC) : tmpC.copy(m.gun.pos).setY(1.2); const vis = g.combat.los(o.x, o.y, o.z, m.t.pos.x, 1.4, m.t.pos.z, null, m.t); m.blind = vis ? 0 : (m.blind || 0) + 0.3; }
+    const guided = m.gun.effective && !this.abandoned && this.launcher && !((m.blind || 0) > 0.6);
     const tp = m.t.destroyed ? m.lastTp || m.t.pos.clone().setY(1.2) : tmpA.set(m.t.pos.x, 1.3, m.t.pos.z);
     m.lastTp = tp.clone();
     let dir;
@@ -287,7 +290,7 @@ export class AtgmTeam {
     { const th = m.age > 0.1 ? trunkHit(m.pos.x, m.pos.y, m.pos.z, next.x, next.y, next.z, 0) : null;   // a tree trunk in the way: the warhead goes off on it
       if (th && !(hitT && m.pos.distanceTo(next) < Math.hypot(th.x - m.pos.x, th.y - m.pos.y, th.z - m.pos.z))) { g.combat.trunkBursts = (g.combat.trunkBursts || 0) + 1; return this.detonate(next.set(th.x, th.y, th.z), null); } }
     if (hitT) return this.detonate(next, m.t);
-    if (next.y < 0.05 || m.age > 12) return this.detonate(next.setY(Math.max(0.1, next.y)), null);
+    if (next.y < 0.05 || m.age > Math.max(12, (W.range || 1500) / (W.projectile?.speed || 240) + 3)) return this.detonate(next.setY(Math.max(0.1, next.y)), null);
     m.pos.copy(next); m.mesh.position.copy(m.pos); m.mesh.lookAt(m.pos.clone().add(m.dir));
   }
   detonate(at, target, occ) {
@@ -309,7 +312,7 @@ export class AtgmTeam {
 export const FPV_DRONES = 10;
 // terminal miss chances (the pilot loses it in the last metres): a parked hull or men lying still are near-certain hits -
 // what saves them is a cage / net, EW or being shot down; a hull jinking at speed or men on the move a little more often
-const FPV_MISS = { moving: 0.10, parked: 0.01, inf: 0.03, infMoving: 0.08 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
+const FPV_MISS = { moving: 0.14, parked: 0.04, inf: 0.08, infMoving: 0.15 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
 export class FpvTeam {
   constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 3 + Math.random() * 3; this.W = WEAPONS.fpv; this.reach = Math.max(WEAPONS.fpv.range, (MAP.sizeM || 1000) * 1.5); }   // reach: a strike quad flies 5-10 km - on these maps, anywhere   // first sortie after the pilot has a picture
   status() { return this.drone ? (this.drone.phase === 'launch' ? 'LAUNCHING DRONE' : 'DRONE AIRBORNE') : !this.drones ? 'OUT OF DRONES' : this.scanT > 3 ? `PREPPING · ${this.drones} LEFT` : `${this.drones} DRONE${this.drones > 1 ? 'S' : ''} READY`; }
@@ -437,7 +440,7 @@ export class FpvTeam {
       if (d.phase === 'search' && !d.contact && !d.spec) d.phase = 'cruise';
       if (d.phase === 'cruise' && d.contact && hd < 22) { d.phase = 'search'; d.searchT = 0; d.scanK = 0; d.orbA = Math.atan2(d.pos.x - tc.x, d.pos.z - tc.z); }
       // terminal attack: a steep dive (roof / engine deck), only once the drone can see down onto the target
-      if (d.phase === 'cruise' && !d.contact && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? FPV_MISS.moving : FPV_MISS.parked) : tgt.effective?.some(m => m.vel.lengthSq() > 1) ? FPV_MISS.infMoving : FPV_MISS.inf) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || (d.jam = Math.random() < (M[od]?.ewJam || 0) * FPV_EW); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
+      if (d.phase === 'cruise' && !d.contact && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; /* the pilot loses the target under leafy canopy (city.concealAt: 1 open .. 0 dense) or in smoke on the dive line */ const cz = 1 - Math.min(1, g.city.concealAt?.(tc.x, tc.z) ?? 1), smk = g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : null)?.smokeUntil ? 0.45 : 0; d.miss = Math.random() < cz * 0.4 + smk + ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? FPV_MISS.moving : FPV_MISS.parked) : tgt.effective?.some(m => m.vel.lengthSq() > 1) ? FPV_MISS.infMoving : FPV_MISS.inf) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || (d.jam = Math.random() < (M[od]?.ewJam || 0) * FPV_EW); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
       // (d.jam, set above: the enemy's EW took this dive's link - ui/droneFeed.js shows the video going)
       // climb-out: up and away toward the target at once (no hover over the launch point)
       if (d.phase === 'climb') { const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1; want = tmpA.set((tc.x - d.pos.x) / h * 16, 8, (tc.z - d.pos.z) / h * 16); if (d.pos.y > Math.min(d.alt, 8)) d.phase = 'cruise'; }
@@ -590,7 +593,7 @@ export class FpvTeam {
       // infantry: the man it was flown into takes the warhead (frag sleeve / OG-7 / PG-7 + steel balls); the burst wounds
       // out to ~20 m (combat.explode fragment zone). "The success rate in wounding infantry is high" (RUSI 2025)
       const m = d.man;
-      if (t.type !== 'vehicle' && d.phase === 'dive' && m?.effective && !d.dodged && !m.cellar && m.pos.distanceTo(at) < 2.6) g.combat.hitSoldier(m, { dmg: [150, 260], type: 'blast' }, at, true, d.pilot);
+      if (t.type !== 'vehicle' && d.phase === 'dive' && m?.effective && !d.dodged && !m.cellar && m.pos.distanceTo(at) < (m.trenchSlot ? 1.6 : 2.6)) g.combat.hitSoldier(m, { dmg: m.trenchSlot ? [70, 200] : [150, 260], type: 'blast' }, at, true, d.pilot);   // (in a trench: it has to come right in)
       g.combat.explode(at, 0.8, d.pilot, [90, 220], 8);
     }
   }

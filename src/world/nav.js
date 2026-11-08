@@ -558,7 +558,14 @@ export class NavGrid {
       for (const o of l) {
         if (seen.has(o) || o.dead || (o.smokeUntil && o.smokeUntil < (globalThis.__gameTime || 0)) || (ignore && (o === ignore || o.ref === ignore)) || (ignore2 && (o === ignore2 || o.ref === ignore2))) continue; seen.add(o);
         const t = segRect(ax, az, bx, bz, o); if (t === null) continue;
-        const y = ay + (by - ay) * t; if (y >= o.h || (o.y0 && y < o.y0 && ay + (by - ay) * segT1 < o.y0)) continue;   // over it, or under a tree crown
+        const y = ay + (by - ay) * t; if (y >= o.h) continue;   // over it
+        if (o.y0 && y < o.y0 && ay + (by - ay) * segT1 < o.y0) {   // under a tree crown: trunks, undergrowth and the
+          // stand's own lower branches -- a single tree is seen past, a wood is not (half the leaf density of a crown)
+          if (!o.foliage || noFoliage === true || noFoliage === 'veg') continue;
+          leaf += (segT1 - t) * Math.hypot(bx - ax, bz - az) * 0.5;
+          if (leaf < 9) continue;
+          return o;
+        }
         if (o.foliage) {
           if (noFoliage === true || (noFoliage === 'veg' && o.veg)) continue;   // 'veg': single bushes / crowns don't stop a round, belts do
           // tree-line belts: you can see and shoot out of (or into the edge of) a belt, not through it
