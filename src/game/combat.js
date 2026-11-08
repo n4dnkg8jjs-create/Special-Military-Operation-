@@ -747,7 +747,9 @@ export class Combat {
     if (!r.penetrated) { this.updateImmobile(v); return; }
     // FPV: how well the warhead lands varies a lot (impact angle, a stand-off-less crush fuze, where on the hull) -- most
     // hits are mediocre, a clean one into the compartment is rare: q scales what the jet and blast do inside
-    const q = W === WEAPONS.fpv ? 0.35 + 0.65 * Math.random() ** 1.6 : 1;
+    // (a tank: thick, cluttered roof and deck, ERA and cages -- a single FPV usually wrecks optics / a track / the engine, the
+    // crew compartment and the carousel are rarely reached: q is lower still)
+    const q = W === WEAPONS.fpv ? (0.35 + 0.65 * Math.random() ** 1.6) * (v.kind === 'tank' || v.kind === 'spg' ? 0.55 : 1) : 1;
     v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1)) * q;
     const msgs = [];
     // big shaped charges (ATGM, FPV warhead) through thin armour: the jet and blast wreck the compartment
