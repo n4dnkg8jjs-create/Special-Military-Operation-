@@ -639,7 +639,7 @@ export class Combat {
     if (g.houses && power >= 1) for (const h of g.houses.near(at.x, at.z, 40)) h.shelledT = g.time;   // (the garrison's cellar AI)
     const onGround = at.y < 0.6 && !b && !hs;
     g.fx.explosion(at, power, { dust: b ? [0.66, 0.63, 0.58] : [0.55, 0.49, 0.41] });
-    g.sfx(power >= 2 ? 'explosion_medium' : power >= 0.7 ? 'explosion_small' : 'explosion_small', at, { gain: power >= 0.5 ? 1 : 0.6 });
+    g.sfx(power >= 2 ? 'explosion_medium' : power >= 0.7 ? 'explosion_small' : 'explosion_small', at, { gain: power >= 0.5 ? 1 : 0.6, power });   // (power: audio/sfx.js picks shell / mortar burst sets)
     const cd = g.camDist(at); g.cam.addShake(Math.max(0, power * 0.5 - cd / 200)); if (cd < 120) g.renderer.flash(0.04 * power);
     if (onGround) g.city.addCrater(at.x, at.z, 1.2 + power * 1.3);
     if (b) this.damageBuilding(b, at, power * 55);

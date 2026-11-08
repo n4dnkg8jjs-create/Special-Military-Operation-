@@ -40,15 +40,16 @@ const SCENES = {
     at(t, () => a.play('tankgun', { x: -15, y: 2, z: -25 })); at(t + 4, () => a.play('tankgun', { x: 120, y: 2, z: -450 }));
     at(t + 8, () => a.play('rpg_launch', { x: -8, y: 1, z: -14 }, { gain: 1.2 })); at(t + 8.9, () => a.play('explosion_small', { x: 5, y: 1, z: -120 }));
   } },
-  artillery_mortar: { dur: 36, env: 'field', fn: ({ at, a }) => {
+  artillery_mortar: { dur: 44, env: 'field', fn: ({ at, a }) => {
+    // as the game calls it: incoming key ~1.4 / 2.3 s ahead (often silent by design), then combat.explode's burst with its power
     at(0, () => { a.play('ambience_wind', null, { gain: 0.6 }); a.play('ambience_battle', null, { gain: 0.5 }); });
-    at(1, () => a.play('mortar_launch', null, { gain: 0.4 }));
-    at(4.6, () => a.play('incoming_whistle', { x: -20, y: 20, z: -50 }, { delay: false })); at(6, () => a.play('explosion_medium', { x: -20, y: 0, z: -50 }));
-    at(8.7, () => a.play('shell_incoming', { x: 30, y: 24, z: -120 }, { delay: false })); at(11, () => { a.play('explosion_large', { x: 30, y: 0, z: -120 }); a.play('debris', { x: 30, y: 0, z: -120 }); });
-    at(15, () => a.play('explosion_medium', { x: -150, y: 0, z: -420 })); at(15.8, () => a.play('explosion_medium', { x: -120, y: 0, z: -460 }));
-    at(19, () => a.play('explosion_large', { x: 400, y: 0, z: -1200 }));
-    at(23, () => a.play('howitzer', { x: 20, y: 0, z: 40 })); at(28, () => a.play('howitzer', { x: -300, y: 0, z: 2000 }));
-    at(31, () => a.play('artillery_far', null, { gain: 0.7 }));
+    at(1, () => a.play('mortar_launch', null, { gain: 0.4 })); at(2.2, () => a.play('mortar_launch', { x: -30, y: 1, z: -40 }));
+    for (const [t, x, z] of [[6, -20, -50], [7.3, 10, -70], [8.1, -40, -35]]) { at(t - 1.4, () => a.play('incoming_whistle', { x, y: 20, z }, { delay: false })); at(t, () => a.play('explosion_small', { x, y: 0, z }, { power: 1.3 })); }
+    for (const [t, x, z] of [[12, 30, -120], [13.4, -60, -90], [15, 60, -60]]) { at(t - 2.3, () => a.play('shell_incoming', { x, y: 24, z }, { delay: false })); at(t, () => a.play('explosion_medium', { x, y: 0, z }, { power: 2.7 })); }
+    at(19, () => a.play('explosion_medium', { x: -150, y: 0, z: -420 }, { power: 2.7 })); at(19.8, () => a.play('explosion_medium', { x: -120, y: 0, z: -460 }, { power: 2.7 }));
+    at(23, () => a.play('explosion_medium', { x: 400, y: 0, z: -1200 }, { power: 2.7 }));
+    at(28, () => a.play('howitzer', { x: 20, y: 0, z: 40 })); at(33, () => a.play('howitzer', { x: -300, y: 0, z: 2000 }));
+    at(38, () => a.play('artillery_far', null, { gain: 0.7 })); at(40.5, () => a.play('artillery_far', null, { gain: 0.45 }));
   } },
   vehicles: { dur: 40, env: 'city', fn: ({ at, a, vehicle, drone }) => {
     at(0, () => a.play('ambience_city', null, { gain: 0.8 }));

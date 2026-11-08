@@ -4,7 +4,7 @@ All sounds in `assets/audio/` are derived from openly licensed recordings. **No 
 
 Sources: OpenGameArt.org submissions (licence as stated on each submission page), Freesound.org clips obtained through the FSD50K dataset (Fonseca et al., 2021, https://zenodo.org/records/4060432; only clips whose per-clip licence is CC0 or CC-BY 3.0 were used - CC-BY-NC and Sampling+ clips were excluded), and The Free Firearm Sound Library (CC0).
 
-Audio pass v3 (`tools/audio/build_v3.py`, no downloads): `weapons/howitzer_*` are qubodup's CC0 howitzer recordings slightly lowered with a rolling echo added; `explosions/shell_incoming_*` are qubodup's CC0 rocket-motor recording slowed to half speed and shaped into an incoming-shell rush; `explosions/mortar_incoming_*` are pyranostudios' CC0 air whoosh shaped into a short arrival whoosh.
+Audio pass v3 (`tools/audio/build_v3.py`, no downloads) reshapes and layers recordings already listed here: `weapons/howitzer_*`, `weapons/artillery_far_*` (real gun reports + rolling echo / distance filtering), `explosions/shell_impact_*`, `explosions/mortar_impact_*` (crack + blast body + debris + echo, layered from the explosion recordings), `explosions/shell_incoming_*`, `explosions/mortar_incoming_*` (air whoosh + rocket crackle), `weapons/mortar_launch_*` (M224 / range recordings reshaped into the tube thunk).
 
 FSD50K compilation credit (dataset licence CC BY 4.0): E. Fonseca, X. Favory, J. Pons, F. Font, X. Serra, "FSD50K: an Open Dataset of Human-Labeled Sound Events", IEEE/ACM TASLP 30, 2022. Clips retrieved from the Hugging Face mirror https://huggingface.co/datasets/Fhrozen/FSD50k. The individual Freesound authors and per-clip licences are listed below.
 
@@ -12,8 +12,8 @@ FSD50K compilation credit (dataset licence CC BY 4.0): E. Fonseca, X. Favory, J.
 
 | Licence | files using it | terms |
 |---|---|---|
-| CC0 | 418 | Public domain dedication - no attribution required (credited anyway). |
-| CC-BY 3.0 | 123 | Attribution required. Licence: https://creativecommons.org/licenses/by/3.0/ |
+| CC0 | 461 | Public domain dedication - no attribution required (credited anyway). |
+| CC-BY 3.0 | 129 | Attribution required. Licence: https://creativecommons.org/licenses/by/3.0/ |
 | CC-BY-SA 3.0 | 27 | Attribution + ShareAlike (applies to the sound files themselves and modified versions of them, not to the game code). Licence: https://creativecommons.org/licenses/by-sa/3.0/ |
 | CC-BY 4.0 | 3 | Attribution required. Licence: https://creativecommons.org/licenses/by/4.0/ |
 
@@ -114,11 +114,11 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *2 metal weapon clicks* (file `clicks/outofammo.wav`) by **Michel Baradari** - CC-BY 3.0 - <https://opengameart.org/content/2-metal-weapon-clicks> - OpenGameArt.org. Used in: `weapons/dryfire_01.mp3`
 - *2 metal weapon clicks* (file `clicks/weapload.wav`) by **Michel Baradari** - CC-BY 3.0 - <https://opengameart.org/content/2-metal-weapon-clicks> - OpenGameArt.org. Used in: `weapons/reload_08.mp3`
 - *4 projectile launches* (file `launches/rlaunch.wav`) by **Michel Baradari** - CC-BY 3.0 - <https://opengameart.org/content/4-projectile-launches> - OpenGameArt.org. Used in: `weapons/rpg_launch_02.mp3`
-- *M224 Mortar Firing Close 02* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426162/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_02.mp3`
-- *M224 Mortar Firing Close 03* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426161/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_01.mp3`
+- *M224 Mortar Firing Close 02* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426162/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_03.mp3`, `weapons/mortar_launch_04.mp3`
+- *M224 Mortar Firing Close 03* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426161/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_01.mp3`, `weapons/mortar_launch_02.mp3`
 - *M224 Mortar Impact  Distant 02* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426165/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_far_13.mp3`
 - *M224 Mortar Impact  Distant 03* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426167/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_far_14.mp3`
-- *M224 Mortar Impact Medium Distance 01* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426164/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_07.mp3`
+- *M224 Mortar Impact Medium Distance 01* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426164/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_07.mp3`, `explosions/mortar_impact_01.mp3`
 - *M224 Mortar Impact Medium Distance 02* by **Nanashi** - CC-BY 3.0 - <https://freesound.org/s/426163/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_06.mp3`
 - *Engine-loop heavy vehicle/tank* (file `engine-loop-heavy-pack/WAV/faster_speeds/engine_heavy_fast_loop.wav`) by **Nayckron** - CC-BY 3.0 - <https://opengameart.org/content/engine-loop-heavy-vehicletank> - OpenGameArt.org. Used in: `vehicles/tank_engine_drive_fast_01.mp3`
 - *Transmission* (file `transmissionStart.wav`) by **needforbleed** - CC-BY 3.0 - <https://opengameart.org/content/transmission> - OpenGameArt.org. Used in: `ambience/radio_01.mp3`
@@ -137,7 +137,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *Falling Rock* (file `Falling Rock.wav`) by **spookymodem** - CC-BY 3.0 - <https://opengameart.org/content/falling-rock> - OpenGameArt.org. Used in: `explosions/debris_10.mp3`
 - *Big Far Explosion* by **unfa** - CC-BY 3.0 - <https://freesound.org/s/156500/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_far_09.mp3`
 - *Medium Far Explosion* by **unfa** - CC-BY 3.0 - <https://freesound.org/s/156499/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `explosions/explosion_far_10.mp3`
-- *Tank Explosion* by **unfa** - CC-BY 3.0 - <https://freesound.org/s/231765/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_05.mp3`
+- *Tank Explosion* by **unfa** - CC-BY 3.0 - <https://freesound.org/s/231765/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_05.mp3`, `explosions/shell_impact_01.mp3`, `explosions/shell_impact_03.mp3`, `explosions/shell_impact_06.mp3`
 - *Räjähdys maastossa / Explosion in the woods little further away, echoing* by **YleArkisto** - CC-BY 3.0 - <https://freesound.org/s/256296/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_02.mp3`
 - *Räjähdys, käsikranaatti / Explosion, hand grenade, an echoing explosion, exterior* by **YleArkisto** - CC-BY 3.0 - <https://freesound.org/s/256300/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_01.mp3`
 
@@ -255,9 +255,9 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *51 UI sound effects (buttons, switches and clicks)* (file `switch7.wav`) by **Kenney** - CC0 - <https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks> - OpenGameArt.org. Used in: `ui/ui_select_03.mp3`
 - *51 UI sound effects (buttons, switches and clicks)* (file `switch19.wav`) by **Kenney** - CC0 - <https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks> - OpenGameArt.org. Used in: `ui/ui_select_04.mp3`
 - *51 UI sound effects (buttons, switches and clicks)* (file `switch28.wav`) by **Kenney** - CC0 - <https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks> - OpenGameArt.org. Used in: `ui/ui_select_05.mp3`
-- *kl_ex2.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114046/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_04.mp3`
+- *kl_ex2.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114046/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_04.mp3`, `explosions/shell_impact_02.mp3`
 - *kl_ex3.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114047/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_03.mp3`
-- *kl_ex4.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114048/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_01.mp3`
+- *kl_ex4.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114048/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_01.mp3`, `explosions/mortar_impact_03.mp3`, `explosions/mortar_impact_06.mp3`
 - *kl_ex5.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114049/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_05.mp3`
 - *kl_ex6.wav* by **Klerrp** - CC0 - <https://freesound.org/s/114050/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_large_02.mp3`
 - *Radio Noise 1* (file `radio_noise_loop.wav`) by **Kresiek The Furry** - CC0 - <https://opengameart.org/content/radio-noise-1> - OpenGameArt.org. Used in: `ambience/radio_static_01.mp3`
@@ -274,11 +274,11 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *Metal Door Slam_SoundSmith.wav* by **Lunardrive** - CC0 - <https://freesound.org/s/48980/> - Freesound (via FSD50K dataset). Used in: `vehicles/hatch_02.mp3`
 - *JCB_Hydraulic_Power_Steering.wav* by **mickyman5000** - CC0 - <https://freesound.org/s/340686/> - Freesound (via FSD50K dataset). Used in: `vehicles/turret_traverse_01.mp3`
 - *Earthquake and Open sesame* (file `shake.flac`) by **mieki256** - CC0 - <https://opengameart.org/content/earthquake-and-open-sesame> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`
-- *BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav* by **misosound** - CC0 - <https://freesound.org/s/251759/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_04.mp3`
+- *BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav* by **misosound** - CC0 - <https://freesound.org/s/251759/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_04.mp3`, `explosions/mortar_impact_02.mp3`, `explosions/shell_impact_01.mp3`, `explosions/shell_impact_04.mp3`, `explosions/shell_impact_05.mp3`
 - *grenade sound effect.mp3* by **MultiMax2121** - CC0 - <https://freesound.org/s/156896/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_12.mp3`, `weapons/grenade_pin_01.mp3`, `weapons/grenade_pin_02.mp3`, `weapons/grenade_pin_03.mp3`, `weapons/grenade_pin_04.mp3`, `weapons/grenade_pin_05.mp3`
 - *Muffled Distant Explosion* (file `NenadSimic - Muffled Distant Explosion.wav`) by **NenadSimic** - CC0 - <https://opengameart.org/content/muffled-distant-explosion> - OpenGameArt.org. Used in: `explosions/explosion_far_15.mp3`
 - *gsm_interference.wav* by **OneHand** - CC0 - <https://freesound.org/s/161347/> - Freesound (via FSD50K dataset). Used in: `ambience/radio_04.mp3`
-- *Air whoosh* (file `whoosh2_0.wav`) by **pyranostudios** - CC0 - <https://opengameart.org/content/air-whoosh> - OpenGameArt.org. Used in: `explosions/mortar_incoming_01.mp3`, `explosions/mortar_incoming_02.mp3`, `explosions/mortar_incoming_03.mp3`, `explosions/mortar_incoming_04.mp3`, `weapons/grenade_throw_02.mp3`
+- *Air whoosh* (file `whoosh2_0.wav`) by **pyranostudios** - CC0 - <https://opengameart.org/content/air-whoosh> - OpenGameArt.org. Used in: `explosions/mortar_incoming_01.mp3`, `explosions/mortar_incoming_02.mp3`, `explosions/mortar_incoming_03.mp3`, `explosions/mortar_incoming_04.mp3`, `explosions/shell_incoming_01.mp3`, `explosions/shell_incoming_02.mp3`, `explosions/shell_incoming_03.mp3`, `explosions/shell_incoming_04.mp3`, `weapons/grenade_throw_02.mp3`
 - *15 vocal male strain/hurt/pain/jump sounds* (file `slightscream-01.flac`) by **qubodup** - CC0 - <https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds> - OpenGameArt.org. Used in: `human/pain_01.mp3`
   - Author's notice: [optional] qubodup
 - *15 vocal male strain/hurt/pain/jump sounds* (file `slightscream-02.flac`) by **qubodup** - CC0 - <https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds> - OpenGameArt.org. Used in: `human/pain_02.mp3`
@@ -312,28 +312,21 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *50 Cal MG* by **qubodup** - CC0 - <https://freesound.org/s/239138/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_01.mp3`, `weapons/hmg_02.mp3`, `weapons/hmg_far_01.mp3`, `weapons/hmg_far_02.mp3`
 - *6 user interface ding clicks* (file `dingClicks/dingCling-negative.ogg`) by **qubodup** - CC0 - <https://opengameart.org/content/6-user-interface-ding-clicks> - OpenGameArt.org. Used in: `ui/ui_alert_01.mp3`
 - *Air Defense Artillery Avenger Training .50cal (tH4YBTw8vk8).flac* by **qubodup** - CC0 - <https://freesound.org/s/160355/> - Freesound (via FSD50K dataset). Used in: `weapons/hmg_05.mp3`, `weapons/hmg_06.mp3`
-- *Artillery Gunfire* by **qubodup** - CC0 - <https://freesound.org/s/239137/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_01.mp3`, `weapons/artillery_far_02.mp3`
+- *Artillery Gunfire* by **qubodup** - CC0 - <https://freesound.org/s/239137/> - Freesound (via FSD50K dataset). Used in: `explosions/mortar_impact_02.mp3`, `explosions/mortar_impact_05.mp3`, `explosions/shell_impact_02.mp3`, `explosions/shell_impact_05.mp3`, `weapons/artillery_far_05.mp3`, `weapons/artillery_far_06.mp3`, `weapons/howitzer_01.mp3`, `weapons/howitzer_02.mp3`, `weapons/howitzer_03.mp3`
 - *Bus Motor/Engine Sound Loop* by **qubodup** - CC0 - <https://freesound.org/s/54909/> - Freesound (via FSD50K dataset). Used in: `vehicles/btr_engine_drive_b_01.mp3`
-- *Cannon Shot* by **qubodup** - CC0 - <https://freesound.org/s/187767/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_03.mp3`, `weapons/tankgun_04.mp3`
-- *Distant Tank Shots.flac* by **qubodup** - CC0 - <https://freesound.org/s/184275/> - Freesound (via FSD50K dataset). Used in: `weapons/tankgun_far_01.mp3`, `weapons/tankgun_far_02.mp3`, `weapons/tankgun_far_03.mp3`, `weapons/tankgun_far_04.mp3`
+- *Cannon Shot* by **qubodup** - CC0 - <https://freesound.org/s/187767/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_07.mp3`, `weapons/howitzer_04.mp3`, `weapons/howitzer_05.mp3`, `weapons/tankgun_04.mp3`
+- *Distant Tank Shots.flac* by **qubodup** - CC0 - <https://freesound.org/s/184275/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_01.mp3`, `weapons/artillery_far_02.mp3`, `weapons/artillery_far_03.mp3`, `weapons/artillery_far_04.mp3`, `weapons/tankgun_far_01.mp3`, `weapons/tankgun_far_02.mp3`, `weapons/tankgun_far_03.mp3`, `weapons/tankgun_far_04.mp3`
 - *Driving Tank Engine.flac* by **qubodup** - CC0 - <https://freesound.org/s/187676/> - Freesound (via FSD50K dataset). Used in: `vehicles/tank_engine_drive_01.mp3`
 - *Explosion* by **qubodup** - CC0 - <https://freesound.org/s/182429/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_02.mp3`
 - *Explosion gMPnaYlErS0* by **qubodup** - CC0 - <https://freesound.org/s/174281/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_03.mp3`
-- *Explosion of mine-clearing line charge (MCLC)* by **qubodup** - CC0 - <https://freesound.org/s/162261/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_01.mp3`
-- *Explosive 1 v2 [DOD 130303].flac* by **qubodup** - CC0 - <https://freesound.org/s/182431/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_05.mp3`
-- *Explosive.flac* by **qubodup** - CC0 - <https://freesound.org/s/189778/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_08.mp3`, `explosions/explosion_small_09.mp3`, `explosions/explosion_small_10.mp3`, `explosions/explosion_small_11.mp3`
-- *Firing Mortar at Shooting Range* by **qubodup** - CC0 - <https://freesound.org/s/161970/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_03.mp3`
-- *Howitzer Artillery Gun Shot Sound Effect 01* by **qubodup** - CC0 - <https://freesound.org/s/161343/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_05.mp3`
-- *Howitzer Artillery Gun Shot Sound Effect 02* by **qubodup** - CC0 - <https://freesound.org/s/161342/> - Freesound (via FSD50K dataset). Used in: `weapons/artillery_far_04.mp3`
+- *Explosion of mine-clearing line charge (MCLC)* by **qubodup** - CC0 - <https://freesound.org/s/162261/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_medium_01.mp3`, `explosions/shell_impact_03.mp3`
+- *Explosive 1 v2 [DOD 130303].flac* by **qubodup** - CC0 - <https://freesound.org/s/182431/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_05.mp3`, `explosions/mortar_impact_01.mp3`, `explosions/mortar_impact_03.mp3`, `explosions/mortar_impact_04.mp3`
+- *Explosive.flac* by **qubodup** - CC0 - <https://freesound.org/s/189778/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_08.mp3`, `explosions/explosion_small_09.mp3`, `explosions/explosion_small_10.mp3`, `explosions/explosion_small_11.mp3`, `explosions/mortar_impact_04.mp3`, `explosions/mortar_impact_05.mp3`, `explosions/mortar_impact_06.mp3`, `explosions/shell_impact_04.mp3`, `explosions/shell_impact_06.mp3`
+- *Firing Mortar at Shooting Range* by **qubodup** - CC0 - <https://freesound.org/s/161970/> - Freesound (via FSD50K dataset). Used in: `weapons/mortar_launch_05.mp3`, `weapons/mortar_launch_06.mp3`
 - *Launching/Shooting Propelled Grenade* by **qubodup** - CC0 - <https://freesound.org/s/162361/> - Freesound (via FSD50K dataset). Used in: `weapons/rpg_launch_01.mp3`
 - *Mk 46 30mm gun - single shot* by **qubodup** - CC0 - <https://freesound.org/s/162258/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_05.mp3`, `weapons/cannon30_far_05.mp3`
-- *Rocket launch* (file `launch/launch.wav`) by **qubodup** - CC0 - <https://opengameart.org/content/rocket-launch> - OpenGameArt.org. Used in: `explosions/shell_incoming_01.mp3`, `explosions/shell_incoming_02.mp3`, `explosions/shell_incoming_03.mp3`, `explosions/shell_incoming_04.mp3`, `weapons/rpg_flight_01.mp3`
+- *Rocket launch* (file `launch/launch.wav`) by **qubodup** - CC0 - <https://opengameart.org/content/rocket-launch> - OpenGameArt.org. Used in: `explosions/mortar_incoming_01.mp3`, `explosions/mortar_incoming_02.mp3`, `explosions/mortar_incoming_03.mp3`, `explosions/mortar_incoming_04.mp3`, `explosions/shell_incoming_01.mp3`, `explosions/shell_incoming_02.mp3`, `explosions/shell_incoming_03.mp3`, `explosions/shell_incoming_04.mp3`, `weapons/rpg_flight_01.mp3`
 - *U.S. National Park Service - American Crow.flac* by **qubodup** - CC0 - <https://freesound.org/s/182090/> - Freesound (via FSD50K dataset). Used in: `ambience/ambience_battle_01.mp3`, `ambience/ambience_city_01.mp3`, `ambience/crow_01.mp3`, `ambience/crow_02.mp3`, `ambience/crow_03.mp3`, `ambience/crow_04.mp3`, `ambience/crow_05.mp3`, `ambience/crow_06.mp3`, `ambience/crow_07.mp3`, `ambience/crow_08.mp3`, `ambience/crow_09.mp3`
-- *howitzer_gun_shot_1.flac* by **qubodup** - CC0 - <https://freesound.org/s/67505/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_01.mp3`
-- *howitzer_gun_shot_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67506/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_02.mp3`
-- *howitzer_gun_shot_3.flac* by **qubodup** - CC0 - <https://freesound.org/s/67508/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_03.mp3`
-- *howitzer_gun_shot_4.flac* by **qubodup** - CC0 - <https://freesound.org/s/67510/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_04.mp3`
-- *howitzer_gun_shot_6.flac* by **qubodup** - CC0 - <https://freesound.org/s/67514/> - Freesound (via FSD50K dataset). Used in: `weapons/howitzer_05.mp3`
 - *m242_chain_gun_slow_burst_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67580/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_01.mp3`, `weapons/cannon30_02.mp3`, `weapons/cannon30_far_01.mp3`, `weapons/cannon30_far_02.mp3`
 - *m242_chain_gun_slow_burst_3.flac* by **qubodup** - CC0 - <https://freesound.org/s/67581/> - Freesound (via FSD50K dataset). Used in: `weapons/cannon30_03.mp3`, `weapons/cannon30_04.mp3`, `weapons/cannon30_far_03.mp3`, `weapons/cannon30_far_04.mp3`
 - *m67_fragmentation_grenade_explosion_2.flac* by **qubodup** - CC0 - <https://freesound.org/s/67470/> - Freesound (via FSD50K dataset). Used in: `explosions/explosion_small_07.mp3`
@@ -368,12 +361,12 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 - *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_01.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_01.mp3`
 - *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_03.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_03.mp3`
 - *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_05.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_05.mp3`
-- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_07.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_07.mp3`
+- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_07.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_07.mp3`, `explosions/mortar_impact_06.mp3`, `explosions/shell_impact_06.mp3`
 - *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_08.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_08.mp3`
-- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_09.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_09.mp3`
-- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_02.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_02.mp3`
-- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_04.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_04.mp3`
-- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_06.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_06.mp3`
+- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_09.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/collapse_01.mp3`, `explosions/collapse_02.mp3`, `explosions/collapse_03.mp3`, `explosions/collapse_04.mp3`, `explosions/debris_09.mp3`, `explosions/mortar_impact_04.mp3`, `explosions/shell_impact_04.mp3`
+- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_02.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_02.mp3`, `explosions/mortar_impact_05.mp3`, `explosions/shell_impact_05.mp3`
+- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_04.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_04.mp3`, `explosions/mortar_impact_03.mp3`, `explosions/shell_impact_03.mp3`
+- *75 CC0 breaking / falling / hit sfx* (file `bfh1_rock_falling_06.ogg`) by **rubberduck** - CC0 - <https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx> - OpenGameArt.org. Used in: `explosions/debris_06.mp3`, `explosions/mortar_impact_01.mp3`, `explosions/shell_impact_01.mp3`
 - *ClothingEquip.mp3* by **SoundEffEcks** - CC0 - <https://freesound.org/s/396429/> - Freesound (via FSD50K dataset). Used in: `foley/gear_rattle_09.mp3`
 - *breaking glass.wav* by **Spankous** - CC0 - <https://freesound.org/s/245410/> - Freesound (via FSD50K dataset). Used in: `explosions/glass_break_06.mp3`
 - *Battlecry.wav* by **spookymodem** - CC0 - <https://freesound.org/s/249807/> - Freesound (via FSD50K dataset). Used in: `human/shout_07.mp3`
@@ -385,7 +378,7 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
   - Author's notice: Credit is appreciated, thanks! (Just put a link to my OGA profile) I'd also appreciate if you could show me the projects you use these in!
 - *2 Gun Reloads* (file `gun_reload.2.ogg`) by **StarNinjas** - CC0 - <https://opengameart.org/content/2-gun-reloads> - OpenGameArt.org. Used in: `weapons/reload_06.mp3`
   - Author's notice: Credit is appreciated, thanks! (Just put a link to my OGA profile) I'd also appreciate if you could show me the projects you use these in!
-- *Cave In* (file `cave_in_-_starninjas_0.ogg`) by **StarNinjas** - CC0 - <https://opengameart.org/content/cave-in> - OpenGameArt.org. Used in: `explosions/debris_11.mp3`
+- *Cave In* (file `cave_in_-_starninjas_0.ogg`) by **StarNinjas** - CC0 - <https://opengameart.org/content/cave-in> - OpenGameArt.org. Used in: `explosions/debris_11.mp3`, `explosions/mortar_impact_02.mp3`, `explosions/shell_impact_02.mp3`
   - Author's notice: Credit is appreciated, thanks!
 - *paving_18c_trekkingboots_run.wav* by **sturmankin** - CC0 - <https://freesound.org/s/273117/> - Freesound (via FSD50K dataset). Used in: `foley/footstep_concrete_01.mp3`, `foley/footstep_concrete_02.mp3`, `foley/footstep_concrete_03.mp3`, `foley/footstep_concrete_04.mp3`, `foley/footstep_concrete_05.mp3`, `foley/footstep_concrete_06.mp3`, `foley/footstep_concrete_07.mp3`, `foley/footstep_concrete_08.mp3`, `foley/footstep_concrete_09.mp3`, `foley/footstep_concrete_10.mp3`, `foley/footstep_concrete_11.mp3`, `foley/footstep_concrete_12.mp3`
 - *AssaultRifle1.wav* by **SuperPhat** - CC0 - <https://freesound.org/s/404562/> - Freesound (via FSD50K dataset). Used in: `weapons/rifle_near_11.mp3`
@@ -597,14 +590,26 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `explosions/incoming_whistle_01.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
 | `explosions/incoming_whistle_02.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
 | `explosions/incoming_whistle_03.mp3` | incoming_whistle | [Drop Bomb Pack Sounds](https://opengameart.org/content/drop-bomb-pack-sounds) | Tiao Ferreira | CC-BY-SA 3.0 |
-| `explosions/mortar_incoming_01.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh) | pyranostudios | CC0 |
-| `explosions/mortar_incoming_02.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh) | pyranostudios | CC0 |
-| `explosions/mortar_incoming_03.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh) | pyranostudios | CC0 |
-| `explosions/mortar_incoming_04.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh) | pyranostudios | CC0 |
-| `explosions/shell_incoming_01.mp3` | shell_incoming | [Rocket launch](https://opengameart.org/content/rocket-launch) | qubodup | CC0 |
-| `explosions/shell_incoming_02.mp3` | shell_incoming | [Rocket launch](https://opengameart.org/content/rocket-launch) | qubodup | CC0 |
-| `explosions/shell_incoming_03.mp3` | shell_incoming | [Rocket launch](https://opengameart.org/content/rocket-launch) | qubodup | CC0 |
-| `explosions/shell_incoming_04.mp3` | shell_incoming | [Rocket launch](https://opengameart.org/content/rocket-launch) | qubodup | CC0 |
+| `explosions/mortar_impact_01.mp3` | mortar_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosive 1 v2 [DOD 130303].flac](https://freesound.org/s/182431/); [M224 Mortar Impact Medium Distance 01](https://freesound.org/s/426164/) | Nanashi; qubodup; rubberduck | CC-BY 3.0; CC0 |
+| `explosions/mortar_impact_02.mp3` | mortar_impact | [Artillery Gunfire](https://freesound.org/s/239137/); [BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav](https://freesound.org/s/251759/); [Cave In](https://opengameart.org/content/cave-in) | StarNinjas; misosound; qubodup | CC0 |
+| `explosions/mortar_impact_03.mp3` | mortar_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosive 1 v2 [DOD 130303].flac](https://freesound.org/s/182431/); [kl_ex4.wav](https://freesound.org/s/114048/) | Klerrp; qubodup; rubberduck | CC0 |
+| `explosions/mortar_impact_04.mp3` | mortar_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosive 1 v2 [DOD 130303].flac](https://freesound.org/s/182431/); [Explosive.flac](https://freesound.org/s/189778/) | qubodup; rubberduck | CC0 |
+| `explosions/mortar_impact_05.mp3` | mortar_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Artillery Gunfire](https://freesound.org/s/239137/); [Explosive.flac](https://freesound.org/s/189778/) | qubodup; rubberduck | CC0 |
+| `explosions/mortar_impact_06.mp3` | mortar_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosive.flac](https://freesound.org/s/189778/); [kl_ex4.wav](https://freesound.org/s/114048/) | Klerrp; qubodup; rubberduck | CC0 |
+| `explosions/mortar_incoming_01.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/mortar_incoming_02.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/mortar_incoming_03.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/mortar_incoming_04.mp3` | mortar_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/shell_impact_01.mp3` | shell_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav](https://freesound.org/s/251759/); [Tank Explosion](https://freesound.org/s/231765/) | misosound; rubberduck; unfa | CC-BY 3.0; CC0 |
+| `explosions/shell_impact_02.mp3` | shell_impact | [Artillery Gunfire](https://freesound.org/s/239137/); [Cave In](https://opengameart.org/content/cave-in); [kl_ex2.wav](https://freesound.org/s/114046/) | Klerrp; StarNinjas; qubodup | CC0 |
+| `explosions/shell_impact_03.mp3` | shell_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosion of mine-clearing line charge (MCLC)](https://freesound.org/s/162261/); [Tank Explosion](https://freesound.org/s/231765/) | qubodup; rubberduck; unfa | CC-BY 3.0; CC0 |
+| `explosions/shell_impact_04.mp3` | shell_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav](https://freesound.org/s/251759/); [Explosive.flac](https://freesound.org/s/189778/) | misosound; qubodup; rubberduck | CC0 |
+| `explosions/shell_impact_05.mp3` | shell_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Artillery Gunfire](https://freesound.org/s/239137/); [BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav](https://freesound.org/s/251759/) | misosound; qubodup; rubberduck | CC0 |
+| `explosions/shell_impact_06.mp3` | shell_impact | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx); [Explosive.flac](https://freesound.org/s/189778/); [Tank Explosion](https://freesound.org/s/231765/) | qubodup; rubberduck; unfa | CC-BY 3.0; CC0 |
+| `explosions/shell_incoming_01.mp3` | shell_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/shell_incoming_02.mp3` | shell_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/shell_incoming_03.mp3` | shell_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
+| `explosions/shell_incoming_04.mp3` | shell_incoming | [Air whoosh](https://opengameart.org/content/air-whoosh); [Rocket launch](https://opengameart.org/content/rocket-launch) | pyranostudios; qubodup | CC0 |
 | `foley/body_fall_01.mp3` | body_fall | [Body fall_04.wav](https://freesound.org/s/346692/) | Adam_N | CC0 |
 | `foley/body_fall_02.mp3` | body_fall | [Body fall_03.wav](https://freesound.org/s/346693/) | Adam_N | CC0 |
 | `foley/body_fall_03.mp3` | body_fall | [Body fall_02.wav](https://freesound.org/s/346694/) | Adam_N | CC0 |
@@ -761,11 +766,13 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `vehicles/tank_engine_idle_01.mp3` | tank_engine_idle | [Tank Engine Loop.flac](https://freesound.org/s/200303/) | qubodup | CC-BY 3.0 |
 | `vehicles/track_clank_01.mp3` | track_clank | [100 CC0 metal and wood SFX](https://opengameart.org/content/100-cc0-metal-and-wood-sfx); [Chain winch sounds](https://opengameart.org/content/chain-winch-sounds); [Metal Impact Sounds](https://opengameart.org/content/metal-impact-sounds) | BMacZero; bart; rubberduck | CC0 |
 | `vehicles/turret_traverse_01.mp3` | turret_traverse | [JCB_Hydraulic_Power_Steering.wav](https://freesound.org/s/340686/) | mickyman5000 | CC0 |
-| `weapons/artillery_far_01.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
-| `weapons/artillery_far_02.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
-| `weapons/artillery_far_03.mp3` | artillery_far | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
-| `weapons/artillery_far_04.mp3` | artillery_far | [Howitzer Artillery Gun Shot Sound Effect 02](https://freesound.org/s/161342/) | qubodup | CC0 |
-| `weapons/artillery_far_05.mp3` | artillery_far | [Howitzer Artillery Gun Shot Sound Effect 01](https://freesound.org/s/161343/) | qubodup | CC0 |
+| `weapons/artillery_far_01.mp3` | artillery_far | [Distant Tank Shots.flac](https://freesound.org/s/184275/) | qubodup | CC0 |
+| `weapons/artillery_far_02.mp3` | artillery_far | [Distant Tank Shots.flac](https://freesound.org/s/184275/) | qubodup | CC0 |
+| `weapons/artillery_far_03.mp3` | artillery_far | [Distant Tank Shots.flac](https://freesound.org/s/184275/) | qubodup | CC0 |
+| `weapons/artillery_far_04.mp3` | artillery_far | [Distant Tank Shots.flac](https://freesound.org/s/184275/) | qubodup | CC0 |
+| `weapons/artillery_far_05.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
+| `weapons/artillery_far_06.mp3` | artillery_far | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
+| `weapons/artillery_far_07.mp3` | artillery_far | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
 | `weapons/bolt_01.mp3` | bolt | [Handling Guns](https://opengameart.org/content/handling-guns) | Gary | CC-BY-SA 3.0 |
 | `weapons/bolt_03.mp3` | bolt | [Handling Guns](https://opengameart.org/content/handling-guns) | Gary | CC-BY-SA 3.0 |
 | `weapons/bolt_04.mp3` | bolt | [Handling Guns](https://opengameart.org/content/handling-guns) | Gary | CC-BY-SA 3.0 |
@@ -815,11 +822,11 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `weapons/hmg_far_01.mp3` | hmg_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
 | `weapons/hmg_far_02.mp3` | hmg_far | [50 Cal MG](https://freesound.org/s/239138/) | qubodup | CC0 |
 | `weapons/hmg_far_03.mp3` | hmg_far | [Big Machine Gun](https://freesound.org/s/238677/) | JarAxe | CC-BY 3.0 |
-| `weapons/howitzer_01.mp3` | howitzer | [howitzer_gun_shot_1.flac](https://freesound.org/s/67505/) | qubodup | CC0 |
-| `weapons/howitzer_02.mp3` | howitzer | [howitzer_gun_shot_2.flac](https://freesound.org/s/67506/) | qubodup | CC0 |
-| `weapons/howitzer_03.mp3` | howitzer | [howitzer_gun_shot_3.flac](https://freesound.org/s/67508/) | qubodup | CC0 |
-| `weapons/howitzer_04.mp3` | howitzer | [howitzer_gun_shot_4.flac](https://freesound.org/s/67510/) | qubodup | CC0 |
-| `weapons/howitzer_05.mp3` | howitzer | [howitzer_gun_shot_6.flac](https://freesound.org/s/67514/) | qubodup | CC0 |
+| `weapons/howitzer_01.mp3` | howitzer | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
+| `weapons/howitzer_02.mp3` | howitzer | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
+| `weapons/howitzer_03.mp3` | howitzer | [Artillery Gunfire](https://freesound.org/s/239137/) | qubodup | CC0 |
+| `weapons/howitzer_04.mp3` | howitzer | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
+| `weapons/howitzer_05.mp3` | howitzer | [Cannon Shot](https://freesound.org/s/187767/) | qubodup | CC0 |
 | `weapons/mg_far_01.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
 | `weapons/mg_far_02.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
 | `weapons/mg_far_03.mp3` | mg_far | [Maxim Russian machinegun](https://freesound.org/s/160773/) | poissonmort | CC-BY 3.0 |
@@ -837,8 +844,11 @@ Attribution format: *Title* by Author, licence, URL. (Modified: see note above.)
 | `weapons/mg_near_08.mp3` | mg_near | [LightMachineGun3.wav](https://freesound.org/s/417686/) | SuperPhat | CC0 |
 | `weapons/mg_near_09.mp3` | mg_near | [MachineGunloop.wav](https://freesound.org/s/397657/) | SuperPhat | CC0 |
 | `weapons/mortar_launch_01.mp3` | mortar_launch | [M224 Mortar Firing Close 03](https://freesound.org/s/426161/) | Nanashi | CC-BY 3.0 |
-| `weapons/mortar_launch_02.mp3` | mortar_launch | [M224 Mortar Firing Close 02](https://freesound.org/s/426162/) | Nanashi | CC-BY 3.0 |
-| `weapons/mortar_launch_03.mp3` | mortar_launch | [Firing Mortar at Shooting Range](https://freesound.org/s/161970/) | qubodup | CC0 |
+| `weapons/mortar_launch_02.mp3` | mortar_launch | [M224 Mortar Firing Close 03](https://freesound.org/s/426161/) | Nanashi | CC-BY 3.0 |
+| `weapons/mortar_launch_03.mp3` | mortar_launch | [M224 Mortar Firing Close 02](https://freesound.org/s/426162/) | Nanashi | CC-BY 3.0 |
+| `weapons/mortar_launch_04.mp3` | mortar_launch | [M224 Mortar Firing Close 02](https://freesound.org/s/426162/) | Nanashi | CC-BY 3.0 |
+| `weapons/mortar_launch_05.mp3` | mortar_launch | [Firing Mortar at Shooting Range](https://freesound.org/s/161970/) | qubodup | CC0 |
+| `weapons/mortar_launch_06.mp3` | mortar_launch | [Firing Mortar at Shooting Range](https://freesound.org/s/161970/) | qubodup | CC0 |
 | `weapons/reload_01.mp3` | reload | [Gun reload sounds](https://opengameart.org/content/gun-reload-sounds) | SpringySpringo | CC0 |
 | `weapons/reload_02.mp3` | reload | [Gun reload sounds](https://opengameart.org/content/gun-reload-sounds) | SpringySpringo | CC0 |
 | `weapons/reload_03.mp3` | reload | [Gun Reload Sound Effects](https://opengameart.org/content/gun-reload-sound-effects) | BMacZero | CC0 |

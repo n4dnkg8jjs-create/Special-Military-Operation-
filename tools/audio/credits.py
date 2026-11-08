@@ -31,10 +31,11 @@ w("Sources: OpenGameArt.org submissions (licence as stated on each submission pa
   "obtained through the FSD50K dataset (Fonseca et al., 2021, https://zenodo.org/records/4060432; only clips whose "
   "per-clip licence is CC0 or CC-BY 3.0 were used - CC-BY-NC and Sampling+ clips were excluded), and The Free "
   "Firearm Sound Library (CC0).\n")
-w("Audio pass v3 (`tools/audio/build_v3.py`, no downloads): `weapons/howitzer_*` are qubodup's CC0 howitzer recordings "
-  "slightly lowered with a rolling echo added; `explosions/shell_incoming_*` are qubodup's CC0 rocket-motor recording "
-  "slowed to half speed and shaped into an incoming-shell rush; `explosions/mortar_incoming_*` are pyranostudios' "
-  "CC0 air whoosh shaped into a short arrival whoosh.\n")
+w("Audio pass v3 (`tools/audio/build_v3.py`, no downloads) reshapes and layers recordings already listed here: "
+  "`weapons/howitzer_*`, `weapons/artillery_far_*` (real gun reports + rolling echo / distance filtering), "
+  "`explosions/shell_impact_*`, `explosions/mortar_impact_*` (crack + blast body + debris + echo, layered from the "
+  "explosion recordings), `explosions/shell_incoming_*`, `explosions/mortar_incoming_*` (air whoosh + rocket crackle), "
+  "`weapons/mortar_launch_*` (M224 / range recordings reshaped into the tube thunk).\n")
 w("FSD50K compilation credit (dataset licence CC BY 4.0): E. Fonseca, X. Favory, J. Pons, F. Font, X. Serra, "
   "\"FSD50K: an Open Dataset of Human-Labeled Sound Events\", IEEE/ACM TASLP 30, 2022. Clips retrieved from the "
   "Hugging Face mirror https://huggingface.co/datasets/Fhrozen/FSD50k. The individual Freesound authors and "

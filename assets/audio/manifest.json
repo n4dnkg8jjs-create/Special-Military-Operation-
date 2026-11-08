@@ -239,13 +239,15 @@
   "spatial": false,
   "refDistance": 10,
   "maxDistance": 600,
-  "note": "distant artillery / howitzer reports (non-positional bed one-shots)",
+  "note": "distant artillery (2-10 km): real gun reports, low-passed to a dull thud + delayed rumble",
   "files": [
    "weapons/artillery_far_01.mp3",
    "weapons/artillery_far_02.mp3",
    "weapons/artillery_far_03.mp3",
    "weapons/artillery_far_04.mp3",
-   "weapons/artillery_far_05.mp3"
+   "weapons/artillery_far_05.mp3",
+   "weapons/artillery_far_06.mp3",
+   "weapons/artillery_far_07.mp3"
   ]
  },
  "mortar_launch": {
@@ -255,11 +257,14 @@
   "spatial": true,
   "refDistance": 15,
   "maxDistance": 1500,
-  "note": "82/120 mm mortar firing (M224 recordings)",
+  "note": "82/120 mm mortar launch: hollow tube 'thunk' + pop (reshaped M224 / range recordings)",
   "files": [
    "weapons/mortar_launch_01.mp3",
    "weapons/mortar_launch_02.mp3",
-   "weapons/mortar_launch_03.mp3"
+   "weapons/mortar_launch_03.mp3",
+   "weapons/mortar_launch_04.mp3",
+   "weapons/mortar_launch_05.mp3",
+   "weapons/mortar_launch_06.mp3"
   ]
  },
  "rpg_launch": {
@@ -1359,8 +1364,8 @@
   "loop": false,
   "spatial": true,
   "refDistance": 60,
-  "maxDistance": 6000,
-  "note": "152/155 mm howitzer report: real howitzer recordings, slightly lowered, + rolling echo",
+  "maxDistance": 9000,
+  "note": "152/155 mm howitzer at the gun: real gun reports (instant crack + boom) with long rolling echo",
   "files": [
    "weapons/howitzer_01.mp3",
    "weapons/howitzer_02.mp3",
@@ -1374,9 +1379,9 @@
   "gain": 1.0,
   "loop": false,
   "spatial": true,
-  "refDistance": 40,
-  "maxDistance": 900,
-  "note": "152/155 mm incoming: tearing rush, 1.7 s ending at the burst (rocket-motor recording at half speed); no whistle",
+  "refDistance": 30,
+  "maxDistance": 700,
+  "note": "152/155 mm incoming, last 1.3 s: fast-rising tearing hiss/rip ending at the burst (no whistle); played only for some rounds",
   "files": [
    "explosions/shell_incoming_01.mp3",
    "explosions/shell_incoming_02.mp3",
@@ -1389,14 +1394,48 @@
   "gain": 1.0,
   "loop": false,
   "spatial": true,
-  "refDistance": 25,
-  "maxDistance": 500,
-  "note": "82/120 mm bomb arrival: short rising whoosh / flutter, 0.9 s ending at the burst; played only some of the time",
+  "refDistance": 20,
+  "maxDistance": 700,
+  "note": "mortar bomb arrival, last 0.7 s: short rising rip/flutter ending at the burst; played only for some rounds",
   "files": [
    "explosions/mortar_incoming_01.mp3",
    "explosions/mortar_incoming_02.mp3",
    "explosions/mortar_incoming_03.mp3",
    "explosions/mortar_incoming_04.mp3"
+  ]
+ },
+ "shell_impact": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 20,
+  "maxDistance": 6000,
+  "note": "152/155 mm HE burst: crack + body + debris + echo (real recordings)",
+  "files": [
+   "explosions/shell_impact_01.mp3",
+   "explosions/shell_impact_02.mp3",
+   "explosions/shell_impact_03.mp3",
+   "explosions/shell_impact_04.mp3",
+   "explosions/shell_impact_05.mp3",
+   "explosions/shell_impact_06.mp3"
+  ]
+ },
+ "mortar_impact": {
+  "category": "explosions",
+  "gain": 1.0,
+  "loop": false,
+  "spatial": true,
+  "refDistance": 16,
+  "maxDistance": 6000,
+  "note": "82/120 mm mortar burst: sharper/smaller crack + body + debris (real recordings)",
+  "files": [
+   "explosions/mortar_impact_01.mp3",
+   "explosions/mortar_impact_02.mp3",
+   "explosions/mortar_impact_03.mp3",
+   "explosions/mortar_impact_04.mp3",
+   "explosions/mortar_impact_05.mp3",
+   "explosions/mortar_impact_06.mp3"
   ]
  }
 }

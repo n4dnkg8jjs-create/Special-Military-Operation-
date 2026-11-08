@@ -32,7 +32,7 @@ const MIX = {
   impact_concrete: [-10, 5, 'ballistics'], impact_dirt: [-12, 5, 'ballistics'], impact_metal: [-9, 5, 'ballistics'], impact_glass: [-10, 5, 'ballistics'],
   impact_flesh: [-12, 4, 'ballistics'], impact_armor: [-2, 8, 'ballistics'], shell_casing: [-18, 3, 'ballistics'],
   explosion_small: [6, 15, 'explosions'], explosion_medium: [9, 18, 'explosions'], explosion_large: [12, 20, 'explosions'],
-  explosion_far: [6, 30, 'explosions'], collapse: [6, 20, 'explosions'], debris: [-6, 10, 'explosions'], glass_break: [-6, 8, 'explosions'],
+  shell_impact: [12, 20, 'explosions'], mortar_impact: [8, 16, 'explosions'], explosion_far: [6, 30, 'explosions'], collapse: [6, 20, 'explosions'], debris: [-6, 10, 'explosions'], glass_break: [-6, 8, 'explosions'],
   shell_incoming: [-1, 30, 'explosions'], incoming_whistle: [-6, 25, 'explosions'], mortar_incoming: [-4, 25, 'explosions'],
   btr_engine_idle: [0, 12, 'vehicles'], btr_engine_drive: [2, 12, 'vehicles'], btr_engine_drive_b: [2, 12, 'vehicles'],
   tank_engine_idle: [1, 12, 'vehicles'], tank_engine_drive: [3, 14, 'vehicles'], tank_engine_drive_fast: [3, 14, 'vehicles'],
@@ -59,11 +59,11 @@ const ROUND_NOM = { mg_round_near: 0.12, mg_round_far: 0.14, hmg_round: 0.13, hm
 // game key -> engine key (if present), near->far swaps [far key, distance m]
 const ALIAS = { mg_near: 'mg_round_near', mg_far: 'mg_round_far', hmg: 'hmg_round', hmg_far: 'hmg_round_far', cannon30: 'ac_round', cannon30_far: 'ac_round_far', incoming_whistle: 'mortar_incoming', atgm_motor: 'rpg_flight' };
 // incoming sounds end at the burst: the game starts them this many seconds before impact
-const LEAD = { shell_incoming: 2.45, mortar_incoming: 1.4 };
-const FAR = { rifle_near: ['rifle_far', 110], dmr_near: ['dmr_far', 140], mg_round_near: ['mg_round_far', 130], hmg_round: ['hmg_round_far', 170], ac_round: ['ac_round_far', 190], tankgun: ['tankgun_far', 320], rifle_burst_near: ['rifle_burst_far', 120], mg_near: ['mg_far', 130], hmg: ['hmg_far', 170], cannon30: ['cannon30_far', 190] };
+const LEAD = { shell_incoming: 2.45, mortar_incoming: 1.4 };   // (their buffers: 1.3 s / 0.7 s, so they start late)
+const FAR = { rifle_near: ['rifle_far', 110], dmr_near: ['dmr_far', 140], mg_round_near: ['mg_round_far', 130], hmg_round: ['hmg_round_far', 170], ac_round: ['ac_round_far', 190], tankgun: ['tankgun_far', 320], howitzer: ['artillery_far', 900], rifle_burst_near: ['rifle_burst_far', 120], mg_near: ['mg_far', 130], hmg: ['hmg_far', 170], cannon30: ['cannon30_far', 190] };
 // per-emitter choke families: [family, fade time-constant s]
 const CHOKE = { rifle_near: ['r', 0.05], rifle_far: ['r', 0.05], dmr_near: ['d', 0.08], dmr_far: ['d', 0.08], mg_round_near: ['m', 0.035], mg_round_far: ['m', 0.035], hmg_round: ['h', 0.05], hmg_round_far: ['h', 0.05], ac_round: ['a', 0.08], ac_round_far: ['a', 0.08] };
-const BLAST = { explosion_small: 0.55, explosion_medium: 0.8, explosion_large: 1, collapse: 0.7 };
+const BLAST = { explosion_small: 0.55, explosion_medium: 0.8, explosion_large: 1, collapse: 0.7, shell_impact: 1, mortar_impact: 0.7 };
 const LOOP_CAP = { vehicles: 14, weapons: 6 };
 
 export class Audio {
@@ -201,12 +201,14 @@ export class Audio {
   pickBuf(key, e) { const n = e.buffers.length; let i = Math.floor(Math.random() * n); if (n > 2 && i === this.last[key]) i = (i + 1 + Math.floor(Math.random() * (n - 1))) % n; this.last[key] = i; return e.buffers[i]; }
   prune(now) { if (this.act.length > 24 || Math.random() < 0.1) this.act = this.act.filter(v => v.end > now); }
   // ---------------------------------------------------------------- one-shots
-  play(key0, pos = null, { gain = 1, rate = 1, delay = true, bus = null, pan = null, dist = null } = {}) {
+  play(key0, pos = null, { gain = 1, rate = 1, delay = true, bus = null, pan = null, dist = null, power = 0 } = {}) {
     if (!this.ok) return null;
+    // ground bursts by charge (combat.explode passes power): 152/155 mm (2.7), 122 mm-ish (2.2) -> shell set; mortars (1.3) -> mortar set
+    if (power && (key0 === 'explosion_medium' || key0 === 'explosion_small')) { const k = power >= 2 ? 'shell_impact' : power >= 1 ? 'mortar_impact' : null; if (k && this.has(k)) key0 = k; }
     let key = ALIAS[key0] && this.has(ALIAS[key0]) ? ALIAS[key0] : key0;
     let e = this.manifest[key]; if (!e || !e.buffers?.length) return null;
     if (e.loop && e.spatial === false && !pos) return this.bed(key, gain);
-    if (key === 'mortar_incoming' && Math.random() < 0.45) return null;   // most mortar bombs arrive unheard
+    if ((key === 'mortar_incoming' && Math.random() < 0.6) || (key === 'shell_incoming' && Math.random() < 0.35)) return null;   // many rounds land with no warning
     const spatial = !!pos && e.spatial !== false;
     const d = dist ?? (spatial ? this.dist(pos) : 0);
     const far = FAR[key]; if (spatial && far && this.has(far[0]) && d > far[1] * (0.8 + 0.4 * (((pos.x * 0.37 + pos.z * 0.71) % 1 + 1) % 1))) { key = far[0]; e = this.manifest[key]; }   // jitter fixed per spot: a gun's rounds never flip between the two
@@ -239,7 +241,7 @@ export class Audio {
     // ---- blast layers: debris rain close, dull rolling thud far
     const bl = BLAST[key];
     if (bl && spatial) {
-      if (bl >= 0.8 && d < 130 && this.has('debris') && cnt(x => x.key === 'debris')[0] < KEY_CAP.debris) this.voice('debris', this.manifest.debris, t0 + 0.12 + Math.random() * 0.25, DB(MIX.debris[0] + 3) * gain * this.att(d, MIX.debris[1]), 'explosions', 0.9 + Math.random() * 0.2, d, v.panV, 1, null, this.lpf(d, pos));
+      if (bl >= 0.8 && d < 130 && key !== 'shell_impact' && this.has('debris') && cnt(x => x.key === 'debris')[0] < KEY_CAP.debris) this.voice('debris', this.manifest.debris, t0 + 0.12 + Math.random() * 0.25, DB(MIX.debris[0] + 3) * gain * this.att(d, MIX.debris[1]), 'explosions', 0.9 + Math.random() * 0.2, d, v.panV, 1, null, this.lpf(d, pos));
       if (d > 220 && this.has('explosion_far') && cnt(x => x.key === 'explosion_far')[0] < KEY_CAP.explosion_far) this.voice('explosion_far', this.manifest.explosion_far, t0 + 0.03, DB(MIX.explosion_far[0]) * bl * gain * this.att(d, MIX.explosion_far[1]) * clamp((d - 220) / 300, 0.15, 1), 'explosions', 0.92 + Math.random() * 0.16, d, v.panV, 1, null, this.lpf(d * 0.7, pos));
     }
     if (group === 'weapons' || group === 'explosions') this.heat = Math.min(3, this.heat + level * (group === 'explosions' ? 0.6 : 0.25));

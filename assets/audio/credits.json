@@ -1313,14 +1313,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "Artillery Gunfire",
+    "title": "Distant Tank Shots.flac",
     "author": "qubodup",
-    "url": "https://freesound.org/s/239137/",
+    "url": "https://freesound.org/s/184275/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 3.851,
+  "dur": 6.618,
   "channels": 1,
   "processed": true
  },
@@ -1328,14 +1328,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "Artillery Gunfire",
+    "title": "Distant Tank Shots.flac",
     "author": "qubodup",
-    "url": "https://freesound.org/s/239137/",
+    "url": "https://freesound.org/s/184275/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 4.833,
+  "dur": 5.935,
   "channels": 1,
   "processed": true
  },
@@ -1343,14 +1343,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "Cannon Shot",
+    "title": "Distant Tank Shots.flac",
     "author": "qubodup",
-    "url": "https://freesound.org/s/187767/",
+    "url": "https://freesound.org/s/184275/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 4.464,
+  "dur": 5.971,
   "channels": 1,
   "processed": true
  },
@@ -1358,14 +1358,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "Howitzer Artillery Gun Shot Sound Effect 02",
+    "title": "Distant Tank Shots.flac",
     "author": "qubodup",
-    "url": "https://freesound.org/s/161342/",
+    "url": "https://freesound.org/s/184275/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 2.593,
+  "dur": 6.618,
   "channels": 1,
   "processed": true
  },
@@ -1373,14 +1373,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "Howitzer Artillery Gun Shot Sound Effect 01",
+    "title": "Artillery Gunfire",
     "author": "qubodup",
-    "url": "https://freesound.org/s/161343/",
+    "url": "https://freesound.org/s/239137/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 2.528,
+  "dur": 6.1,
   "channels": 1,
   "processed": true
  },
@@ -1395,11 +1395,26 @@
     "license_url": "https://creativecommons.org/licenses/by/3.0/"
    }
   ],
-  "dur": 2.05,
+  "dur": 1.8,
   "channels": 1,
   "processed": true
  },
  "weapons/mortar_launch_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "M224 Mortar Firing Close 03",
+    "author": "Nanashi",
+    "url": "https://freesound.org/s/426161/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.933,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mortar_launch_03.mp3": {
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
@@ -1410,22 +1425,7 @@
     "license_url": "https://creativecommons.org/licenses/by/3.0/"
    }
   ],
-  "dur": 1.432,
-  "channels": 1,
-  "processed": true
- },
- "weapons/mortar_launch_03.mp3": {
-  "sources": [
-   {
-    "source": "Freesound (via FSD50K dataset)",
-    "title": "Firing Mortar at Shooting Range",
-    "author": "qubodup",
-    "url": "https://freesound.org/s/161970/",
-    "license": "CC0",
-    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
-   }
-  ],
-  "dur": 1.735,
+  "dur": 1.8,
   "channels": 1,
   "processed": true
  },
@@ -8397,14 +8397,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "howitzer_gun_shot_1.flac",
+    "title": "Artillery Gunfire",
     "author": "qubodup",
-    "url": "https://freesound.org/s/67505/",
+    "url": "https://freesound.org/s/239137/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 4.147,
+  "dur": 4.8,
   "channels": 1,
   "processed": true
  },
@@ -8412,14 +8412,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "howitzer_gun_shot_2.flac",
+    "title": "Artillery Gunfire",
     "author": "qubodup",
-    "url": "https://freesound.org/s/67506/",
+    "url": "https://freesound.org/s/239137/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 3.818,
+  "dur": 4.8,
   "channels": 1,
   "processed": true
  },
@@ -8427,14 +8427,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "howitzer_gun_shot_3.flac",
+    "title": "Artillery Gunfire",
     "author": "qubodup",
-    "url": "https://freesound.org/s/67508/",
+    "url": "https://freesound.org/s/239137/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 3.892,
+  "dur": 4.8,
   "channels": 1,
   "processed": true
  },
@@ -8442,14 +8442,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "howitzer_gun_shot_4.flac",
+    "title": "Cannon Shot",
     "author": "qubodup",
-    "url": "https://freesound.org/s/67510/",
+    "url": "https://freesound.org/s/187767/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 4.211,
+  "dur": 6.696,
   "channels": 1,
   "processed": true
  },
@@ -8457,14 +8457,14 @@
   "sources": [
    {
     "source": "Freesound (via FSD50K dataset)",
-    "title": "howitzer_gun_shot_6.flac",
+    "title": "Cannon Shot",
     "author": "qubodup",
-    "url": "https://freesound.org/s/67514/",
+    "url": "https://freesound.org/s/187767/",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 3.887,
+  "dur": 6.589,
   "channels": 1,
   "processed": true
  },
@@ -8479,9 +8479,19 @@
     "notice": "",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Air whoosh",
+    "author": "pyranostudios",
+    "url": "https://opengameart.org/content/air-whoosh",
+    "file": "whoosh2_0.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 1.7,
+  "dur": 1.3,
   "channels": 1,
   "processed": true
  },
@@ -8496,9 +8506,19 @@
     "notice": "",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Air whoosh",
+    "author": "pyranostudios",
+    "url": "https://opengameart.org/content/air-whoosh",
+    "file": "whoosh2_0.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 1.7,
+  "dur": 1.3,
   "channels": 1,
   "processed": true
  },
@@ -8513,9 +8533,19 @@
     "notice": "",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Air whoosh",
+    "author": "pyranostudios",
+    "url": "https://opengameart.org/content/air-whoosh",
+    "file": "whoosh2_0.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 1.7,
+  "dur": 1.3,
   "channels": 1,
   "processed": true
  },
@@ -8530,9 +8560,19 @@
     "notice": "",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Air whoosh",
+    "author": "pyranostudios",
+    "url": "https://opengameart.org/content/air-whoosh",
+    "file": "whoosh2_0.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 1.7,
+  "dur": 1.3,
   "channels": 1,
   "processed": true
  },
@@ -8540,6 +8580,16 @@
   "sources": [
    {
     "source": "OpenGameArt.org",
+    "title": "Rocket launch",
+    "author": "qubodup",
+    "url": "https://opengameart.org/content/rocket-launch",
+    "file": "launch/launch.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
     "title": "Air whoosh",
     "author": "pyranostudios",
     "url": "https://opengameart.org/content/air-whoosh",
@@ -8549,7 +8599,7 @@
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 0.9,
+  "dur": 0.7,
   "channels": 1,
   "processed": true
  },
@@ -8557,6 +8607,16 @@
   "sources": [
    {
     "source": "OpenGameArt.org",
+    "title": "Rocket launch",
+    "author": "qubodup",
+    "url": "https://opengameart.org/content/rocket-launch",
+    "file": "launch/launch.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
     "title": "Air whoosh",
     "author": "pyranostudios",
     "url": "https://opengameart.org/content/air-whoosh",
@@ -8566,7 +8626,7 @@
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 0.9,
+  "dur": 0.7,
   "channels": 1,
   "processed": true
  },
@@ -8574,21 +8634,14 @@
   "sources": [
    {
     "source": "OpenGameArt.org",
-    "title": "Air whoosh",
-    "author": "pyranostudios",
-    "url": "https://opengameart.org/content/air-whoosh",
-    "file": "whoosh2_0.wav",
+    "title": "Rocket launch",
+    "author": "qubodup",
+    "url": "https://opengameart.org/content/rocket-launch",
+    "file": "launch/launch.wav",
     "notice": "",
     "license": "CC0",
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
-   }
-  ],
-  "dur": 0.9,
-  "channels": 1,
-  "processed": true
- },
- "explosions/mortar_incoming_04.mp3": {
-  "sources": [
+   },
    {
     "source": "OpenGameArt.org",
     "title": "Air whoosh",
@@ -8600,7 +8653,505 @@
     "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
    }
   ],
-  "dur": 0.9,
+  "dur": 0.7,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_incoming_04.mp3": {
+  "sources": [
+   {
+    "source": "OpenGameArt.org",
+    "title": "Rocket launch",
+    "author": "qubodup",
+    "url": "https://opengameart.org/content/rocket-launch",
+    "file": "launch/launch.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Air whoosh",
+    "author": "pyranostudios",
+    "url": "https://opengameart.org/content/air-whoosh",
+    "file": "whoosh2_0.wav",
+    "notice": "",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 0.7,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/artillery_far_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Artillery Gunfire",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239137/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 4.618,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/artillery_far_07.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Cannon Shot",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/187767/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 6.618,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Tank Explosion",
+    "author": "unfa",
+    "url": "https://freesound.org/s/231765/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav",
+    "author": "misosound",
+    "url": "https://freesound.org/s/251759/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_06.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "kl_ex2.wav",
+    "author": "Klerrp",
+    "url": "https://freesound.org/s/114046/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Artillery Gunfire",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239137/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Cave In",
+    "author": "StarNinjas",
+    "url": "https://opengameart.org/content/cave-in",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "cave_in_-_starninjas_0.ogg",
+    "notice": "Credit is appreciated, thanks!"
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosion of mine-clearing line charge (MCLC)",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/162261/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Tank Explosion",
+    "author": "unfa",
+    "url": "https://freesound.org/s/231765/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_04.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/189778/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav",
+    "author": "misosound",
+    "url": "https://freesound.org/s/251759/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_09.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav",
+    "author": "misosound",
+    "url": "https://freesound.org/s/251759/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Artillery Gunfire",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239137/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_02.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/shell_impact_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/189778/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Tank Explosion",
+    "author": "unfa",
+    "url": "https://freesound.org/s/231765/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_07.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 4.5,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_01.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "M224 Mortar Impact Medium Distance 01",
+    "author": "Nanashi",
+    "url": "https://freesound.org/s/426164/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive 1 v2 [DOD 130303].flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/182431/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_06.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_02.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "BOOMING PUNCHY EXPLOSION - close, big SCHOEPS MK41.wav",
+    "author": "misosound",
+    "url": "https://freesound.org/s/251759/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Artillery Gunfire",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239137/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "Cave In",
+    "author": "StarNinjas",
+    "url": "https://opengameart.org/content/cave-in",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "cave_in_-_starninjas_0.ogg",
+    "notice": "Credit is appreciated, thanks!"
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_03.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive 1 v2 [DOD 130303].flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/182431/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "kl_ex4.wav",
+    "author": "Klerrp",
+    "url": "https://freesound.org/s/114048/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_04.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/189778/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive 1 v2 [DOD 130303].flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/182431/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_09.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/189778/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Artillery Gunfire",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/239137/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_02.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "explosions/mortar_impact_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Explosive.flac",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/189778/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "kl_ex4.wav",
+    "author": "Klerrp",
+    "url": "https://freesound.org/s/114048/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   },
+   {
+    "source": "OpenGameArt.org",
+    "title": "75 CC0 breaking / falling / hit sfx",
+    "author": "rubberduck",
+    "url": "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "file": "bfh1_rock_falling_07.ogg",
+    "notice": ""
+   }
+  ],
+  "dur": 2.6,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mortar_launch_04.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "M224 Mortar Firing Close 02",
+    "author": "Nanashi",
+    "url": "https://freesound.org/s/426162/",
+    "license": "CC-BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/"
+   }
+  ],
+  "dur": 1.933,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mortar_launch_05.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Firing Mortar at Shooting Range",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/161970/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.8,
+  "channels": 1,
+  "processed": true
+ },
+ "weapons/mortar_launch_06.mp3": {
+  "sources": [
+   {
+    "source": "Freesound (via FSD50K dataset)",
+    "title": "Firing Mortar at Shooting Range",
+    "author": "qubodup",
+    "url": "https://freesound.org/s/161970/",
+    "license": "CC0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+   }
+  ],
+  "dur": 1.933,
   "channels": 1,
   "processed": true
  }
