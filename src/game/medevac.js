@@ -128,7 +128,13 @@ export class MedevacTruck extends Vehicle {
   // ------------------------------------------------------------------ frame
   update(dt) {
     if (this.mstate === 'away') { this.root.visible = false; return; }   // (off the map: not in game.vehicles, see Medevac.tick)
-    if (this.destroyed) { this.scripted = null; super.update(dt); return; }
+    if (this.destroyed) {
+      this.scripted = null; super.update(dt);
+      // brewed up (vehicle.knockOut: catastrophic, no bail-out): the cab dies with it and the men outside go back to their squad's
+      // own update - left attached, nobody animated them again (alive medics frozen, the dead stood where they were hit)
+      if (this.crewSq?.medevac === this) { for (const m of this.medics) if (m.task === 'in' && m.s.alive) { m.s.die(null, { blast: true }); m.s.lostInVeh = true; this.game.onDeath(m.s, null, false); } this.abandoned = false; this.bailCrew(); }
+      return;
+    }
     if (this.scripted) { this.scriptDrive(dt); this.medicsInside(dt); this.cargo(); return; }
     super.update(dt);
     if (this.destroyed) return;

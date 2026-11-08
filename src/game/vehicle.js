@@ -71,6 +71,47 @@ export function charMaterial(m, emberUniform = { value: 0 }, B = null) {
 }
 export function charObject(o, u, B = null) { const cache = new Map(), f = m => cache.get(m) || cache.set(m, charMaterial(m, u, B)).get(m); o.traverse(x => { if (x.isMesh) x.material = Array.isArray(x.material) ? x.material.map(f) : f(x.material); }); }
 
+// bail-out fit helpers (Vehicle.hatchFit). surfProfile: heights of the hull top along a man's way out from the hatch (pt(d): a point
+// above the hull d metres out, ground(d)), 0.1 m steps, lightly smoothed; dE = where the hull ends (deck edge)
+const RC = new THREE.Raycaster(), DOWN = new THREE.Vector3(0, -1, 0), TOP = new THREE.Vector3();
+function surfProfile(meshes, pt, ground, feet = false) {
+  const H = [], step = 0.1; let dE = null;
+  for (let i = 0; i <= 36; i++) {
+    const d = i * step, o = pt(d); RC.set(o, DOWN); RC.far = 8; const hit = RC.intersectObjects(meshes, false)[0], gr = ground(d);
+    if (d >= 0.4 && (!hit || hit.point.y - gr < 0.3)) { dE = d; break; }
+    H.push(hit ? hit.point.y : (H[H.length - 1] ?? o.y - 2.5));
+  }
+  if (dE == null || H.length < 5) return null;
+  // the deck edge he jumps from: narrow low bits sticking out beyond it (a track guard, the top of a side skirt: under 0.3 m wide,
+  // 0.3 m+ below the deck) are not something to walk out onto - he jumps from the deck over them
+  for (;;) { let i = H.length - 1; while (i > 0 && H[i - 1] - H[i] < 0.3) i--; if (i < 4 || (H.length - i) * step >= 0.3) break; H.length = i; dE = i * step; }
+  // feet = true: the highest point within +-0.1 m (his feet are spread: they must not go into a step or the deck edge), then lightly
+  // smoothed (both hulls alike, so on its own hull the clip plays as authored)
+  const M = feet ? H.map((_, i) => Math.max(...H.slice(Math.max(0, i - 1), i + 2))) : H;
+  const Hs = M.map((_, i) => { let a = 0, w = 0; for (let j = feet ? -1 : -2; j <= (feet ? 1 : 2); j++) { const q = M[i + j]; if (q != null) { const k = 3 - Math.abs(j); a += q * k; w += k; } } return a / w; });
+  return { dE, at: d => { const f = Math.min(Hs.length - 1, Math.max(0, d / step)), i = Math.min(Hs.length - 2, f | 0), u = f - i; return Hs[i] + (Hs[i + 1] - Hs[i]) * u; } };
+}
+// the authoring hull of a hatch clip (soldiers manifest vehicle layout): its surface along the clip's way out, the deck edge, the
+// edge-to-landing distance, and the clip's hips path (root-motion track, clip frame: +Z out from the hatch, root on the ground)
+const HSRC = {};
+function hatchSrc(g, s, clip) {
+  if (clip in HSRC) return HSRC[clip];
+  const L = g.assets.manifest?.soldiers?.soldier_anims?.clips?.[clip]?.vehicle, gl = g.assets.gltf?.[L?.vehicles?.[0]], ac = s.action?.(clip)?.getClip?.();
+  const tr = ac?.tracks.find(t => /(^|\.)Hips\.position$/.test(t.name));
+  if (!ac) return null;   // (a fallback soldier: no clips - ask again with the next man)
+  HSRC[clip] = null;
+  if (!L?.hatch_from_root || !L.vehicle_in_clip_frame || !gl || !tr) return null;
+  const [xh, yh, zh] = L.hatch_from_root, V = L.vehicle_in_clip_frame, y = -V.yaw_deg * Math.PI / 180, c = Math.cos(y), sn = Math.sin(y);
+  const meshes = []; gl.scene.updateMatrixWorld(true);
+  gl.scene.traverse(o => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (/_LOD1$|_wreck$/i.test(p.name) || p.userData?.hidden) return; meshes.push(o); });
+  // clip frame -> vehicle frame (the inverse of vehicle_in_clip_frame)
+  const P = new THREE.Vector3(), toV = (x, z) => { const a = x - V.pos[0], b = z - V.pos[2]; return P.set(a * c + b * sn, yh + 2.5, -a * sn + b * c); };
+  const prof = surfProfile(meshes, d => toV(xh, zh + d), () => 0, true); if (!prof) return null;
+  const T = tr.times, Vv = tr.values;
+  const hips = t => { let i = 0; while (i < T.length - 2 && T[i + 1] < t) i++; const u = Math.min(1, Math.max(0, (t - T[i]) / ((T[i + 1] - T[i]) || 1))), q = i * 3; return [0, 1, 2].map(k => Vv[q + k] + (Vv[q + 3 + k] - Vv[q + k]) * u); };
+  return HSRC[clip] = { xh, yh, zh, dE: prof.dE, at: prof.at, jD: -zh - prof.dE, hips, dur: ac.duration };
+}
+
 export class Vehicle {
   constructor(game, side, faction, kind) {
     this.game = game; this.id = NEXT++; this.side = side; this.faction = faction; this.kind = kind; this.type = 'vehicle';
@@ -567,7 +608,7 @@ export class Vehicle {
       s.hatchWait = 0.6 + i * 1.4 + Math.random() * 0.5; s.inside = 'btr'; s.stance = 'stand';
       s.hatchClip = clip;
       const lid = Object.entries(lids).find(([, L]) => L.role === role);
-      if (lid) s.hatchOpen = () => this.openLid(lid[0], lid[1]);
+      s.hatchOpen = () => { if (lid) this.openLid(lid[0], lid[1]); if (e) this.hatchFit(s, e, h, clip); };
       if (out[i].hp < 60) { s.state = 'light'; s.hp = out[i].hp; }
       s.sync();
     });
@@ -595,6 +636,36 @@ export class Vehicle {
       if (ok) { this.burning = 0; this.bailAt = null; this.firefight = null; if (this.side === 'player') g.hud?.alert(`${this.name}: fire put out`, 'good'); }
       else { this.firefight = false; this.bailAt = this.burning; if (this.side === 'player') g.hud?.alert(`${this.name}: the fire is out of control — crew bailing out`, 'bad'); }
     }
+  }
+  // bail-out fit (v8): the hatch clips were authored on one hull each (hatch_exit_tank: T-72, hatch_exit_btr: BTR) - on another the
+  // man floated off the Bradley's / BMP's side or sank into a deck. When he pushes the lid (the wreck is in place by then) the
+  // clip's root is re-placed and given a per-frame offset table (soldier.sync, hatchWarp.tab) so he stays on THIS hull: the clip's
+  // rim on the real rim, its walk over the roof / deck stretched to the real deck edge (found by casting down along his way out)
+  // with the surface height under his hips swapped from the authoring hull's to this one's, the jump off the real edge (root = real
+  // edge + the clip's edge-to-landing distance), the offset fading out in the air
+  hatchFit(s, e, h, clip) {
+    const g = this.game, S = hatchSrc(g, s, clip); if (!S) return;
+    const F = new THREE.Vector3(Math.sin(h), 0, Math.cos(h)), X = new THREE.Vector3(Math.cos(h), 0, -Math.sin(h));
+    this.root.updateMatrixWorld(true); const hw = e.getWorldPosition(new THREE.Vector3()), gh = (x, z) => g.city?.groundHeight ? g.city.groundHeight(x, z) : 0;
+    const meshes = this.shownMeshes(), rimY = Math.min(hw.y, this.topAt(meshes, hw.x, hw.z) ?? hw.y);   // (a wreck's roof sits lower than the live hull's rim)
+    const P = new THREE.Vector3(), prof = surfProfile(meshes, d => P.copy(hw).addScaledVector(F, d).setY(hw.y + 2.5), d => gh(hw.x + F.x * d, hw.z + F.z * d), true);
+    if (!prof) return;
+    const [rx, rz] = g.nav.nearestFree(hw.x + F.x * (prof.dE + S.jD) - X.x * S.xh, hw.z + F.z * (prof.dE + S.jD) - X.z * S.xh, 0.4, 4), gy = gh(rx, rz);
+    s.pos.set(rx, gy, rz); s.heading = h;
+    const ev = clipEvents(clip), tJ = ev.jump ?? 3.2, tG = ev.ground ?? 3.75, tC = ev.hips_clear ?? 1.5, tO = (ev.out ?? 2) + 0.15, k = prof.dE / S.dE, hz = 15, N = Math.ceil(S.dur * hz) + 1, tab = new Float32Array(N * 3);
+    const sm = (x, a, b) => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+    let j0 = null;
+    for (let n = 0; n < N; n++) {
+      const t = n / hz, [cx, cy, cz] = S.hips(Math.min(t, tJ)), ds = cz - S.zh, dt = ds <= S.dE ? ds * k : ds - S.dE + prof.dE;
+      // where the clip puts his hips (root + clip offset) vs where they belong over this hull
+      const ox = hw.x + F.x * dt + X.x * (cx - S.xh) - (rx + F.x * cz + X.x * cx), oz = hw.z + F.z * dt + X.z * (cx - S.xh) - (rz + F.z * cz + X.z * cx);
+      const dyRim = rimY - gy - S.yh, dySurf = prof.at(Math.min(Math.max(dt, 0.35), prof.dE - 0.15)) - gy - S.at(Math.min(Math.max(ds, 0.35), S.dE - 0.15));
+      let o = [ox, dyRim + (dySurf - dyRim) * sm(t, tC, tO), oz];
+      if (t >= tJ) { j0 ||= o; const f = 1 - sm(t, tJ, tG); o = [j0[0] * f, j0[1] * f, j0[2] * f]; }   // in the air: onto the real landing spot
+      tab.set(o, n * 3);
+    }
+    for (let n = 1, a = tab[1]; n < N - 1 && n / hz < tJ; n++) { const b = tab[n * 3 + 1]; tab[n * 3 + 1] = (a + 2 * b + tab[n * 3 + 4]) / 4; a = b; }   // (no pop where a step under him differs between the hulls)
+    s.hatchWarp = { tab, hz, clip, dE: prof.dE };
   }
   // swing a hatch lid open (manifest hatch_lids: hinge node, local axis, open angle)
   openLid(name, L) {
@@ -638,11 +709,21 @@ export class Vehicle {
     const g = this.game; if (this.wreckLit || !g.fx.vehFire) return; this.wreckLit = true;
     this.burnLook(0, true);
     const s = this.kind === 'tank' ? 1.5 : 1.25, e = this.fire && !this.fire.dead ? this.fire : (this.fire = g.fx.vehFire(this.burnB.fire.value, s));
-    e.target = 1; e.power = Math.max(e.power, 0.7); e.white = 0; e.life = e.t + 120 + Math.random() * 120; e.pos.copy(this.burnB.fire.value).y -= 0.35;
-    this.root.updateMatrixWorld(true); const P = new THREE.Vector3();
-    if (cook && this.turret) { this.turret.getWorldPosition(P); P.y += 0.1; g.fx.fireVent(e, P, s * 0.75); g.fx.fireVent(e, P, s * 0.8, true); e.cook = 6 + Math.random() * 6; }
-    else { let n = 0; for (const r of ['commander', 'driver', 'gunner']) { const h = this.model.getObjectByName('hatch_' + r); if (!h || n >= 2) continue; h.getWorldPosition(P); g.fx.fireVent(e, P, s * 0.4); n++; } }
+    e.target = 1; e.power = Math.max(e.power, 0.7); e.white = 0; e.life = e.t + 120 + Math.random() * 120;
+    // every flame stands on the wreck as it is shown (the wreck hulls sit lower than the live ones - the BTR's by 0.3 m - and a
+    // thrown-off turret takes its roof with it): the top surface under each fire point, the flame base a little below it (its
+    // bottom fades in)
+    this.root.updateMatrixWorld(true); const P = new THREE.Vector3(), ms = this.shownMeshes(), on = (p, k) => { const y = this.topAt(ms, p.x, p.z); if (y != null) p.y = y - 0.2 * k; return p; };
+    e.pos.copy(this.burnB.fire.value).y -= 0.35; on(e.pos, s);
+    // ammunition cook-off: out of the turret ring on the hull roof; hatch fires only where the hatch is still there (the turret's went with it)
+    if (cook && this.turret) { this.turret.getWorldPosition(P); on(P, 0.8 * s); g.fx.fireVent(e, P, s * 0.75); g.fx.fireVent(e, P, s * 0.8, true); e.cook = 6 + Math.random() * 6; }
+    const inTurret = o => { for (let p = o; p; p = p.parent) if (p === this.turret) return true; return false; };
+    let n = cook ? 1 : 0; for (const r of ['commander', 'driver', 'gunner']) { const h = this.model.getObjectByName('hatch_' + r); if (!h || n >= 2 || (cook && inTurret(h))) continue; h.getWorldPosition(P); g.fx.fireVent(e, on(P, 0.4 * s), s * 0.4); n++; }
   }
+  // the meshes now drawn for this vehicle (the wreck once shown; LOD0 and LOD1 both, they have the same surfaces) and the top
+  // surface height under x, z (null: nothing there)
+  shownMeshes() { const m = []; this.root.traverse(o => { if (!o.isMesh || !(o.visible || /_LOD1$/i.test(o.name) || this.lod0?.includes(o))) return; for (let p = o.parent; p && p !== this.root; p = p.parent) if (!p.visible) return; m.push(o); }); return m; }
+  topAt(ms, x, z) { RC.set(TOP.set(x, (this.pos.y || 0) + 6, z), DOWN); RC.far = 10; const h = RC.intersectObjects(ms, false)[0]; return h ? h.point.y : null; }
   // knocked-out Bradley, a man from the troop compartment (squad.exitCarrier): the ramp has no power, he gets out through the door
   // in it - dismount_rear from the troop floor over the sill (the clip's floor is 0.50 m, this sill 0.68 m: an offset on the root
   // that fades as he steps down), one after another (knockOut staggers them); the wreck gets the door (rampDoorOpen)

@@ -790,7 +790,7 @@ export class Squad {
       // v5: a man already down who has to move while still under fire crawls (creeping to cover, or a bound while suppressed)
       // instead of popping up into a crouch-walk after the first metre; he gets up (prone_up) once it eases
       if (moving && s.stance === 'prone' && !this.run && !this.routing && ((s.crawl && (s.suppression > 25 || this.pinned)) || s.suppression > 50)) s.stance = 'prone';
-      else if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) ? 'crouch' : 'stand';
+      else if (moving) s.stance = (this.underFireT < 3 && !this.run && !this.routing) || (s.trenchSys && this.game.nav.trench?.[this.game.nav.idx(s.pos.x, s.pos.z)]) ? 'crouch' : 'stand';   // (along a trench: bent double below the lip)
       else {
         const threat = s.target ? s.target.pos : null;
         const cov = threat ? this.game.nav.coverFrom(s.pos.x, s.pos.z, threat.x, threat.z) : 0;
@@ -905,7 +905,7 @@ export class Squad {
     if (s.state === 'critical') {
       s.bleed -= dt * (s.dragger && s.dragger.dragPhase === 'treat' ? 0.25 : 1);
       if (s.bleed <= 0) { s.die('death_crumple'); g.onDeath(s, null, true); }
-      if (!s.dragger && s.vel.lengthSq() < 0.01 && Math.random() < dt * 0.05) { // crawl a little towards cover
+      if (!s.dragger && s.vel.lengthSq() < 0.01 && Math.random() < dt * 0.05 && !g.nav.trench?.[g.nav.idx(s.pos.x, s.pos.z)]) { // crawl a little towards cover (in a trench: he is in it)
         const [cx, cz] = g.nav.nearestFree(s.pos.x + (Math.random() - .5) * 4, s.pos.z + (this.side === 'player' ? 3 : -3), 0.4, 3); s.path = [[cx, cz]]; s.pathI = 0; s.crawl = true;
       }
     }
@@ -936,9 +936,9 @@ export class Squad {
     if (s.inBuilding && (s.target || s.groundAim)) { const o = s.bld.outward(s.inside.panel); const base = Math.atan2(o.x, o.z); let d = angDiff(want, base); d = THREE.MathUtils.clamp(d, -1.1, 1.1); want = base + d; }
     if (s.dragging && (s.dragPhase === 'drag' || s.dragPhase === 'assist')) want = Math.atan2(-s.vel.x, -s.vel.z); // walks backwards pulling
     if (s.throwT > 0 && s.throwYaw != null) want = s.throwYaw;   // v7: faces his grenade throw (combat.startThrow)
-    if (!(s.jumpT > 0)) s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);   // root-motion exit clips: heading fixed
+    if (!(s.jumpT > 0 || s.hatchT > 0)) s.heading += THREE.MathUtils.clamp(angDiff(want, s.heading), -5 * dt, 5 * dt);   // root-motion exit clips: heading fixed (hatch exits too: turning the root swung his whole way out off the hull)
     // combat
-    if (s.effective && !this.routing && !s.dragging && !(s.jumpT > 0)) g.combat.soldierCombat(s, dt);
+    if (s.effective && !this.routing && !s.dragging && !(s.jumpT > 0 || s.hatchT > 0)) g.combat.soldierCombat(s, dt);
     else s.target = null;
     s.animate(dt, g.camDist(s.pos));
     s.sync();
@@ -986,14 +986,14 @@ export class Squad {
           if (o.vel.x * V.x + o.vel.z * V.z > speed * 0.8) continue;   // he's walking away at about our pace
           side += (lat >= 0 ? -1 : 1) * (1 - Math.sqrt(r2) / 2) * 1.4;
         }
-        if (side) { const sx = V.x + V.z * side, sz = V.z - V.x * side, sl = Math.hypot(sx, sz) || 1; V.set(sx / sl, 0, sz / sl); }
+        if (side) { const sx = V.x + V.z * side, sz = V.z - V.x * side, sl = Math.hypot(sx, sz) || 1, tr = g.nav.trench, ti = k => tr?.[g.nav.idx(k[0], k[1])]; if (!ti([s.pos.x, s.pos.z]) || ti([s.pos.x + sx / sl * 0.6, s.pos.z + sz / sl * 0.6])) V.set(sx / sl, 0, sz / sl); }   // (in a trench: no sidestep over the lip)
         s.vel.lerp(V.multiplyScalar(Math.min(speed, d * 3)), Math.min(1, dt * 6));
       }
     } else if (s.dragPhase !== 'assist') s.vel.multiplyScalar(Math.max(0, 1 - dt * 8));   // (second man of a two-man drag: dragStep sets his pace)
     // separation from squadmates & vehicles (never shoves anyone into a wall; drag partners are not pushed apart)
     const nav = g.nav, free = (x, z) => { const i = nav.idx(x, z); return i >= 0 && nav.cost[i] !== 255; };
     const sepK = s.vehFrom ? 0.3 : 1;   // men who just landed side by side drift apart slowly (they walk off anyway), not shoved
-    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0 || o.dragging === s || (s.dragging && (o === s.dragging || o.dragging === s.dragging))) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k)) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
+    for (const o of this.soldiers) { if (o === s || !o.alive || o.inside || o.jumpT > 0 || o.dragging === s || (s.dragging && (o === s.dragging || o.dragging === s.dragging))) continue; const dx = s.pos.x - o.pos.x, dz = s.pos.z - o.pos.z, d2 = dx * dx + dz * dz; if (d2 < 1.2 && d2 > 1e-4) { const k = (1.2 - d2) * 1.5 * dt * sepK; if (free(s.pos.x + dx * k, s.pos.z + dz * k) && (!nav.trench?.[nav.idx(s.pos.x, s.pos.z)] || nav.trench[nav.idx(s.pos.x + dx * k, s.pos.z + dz * k)])) { s.pos.x += dx * k; s.pos.z += dz * k; } } }
     if (s.vehFrom && (g.time > s.vehFromT || s.vehFrom.pos.distanceToSquared(s.pos) > 64)) s.vehFrom = null;
     // vehicles: kept out of the real hull footprint (oriented box) - a live vehicle is not in the nav grid, so a path may run
     // straight through it; the old round push (radius + 0.9, far shorter than the hull) let men walk through its bow / stern and
@@ -1094,16 +1094,22 @@ export class Squad {
       if (s.reachT > 25) { s.reachT = 0; w.noReachT = g.time + 30; s.dragging = null; s.dragPhase = null; s.path = null; s.goal = null; return; }
       if (Math.hypot(s.pos.x - w.pos.x, s.pos.z - w.pos.z) < 1.4) {
         s.reachT = 0;
-        s.dragPhase = 'drag'; w.dragger = s;
         if (w.dragger && w.dragger !== s && w.dragger.dragging === w) {   // a mate already has him: take the other shoulder strap
           if (w.dragger.dragPhase === 'drag' && !(w.dragAssist?.dragging === w)) { s.dragPhase = 'assist'; w.dragAssist = s; s.path = null; s.goal = null; }
           else { s.dragging = null; s.dragPhase = null; s.path = null; s.goal = null; }
           return;
         }
+        s.dragPhase = 'drag'; w.dragger = s;
         // destination: carrier if close, else nearest cover away from the enemy
         const v = this.carrier && !this.carrier.destroyed && this.carrier.pos.distanceTo(s.pos) < 70 ? this.carrier : null;
         let dest;
-        if (v) { const d = v.doorPos(s.idx); dest = [d.x, d.z]; s.dragTarget = 'carrier'; }
+        // down in a trench: he stays in it - along the floor to the nearest dugout of the system, else patched up where he lies
+        const nav = g.nav, wT = nav.trench?.[nav.idx(w.pos.x, w.pos.z)] ? (g.city.trenchSystems || []).find(T => nav.trenchPair(w.pos.x, w.pos.z, w.pos.x, w.pos.z, [T])) : null;
+        if (wT) {
+          const dd = o => Math.hypot(o.door[0] - w.pos.x, o.door[1] - w.pos.z), dg = (wT.dugouts || []).reduce((a, o) => (!a || dd(o) < dd(a) ? o : a), null);
+          if (!dg || dd(dg) > 30 || dd(dg) < 2.5) { s.dragPhase = 'treat'; s.path = null; s.goal = null; s.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, g.mods?.[this.side]?.medTreat || 0)); return; }
+          dest = [dg.door[0], dg.door[1]]; s.dragTarget = 'cover';
+        } else if (v) { const d = v.doorPos(s.idx); dest = [d.x, d.z]; s.dragTarget = 'carrier'; }
         else { const back = this.side === 'player' ? 1 : -1; dest = this.findCover(s.pos.x, s.pos.z + back * 14, s.pos); s.dragTarget = 'cover'; }
         s.goal = dest; g.requestPath(s, s.pos.x, s.pos.z, dest[0], dest[1], 0.45);
       } else if (!s.path) { s.goal = [w.pos.x, w.pos.z]; g.requestPath(s, s.pos.x, s.pos.z, w.pos.x, w.pos.z, 0.45); }
@@ -1116,7 +1122,6 @@ export class Squad {
         if (s.dragTarget === 'carrier' && this.carrier && this.carrier.pos.distanceTo(s.pos) < 5) { this.evacuate(w); s.dragging = null; s.dragPhase = null; this.game.hud && this.side === 'player' && this.game.hud.alert(`${this.name}: casualty evacuated`, 'good'); }
         else { s.dragPhase = 'treat'; s.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, this.game.mods?.[this.side]?.medTreat || 0)); }   // campaign tech: combat-lifesaver training (tech.js Medical)
       }
-    } else if (s.dragPhase === 'treat') {
     } else if (s.dragPhase === 'assist') {
       // second man of a two-man drag: beside the casualty's shoulder, opposite the first, walking backwards with him
       const d = w.dragger;
@@ -1125,6 +1130,7 @@ export class Squad {
       const dx = tx - s.pos.x, dz = tz - s.pos.z, dd = Math.hypot(dx, dz), v = Math.min(dd / Math.max(dt, 1e-3), TUNING.run) * (dd > 0.05 ? 1 : 0);
       s.vel.set(dd > 1e-4 ? dx / dd * v : 0, 0, dd > 1e-4 ? dz / dd * v : 0); s.stance = 'crouch';   // (moveStep integrates it)
       if (dd < 0.3) s.vel.copy(d.vel);
+    } else if (s.dragPhase === 'treat') {
       s.treatT -= dt; s.vel.set(0, 0, 0); s.stance = 'crouch';
       if (s.treatT <= 0) { w.state = 'stable'; w.dragger = null; s.dragging = null; s.dragPhase = null; }
     }

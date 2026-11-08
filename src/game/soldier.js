@@ -443,7 +443,7 @@ export class Soldier {
       const fade = /^hatch_exit/.test(clip) ? 0 : this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
       if (this.state === 'dead') ts = this.deathTs || 1;
       this.play(clip, fade, ts, alt);
-      if (this.netClip && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;
+      if (this.netClip && this.state !== 'dead' && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;   // (not the death clip: a medic / casualty killed in a medevac clip stayed on its frame 0, standing)
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
       // (not drawn - off screen, or an enemy nobody has spotted / a man in a cellar - is the same as off screen)
@@ -486,7 +486,8 @@ export class Soldier {
     if (W && this.inside !== 'btr') {
       if (this.hatchT > 0 && (this.state === 'ok' || this.state === 'light')) {   // (downed on the way: the wounded clip plays at the landing spot, not up on the hull)
         const t = this.curName === W.clip && this.cur ? this.cur.time : 0, k = 1 - THREE.MathUtils.smoothstep(t, W.t0, W.t1);
-        this.root.position.x += W.dx * k; this.root.position.y += W.dy * k; this.root.position.z += W.dz * k;
+        if (W.tab) { const T = W.tab, f = Math.min(T.length / 3 - 1.001, t * W.hz), i = f | 0, u = f - i, j = i * 3; this.root.position.x += T[j] + (T[j + 3] - T[j]) * u; this.root.position.y += T[j + 1] + (T[j + 4] - T[j + 1]) * u; this.root.position.z += T[j + 2] + (T[j + 5] - T[j + 2]) * u; }   // (vehicle.hatchFit: fitted to this hull, per frame)
+        else { this.root.position.x += W.dx * k; this.root.position.y += W.dy * k; this.root.position.z += W.dz * k; }
       } else this.hatchWarp = null;   // done (or killed on the way: the body drops at the landing spot)
     }
     this.root.visible = this.visible && (this.inside !== 'btr' || this.inCab) && (this.state !== 'evac' || !!this.onBed) && this.inView !== false;   // onBed: on the medevac pickup
@@ -650,6 +651,9 @@ export class Soldier {
     const t = this._pp0; this._pp0 = this._pp1; this._pp1 = samplePose(this.model, t); this._ppDt = dt;
   }
   startRagdoll() {
+    // the death clip as the target even when the hand-off comes before animate() switched to it (a rider dropped off the deck: his
+    // ragdoll settled into ride_sit_edge's last frame - a dead man sitting on the ground as he sat on the hull)
+    if (this.deathClip && this.curName !== this.deathClip) this.play(this.deathClip, 0, this.deathTs || 1);
     const g = this.squad.game, info = this.deathInfo, cur = samplePose(this.model);
     const away = new THREE.Vector3();
     if (info.from) { away.set(this.pos.x - info.from.x, 0, this.pos.z - info.from.z); if (away.lengthSq() > 1e-4) away.normalize(); else away.set(0, 0, 0); }
@@ -683,11 +687,21 @@ export class Soldier {
     if (this.ragdoll !== rd) return;
     rd.pelvisGround(this.pos); this.root.position.copy(this.pos); this.root.updateWorldMatrix(true, true);
     rd.writeBones(); this.ragdoll = null; this.corpseDone = true;
+    // propped up at rest (against a trench wall, a heap, another body): the death clip's own lying pose instead (never left standing)
+    const hips = this.hipsBone ||= this.model.getObjectByName('Hips');
+    if (hips) { this.root.updateWorldMatrix(true, true); if (hips.getWorldPosition(_dv).y - this.pos.y > 0.6) this.finalizeCorpse(); }
   }
   // no ragdoll (far away, inside a building, ragdolls capped): the clip has ended - stop updating it; the logical position moves
   // to where the body lies (root motion), the skeleton is re-expressed for it; ground height re-read there (outside buildings)
   finalizeCorpse() {
     this.corpseDone = true;
+    // the clip's last frame, whatever the animation LOD skipped (a far / unseen man's mixer runs every 0.5 s) or a cross-fade left
+    // half done: every death ends on the authored lying / slumped pose
+    if (this.mixer && this.deathClip) {
+      if (this.curName !== this.deathClip) this.play(this.deathClip, 0, this.deathTs || 1);
+      const a = this.cur;
+      if (a && this.curName === this.deathClip) { for (const k in this.actions) if (this.actions[k] !== a) this.actions[k].stop(); a.enabled = true; a.setEffectiveWeight(1); a.time = a.getClip().duration; this.mixer.update(0); }
+    }
     const hips = this.model?.getObjectByName?.('Hips');
     if (!hips || this.aboard || this.inStructure()) return;   // (inside: on that floor, as the clip ends)
     this.model.updateWorldMatrix(true, true);

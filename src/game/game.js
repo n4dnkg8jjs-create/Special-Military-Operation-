@@ -203,6 +203,8 @@ export class Game {
   hitSoldier(...a) { return this.combat.hitSoldier(...a); }
   // ---------------------------------------------------------------- pathing (time-sliced)
   requestPath(ent, sx, sz, tx, tz, clearance, vehicle = false, opts = null) {
+    // in-trench move (both ends in one trench system): along the trench floor - the trench lines' graph, else A* in trench mode
+    if (!vehicle && !opts?.trench) { const T = this.nav.trenchPair?.(sx, sz, tx, tz, this.city.trenchSystems); if (T) { const p = this.nav.trenchRoute(T, sx, sz, tx, tz); if (p) { ent.pathReq = null; ent.path = p; ent.pathI = 0; ent.pathFail = false; return; } opts = { ...opts, trench: true }; } }
     ent.pathReq = { sx, sz, tx, tz, clearance, vehicle, opts };   // opts (infantry): { threat: [x, z] } -> nav.findPath
     if (!this.pathQueue.includes(ent)) this.pathQueue.push(ent);
   }
