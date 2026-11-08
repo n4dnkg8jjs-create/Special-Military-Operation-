@@ -22,7 +22,7 @@ import { MAP_SIZE } from './city.js';
 
 const TREE = /^(tree_|leafy_summer_|bush_)/, NOT_TREE = /fallen|stump|_lod\d*$|_mid$|row$/;
 const LEAF_CAP = 600, WOOD_CAP = 200, TOP_CAP = 40, STUMP_CAP = 400, GC = 8;
-const BIG_TRUNK = 0.4;   // trunk-shape radius (vegetation.js trunkShape, bark + lower limbs: ~1.6-2x the bole) of a tree a tank cannot push over; ~10-30 % of the trees per map
+const BIG_TRUNK = 0.4, WHEEL_TRUNK = 0.12, LIGHT_TRUNK = 0.04;   // (WHEEL_TRUNK: a heavy 8x8 pushes over saplings up to this; a light truck / pickup only brush (LIGHT_TRUNK); bigger trees: wheeled vehicles drive round)   // trunk-shape radius (vegetation.js trunkShape, bark + lower limbs: ~1.6-2x the bole) of a tree a tank cannot push over; ~10-30 % of the trees per map
 const isLeafMat = m => !!m && (m.alphaTest > 0 || m.transparent || /leaf|leaves|foliage/i.test(m.name || ''));
 const leafOf = im => (Array.isArray(im.material) ? im.material.some(isLeafMat) : isLeafMat(im.material));
 const key2 = (x, z) => (Math.round(x * 20) + 60000) * 200000 + Math.round(z * 20) + 60000;
@@ -130,18 +130,22 @@ export class TreeDamage {
     for (let t = 0; t < this.N; t++) {
       const r = this.trunk[t] ? this.trunk[t].r : 0.18 * this.s[t]; this.tr[t] = r;
       if (r >= BIG_TRUNK) { nav.setVeh(this.x[t], this.z[t], r + 0.35, r + 0.35, 0, 2); big++; }
+      else if (r >= WHEEL_TRUNK) { nav.setVeh(this.x[t], this.z[t], r + 0.3, r + 0.3, 0, 1); big++; }   // wheeled vehicles can't push it over: round it
     }
     this.stats.bigTrunks = big;
     if (big) { nav.vehDirty = true; nav.finalize(); }
   }
   crush(v) {
     if (!this.N || !v.def) return;
+    // what this hull can push over: tracked armour anything below BIG_TRUNK, a heavy 8x8 (BTR, Bohdana) saplings, a pickup
+    // nothing that is a tree (only brush) -- a 2 t truck stops dead against a trunk, it doesn't fell it
+    const light = v.kind === 'medevac' || (v.def.mass ?? 99) < 5 || /pickup/i.test(v.def.asset || ''), lim = light ? LIGHT_TRUNK : v.def.wheeled || v.kind === 'btr' ? WHEEL_TRUNK : BIG_TRUNK;
     const L = v.def.length * 0.5, W = v.def.width * 0.5, c = Math.cos(v.heading), s = Math.sin(v.heading), dir = (v.speed || 0) >= 0 ? 1 : -1;
     const gx = Math.floor(v.pos.x / GC), gz = Math.floor(v.pos.z / GC);
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
       const l = this.grid.get((gx + i) * 4096 + gz + j); if (!l) continue;
       for (const t of l) {
-        if (this.st[t] === 2 || this.tr[t] >= BIG_TRUNK) continue;
+        if (this.st[t] === 2 || this.tr[t] >= lim) continue;
         const dx = this.x[t] - v.pos.x, dz = this.z[t] - v.pos.z, r = this.tr[t];
         if (Math.abs(dx * c - dz * s) > W + r || Math.abs(dx * s + dz * c) > L + r) continue;
         this.snap(t, this.x[t] - s * dir, this.z[t] - c * dir, 0.5, 5); this.stats.crushed++;
