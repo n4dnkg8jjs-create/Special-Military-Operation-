@@ -93,7 +93,7 @@ export class CommanderV1 {
     if (!this.started) return;
     this.intelT = (this.intelT || 0) - dt; if (this.intelT <= 0) { this.intelT = 1; this.intel.update(); }
     this.assessT = (this.assessT || 0) - dt; if (this.assessT <= 0) { this.assessT = 3; this.assess(); }
-    if (!this.counter && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {
+    if (!this.counter && !g.campaign && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {   // (campaign: no free reinforcement, as for the player)
       this.counter = true; const rem = Math.max(120, g.roundLen - g.time);
       this.waves = this.plan.map(([f, a, b, c, d]) => ({ t: g.time + 25 + f * rem, foot: a, mech: b, tank: c, assault: d }));
       g.hud?.alert('Enemy is massing for a counterattack from the north', 'bad');
@@ -110,11 +110,12 @@ export class CommanderV1 {
     if (this.artT <= 0) {
       this.artT = 70 + Math.random() * 55;
       // counter-battery: a player howitzer that has been firing gives its position away (sound ranging / radar)
-      const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 90);
+      // (only one its side has a fix on -- heard / seen / reported: game.spotFor contact -- fired at that estimated position)
+      const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 90 && (v.tierBy?.enemy || 0) >= 1 && v.ctc?.enemy);
       const cl = this.intel.cluster(25);
       if (!(pg && Math.random() < 0.5) && !cl) { this.artT = 12; return; }   // nothing known yet: look again soon
       const cb = pg && (!cl || Math.random() < 0.5);
-      if (cb) { if (this.fireOn(pg.pos.x, pg.pos.z, 40, false, true)) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); }
+      if (cb) { if (this.fireOn(pg.ctc.enemy.x, pg.ctc.enemy.z, 40, false, true)) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); }
       else if (this.fireOn(cl.e.x, cl.e.z, cl.e.veh ? 30 : cl.e.contact ? 30 : 22, cl.score >= 3)) this.artT *= 0.9;
     }
   }

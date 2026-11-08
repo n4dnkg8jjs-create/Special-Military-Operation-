@@ -34,11 +34,10 @@ const D = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 // their men ~150-320 m out in a hide, tanks fight from hides behind the infantry (tankDrill), hidden garrisons hold fire.
 // v2 holds ground better (positional defence on the map's trench systems + counterattacks: robotyne/avdiivka campaign
 // attack battles 446/292 tickets vs v1 356/199, more objectives held) but still attacks worse than v1, so: v2 when the
-// enemy defends a campaign sector (the player attacks), v1 otherwise. ?ainew forces v2, ?aiold forces v1.
+// enemy defends a campaign sector (the player attacks), v1 otherwise -- now v2 everywhere (v8 tactics). ?aiold forces v1.
 export function Commander(game) {
-  if (Q.has('ainew')) return new CommanderV2(game);
   if (Q.has('aiold')) return new CommanderV1(game);
-  return game.campaign?.mode === 'attack' ? new CommanderV2(game) : new CommanderV1(game);
+  return new CommanderV2(game);
 }
 
 export class CommanderV2 extends CommanderV1 {
@@ -85,7 +84,7 @@ export class CommanderV2 extends CommanderV1 {
     this.intelT = (this.intelT || 0) - dt; if (this.intelT <= 0) { this.intelT = 1; this.intel.update(); }
     this.assessT = (this.assessT || 0) - dt; if (this.assessT <= 0) { this.assessT = 3; this.assess(); }
     // the single reinforcement (same as the player's): a mounted squad, into the reserve
-    if (!this.counter && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {
+    if (!this.counter && !g.campaign && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {   // (campaign: only its persistent force -- the player gets no free reinforcement there either)
       this.counter = true; const rem = Math.max(120, g.roundLen - g.time);
       this.waves = this.plan_.map(([f, a, b, c, d]) => ({ t: g.time + 25 + f * rem, foot: a, mech: b, tank: c, assault: d }));
     }
@@ -444,8 +443,9 @@ export class CommanderV2 extends CommanderV1 {
   // the open near a held objective; one mission is kept back for the next assault
   fireSupport() {
     const g = this.g; if (g.time - (this.lastFire ?? -99) < 50) return;
-    const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 60);
-    if (pg && this.spg && !this.spg.destroyed && Math.random() < 0.3) { if (this.mission(pg.pos.x, pg.pos.z, 'counter-battery', 45)) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
+    // (only a gun its side has a fix on -- heard / seen / reported, game.spotFor contact -- and at that estimated position, as the player would)
+    const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 60 && (v.tierBy?.enemy || 0) >= 1 && v.ctc?.enemy);
+    if (pg && this.spg && !this.spg.destroyed && Math.random() < 0.3) { if (this.mission(pg.ctc.enemy.x, pg.ctc.enemy.z, 'counter-battery', 45)) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
     const left = g.enemyMortars ?? (g.campaign?.enemyMortars ?? TUNING.mortarStrikes), ownGun = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0;
     if (left <= 1 && !ownGun) return;
     for (const o of g.objectives) {
