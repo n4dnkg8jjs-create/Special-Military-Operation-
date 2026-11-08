@@ -74,10 +74,10 @@
    "file": "assets/vehicles/btr82a.glb",
    "file_mb": 4.54,
    "tris": {
-    "lod0": 80511,
-    "lod1": 24119,
-    "hull_wreck": 16834,
-    "turret_wreck": 2625
+    "lod0": 80678,
+    "lod1": 24165,
+    "hull_wreck": 16828,
+    "turret_wreck": 2438
    },
    "model_bbox_m": {
     "min": [
@@ -88,12 +88,12 @@
     "max": [
      1.544,
      2.919,
-     3.86
+     3.613
     ],
     "size": [
      3.088,
      2.961,
-     7.912
+     7.665
     ]
    },
    "materials": [
@@ -233,8 +233,8 @@
      1.744,
      1.744
     ],
-    "gun_trunnion_height_m": 2.52,
-    "gun_min_elevation_to_clear_riders_deg": 29.9,
+    "gun_trunnion_height_m": 2.46,
+    "gun_min_elevation_to_clear_riders_deg": 26.3,
     "gun_max_elevation_deg": 70,
     "gun_can_clear_riders": true
    },
@@ -270,7 +270,7 @@
     "hatch_lid_gunner": {
      "role": "gunner",
      "axis": "x",
-     "open": -1.745,
+     "open": 2.007,
      "parent": "turret",
      "rim": "hatch_gunner"
     }
@@ -292,7 +292,7 @@
     "hatch_lid_driver": "driver hatch lid, hinge empty under hull; open = rotation.x POSITIVE (0 .. +1.606 rad)",
     "hatch_lid_cargo_R": "cargo_R hatch lid, hinge empty under hull; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
     "hatch_lid_cargo_L": "cargo_L hatch lid, hinge empty under hull; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
-    "hatch_lid_gunner": "gunner hatch lid, hinge empty under turret; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
+    "hatch_lid_gunner": "gunner hatch lid, hinge empty under turret; open = rotation.x POSITIVE (0 .. +2.007 rad)",
     "turret": "yaw about local Y",
     "gun_pivot": "pitch about local X; elevate = rotation.x NEGATIVE",
     "wheel_*": "spin about local X (hub)"
@@ -518,7 +518,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 25547,
+        "tris": 26224,
         "pos": [
          0.0,
          0.0,
@@ -529,7 +529,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 7651,
+        "tris": 7849,
         "pos": [
          0.0,
          0.0,
@@ -622,47 +622,47 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.52,
-           1.28
+           2.46,
+           0.68
           ],
           "children": [
            {
             "name": "coax_muzzle",
             "type": "empty",
             "pos": [
-             -0.15,
-             2.485,
-             1.91
+             -0.1,
+             2.425,
+             1.26
             ]
            },
            {
             "name": "gun_geo",
             "type": "mesh",
-            "tris": 904,
+            "tris": 832,
             "pos": [
              0.0,
-             2.52,
-             1.28
+             2.46,
+             0.68
             ]
            },
            {
             "name": "gun_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 270,
+            "tris": 248,
             "pos": [
              0.0,
-             2.52,
-             1.28
+             2.46,
+             0.68
             ]
            },
            {
             "name": "muzzle",
             "type": "empty",
             "pos": [
-             0.03,
-             2.52,
-             3.88
+             0.02,
+             2.46,
+             2.88
             ]
            }
           ]
@@ -671,18 +671,18 @@
           "name": "hatch_gunner",
           "type": "empty",
           "pos": [
-           0.13,
+           0.3,
            2.41,
-           0.53
+           1.17
           ]
          },
          {
           "name": "hatch_lid_gunner",
           "type": "empty",
           "pos": [
-           0.13,
+           0.3,
            2.382,
-           0.326
+           1.394
           ],
           "children": [
            {
@@ -690,9 +690,9 @@
             "type": "mesh",
             "tris": 610,
             "pos": [
-             0.13,
+             0.3,
              2.382,
-             0.326
+             1.394
             ]
            },
            {
@@ -701,9 +701,9 @@
             "hidden": true,
             "tris": 182,
             "pos": [
-             0.13,
+             0.3,
              2.382,
-             0.326
+             1.394
             ]
            }
           ]
@@ -720,7 +720,7 @@
          {
           "name": "turret_geo",
           "type": "mesh",
-          "tris": 4538,
+          "tris": 4100,
           "pos": [
            0.0,
            1.96,
@@ -731,7 +731,7 @@
           "name": "turret_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1352,
+          "tris": 1222,
           "pos": [
            0.0,
            1.96,
@@ -1002,7 +1002,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 16834,
+      "tris": 16828,
       "pos": [
        0.0,
        0.0,
@@ -1013,7 +1013,7 @@
       "name": "turret_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 2625,
+      "tris": 2438,
       "pos": [
        0.0,
        1.662,
