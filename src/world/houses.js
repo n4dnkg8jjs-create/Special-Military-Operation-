@@ -10,7 +10,12 @@
 import * as THREE from 'three';
 import { PLACED } from './instancer.js';
 
-const HOUSE = /^house_/i, NOT = /burnt|ruin|rubble|destroy|_lod\d*$|_mid$|shell|wreck/i;
+const HOUSE = /^house_/i, NOT = /burnt|ruin|rubble|destroy|_lod\d*$|_mid$|shell|wreck|_stub$|_flat$/i;
+// the battle-damage variants (wear.js houseRuin, placed by real.js / farmland.js): '_holed' (roof broken open) keeps every wall,
+// window and the door of its template -> the template's PLAN; '_stub' / '_flat' (roofless wall stubs on a heap, walkable rubble
+// in the nav grid) are no house to garrison. (Without this a '_holed' house had no PLAN and fell back to the old guessed doors in
+// the middle of the front / back walls: the men walked through the brickwork again.)
+const planName = name => name.replace(/_holed$/i, '');
 const WIN = 3.3;   // a window every ~3.3 m of wall
 // The real layout of the house templates (city.glb house_a..e; tool: previews/house_interior/scen/house_plan.py, ray casts through
 // every wall of the mesh): one room inside 0.4 m walls (no interior walls), a 0.45 m floor plinth, ONE door - in the left gable
@@ -27,7 +32,7 @@ const SIDE_ROT = { front: 0, back: Math.PI, right: Math.PI / 2, left: -Math.PI /
 const OPEN_GEO = new Map();
 function openGeometry(tpl, name) {
   if (OPEN_GEO.has(tpl)) return OPEN_GEO.get(tpl);
-  const P = PLAN[name], W = (P?.win || []).filter(w => w[2] != null), Dr = (P?.d || []).filter(d => d[4] != null), g0 = tpl.geometry; let g = null;
+  const P = PLAN[planName(name)], W = (P?.win || []).filter(w => w[2] != null), Dr = (P?.d || []).filter(d => d[4] != null), g0 = tpl.geometry; let g = null;
   if (g0 && (W.length || Dr.length)) {
     const pos = g0.attributes.position, idx = g0.index, n = idx ? idx.count : pos.count, keep = [];
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
@@ -198,7 +203,7 @@ export function buildHouses(game) {
       if (L < 4 || D < 4 || L > 26 || D > 26) continue;
       c.set((bb.min.x + bb.max.x) / 2, 0, (bb.min.z + bb.max.z) / 2).multiply(sc).applyQuaternion(q);
       const hs = new House(v.x + c.x, v.z + c.z, rot, L, D, h, v.y, name);
-      hs.tpl = P.template; hs.M = M; hs.game = game; hs.applyPlan(PLAN[name], new THREE.Vector3((bb.min.x + bb.max.x) / 2, 0, (bb.min.z + bb.max.z) / 2), sc.clone());
+      hs.tpl = P.template; hs.M = M; hs.game = game; hs.applyPlan(PLAN[planName(name)], new THREE.Vector3((bb.min.x + bb.max.x) / 2, 0, (bb.min.z + bb.max.z) / 2), sc.clone());
       // its line-of-sight occluder (put by the map builder) gets the house as its ref, so the garrison's own walls can be
       // ignored where the building's are (spotting); none there: add one
       let occ = null;

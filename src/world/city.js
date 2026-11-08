@@ -36,6 +36,17 @@ const FOOT = []; for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) if 
 export function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 export const onRoad = (x, z, pad = 0) => ROAD_TEST ? ROAD_TEST(x, z, pad) : ROADS.some(r => x > r.x0 - pad && x < r.x1 + pad && z > r.z0 - pad && z < r.z1 + pad);
 
+// a footprint (centre, half extents, yaw) on a road or its pavement (generic maps: per road type; real maps: their road test
+// with a pavement's pad) - sampled every <= 0.5 m over the whole rectangle, edges included
+export function footOnRoad(x, z, hx, hz, ry = 0) {
+  const c = Math.cos(ry), s = Math.sin(ry), nu = Math.max(2, Math.ceil(hx / 0.5)), nv = Math.max(2, Math.ceil(hz / 0.5));
+  for (let i = 0; i <= nu; i++) for (let j = 0; j <= nv; j++) {
+    const lx = (i / nu * 2 - 1) * hx, lz = (j / nv * 2 - 1) * hz, px = x + lx * c + lz * s, pz = z - lx * s + lz * c;
+    if (ROAD_TEST ? ROAD_TEST(px, pz, 1.5) : ROADS.some(r => { const sw = r.type === 'drive' ? 1.3 : SIDEWALK; return px > r.x0 - sw && px < r.x1 + sw && pz > r.z0 - sw && pz < r.z1 + sw; })) return true;
+  }
+  return false;
+}
+
 export class City {
   constructor(scene, assets, quality) {
     const Real = MAP.real && !new.target.isReal && REAL_WORLDS[MAP.kind];
@@ -1066,7 +1077,7 @@ export class City {
     const tpl = n => { const o = g.scene.getObjectByName(n); if (o && !o.userData.bb) o.userData.bb = new THREE.Box3().setFromObject(o); return o; };
     const mput = (n, x, z, ry, { cost = BLOCK, road = true, occ = false } = {}) => {
       const t = tpl(n); if (!t) return false; const bb = t.userData.bb, hx = (bb.max.x - bb.min.x) / 2, hz = (bb.max.z - bb.min.z) / 2;
-      if (road && onRoad(x, z, Math.min(hx, hz) * 0.8)) return false;
+      if (road && footOnRoad(x, z, hx, hz, ry)) return false;   // (the whole footprint off the carriageway and its pavement: the centre test let a playground run 4 m into the road)
       if (this.terrain.cutSDF(x, z) < Math.max(hx, hz) + 0.8) return false;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + Math.max(hx, hz) * 0.7 && Math.abs(lz) < b.D / 2 + Math.max(hx, hz) * 0.7; })) return false;
       const fx = /lamp/.test(n) ? 0.3 : hx, fz = /lamp/.test(n) ? 0.3 : hz; // lamps: only the post matters
@@ -1086,7 +1097,13 @@ export class City {
     for (const [x, z, r] of this.mapYards('boilers')) mput(R() < 0.5 ? 'boiler_house_damaged' : 'boiler_house', x, z, r, { occ: true });
     for (const [x, z, r] of this.mapYards('garages')) mput('garage_row', x, z + (r ? -9 : 9), r);
     // new playgrounds + street-workout corners in the courtyards
-    for (const [x, z, r] of this.mapYards('playgrounds')) { mput('playground_modern', x + 6, z, r, { cost: 6 }); mput('outdoor_gym', x - 9, z, r, { cost: 6 }); }
+    // (each tried at its usual spot in the yard first, then nudged round it until the whole footprint is clear of the roads,
+    // their pavements and the other pieces; none fits: left out)
+    const nudge = (n, x, z, r, offs) => offs.some(([dx, dz]) => mput(n, x + dx, z + dz, r, { cost: 6 }));
+    for (const [x, z, r] of this.mapYards('playgrounds')) {
+      nudge('playground_modern', x, z, r, [[6, 0], [3, 0], [0, 0], [-3, 0], [0, 3], [0, -3], [-6, 0], [0, 6], [0, -6], [-9, 0]]);
+      nudge('outdoor_gym', x, z, r, [[-9, 0], [-12, 0], [9, 0], [12, 0], [0, -9], [0, 9], [-15, 0], [15, 0]]);
+    }
     // LED lamps along the arterials, ad columns at the crossroads
     for (let t = -E + 20; t < E - 20; t += 28) { mput('lamp_led', t, -16.2, 0, { road: false, cost: 0 }); mput('lamp_led', t + 14, 16.2, Math.PI, { road: false, cost: 0 }); }
     for (let t = -E + 20; t < E - 20; t += 32) { mput('lamp_led', 74.6, t, Math.PI / 2, { road: false, cost: 0 }); }

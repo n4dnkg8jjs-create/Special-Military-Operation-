@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { MAP, MAP_SIZE, onRoad, mulberry } from './city.js';
 import { BLOCK } from './nav.js';
 import { trs } from './instancer.js';
-import { houseRuin } from './wear.js';
+import { houseRuin, roofFrame } from './wear.js';
 import { PC, DG, lm, col, mcol, hash2, seedOf, shatteredTpl } from './battlefieldDetail.js';
 
 const TAU = Math.PI * 2;
@@ -413,19 +413,40 @@ function ruinDebris(w, api) {
   for (const h of S.houses) {
     const T = w.tpl(h.t), fr = w._tpl?.[h.t + '_holed']?.userData.frame || T?.userData.frame || houseFrame(w, h.t); if (!fr) continue;
     const M = trs(h.x, h.y, h.z, h.ry, h.s), burnt = h.mode === 'shell', rf = h.mode === 'holed' ? (w._tpl[h.t + '_holed']?.userData.holes || []) : null;
-    if (h.mode === 'shell' || h.mode === 'holed') {
-      const ax = fr.axis === 'x', len = ax ? fr.hx : fr.hz, wid = ax ? fr.hz : fr.hx, rise = Math.max(0.6, fr.ridge - fr.eave), sl = Math.hypot(wid, rise), ang = Math.atan2(rise, wid);
-      const cc = burnt ? 0x1c1916 : 0x6e5d48;
+    // every rafter rests on something: on the measured wall top (wear.js roofFrame) at its foot and, whole, on the ridge (burnt
+    // shell: a charred ridge beam laid gable to gable, only where the shell kept both gables; holed: the roof round the hole);
+    // a broken one came down and lies on the floor inside (it used to stick out from the eave into thin air, and every rafter
+    // started 0.3-0.7 m over the walls / ran the wrong way on house_e)
+    const B = (burnt || h.mode === 'holed') && roofFrame(T);
+    if (B) {
+      const VF = roofFrame(w._tpl?.[h.t + (burnt ? '_burnt' : '_holed')]), gable = B.apex != null && VF?.apex != null && VF.apex > B.apex - 0.4;
+      const ax = B.axis === 'x', len = ax ? B.hx : B.hz, wid = ax ? B.hz : B.hx, eave = B.wallTop + 0.075, ridgeY = gable ? B.apex - 0.1 : eave + 1;
+      const rise = Math.max(0.3, ridgeY - eave), sl = Math.hypot(wid, rise), ang = Math.atan2(rise, wid), floorY = B.y0 + (burnt ? 0.5 : 0.425) + 0.075;
+      const cc = burnt ? 0x1c1916 : 0x6e5d48, inHole = (x, z) => rf && rf.some(([hx, hz, hr]) => Math.hypot(x - hx, z - hz) < hr * 0.75);
+      let whole = 0;
       for (let t = -len + 0.4; t <= len - 0.4; t += 0.9) for (const sd of [-1, 1]) {
-        const lx = ax ? fr.cx + t : fr.cx + sd * wid / 2, lz = ax ? fr.cz + sd * wid / 2 : fr.cz + t;
-        if (rf && !rf.some(([hx, hz, hr]) => Math.hypot(lx - hx, lz - hz) < hr * 0.75)) continue;   // holed: only across the holes
+        const lx = ax ? B.cx + t : B.cx + sd * wid / 2, lz = ax ? B.cz + sd * wid / 2 : B.cz + t;
+        if (rf && !inHole(lx, lz)) continue;   // holed: only across the holes
         if (burnt && R() < 0.55) continue;   // burnt: most of the roof timber is gone
-        const broken = R() < (burnt ? 0.5 : 0.25), Lr = sl * (broken ? 0.35 + R() * 0.45 : 1);
-        // rafter from the eave up towards the ridge (local frame of the house, then the placement)
-        const ex = ax ? fr.cx + t : fr.cx + sd * wid, ez = ax ? fr.cz + sd * wid : fr.cz + t, dirx = ax ? 0 : -sd, dirz = ax ? -sd : 0;
-        const mx = ex + dirx * Math.cos(ang) * Lr / 2, mz = ez + dirz * Math.cos(ang) * Lr / 2, my = fr.eave + Math.sin(ang) * Lr / 2;
-        const w0 = new THREE.Vector3(mx, my, mz).applyMatrix4(M), yaw = h.ry + Math.atan2(-dirz, dirx);
-        D.begin(w0.x, w0.y, w0.z, yaw, 0, ang + (R() - 0.5) * 0.08, h.s, true); D.box(0, 0, 0, Lr, 0.15, 0.07, col(cc, R, 0.2)); n++;
+        const rx = ax ? B.cx + t : B.cx, rz = ax ? B.cz : B.cz + t;   // its top end, on the ridge line
+        const broken = R() < (burnt ? 0.5 : 0.25) || !gable || (rf && inHole(rx, rz) && rf.some(([hx, hz, hr]) => Math.hypot(rx - hx, rz - hz) < hr * 0.62));
+        if (!broken) {
+          // rafter from the eave up to the ridge (local frame of the house, then the placement)
+          const ex = ax ? B.cx + t : B.cx + sd * wid, ez = ax ? B.cz + sd * wid : B.cz + t, dirx = ax ? 0 : -sd, dirz = ax ? -sd : 0;
+          const mx = ex + dirx * Math.cos(ang) * sl / 2, mz = ez + dirz * Math.cos(ang) * sl / 2, my = eave + Math.sin(ang) * sl / 2;
+          const w0 = new THREE.Vector3(mx, my, mz).applyMatrix4(M), yaw = h.ry + Math.atan2(-dirz, dirx);
+          D.begin(w0.x, w0.y, w0.z, yaw, 0, ang + (R() - 0.5) * 0.04, h.s, true); D.box(0, 0, 0, sl, 0.15, 0.07, col(cc, R, 0.2)); n++; whole++;
+        } else {
+          // the broken piece on the floor inside the walls
+          const Lr = Math.min(sl * (0.35 + R() * 0.45), 2 * Math.min(B.hx, B.hz) - 1.4), px = B.cx + (R() - 0.5) * Math.max(0, 2 * B.hx - 1.2 - Lr), pz = B.cz + (R() - 0.5) * Math.max(0, 2 * B.hz - 1.2 - Lr);
+          if (Lr < 0.5) continue;
+          const w0 = new THREE.Vector3(px, floorY, pz).applyMatrix4(M);
+          D.begin(w0.x, w0.y, w0.z, h.ry + R() * TAU, 0, (R() - 0.5) * 0.06, h.s, true); D.box(0, 0, 0, Lr, 0.15, 0.07, col(cc, R, 0.2)); n++;
+        }
+      }
+      if (burnt && whole) {   // the ridge beam the whole rafters lean on, its ends in the gables
+        const w0 = new THREE.Vector3(B.cx, ridgeY - 0.1, B.cz).applyMatrix4(M);
+        D.begin(w0.x, w0.y, w0.z, h.ry + (ax ? 0 : Math.PI / 2), 0, 0, h.s, true); D.box(0, 0, 0, 2 * len - 0.1, 0.18, 0.12, col(cc, R, 0.2)); n++;
       }
     }
     // the stuff the house shed round its walls

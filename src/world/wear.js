@@ -540,6 +540,40 @@ export function cleanHouseTemplates(assets) {
     const g2 = geo.clone(); g2.setIndex(keep); o.geometry = g2;
   });
 }
+// The roof timber's real supports, measured on a house template (intact or one of its burnt / holed / stub variants: its own
+// walls): the wall box, the wall top along the two eave walls (where the rafters sit) and the gable apex (the ridge beam's ends;
+// null when the variant has no gables left). The ridge axis is the one whose end walls rise far above the others (the old guess,
+// the longer side, was wrong for house_e: rafters ran gable to gable across thin air), and the eave is the measured wall top (the
+// old eave = y0 + min(3.3, 0.55 H) sat 0.3-0.7 m over the walls of house_a / house_d: every rafter floated). Template frame.
+const _roofF = new WeakMap();
+export function roofFrame(tpl) {
+  if (!tpl) return null; if (_roofF.has(tpl)) return _roofF.get(tpl);
+  tpl.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(tpl.matrixWorld).invert(), m = new THREE.Matrix4(), v = new THREE.Vector3(), nm = new THREE.Matrix3(), n = new THREE.Vector3(), V = [];
+  let y0 = 1e9, y1 = -1e9;
+  tpl.traverse(o => {
+    if (!o.isMesh || /_LOD\d*$|_floor$/i.test(o.name)) return;
+    m.multiplyMatrices(inv, o.matrixWorld); nm.getNormalMatrix(m);
+    const P = o.geometry.attributes.position, N = o.geometry.attributes.normal; if (!P || !N) return;
+    for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(m); n.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y); V.push(v.x, v.y, v.z, Math.abs(n.y) <= 0.35 ? 1 : 0); }
+  });
+  if (!V.length) { _roofF.set(tpl, null); return null; }
+  // wall box: upright faces between knee and lintel height (no eaves, porch, steps)
+  const wb = new THREE.Box3();
+  for (let i = 0; i < V.length; i += 4) if (V[i + 3] && V[i + 1] > y0 + 1.0 && V[i + 1] < y0 + 2.3) wb.expandByPoint(v.set(V[i], V[i + 1], V[i + 2]));
+  if (wb.isEmpty()) { _roofF.set(tpl, null); return null; }
+  const cx = (wb.min.x + wb.max.x) / 2, cz = (wb.min.z + wb.max.z) / 2, hx = (wb.max.x - wb.min.x) / 2, hz = (wb.max.z - wb.min.z) / 2;
+  // top of the upright faces on each pair of opposite walls: over the middle of the wall (wallTop) and round its centre (apex)
+  const top = (onX, mid) => { let t = -1e9; for (let i = 0; i < V.length; i += 4) { if (!V[i + 3]) continue; const a = onX ? V[i] - cx : V[i + 2] - cz, c = onX ? V[i + 2] - cz : V[i] - cx, ha = onX ? hx : hz, hc = onX ? hz : hx; if (Math.abs(Math.abs(a) - ha) < 0.35 && Math.abs(c) < hc * mid) t = Math.max(t, V[i + 1]); } return t; };
+  const tX = top(true, 0.25), tZ = top(false, 0.25);
+  let axis, wallTop, apex = null;
+  if (tX > tZ + 0.8) { axis = 'x'; apex = tX; wallTop = top(false, 0.7); }
+  else if (tZ > tX + 0.8) { axis = 'z'; apex = tZ; wallTop = top(true, 0.7); }
+  else { axis = hx >= hz ? 'x' : 'z'; wallTop = Math.max(top(true, 0.7), top(false, 0.7)); }
+  if (!(wallTop > y0)) wallTop = y0 + Math.min(3.3, (y1 - y0) * 0.55);
+  const fr = { cx, cz, hx, hz, y0, wallTop, apex, axis };
+  _roofF.set(tpl, fr); return fr;
+}
 export function houseRuin(tpl, mode, seed = 1) {
   tpl.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(tpl.matrixWorld).invert(), geos = []; let mat = null;
