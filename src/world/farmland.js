@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 import { ruinTpl } from './ruins.js';
+import { roadSurfaces, ROAD_Y } from './roadmesh.js';
 import { battlefieldDetail, treeFate, treeTilt } from './battlefieldDetail.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
@@ -359,19 +360,23 @@ export class Farmland extends City {
     trackWear(trackMat, this.groundUniforms); this.trackMat = trackMat;   // muddy ruts with standing water
     const strip = (w, len, texW) => { const g = new THREE.PlaneGeometry(w, len); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), uv.getY(i) * len / texW); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0 - (r.type === 'track' ? 0.6 : 0), r.z0 - (r.type === 'track' ? 0.6 : 0), r.x1 + (r.type === 'track' ? 0.6 : 0), r.z1 + (r.type === 'track' ? 0.6 : 0), r.type === 'track' ? 1 : 2);
+    // roads v2 (roadmesh.js): the paved roads merged into one same-level surface with filleted junctions; the tracks stay
+    // strip ribbons at the same level, under the asphalt by polygonOffset
+    { const S = roadSurfaces(ROADS.filter(r => r.type !== 'track').map(r => { const w = r.x1 - r.x0, d = r.z1 - r.z0, cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
+        return { pts: w > d ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], hw: Math.min(w, d) / 2, sw: 0, rad: 4, kerb: false, ext: 0 }; }), { key: 'farm' });
+      this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
+      for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); } }
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0, horiz = w > d, len = horiz ? w : d, wid = horiz ? d : w;
       const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
       if (r.type === 'track') {
-        const m = new THREE.Mesh(strip(wid + 1.2, len, 4.5), trackMat); m.position.set(cx, 0.035, cz); if (horiz) m.rotation.y = Math.PI / 2; m.receiveShadow = true; m.renderOrder = 1; this.scene.add(m);
+        const m = new THREE.Mesh(strip(wid + 1.2, len, 4.5), trackMat); m.position.set(cx, ROAD_Y, cz); if (horiz) m.rotation.y = Math.PI / 2; m.receiveShadow = true; m.renderOrder = 1; this.scene.add(m);
       } else {
         // junction: the later paved road is cut where an earlier one crosses (no coplanar overlap -> no z-fighting)
         const paved = ROADS.filter(o => o.type !== 'track'), above = paved.slice(0, paved.indexOf(r));
-        const g = roadPieces(r, rectMinus(r, above), 7, 60);
-        if (g) { roadFrame(g, wid / 2, horiz); const m = new THREE.Mesh(g, asphalt); m.position.set(cx, 0.05, cz); m.receiveShadow = true; this.scene.add(m); }
         const dash = this._dashM ||= new THREE.MeshStandardMaterial({ color: 0xa9a598, roughness: 0.9, transparent: true, opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });   // faded paint
-        const inX = (x, z) => above.some(o => x > o.x0 - 1.5 && x < o.x1 + 1.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5);
-        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.55) { const x = horiz ? cx + t : cx, z = horiz ? cz : cz + t; if (!inX(x, z)) mats.push(trs(x, 0.06, z, horiz ? 0 : Math.PI / 2)); }
+        const inX = (x, z) => above.some(o => x > o.x0 - 6 && x < o.x1 + 6 && z > o.z0 - 6 && z < o.z1 + 6);
+        const mats = []; for (let t = -len / 2 + 2; t < len / 2; t += 12) if (this.rng() > 0.55) { const x = horiz ? cx + t : cx, z = horiz ? cz : cz + t; if (!inX(x, z)) mats.push(trs(x, ROAD_Y, z, horiz ? 0 : Math.PI / 2)); }
         const dg = new THREE.PlaneGeometry(3, 0.12); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, dash), mats, { shadows: false });
       }
     }

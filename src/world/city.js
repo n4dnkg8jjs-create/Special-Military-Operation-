@@ -10,6 +10,7 @@ import { markStatic } from '../engine/renderer.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
+import { roadSurfaces, ROAD_Y } from './roadmesh.js';
 
 // Active map: live bindings, set by setMap() before the world is built.
 export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
@@ -641,48 +642,34 @@ export class City {
   }
   roads() {
     const asphalt = roadWear(this.mat('asphalt', 1, { color: 0xd8d4cc, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), this.groundUniforms, { damage: 0.8 });
-    const walk = roadWear(this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), this.groundUniforms, { damage: 0 });
+    const walk = roadWear(this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), this.groundUniforms, { damage: 0 });
     const curbMat = this.assets.tex.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 });
     const uvPlane = (w, d, scale) => { const g = new THREE.PlaneGeometry(w, d); g.rotateX(-Math.PI / 2); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / scale, uv.getY(i) * d / scale); return g; };
     for (const r of ROADS) this.nav.markRoad(r.x0, r.z0, r.x1, r.z1, 2);
-    // junctions: every surface drawn once (rectMinus) -- a road is cut where a higher-priority one crosses it (avenue >
-    // streets > driveways, then the longer one), pavements are cut by every carriageway and by higher-priority pavements
+    // roads v2 (roadmesh.js): all carriageways at one level, one merged surface with filleted corners (avenue > street >
+    // driveway radius), pavements around it, kerbs along the carriageway outline only
     const prio = r => (r.w === 'avenue' ? 2 : r.type === 'drive' ? 0 : 1) * 1e5 + Math.max(r.x1 - r.x0, r.z1 - r.z0);
-    const swOf = r => r.type === 'drive' ? 1.3 : SIDEWALK, padR = (r, p) => ({ x0: r.x0 - p, x1: r.x1 + p, z0: r.z0 - p, z1: r.z1 + p });
+    const swOf = r => r.type === 'drive' ? 1.3 : SIDEWALK;
     const above = r => ROADS.filter(o => o !== r && (prio(o) > prio(r) || (prio(o) === prio(r) && ROADS.indexOf(o) > ROADS.indexOf(r))));
-    void uvPlane;
-    for (const r of ROADS) {
-      const w = r.x1 - r.x0, d = r.z1 - r.z0, sw = swOf(r), R2 = padR(r, sw);
-      const g = roadPieces(R2, rectMinus(R2, [...ROADS, ...above(r).map(o => padR(o, swOf(o)))]), 4); if (!g) continue;
-      const s = new THREE.Mesh(roadFrame(g, (Math.min(w, d) + sw * 2) / 2, w > d), walk); s.position.set((r.x0 + r.x1) / 2, 0.03, (r.z0 + r.z1) / 2); s.receiveShadow = true; this.scene.add(s);
-    }
+    const S = roadSurfaces(ROADS.map(r => { const w = r.x1 - r.x0, d = r.z1 - r.z0, cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
+      return { pts: w > d ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], hw: Math.min(w, d) / 2, sw: swOf(r), rad: r.w === 'avenue' ? 4 : r.type === 'drive' ? 1.5 : 3, kerb: true, ext: 0 }; }), { key: 'city:' + MAP.id + ':' + ROADS.length });
+    this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
+    for (const g of S.walk) { const m = new THREE.Mesh(g, walk); m.receiveShadow = true; this.scene.add(m); }
+    for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); }
     for (const r of ROADS) {
       const w = r.x1 - r.x0, d = r.z1 - r.z0, ab = above(r);
-      const g = roadPieces(r, rectMinus(r, ab), 7);
-      if (g) { const a = new THREE.Mesh(roadFrame(g, Math.min(w, d) / 2, w > d), asphalt); a.position.set((r.x0 + r.x1) / 2, 0.05, (r.z0 + r.z1) / 2); a.receiveShadow = true; this.scene.add(a); }
-      // lane markings (worn) — not on the single-lane courtyard driveways
+      // lane markings (worn) — not on the single-lane courtyard driveways; flush (polygonOffset), short of junctions
       if (r.type === 'drive') continue;
       const horiz = w > d; const len = horiz ? w : d;
       const dash = this._dashM ||= new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.9, transparent: true, opacity: 0.55, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-      const mats = [], inX = (x, z) => ab.some(o => x > o.x0 - 1.5 && x < o.x1 + 1.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5);
-      for (let t = -len / 2 + 2; t < len / 2; t += 9) if (this.rng() > 0.25) { const x = horiz ? (r.x0 + r.x1) / 2 + t : (r.x0 + r.x1) / 2, z = horiz ? (r.z0 + r.z1) / 2 : (r.z0 + r.z1) / 2 + t; if (!inX(x, z)) mats.push(trs(x, 0.06, z, horiz ? 0 : Math.PI / 2)); }
+      const mats = [], inX = (x, z) => ab.some(o => x > o.x0 - 5 && x < o.x1 + 5 && z > o.z0 - 5 && z < o.z1 + 5);
+      for (let t = -len / 2 + 2; t < len / 2; t += 9) if (this.rng() > 0.25) { const x = horiz ? (r.x0 + r.x1) / 2 + t : (r.x0 + r.x1) / 2, z = horiz ? (r.z0 + r.z1) / 2 : (r.z0 + r.z1) / 2 + t; if (!inX(x, z)) mats.push(trs(x, ROAD_Y, z, horiz ? 0 : Math.PI / 2)); }
       const dg = new THREE.PlaneGeometry(3, 0.15); dg.rotateX(-Math.PI / 2);
       instance(this.scene, new THREE.Mesh(dg, dash), mats, { shadows: false });
     }
-    // curbs along road edges, broken at intersections
+    // kerbs (hash per stone, no world RNG draws): a few missing, slightly tilted
     const curbs = [];
-    for (const r of ROADS) {
-      const horiz = (r.x1 - r.x0) > (r.z1 - r.z0);
-      for (const edge of horiz ? [r.z0, r.z1] : [r.x0, r.x1]) {
-        const from = horiz ? r.x0 : r.z0, to = horiz ? r.x1 : r.z1;
-        for (let t = from; t < to; t += 1.0) {
-          const x = horiz ? t + 0.5 : edge, z = horiz ? edge : t + 0.5;
-          if (ROADS.some(o => o !== r && x > o.x0 - 0.5 && x < o.x1 + 0.5 && z > o.z0 - 0.5 && z < o.z1 + 0.5)) continue;
-          if (this.rng() < 0.04) continue; // missing curb stones
-          curbs.push(trs(x, 0.08, z, horiz ? 0 : Math.PI / 2, 1, 0, (this.rng() - .5) * 0.04));
-        }
-      }
-    }
+    for (const [x, z, yaw] of S.kerbs) { let h = Math.imul(Math.round(x * 10) | 0, 73856093) ^ Math.imul(Math.round(z * 10) | 0, 19349663); h = Math.imul(h ^ (h >>> 13), 0x5bd1e995); h = ((h ^ (h >>> 15)) >>> 0) / 4294967296; if (h < 0.04) continue; curbs.push(trs(x, 0.08, z, yaw, 1, 0, (h * 7 % 1 - 0.5) * 0.04)); }
     const cg = new THREE.BoxGeometry(0.98, 0.2, 0.22);
     instanceRuns(this.scene, Object.assign(new THREE.Mesh(cg, curbMat), { name: 'curb' }), curbs, { cell: 90, lodDist: 100 });   // (far: merged straight runs)
   }

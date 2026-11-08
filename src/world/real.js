@@ -25,6 +25,7 @@ import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
+import { roadSurfaces, ROAD_Y } from './roadmesh.js';
 import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
@@ -300,7 +301,7 @@ const Real = {
   roadsReal() {
     const D = this.osm, T = this.assets.tex, U = this.groundUniforms, urban = this.urban;
     const asphalt = roadWear(this.mat('asphalt', 1, { color: urban ? 0xd8d4cc : 0xc4c0b6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), U, urban ? { damage: 0.9 } : { rural: true, damage: 1 });
-    const walkM = roadWear(this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), U, { damage: 0 });
+    const walkM = roadWear(this.mat('concrete', 1, { color: 0xbab4a8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), U, { damage: 0 });
     // dirt tracks / gravel village streets: strip texture with ruts and soft edges (farmland track set, else the dirt set)
     const a = document.createElement('canvas'); a.width = 64; a.height = 4; { const x = a.getContext('2d'), gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.16, '#fff'); gr.addColorStop(0.84, '#fff'); gr.addColorStop(1, '#000'); x.fillStyle = gr; x.fillRect(0, 0, 64, 4); }
     const alpha = new THREE.CanvasTexture(a); alpha.wrapT = THREE.RepeatWrapping;
@@ -314,20 +315,25 @@ const Real = {
     this.trackMat = mkTrack(T.track ? 0xffffff : 0xb0a28a, trackTex);
     const gravelMat = mkTrack(T.track ? 0xd9d2c4 : 0xc4b9a4, trackTex); gravelMat.customProgramCacheKey = this.trackMat.customProgramCacheKey;
     const B = { asphalt: new GeoBuf(true), walk: new GeoBuf(true), track: new GeoBuf(), gravel: new GeoBuf() }, dashes = [], curbs = [];
-    // every carriageway / pavement ribbon at its own height: higher classes over lower ones (paved > street > drive), and
-    // within a class each road a few mm over the previous one (ri % 5) -- two coplanar ribbons crossing or meeting
-    // (different edge-wear attributes) z-fought / flickered at every crossing
-    let ri = 0;
+    // roads v2 (roadmesh.js): every carriageway at one level (ROAD_Y), merged into one filleted surface per chunk,
+    // pavements around it, kerbs along its outline; dirt / gravel tracks stay strip ribbons (directional rut texture) at
+    // the same level, under the asphalt / pavements by polygonOffset (transparent, no depth write: no fighting)
+    const hsh = (x, z) => { let h = Math.imul(Math.round(x * 10) | 0, 73856093) ^ Math.imul(Math.round(z * 10) | 0, 19349663); h = Math.imul(h ^ (h >>> 13), 0x5bd1e995); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
+    const paved = r => r.type === 'paved' || r.type === 'street' || r.type === 'drive';
+    const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1).map(r => ({ pts: r.pts, hw: r.w / 2, ext: 0.5, sw: urban && swOf(r) > 0.05 ? swOf(r) : 0,
+      rad: r.type === 'paved' ? 3.5 : r.type === 'street' ? 2.5 : 1.2, kerb: urban && r.type !== 'drive' && swOf(r) >= 1.5 })), { key: 'real:' + MAP.real + ':' + D.roads.length });
+    this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
+    for (const g of S.walk) { const m = new THREE.Mesh(g, walkM); m.receiveShadow = true; this.scene.add(m); }
+    for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); }
+    for (const [x, z, yaw] of S.kerbs) { const h = hsh(x, z); if (h < 0.05) continue; curbs.push(trs(x, 0.08, z, yaw, 1, 0, (h * 7 % 1 - 0.5) * 0.04)); }
     for (const r of D.roads) {
-      const P = r.pts; if (P.length < 2) continue; ri++;
-      const hw = r.w / 2, x0 = P[0][0], x1 = P[P.length - 1][0], z0 = P[0][1], z1 = P[P.length - 1][1], horiz = Math.abs(x1 - x0) > Math.abs(z1 - z0) ? 1 : 0;
-      if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') {
-        // crossing ribbons of one class would be coplanar and z-fight at the junction: higher classes sit a few mm up
-        ribbon(B.asphalt, P, hw, (r.type === 'paved' ? 0.082 : r.type === 'street' ? 0.066 : 0.05) + (ri % 5) * 0.003, { horiz, ext: 0.5 });
-        if (urban && swOf(r) > 0.05) ribbon(B.walk, P, hw + swOf(r), 0.026 + (ri % 5) * 0.003, { horiz, tile: 4 });
-        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.1, z, Math.atan2(-uz, ux))); });
-        if (urban && r.type !== 'drive' && swOf(r) >= 1.5) for (const sd of [-1, 1]) walk(P, 1, (x, z, ux, uz) => { const cx = x - uz * hw * sd, cz = z + ux * hw * sd; if (this.net.hit(cx, cz, 0.6, r) || this.rng() < 0.05) return; curbs.push(trs(cx, 0.08, cz, Math.atan2(-uz, ux), 1, 0, (this.rng() - 0.5) * 0.04)); });
-      } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, r.type === 'gravel' ? 0.04 : 0.035, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
+      const P = r.pts; if (P.length < 2) continue;
+      const hw = r.w / 2;
+      if (paved(r)) {
+        // lane dashes: flush on the surface (polygonOffset), stopping well short of junctions (the dash ends clear of
+        // any other carriageway and its fillet)
+        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 4, r)) dashes.push(trs(x, ROAD_Y, z, Math.atan2(-uz, ux))); });
+      } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, ROAD_Y, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
       // nav: vehicles prefer roads (2 paved, 1 dirt)
       const v = RW[r.type] || 1, pad = v === 1 ? 0.6 : 0;
       for (let i = 0; i < P.length - 1; i++) {
@@ -337,16 +343,8 @@ const Real = {
         }
       }
     }
-    // junction patches: where two or more carriageway ends meet at one node (corner of two streets, a fork) their butt
-    // ends leave notches on the outside; a disc just under the ribbons fills them (pavements the same)
-    { const ends = new Map();
-      for (const r of D.roads) if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) { const k = Math.round(p[0] * 2) + ',' + Math.round(p[1] * 2); (ends.get(k) || ends.set(k, []).get(k)).push([p, r]); }
-      const disc = (Bf, x, z, rad, y, tile) => { const n = 18, c = Bf.n; Bf.pos.push(x, y, z); Bf.uv.push(x / tile, z / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; Bf.pos.push(px, y, pz); Bf.uv.push(px / tile, pz / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); Bf.idx.push(c, c + 1 + (i + 1) % n, c + 1 + i); } };
-      for (const [, L] of ends) { if (L.length < 2) continue; const [p] = L[0], hw = Math.max(...L.map(([, r]) => r.w / 2));
-        disc(B.asphalt, p[0], p[1], hw, 0.047, 7);
-        const sw = Math.max(...L.map(([, r]) => swOf(r))); if (urban && sw > 0.05) disc(B.walk, p[0], p[1], hw + sw, 0.022, 4); } }
     const add = (buf, mat, ro = 0) => { const g = buf.geometry(); if (!g) return; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = ro; this.scene.add(m); return m; };
-    add(B.walk, walkM); add(B.asphalt, asphalt); add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
+    add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
     if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
     if (curbs.length) { const curbMat = T.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 }); instanceRuns(this.scene, Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.2, 0.22), curbMat), { name: 'curb' }), curbs, { cell: 160, lodDist: 100, cullDist: 520 }); }   // (far: merged straight runs)
   },
