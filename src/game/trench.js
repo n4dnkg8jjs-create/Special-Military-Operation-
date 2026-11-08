@@ -92,6 +92,7 @@ export const TrenchMixin = {
     if (this.routing || !T) return;
     const enemy = this.side === 'player' ? 'enemy' : 'player';
     if (trenchMen(this.game, T, enemy).length) return this.orderClearTrench(T);
+    this.takeCommand?.();   // v9: men busy with a casualty let go (squad.js)
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const men = this.effective.filter(s => !s.dragging);
@@ -202,6 +203,7 @@ export const TrenchMixin = {
   orderClearTrench(T) {
     if (this.routing || !T) return;
     if (this.order?.type === 'clear' && this.order.trench === T && this.order.v6 && this.order.phase !== 'done') return;   // already at it
+    this.takeCommand?.();
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const g = this.game, enemy = this.side === 'player' ? 'enemy' : 'player', c = this.center();

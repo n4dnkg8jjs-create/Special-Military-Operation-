@@ -566,6 +566,9 @@ export class Soldier {
   // per frame while dead; true = handled (ragdoll running / corpse frozen: the clip is not updated)
   deathTick(dt, camDist) {
     if (this.corpseDone) { this.lodTick(camDist); return true; }
+    // v9: dead in the medevac cab / on its bed / being slid onto it: the body stays where it is on the truck (frozen pose; medevac.js
+    // pulls a dead driver out, lays a casualty who died on the tailgate on his stretcher) - no ragdoll / re-grounding through the floor
+    if (this.inCab || this.onBed || this.bedLoad) { this.carriedDeath = null; this.deathRide = null; return true; }
     if (this.ragdoll) { this.ragdoll.update(dt); return true; }
     if (!this.mixer) return false;
     this.deathT += dt * (this.deathTs || 1);   // (clip time: the death clip plays at deathTs)

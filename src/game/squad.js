@@ -154,13 +154,20 @@ export class Squad {
     const covAt = (cx, cz) => { let c = 0; for (const t of T) c += nav.coverFrom(cx, cz, t[0], t[1]) * t[2]; return c / wsum; };
     const reach = new Map(), ok = k => { let v = reach.get(k); if (v === undefined) { const cx = nav.cx(k), cz = nav.cz(k); v = nav.passableI(k, 0.4) && nav.lineFree(ax, az, cx, cz, 0.4) && (!W || W.on(cx, cz)); reach.set(k, v); } return v; };
     const pairs = [];
+    // v9 common sense: the threat side (known enemy, else the order's facing); a cell further toward it than his slot costs (no
+    // running forward into the fire for a better wall), one ahead of the ordered line costs a lot, and no cell beyond 12 m of the
+    // ordered spot (or his slot + 2 m, for a wide line)
+    const tx0 = (thr ? thr[0] : ax + fwd[0]) - ax, tz0 = (thr ? thr[1] : az + fwd[1]) - az, tl = Math.hypot(tx0, tz0) || 1, tdx = tx0 / tl, tdz = tz0 / tl;
     for (let i = 0; i < n; i++) {
-      const [px, pz] = nominal[i], ci = nav.idx(px, pz), nearWall = ci >= 0 && nav.clear[ci] < 6, R = W ? 2.6 : nearWall ? 5 : 4.2;
+      const [px, pz] = nominal[i], ci = nav.idx(px, pz), nearWall = ci >= 0 && nav.clear[ci] < 6, R = W ? 2.6 : nearWall ? 4.5 : 3.6;
+      const lim = Math.max(12, Math.hypot(px - ax, pz - az) + 2);
       for (let dz = -R; dz <= R; dz += 1) for (let dx = -R; dx <= R; dx += 1) {
         const r = Math.hypot(dx, dz); if (r > R + 0.01) continue;
         const k = nav.idx(px + dx, pz + dz); if (k < 0 || !ok(k)) continue;
         const cx = nav.cx(k), cz = nav.cz(k), d = Math.hypot(cx - px, cz - pz), c = covAt(cx, cz);
-        const sc = c * 3 + (c > 0.5 && nav.low[k] ? 0.3 : 0) - d * 0.3 + (W && nav.clear[k] < 1.4 ? 0.9 : 0) + (!W && nearWall && c > 0.5 && nav.clear[k] < 1.4 ? 0.3 : 0);
+        if (Math.hypot(cx - ax, cz - az) > lim) continue;
+        const adv = (cx - px) * tdx + (cz - pz) * tdz, advA = (cx - ax) * tdx + (cz - az) * tdz;
+        const sc = c * 3 + (c > 0.5 && nav.low[k] ? 0.3 : 0) - d * 0.4 - Math.max(0, adv - 0.5) * 0.5 - Math.max(0, advA - 2) * 0.8 + (W && nav.clear[k] < 1.4 ? 0.9 : 0) + (!W && nearWall && c > 0.5 && nav.clear[k] < 1.4 ? 0.3 : 0);
         pairs.push(sc, i, cx, cz, c);
       }
     }
@@ -282,8 +289,60 @@ export class Squad {
     if (d > 0.5) for (let k = 0.5; k < Math.min(d, 40); k += 0.5) { const px = x + (c.x - x) / d * k, pz = z + (c.z - z) / d * k; if (nav.passableI(nav.idx(px, pz), 0.4)) return [px, pz]; }
     return nav.nearestFreeI(x, z, 0.4, 8);
   }
+  // v9: a human's order comes first (player squads; versus: both sides). Every man busy with a casualty lets go at once - a
+  // treatment within 1.5 s of done is finished, a dragged / half-reached man is left where he lies (nobody goes back for him for
+  // 8 s) - and nobody is sent for a casualty while he walks the new order (think: helpers). Before v9 the draggers / treaters
+  // were left out of the order (orderMove / garrison / trench: `!s.dragging`) and the next think tick could take a freshly
+  // ordered man for a casualty: men had to be told twice, or drifted off with the wounded and stayed behind.
+  humanCmd() { return this.side === 'player' || !!this.game.opts?.net; }
+  takeCommand() {
+    if (!this.humanCmd()) return;
+    this.cmdT = this.game.time;
+    for (const s of this.soldiers) { if (s.dragging) this.releaseCare(s, true); s.goProneT = 0; }
+  }
+  releaseCare(s, ordered = false) {
+    const w = s.dragging; s.dragging = null;
+    if (w) {
+      if (ordered && s.dragPhase === 'treat' && (s.treatT ?? 9) <= 1.5 && w.state === 'critical') w.state = 'stable';
+      if (w.dragger === s) w.dragger = null;
+      if (w.dragAssist === s) w.dragAssist = null;
+      if (ordered && w.state === 'critical') w.noReachT = Math.max(w.noReachT ?? 0, this.game.time + 8);
+      w.vel?.set(0, 0, 0);
+    }
+    if (s.dragPhase === 'drag' || s.dragPhase === 'reach' || s.dragPhase === 'assist') { s.path = null; s.goal = null; s.pathReq = null; }
+    s.dragPhase = null; s.reachT = 0; s.treatT = 0; s.dragTarget = null;
+  }
+  // v9: stale-state sweep (every think tick): flags left pointing at men / places that no longer apply - they made live men
+  // ignore orders or stop following the squad. Counts in this.fixN (debug).
+  validateStates() {
+    const g = this.game, ob = o => (this.fixN = (this.fixN || 0) + 1, o);
+    const crit = w => w && w.state === 'critical';
+    for (const s of this.soldiers) {
+      const w = s.dragging;
+      if (w && (!s.effective || !crit(w) || w.onBed || (w.medevacClaim && w.medevacClaim !== s) || w.squad !== this)) ob(this.releaseCare(s));
+      if (s.dragger && s.dragger !== s.medevacClaim && (!s.dragger.alive || s.dragger.dragging !== s)) ob(s.dragger = null);
+      if (s.dragAssist && (!s.dragAssist.alive || s.dragAssist.dragging !== s)) ob(s.dragAssist = null);
+      const mc = s.medevacClaim; if (mc && (!mc.alive || !mc.squad?.medevac?.medics?.some(m => m.s === mc && m.cas === s))) { ob(s.medevacClaim = null); if (s.dragger === mc) s.dragger = null; }
+      if (s.inCab && !this.medevac) ob(s.inCab = false);
+      if (!s.effective) { if (s.waitTeam) s.waitTeam = false; continue; }
+      if (s.slotRef && (this.building !== s.slotRef.panel?.b || this.order?.type !== 'garrison')) { ob(0); if (s.slotRef.occupant === s) s.slotRef.occupant = null; s.slotRef = null; }
+      if (s.inBuilding && !this.building && !s.cqb && !s.houseWalk) { ob(0); const b = s.bld, e = b?.entrances?.length ? b.entrances.reduce((a, q) => (q.distanceToSquared(s.pos) < a.distanceToSquared(s.pos) ? q : a)) : null; if (e) s.pos.set(e.x, 0, e.z); s.inside = null; }
+      if (s.waitTeam && (!this.order || this.order.type !== 'move')) ob(s.waitTeam = false);
+      // a live man stood idle far from the rest of his squad (left behind after a drag / treatment, a dropped goal): he rejoins
+      const busy = s.aboard || s.inBuilding || s.cqb || s.houseWalk || s.cellar || s.cellarMove || s.dmWait != null || s.jumpT > 0 || s.hatchT > 0 || s.hatchWait != null || s.dragging || s.trenchSys || this.building || this.trench || this.mounted || this.support;
+      if (busy || s.goal || s.pathReq || (s.path && s.pathI < s.path.length)) { s.strayT = 0; continue; }
+      let n = 0, cx = 0, cz = 0; for (const o of this.effective) if (o !== s && !o.aboard) { n++; cx += o.goal ? o.goal[0] : o.pos.x; cz += o.goal ? o.goal[1] : o.pos.z; }
+      if (!n) continue; cx /= n; cz /= n;
+      if (Math.hypot(s.pos.x - cx, s.pos.z - cz) < 35) { s.strayT = 0; continue; }
+      if ((s.strayT = (s.strayT || 0) + 0.5) < 3) continue;
+      s.strayT = 0; ob(0); this.rejoinN = (this.rejoinN || 0) + 1;
+      const [gx, gz] = g.nav.nearestFreeI(cx + (Math.random() - 0.5) * 6, cz + (Math.random() - 0.5) * 6, 0.45, 8);
+      s.goal = [gx, gz]; s.goalHeading = this.facing; g.requestPath(s, s.pos.x, s.pos.z, gx, gz, 0.45, false, this.pathOpts());
+    }
+  }
   orderMove(x, z, facing = null, width = 18, run = false, queued = false, bound = false) {
-    if (this.routing) return;
+    if (this.routing) { if (this.side === 'player') this.game.hud?.alert(`${this.name} is routing — not taking orders until it rallies`, 'bad'); return; }
+    this.takeCommand();
     const c = this.center();
     if (facing == null) facing = Math.atan2(x - c.x, z - c.z);
     this.leaveBuilding();
@@ -318,6 +377,7 @@ export class Squad {
     // building held by the enemy -> storm it (stack up at an entrance, grenades, room clearing)
     if (b.slots.some(sl => sl.occupant && sl.occupant.squad.side !== this.side && sl.occupant.effective)) return this.orderStorm(b);
     if (this.building === b && this.order?.type === 'garrison' && this.effective.every(s => s.slotRef || s.dragging)) return;   // already in / on the way in (no walking out and back in)
+    this.takeCommand();
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const free = b.slots.filter(sl => !sl.occupant && !sl.panel.gone);
@@ -335,6 +395,7 @@ export class Squad {
     });
   }
   orderStorm(b) {
+    this.takeCommand();
     if (this.mounted) this.dismount();
     this.leaveBuilding();
     const c = this.center();
@@ -527,6 +588,7 @@ export class Squad {
       // casualties: only those lying at the hull are loaded; one further off stays for a mate's drag or the medevac
       // (mounting used to lift every wounded man on the map into the carrier at once)
       if (s.state === 'critical' || s.state === 'stable') { if (s.pos.distanceTo(v.pos) < v.def.radius + 3) this.evacuate(s); continue; }
+      if (s.dragging) this.releaseCare(s);   // (v9: no drag flag carried aboard - he resumed the drag on dismount)
       if (room > 0) { room--; s.inside = 'btr'; }
       else if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
       else { s.inside = 'btr'; }
@@ -539,6 +601,7 @@ export class Squad {
     if (this.routing) return;
     // enemy dug into a trench: clear it (work down it from one end, grenades round the bends and into the dugouts)
     if (target.type === 'squad') { const T = target.trench || target.order?.trench || target.soldiers.find(s => s.trenchSys)?.trenchSys; if (T && trenchMen(this.game, T, target.side).length) return this.orderClearTrench(T); }
+    this.takeCommand();
     this.order = { type: 'attack', target };
     const tc = target.center ? target.center() : target.pos;
     const c = this.center(); const d = c.distanceTo(tc);
@@ -723,6 +786,7 @@ export class Squad {
     }
   }
   think() {
+    this.validateStates();
     this.idleGoalWatch();
     // fire teams: release the covering half once the moving half has arrived
     const waiting = this.soldiers.filter(s => s.waitTeam && s.effective);
@@ -763,7 +827,9 @@ export class Squad {
         continue;
       }
       if (onIt.length >= 2 || (onIt.length && onIt[0].dragPhase === 'treat') || (w.dragger && !onIt.length)) continue;
-      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && this.safeToHelp(s) && (!onIt.length || s.pos.distanceTo(w.pos) < 20));   // (not the men clearing a building)
+      // (v9, human squads: not a man walking the player's order - nor for 4 s after it - he goes where he was sent)
+      const fresh = this.humanCmd() && this.game.time - (this.cmdT ?? -99) < 4, onOrder = s => this.humanCmd() && (fresh || s.pathReq || s.shareTok || s.waitTeam || (s.path && s.pathI < s.path.length));
+      const helpers = this.effective.filter(s => !s.dragging && !s.inside && !s.cqb && !(this.order?.cqb?.file?.includes(s)) && !onOrder(s) && this.safeToHelp(s) && (!onIt.length || s.pos.distanceTo(w.pos) < 20));   // (not the men clearing a building)
       if (!helpers.length) { if (onIt.length) continue; break; }
       if (this.casualtyExposed(w)) continue;
       helpers.sort((a, b) => (b.role.medic ? 20 : 0) - (a.role.medic ? 20 : 0) + a.pos.distanceTo(w.pos) - b.pos.distanceTo(w.pos));
@@ -816,14 +882,19 @@ export class Squad {
       const tp = s.target.pos; if (nav.coverFrom(s.pos.x, s.pos.z, tp.x, tp.z) >= 0.55) continue;
       s.coverT = now + 7 + Math.random() * 4;
       const ax = s.goal ? s.goal[0] : s.pos.x, az = s.goal ? s.goal[1] : s.pos.z, W = this.wallAt(ax, az);
+      // v9: within 5 m of his slot and 12 m of the ordered spot, not further toward his target than he is (it was 9 m round the
+      // slot in any direction: up to ~20 m from where he was sent, sometimes forward into the fire)
+      const O = this.order?.type === 'move' ? this.order : null, tl = Math.hypot(tp.x - s.pos.x, tp.z - s.pos.z) || 1;
       let best = null, bs = 0.5;
-      for (let r = 1.5; r <= 9; r += 1.5) for (let a = 0; a < 12; a++) {
+      for (let r = 1; r <= 5; r += 1) for (let a = 0; a < 12; a++) {
         const x = ax + Math.cos(a / 12 * 6.283) * r, z = az + Math.sin(a / 12 * 6.283) * r, i = nav.idx(x, z);
         if (!nav.passable(i, 0.45)) continue;
         // only on his side of the wall he was sent to: never round the corner / through the building to its far side
         if (!nav.lineFree(ax, az, x, z, 0.4) || !nav.lineFree(s.pos.x, s.pos.z, x, z, 0.4) || (W && !W.on(x, z))) continue;
         if (this.soldiers.some(o => o !== s && o.alive && Math.hypot(o.pos.x - x, o.pos.z - z) < 1.3)) continue;
-        const sc = nav.coverFrom(x, z, tp.x, tp.z) - Math.hypot(x - s.pos.x, z - s.pos.z) * 0.03;
+        if (O && Math.hypot(x - O.x, z - O.z) > 12) continue;
+        const adv = ((x - s.pos.x) * (tp.x - s.pos.x) + (z - s.pos.z) * (tp.z - s.pos.z)) / tl; if (adv > 1.5) continue;
+        const sc = nav.coverFrom(x, z, tp.x, tp.z) - Math.hypot(x - s.pos.x, z - s.pos.z) * 0.06 - Math.max(0, adv) * 0.1;
         if (sc > bs) { bs = sc; best = [x, z]; }
       }
       if (best) { s.goal = best; this.game.requestPath(s, s.pos.x, s.pos.z, best[0], best[1], 0.45); }
@@ -1141,7 +1212,7 @@ export class Squad {
           if (!dg || dd(dg) > 30 || dd(dg) < 2.5) { s.dragPhase = 'treat'; s.path = null; s.goal = null; s.treatT = (7 + Math.random() * 4) * (1 - Math.min(0.6, g.mods?.[this.side]?.medTreat || 0)); return; }
           dest = [dg.door[0], dg.door[1]]; s.dragTarget = 'cover';
         } else if (v) { const d = v.doorPos(s.idx); dest = [d.x, d.z]; s.dragTarget = 'carrier'; }
-        else { const back = this.side === 'player' ? 1 : -1; dest = this.findCover(s.pos.x, s.pos.z + back * 14, s.pos); s.dragTarget = 'cover'; }
+        else { const t = this.threatPoint(), dx = t ? s.pos.x - t[0] : 0, dz = t ? s.pos.z - t[1] : (this.side === 'player' ? 1 : -1), L = Math.hypot(dx, dz) || 1; dest = this.findCover(s.pos.x + dx / L * 12, s.pos.z + dz / L * 12, s.pos, t); s.dragTarget = 'cover'; }   // (v9: away from the known enemy - it was always +-z)
         s.goal = dest; g.requestPath(s, s.pos.x, s.pos.z, dest[0], dest[1], 0.45);
       } else if (!s.path) { s.goal = [w.pos.x, w.pos.z]; g.requestPath(s, s.pos.x, s.pos.z, w.pos.x, w.pos.z, 0.45); }
     } else if (s.dragPhase === 'drag') {
@@ -1166,13 +1237,13 @@ export class Squad {
       if (s.treatT <= 0) { w.state = 'stable'; w.dragger = null; s.dragging = null; s.dragPhase = null; }
     }
   }
-  findCover(x, z, from) {
+  findCover(x, z, from, thr = null) {
     const nav = this.game.nav; let best = [x, z], bs = -1e9;
     const enemyZ = this.side === 'player' ? -200 : 200;
-    for (let r = 0; r <= 10; r += 2) for (let a = 0; a < 12; a++) {
+    for (let r = 0; r <= 8; r += 2) for (let a = 0; a < 12; a++) {
       const cx = x + Math.cos(a / 12 * 6.28) * r, cz = z + Math.sin(a / 12 * 6.28) * r, i = nav.idx(cx, cz);
       if (!nav.passable(i, 0.4)) continue;
-      const sc = nav.coverFrom(cx, cz, cx, enemyZ) * 10 - r * 0.3 - Math.hypot(cx - from.x, cz - from.z) * 0.1;
+      const sc = (thr ? nav.coverFrom(cx, cz, thr[0], thr[1]) : nav.coverFrom(cx, cz, cx, enemyZ)) * 10 - r * 0.3 - Math.hypot(cx - from.x, cz - from.z) * 0.1;
       if (sc > bs) { bs = sc; best = [cx, cz]; }
     }
     return best;

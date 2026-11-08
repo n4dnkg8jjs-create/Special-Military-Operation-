@@ -163,7 +163,7 @@ function flexElbow(r, ang) {
 }
 
 // analytic two-bone IK (shoulder a, elbow b, wrist c) to world target t, then the hand's world rotation set to hq
-function twoBone(a, b, c, t, hq) {
+export function twoBone(a, b, c, t, hq) {   // (v9: also the medevac driver's hands on the wheel, medevac.js)
   a.getWorldPosition(_a); b.getWorldPosition(_b); c.getWorldPosition(_c);
   const lab = _a.distanceTo(_b), lcb = _b.distanceTo(_c), lat = THREE.MathUtils.clamp(_a.distanceTo(t), 0.01, lab + lcb - 0.001);
   const ang = (x, y) => Math.acos(THREE.MathUtils.clamp(x.dot(y), -1, 1));
