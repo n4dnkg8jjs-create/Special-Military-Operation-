@@ -90,6 +90,8 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
             p['W'] = W
         elif grp == 'armor_groin':
             p['W'] = groin_weights(rig_sk, p['pos'], p.get('yr'))
+        elif grp == 'vest' and p.get('strap'):
+            p['W'] = strap_weights(rig_sk, p['pos'], ref_pos, ref_W)
         elif grp == 'vest' or grp.startswith('crew_vest'):
             p['W'] = vest_weights(rig_sk, p['pos'], ref_pos, ref_W)
         elif grp.startswith('backpack') or grp == 'pouches_back':
@@ -113,9 +115,59 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
     if vest:
         VP = np.concatenate([p['pos'] for p in vest]); VW = np.concatenate([p['W'] for p in vest])
         tree = cKDTree(VP)
+        # models_v12: the items lying on the carrier's back (PK.back_items) take, per vertex, the weights of the carrier back
+        # directly under them ((x, y) neighbourhood of the back-side vest vertices, 3 cm gaussian): their contact face moves
+        # exactly with the carrier in every pose (the old rigid average let the top / bottom edge lift off or sink in when the
+        # spine bent).  Anything else of these groups behind the trunk (side dump pouch) stays rigid as before.
+        bk = VP[:, 2] < -0.06
+        tree_b = cKDTree(VP[bk][:, :2]); VWb = VW[bk]
         for grp in ('backpack', 'backpack_assault', 'pouches_back'):
+            on = PK.back_items(parts, grp)
+            if on:
+                # models_v13b: per-vertex carrier weights only AT the contact face; 1..7 cm behind it the item blends to one rigid
+                # weight set (the carrier under its contact face): the 30 cm deep ruck sheared / warped up to 5 cm with the
+                # per-vertex blend (side pockets, shovel, compression straps); small attached items are rigid
+                allo = np.concatenate([p['pos'] for p in on])
+                zf = allo[:, 2].max()
+                frn = allo[allo[:, 2] > np.percentile(allo[:, 2], 85)]
+                _, nn0 = tree.query(frn, k=6)
+                w_rig = VW[nn0.reshape(-1)].mean(0); w_rig = w_rig / max(w_rig.sum(), 1e-9)
+                big = max(on, key=lambda q: len(q['pos']))
+            def pack_w(P):
+                d, nn = tree_b.query(P[:, :2], k=16)
+                g = np.exp(-(d / 0.03) ** 2) + 1e-6
+                Wp = np.einsum('nk,nkb->nb', g, VWb[nn]) / g.sum(1, keepdims=True)
+                Wp = Wp / Wp.sum(1, keepdims=True)
+                sb = _sstep(0.01, 0.07, zf - P[:, 2])[:, None]
+                return Wp * (1 - sb) + w_rig[None] * sb
+            for p in on:
+                P = p['pos']
+                if P[:, 1].max() < 1.12:
+                    # hip belt / waist pad wrapping round the sides (+ its buckles / webbing, the low dump pouch): per vertex with
+                    # the carrier (cummerbund) nearest in 3D
+                    _, nn = tree.query(P, k=6)
+                    Wp = VW[nn].mean(1); Wp = Wp / Wp.sum(1, keepdims=True)
+                else:
+                    Wp = pack_w(P)
+                    if p is not big and np.linalg.norm(np.ptp(P, 0)) < 0.32:
+                        wm = Wp.mean(0); Wp = np.repeat((wm / wm.sum())[None], len(Wp), 0)
+                p['W'] = Wp.astype(np.float32)
+            if on:
+                for p in parts:
+                    if p.get('group') != grp or any(p is q for q in on):
+                        continue
+                    P = p['pos']
+                    if P[:, 2].max() > 0 and np.linalg.norm(np.ptp(P, 0)) < 0.15:
+                        # small hard item on a shoulder strap in front (tourniquet / buckle): rigid
+                        wm = np.asarray(p['W']).mean(0); p['W'] = np.repeat((wm / wm.sum())[None], len(P), 0).astype(np.float32)
+                        continue
+                    # shoulder straps / tube behind the trunk ride with the pack where they enter it
+                    bz = _sstep(-0.07, -0.12, P[:, 2])[:, None]
+                    if (bz > 0).any() and p.get('W') is not None:
+                        Wn = np.asarray(p['W']) * (1 - bz) + pack_w(P) * bz
+                        p['W'] = (Wn / Wn.sum(1, keepdims=True)).astype(np.float32)
             gp_ = [p for p in parts if p.get('group') == grp]
-            body = [p for p in gp_ if p['pos'][:, 2].mean() < -0.1]
+            body = [p for p in gp_ if p['pos'][:, 2].mean() < -0.1 and not any(p is q for q in on)]
             if not body:
                 continue
             allp = np.concatenate([p['pos'] for p in body])
@@ -148,7 +200,72 @@ def gear_weights(rig_sk, ref_pos, ref_W, parts, rigid_groups=()):
                 _, nn = tree.query(p['pos'].mean(0)[None], k=8)
                 w = VW[nn.reshape(-1)].mean(0); w /= w.sum()
                 p['W'] = np.repeat(w[None], len(p['pos']), 0).astype(np.float32)
+        rigid_kit_weights(parts, VP, VW, tree, idx)
     return parts
+
+
+def rigid_kit_weights(parts, VP, VW, tree, idx):
+    """models_v13: rigid kit is skinned rigidly with the plate carrier where it is mounted (automated pose check, previews/
+    models_v13/PROGRESS.md: mags slid 1-3 cm through their pouches, pouches through each other / the MOLLE, the radio antenna out
+    of the radio, side plates and pouches sheared):
+      - pouch assemblies (pouches.assembly 'asm': pouch + mags / flap / buckles / contents) on the carrier: ONE weight set = the
+        carrier's weights round the assembly centre (the back-carrier items that ride per vertex on the carrier back keep theirs)
+      - comms (radio_*): every non-cable piece that touches another (radio pouch + radio + knobs + antenna + strap; PTT body +
+        clip) is one rigid cluster, same rule; cables keep their per-vertex blend
+      - assault side / collar armour pieces: rigid per piece
+      - groin flap: its top hangs from the carrier (carrier weights instead of the pelvis), the lower edge still blends to the thighs"""
+    def carrier_w(pts, k=12):
+        _, nn = tree.query(np.atleast_2d(pts), k=k)
+        w = VW[nn.reshape(-1)].mean(0)
+        return (w / max(w.sum(), 1e-9)).astype(np.float32)
+    def rigid(ps):
+        # the carrier under the whole footprint of the unit (not only at its centre)
+        allp = np.concatenate([q['pos'] for q in ps])
+        allp = allp[np.linspace(0, len(allp) - 1, min(len(allp), 400)).astype(int)]
+        w = carrier_w(allp, k=4)
+        for q in ps:
+            q['W'] = np.repeat(w[None], len(q['pos']), 0)
+    units = []          # rigid units (lists of parts); models_v13b: units that touch are merged (same carrier sector) -> ONE weight
+    back_on = [q for g_ in PK.BACK_GROUPS for q in PK.back_items(parts, g_)]
+    asm = {}
+    for p in parts:
+        grp = p.get('group', '')
+        if 'asm' in p and grp.startswith('pouches') and not any(p is q for q in back_on):
+            asm.setdefault((grp, p['asm']), []).append(p)
+    units += list(asm.values())
+    # comms clusters (bbox contact within 6 mm)
+    for grp in sorted({p.get('group', '') for p in parts if p.get('group', '').startswith('radio_')}):
+        ps = [p for p in parts if p.get('group') == grp and p.get('cable_head') is None and p['mat'] != 'hs_cable']
+        if ps:
+            units += _touch_clusters([[q] for q in ps], 0.006)
+    for p in parts:
+        if p.get('group', '') == 'armor_assault' and np.linalg.norm(np.ptp(p['pos'], 0)) < 0.40:
+            units.append([p])
+    # models_v13b: stacked / adjacent rigid items took the carrier weights at their OWN centres -> in a bent pose they rotated
+    # differently and slid into each other (radio pouch into the mag pouch under it: 20 mm, assault pouches into the shingle,
+    # side pouches into each other).  Units touching each other on the same side of the carrier now share one weight set.
+    def sector(ps):
+        c = np.concatenate([q['pos'] for q in ps]).mean(0)
+        a = np.degrees(np.arctan2(c[0], c[2]))
+        return 'B' if abs(a) > 125 else 'F'      # front + both sides (the side armour / cummerbund pouches touch the shingle)
+    by_sec = {}
+    for u in units:
+        by_sec.setdefault(sector(u), []).append(u)
+    nclu = []
+    for sec, us in sorted(by_sec.items()):
+        for c in _touch_clusters(us, 0.006):
+            rigid(c)
+            nclu.append('%s:%d' % (sec, len(c)))
+    print('rigid kit clusters (sector:parts)', ' '.join(nclu))
+    for p in parts:
+        grp = p.get('group', '')
+        if grp == 'armor_groin' and p.get('W') is not None:
+            W = np.asarray(p['W'], np.float32).copy()
+            t = 1 - W[:, idx['Hips']]
+            top = p['pos'][p['pos'][:, 1] > p['pos'][:, 1].max() - 0.02].mean(0)
+            W[:, idx['Hips']] = 0
+            W += (1 - t)[:, None] * carrier_w(top)[None]
+            p['W'] = W / W.sum(1, keepdims=True)
 
 
 TRUNK_BONES = ('Hips', 'LowerBack', 'Spine', 'Spine1')
@@ -167,6 +284,36 @@ def vest_weights(sk, pos, ref_pos, ref_W):
     Wt = AS.nearest_weights(pos, ref_pos, ref_W, k=10, bones_allowed=TRUNK_BONES, bone_idx=idx)
     Ws = AS.nearest_weights(pos, ref_pos, ref_W, k=10, bones_allowed=TRUNK_BONES + ('LeftShoulder', 'RightShoulder'), bone_idx=idx)
     f = 0.5 * _sstep(1.385, 1.445, pos[:, 1]) * _sstep(0.035, 0.075, np.abs(pos[:, 0]))
+    return (Wt * (1 - f[:, None]) + Ws * f[:, None]).astype(np.float32)
+
+
+def _touch_clusters(units, tol):
+    """merge lists of parts whose bounding boxes touch (within tol) -> list of merged lists"""
+    bb = [(np.concatenate([q['pos'] for q in u]).min(0) - tol, np.concatenate([q['pos'] for q in u]).max(0) + tol) for u in units]
+    lab = list(range(len(units)))
+    def find(i):
+        while lab[i] != i:
+            lab[i] = lab[lab[i]]; i = lab[i]
+        return i
+    for i in range(len(units)):
+        for j in range(i + 1, len(units)):
+            if (bb[i][0] <= bb[j][1]).all() and (bb[j][0] <= bb[i][1]).all():
+                lab[find(i)] = find(j)
+    cl = {}
+    for i, u in enumerate(units):
+        cl.setdefault(find(i), []).extend(u)
+    return list(cl.values())
+
+
+def strap_weights(sk, pos, ref_pos, ref_W):
+    """models_v13: plate-carrier shoulder strap: over the top of the shoulder it rides with the shell under it (spine chain +
+    clavicles + neck, as the ruck straps do) so it stays seated when the shoulders shrug / the arms come up (v12: trunk + half the
+    clavicle -> lifted off by up to 2.7 cm or sank 1.4 cm in); its ends blend to the carrier's own weights where they run into
+    the panels"""
+    idx = sk.idx
+    Wt = vest_weights(sk, pos, ref_pos, ref_W)
+    Ws = AS.nearest_weights(pos, ref_pos, ref_W, k=10, bones_allowed=SPINE_BONES, bone_idx=idx)
+    f = _sstep(1.425, 1.475, pos[:, 1]) * _sstep(0.035, 0.075, np.abs(pos[:, 0]))
     return (Wt * (1 - f[:, None]) + Ws * f[:, None]).astype(np.float32)
 
 
@@ -304,24 +451,36 @@ def thicken_uniform(R, log=print):
         return m / np.maximum(c, 1)
     crease = UT.crease
     g = lambda x, s: np.exp(-(x / s) ** 2)
-    tor = vmask(['torso']); col = vmask(['collar']); cuf = vmask(['cuff'])
+    col = vmask(['collar']); cuf = vmask(['cuff'])
+    # models_v12: the garment regions come from garment.py (smooth analytic armholes / hem / centre seam) instead of the jagged UV
+    # panel labels (their zigzag borders switched the offsets -> zigzag ridges on the shell), and the jacket is worn OUT over the
+    # trousers: near the hem it rides ~5 mm over the trouser shell (the old field had the trousers 14-21 mm vs the jacket 8.5 mm,
+    # so the trouser shell stood proud of the jacket: it read as a one-piece jumpsuit); belt over the jacket at the waist.
+    import garment as GM
+    Gm = GM.Garment(J, PA)
+    GF, GW = Gm.memberships(PA)
     nz = TX.noise3(PA, 0.11, 61, 2)                   # low-frequency irregularity (+-1)
     d = np.zeros(nv)
-    # ---- trunk
-    hipy = J('Hips')[1]; hem = hipy - 0.065; neck = J('Neck')
-    dt_ = 0.0085 + 0.0065 * g(PA[:, 1] - (hem + 0.075), 0.05)          # jacket bagging above the belt
-    dt_ += 0.0030 * g(PA[:, 1] - 1.22, 0.10)                            # chest / back (layers)
-    # armpits: the trunk under the arms stays close (sleeves fill the space)
+    # ---- trunk (jacket body)
+    neck = J('Neck')
+    y = PA[:, 1]
+    b0, b1 = GM.BELT
+    if GM.BELT_ON:
+        dt_ = 0.0085 + 0.0040 * g(y - (b1 + 0.030), 0.028) + 0.0030 * g(y - (b0 - 0.028), 0.025)   # jacket bags above / below the belt
+        dt_ += 0.0032 * GM.sstep(b0 - 0.006, b0 + 0.004, y) * (1 - GM.sstep(b1 - 0.004, b1 + 0.006, y))   # the belt over the jacket
+    else:
+        # models_v13: no belt band over the jacket (worn out over the trousers): the jacket only bags a little at the waist
+        dt_ = 0.0085 + 0.0030 * g(y - 0.5 * (b0 + b1), 0.045)
+    dt_ += 0.0030 * g(y - 1.22, 0.10)                                   # chest / back (layers)
     for side, sx in (('Left', 1), ('Right', -1)):
         ap = J(side + 'Arm') + np.array([-sx * 0.04, -0.08, 0.0])
         dt_ *= 1 - 0.55 * g(np.linalg.norm(PA - ap, axis=1), 0.07)
-    # rolled hood / fleece collar at the back of the neck
     hood = g(np.linalg.norm((PA - (neck + np.array([0, -0.035, -0.075]))) * [0.75, 1.3, 1.0], axis=1), 0.065)
-    d += tor * (dt_ + 0.012 * hood) + col * (0.0125 + 0.006 * hood)
+    dt_ += 0.012 * hood
     # ---- sleeves
+    dsl = {}
     for side, sx in (('Left', 1), ('Right', -1)):
         sh, el, wr = J(side + 'Arm'), J(side + 'ForeArm'), J(side + 'Hand')
-        m = vmask(['sleeve_' + side[0]])
         ref = np.array([sx, 0.0, 0])
         s1, th1, _ = UT.limb_coords(PA, sh, el, ref)
         s2, th2, _ = UT.limb_coords(PA, el, wr, ref)
@@ -332,19 +491,18 @@ def thicken_uniform(R, log=print):
         ds *= 1 - 0.45 * g(s1, 0.07) * (np.cos(th) < 0)                                   # inner side at the armpit
         de = s - (Lu + Lf)                                                                # 0 at the wrist
         bunch = np.exp(-((de + 0.065) / 0.05) ** 2)                                     # gathered over the last ~12 cm
-        ds += bunch * (0.0045 + 0.0030 * crease(s / 0.042 + 0.35 * np.sin(th * 2 + sx), 0.8))
-        ds += 0.0016 * crease(th * 4 / (2 * np.pi) + s * 1.3 + 0.4 * nz, 0.9) * (1 - bunch)   # sleeve drape
-        # elbow: creases on the inside, cloth bags at the back
+        ds += bunch * (0.0040 + 0.0022 * crease(s / 0.042 + 0.35 * np.sin(th * 2 + sx), 0.8))
+        # elbow: a few soft creases on the inside (crook), the cloth bags a little at the back
         dk = s - Lu
-        ds += 0.0020 * crease(dk / 0.03 + 0.4 * np.sin(th * 1.5)) * g(dk, 0.06)
-        # sleeve pocket on the upper arm (filled)
+        crook = 0.5 + 0.5 * np.cos(th - np.pi / 2 * sx)
+        ds += 0.0018 * crease(dk / 0.034 + 0.4 * np.sin(th * 1.5)) * g(dk, 0.055) * crook ** 2 + 0.0015 * g(dk, 0.06) * (1 - crook)
         sd2 = UT.rect_sdf(th1 * 0.055, s1, 0, 0.14, 0.065, 0.075, 0.012)
-        ds += 0.0060 * np.clip(-sd2 / 0.02, 0, 1) ** 0.7 * on_up
-        d += m * ds + vmask(['cuff_' + side[0]]) * 0.0105
+        ds += 0.0060 * np.clip(-sd2 / 0.02, 0, 1) ** 0.7 * on_up                         # sleeve pocket (filled)
+        dsl[side[0]] = ds
     # ---- trousers
+    dlg = {}
     for side, sx in (('Left', 1), ('Right', -1)):
         hp, kn, an = J(side + 'UpLeg'), J(side + 'Leg'), J(side + 'Foot')
-        m = vmask(['leg_' + side[0]])
         ref = np.array([sx, 0.0, 0])
         s1, th1, _ = UT.limb_coords(PA, hp, kn, ref)
         s2, th2, _ = UT.limb_coords(PA, kn, an, ref)
@@ -353,26 +511,36 @@ def thicken_uniform(R, log=print):
         s = np.where(on_up, s1, Lu + s2); th = np.where(on_up, th1, th2)
         fw = np.pi / 2 * sx
         front = 0.5 + 0.5 * np.cos(th - fw)
-        dk = s - Lu                                                                       # 0 at the knee joint, + down
+        dk = s - Lu
         dl = 0.0140 + 0.0065 * g(s - 0.20, 0.13) * (0.55 + 0.45 * np.cos(th))             # full thigh (outer side more)
         dl += 0.0045 * g(s - 0.08, 0.10) * (1 - front)                                     # seat
         dl *= 1 - 0.55 * g(s1, 0.12) * np.clip(-np.cos(th) * 1.5, 0, 1) * on_up            # inner thigh at the crotch
-        # bunching above / below the knee pad (strap lines), stacked creases behind the knee
-        for c0, w0, a0 in ((-0.065, 0.035, 0.0055), (0.115, 0.035, 0.0050)):
-            dl += a0 * g(dk - c0, w0) * (0.75 + 0.25 * crease(th * 3 / (2 * np.pi) + 0.3 * nz, 0.8))
-        dl += 0.0022 * crease(dk / 0.028 + 0.3 * np.sin(th * 2)) * g(dk, 0.07) * (1 - front) ** 1.2
-        # long drape folds (twisting a little), not over the knee
-        dl += 0.0022 * crease(th * 4 / (2 * np.pi) + 0.5 * nz + s * 0.6, 0.9) * (1 - g(dk, 0.07))
-        # blousing over the boot tops: puckered bulge, nothing inside the shaft
-        y = PA[:, 1]
-        dl += (0.0140 + 0.0050 * np.sin(th * 7 + 2 * nz)) * g(y - 0.295, 0.045) * (y > 0.25)
-        # cargo pocket on the outer thigh (filled) + flap
+        for c0, w0, a0 in ((-0.065, 0.035, 0.0035), (0.115, 0.035, 0.0030)):             # soft bagging above / below the knee
+            dl += a0 * g(dk - c0, w0) * (0.8 + 0.2 * crease(th * 3 / (2 * np.pi) + 0.3 * nz, 0.8))
+        dl += 0.0020 * crease(dk / 0.032 + 0.3 * np.sin(th * 2)) * g(dk, 0.065) * (1 - front) ** 2   # behind the knee
+        dl += (0.0140 + 0.0040 * np.sin(th * 7 + 2 * nz)) * g(y - 0.295, 0.045) * (y > 0.25)       # bloused over the boot tops
         thp = th - 0.35 * sx
         sd = UT.rect_sdf(thp * 0.085, s, 0, 0.30, 0.085, 0.10, 0.015)
         dl += on_up * 0.0095 * np.clip(-sd / 0.03, 0, 1) ** 0.7
         fsd = UT.rect_sdf(thp * 0.085, s, 0, 0.215, 0.088, 0.028, 0.01)
         dl += on_up * 0.0030 * np.clip(-fsd / 0.012, 0, 1)
-        d += m * dl
+        dlg[side[0]] = dl
+    wl = GW['left']
+    d_tr = dlg['L'] * wl + dlg['R'] * (1 - wl)
+    hd = GF['hem_d']
+    # jacket over the trousers: from the hem up to ~10 cm above it the jacket rides >= 5.5 mm over the trouser shell, the hem
+    # edge itself rolled a little proud; the trousers dip ~2.5 mm under the hem (the jacket's shadow sits in that step)
+    d_jk = np.maximum(dt_, (d_tr + 0.0055 + 0.0015 * g(hd - 0.006, 0.008)) * (1 - GM.sstep(0.07, 0.13, hd)))
+    d_tr2 = d_tr - 0.0025 * g(np.minimum(hd, 0) + 0.006, 0.012)
+    wj = GW['jacket']
+    d_body = wj * d_jk + (1 - wj) * d_tr2
+    wsL, wsR = GW['sleeve_L'], GW['sleeve_R']
+    d_arm = wsL * dsl['L'] + wsR * dsl['R']
+    ws = np.clip(wsL + wsR, 0, 1)
+    body = 1 - col - cuf                       # collar / cuffs: own ring geometry
+    d += body * ((1 - ws) * d_body + d_arm) + col * (0.0125 + 0.006 * hood)
+    for side in ('Left', 'Right'):
+        d += vmask(['cuff_' + side[0]]) * 0.0105
     d *= 1 + 0.18 * nz                                                                     # irregular, not an even shell
     d *= np.clip((PA[:, 1] - 0.238) / 0.022, 0, 1)                                         # boot tops: no offset inside the shafts
     # smooth the field over the mesh (1-ring averaging), keeps the folds but removes single-vertex spikes
@@ -671,27 +839,18 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
     # gear
     env = envelope(R)
     parts = make_gear(R, fac, env, groups)
-    # seat the packs directly on the plate carrier's back (no air gap)
-    vest = [p for p in parts if p['group'] == 'vest']
-    if vest:
-        VP = np.concatenate([p['pos'] for p in vest])
-        for grp in ('backpack', 'backpack_assault'):
-            body = [p for p in parts if p['group'] == grp and p['pos'][:, 2].mean() < -0.12]
-            if not body:
-                continue
-            allp = np.concatenate([p['pos'] for p in body])
-            y0, y1 = np.percentile(allp[:, 1], 20), np.percentile(allp[:, 1], 80)
-            ym = 0.5 * (y0 + y1)
-            m = (np.abs(VP[:, 0]) < 0.12) & (np.abs(VP[:, 1] - ym) < 0.06) & (VP[:, 2] < 0)
-            back_z = VP[m, 2].min()                     # plate-carrier back at the pack's mid height
-            main = max(body, key=lambda q: np.ptp(q['pos'][:, 1]) * np.ptp(q['pos'][:, 0]))   # the pack box itself
-            mp = main['pos']
-            band = mp[mp[:, 1] < np.percentile(mp[:, 1], 35)]
-            front_z = band[:, 2].max()                  # front face of the pack (lower rounded edge)
-            dz = (back_z - 0.006) - front_z
-            for p in body:
-                p['pos'] = p['pos'] + np.array([0, 0, dz])
-            print(f'{grp}: moved {dz * 100:.1f} cm onto the plate carrier')
+    try:      # models_v13: the strap fit field (kit.strap_field) for the offline kit check (previews/models_v13/PROGRESS.md)
+        json.dump({str(k): {str(sx): {kk: (vv.tolist() if hasattr(vv, 'tolist') else {a: b.tolist() for a, b in vv.items()} if isinstance(vv, dict) else vv)
+                                     for kk, vv in f.items()} for sx, f in F.items()} for k, F in K.STRAP_FIELD.items()},
+                  open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.cache', f'strap_field_{fac}.json'), 'w'))
+    except Exception as e:
+        print('strap field dump failed', e)
+    # seat the packs / back pouches on the plate carrier's back: models_v12 conforming fit (packs.seat_on_carrier; was one rigid
+    # z shift that let the faces stand off the curved carrier by up to ~3 cm)
+    try:
+        PK.seat_on_carrier(parts, log=print)
+    except Exception:
+        import traceback; traceback.print_exc(); print('SEAT_ON_CARRIER FAILED')
     ref_pos = R['variants']['A']['uniform_pos']; ref_W = R['uniform']['W']
     import helmets as HG
     parts = [HG.chart_ab_uv(p) if 'chart_ab' in p else PK.finish_uv(p) if ('charts' in p or 'pack_end' in p) else G.box_uv(p, 2.0) if 'local' in p else p
@@ -740,7 +899,7 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
                 cls = 'ruck' if 'backpack' in pr['parts'] else 'pack' if 'backpack_assault' in pr['parts'] else 'pouch' if 'pouches_back' in pr['parts'] else 'bare'
                 sl = {s_['cls']: s_ for s_ in slings}[cls]
                 pr['sling_node'] = sl['node']; pr['sling_socket'] = sl['socket']
-        m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks, vest_masks=vest_masks)
+        m1, _ = CB.make(W, rec, fac, std + ast, bal_masks=bal_masks, vest_masks=vest_masks, adjust=kit_fit)
         combos = dict(combos=[d for d in m1 if not d['name'].startswith('assault_')], assault_combos=[d for d in m1 if d['name'].startswith('assault_')])
         if crew_on:
             # armoured-vehicle crew presets (crew_combo_N): own atlas, record-only parts (no per-part crew nodes)
@@ -756,6 +915,31 @@ def build(fac, variants='ABC', groups=None, out=None, extra_anim=None, sockets=T
         print('lods %.1fs' % (_t.time() - _t0))
     W.combos = combos
     return W, R, rig, tri_count
+
+
+KIT_NODES = ('vest', 'pouches_front', 'pouches_side', 'pouches_back', 'backpack', 'backpack_assault', 'armor_assault',
+             'pouches_assault', 'armor_arms')
+
+
+def kit_fit(node, pos, variant):
+    """models_v13 combo hook: seat the plate carrier's shoulder straps (+ what rides on them) on the preset's body variant"""
+    if node == 'vest':
+        return pos + K.strap_field(pos, variant, strap_only=True)
+    if node in ('backpack', 'backpack_assault', 'pouches_back') or node.startswith('radio_'):
+        # riders (ruck straps, hydration tube, PTT, cables): field smoothed over 4.5 cm so small hard items (PTT body, buckles) move
+        # as one piece instead of being bent across the field's fade
+        d = K.strap_field(pos, variant, rider=True)
+        mv = np.linalg.norm(d, axis=1) > 1e-5
+        if mv.any():
+            from scipy.spatial import cKDTree
+            idx_ = np.where(np.linalg.norm(pos - pos[mv].mean(0), axis=1) < 0.4)[0]
+            tr = cKDTree(pos[idx_])
+            ds = d.copy()
+            for i, nb in zip(idx_, tr.query_ball_point(pos[idx_], 0.045)):
+                ds[i] = d[idx_[nb]].mean(0)
+            d = ds
+        return pos + d
+    return pos
 
 
 ASSAULT_NODES = ('armor_assault', 'armor_groin', 'armor_arms', 'pouches_assault', 'elbowpads', 'backpack_assault',

@@ -48,6 +48,8 @@ if (q.get('seats')) {
     s.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(0,0.02,0), 0.6, 0xffff00, 0.12, 0.08));
   }
 }
+// models_v13: sil=1 renders a flat white silhouette on black (no ground) for photo-overlay outlines
+if (q.get('sil')) { scene.background = new THREE.Color(0x000000); scene.environment = null; ground.visible = false; const wm = q.get('sil') === '2' ? new THREE.MeshNormalMaterial({flatShading:true}) : new THREE.MeshBasicMaterial({color:0xffffff}); root.traverse(o => { if (o.isMesh) o.material = wm; }); }
 let tris=0; root.traverse(o=>{ let vis=true; for(let p=o;p;p=p.parent) if(!p.visible) vis=false; if(o.isMesh && vis){o.castShadow=o.receiveShadow=true; const g=o.geometry; tris += (g.index?g.index.count:g.attributes.position.count)/3;} });
 if (q.get('anim') && gltf.animations.length){
   const mixer = new THREE.AnimationMixer(root);
@@ -60,12 +62,14 @@ sun.shadow.camera.left=sun.shadow.camera.bottom=-size.length(); sun.shadow.camer
 if (q.get('target')) c.fromArray(q.get('target').split(',').map(Number));   // aim point for close-ups (glTF frame)
 const views = +(q.get('views')||4); const r = size.length()*0.85*(+(q.get('dist')||1));
 const cols = views>1?2:1, rows = Math.ceil(views/cols);
-const cam = new THREE.PerspectiveCamera(35, (W/cols)/(H/rows), 0.01, 2000);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov')||35), (W/cols)/(H/rows), 0.01, 2000);
 renderer.setScissorTest(true); renderer.autoClear=false; renderer.clear();
 const angs=q.get('angs') ? q.get('angs').split(';').map(a=>a.split(',').map(Number)) : [[35,15],[145,20],[260,10],[0,55],[90,5],[200,40]];
 for(let i=0;i<views;i++){
   const [az,el]=angs[i%angs.length]; const a=az*Math.PI/180, e=el*Math.PI/180;
   cam.position.set(c.x+r*Math.cos(e)*Math.sin(a), c.y+r*Math.sin(e), c.z+r*Math.cos(e)*Math.cos(a)); cam.lookAt(c);
+  // models_v12: cam=x,y,z (glTF frame, optional) puts the camera at a fixed point (photo matching), aimed at target / bbox centre
+  if (q.get('cam')) { cam.position.fromArray(q.get('cam').split(',').map(Number)); cam.lookAt(c); }
   const x=(i%cols)*W/cols, y=(rows-1-Math.floor(i/cols))*H/rows;
   renderer.setViewport(x,y,W/cols,H/rows); renderer.setScissor(x,y,W/cols,H/rows); renderer.render(scene,cam);
 }

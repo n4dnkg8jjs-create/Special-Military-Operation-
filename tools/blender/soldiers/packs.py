@@ -317,7 +317,7 @@ def _side_pouch(M, m, kind):
 def vest_tube(env, fac):
     """hydration tube from the carrier on the plate carrier's back (pouches_back) over the left vest shoulder strap to the chest"""
     m = K.RU_MATS if fac == 'ru' else K.UA_MATS
-    sp = K.shoulder_strap(env, 'L', m['fabric'])                 # same call as kit.plate_carrier: its centre line
+    sp = K.shoulder_strap(env, 'L', m['fabric'], percol=True)    # same call as kit.plate_carrier: its centre line
     P, D = _strap_line(sp)
     P = P + D * 0.008 + np.array([0.012, 0, 0])
     P = np.concatenate([P[:1] + (P[0] - P[1]) * 0.8, P])[::-1]
@@ -789,3 +789,150 @@ def finish_uv(p):
     if 'pack_end' in p:
         return mat_end_uv(p)
     return None
+
+
+# ------------------------------------------------------------------------------------------------ models_v12: seat on the carrier
+BACK_GROUPS = ('backpack', 'backpack_assault', 'pouches_back')
+
+
+def back_items(parts, grp):
+    """the parts of a back-kit group that ride on the plate carrier's back (not the shoulder straps / tubes that run to the
+    front, not the dump pouch on the side): behind the trunk, near the spine line"""
+    out = []
+    for p in parts:
+        if p.get('group') != grp:
+            continue
+        c = p['pos'].mean(0)
+        if c[2] < -0.1 and abs(c[0]) < 0.30 and p['pos'][:, 2].max() < -0.02:
+            out.append(p)
+    return out
+
+
+def _refine(p, maxlen=0.06, near=0.012, iters=4):
+    """split long edges near the item's inner face (z within `near` of its max z) so the conforming field is sampled densely
+    there (a box face made of two big triangles would only move at its corners -> the field is linearly interpolated across
+    it and the middle sinks into the carrier).  Red-green refinement: watertight; every per-vertex array is interpolated."""
+    keys = [k for k, v in p.items() if isinstance(v, np.ndarray) and v.ndim >= 1 and len(v) == len(p['pos']) and k != 'tri']
+    for _ in range(iters):
+        P = p['pos']; T = p['tri']
+        zmax = P[:, 2].max()
+        E = np.sort(np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]]), 1)
+        E = np.unique(E, axis=0)
+        L = np.linalg.norm(P[E[:, 0]] - P[E[:, 1]], axis=1)
+        nz = (P[E[:, 0], 2] > zmax - near) & (P[E[:, 1], 2] > zmax - near)
+        sp = E[(L > maxlen) & nz]
+        if not len(sp):
+            break
+        mid = {}
+        n0 = len(P)
+        for k, (a, b) in enumerate(sp):
+            mid[(a, b)] = n0 + k
+        for key in keys:
+            v = p[key]
+            p[key] = np.concatenate([v, 0.5 * (v[sp[:, 0]] + v[sp[:, 1]])]).astype(v.dtype)
+        out = []
+        for t in T:
+            a, b, c = (int(i) for i in t)
+            m = [mid.get((min(a, b), max(a, b))), mid.get((min(b, c), max(b, c))), mid.get((min(c, a), max(c, a)))]
+            k = sum(x is not None for x in m)
+            if k == 0:
+                out.append((a, b, c))
+            elif k == 3:
+                ab, bc, ca = m
+                out += [(a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)]
+            else:
+                # rotate so the split edges come first
+                vs = [a, b, c]
+                for r in range(3):
+                    mm = [mid.get((min(vs[i], vs[(i + 1) % 3]), max(vs[i], vs[(i + 1) % 3]))) for i in range(3)]
+                    if mm[0] is not None and (k == 1 or mm[1] is not None):
+                        break
+                    vs = vs[1:] + vs[:1]
+                a, b, c = vs
+                if k == 1:
+                    out += [(a, mm[0], c), (mm[0], b, c)]
+                else:
+                    out += [(a, mm[0], c), (mm[0], mm[1], c), (mm[0], b, mm[1])]
+        p['tri'] = np.array(out, dtype=T.dtype)
+    if 'nrm' in p and p['nrm'] is not None and 'local' not in p and 'charts' not in p:
+        p['nrm'] = MU.vertex_normals(p['pos'], p['tri'])
+    return p
+
+
+def _poly_terms(x, y, deg=3):
+    return np.stack([x ** i * y ** j for i in range(deg + 1) for j in range(deg + 1 - i)], -1)
+
+
+def seat_on_carrier(parts, log=print, eps=0.0008, step=0.008):
+    """models_v12: the packs / back pouches were placed in a FLAT frame at one point of the curved carrier back, then shifted
+    in z so one point touched -> their faces stood off the carrier by up to ~3 cm at the edges / top (they 'floated').
+    Now: ray-cast the carrier's outer back surface (vest parts minus the drag handle) and the item's inner face (toward the
+    body) on a 8 mm (x, y) grid, fit a smooth cubic field to the gap and move every vertex of the item along z by it (clamped
+    to the sampled footprint, shifted so nothing penetrates): the inner face lies on the carrier everywhere (gap <= ~2 mm),
+    the soft pack follows the carrier's curvature.  Returns {group: (gap p10/median/p90 before, after) in mm}."""
+    from mathutils.bvhtree import BVHTree
+    from mathutils import Vector
+    vest = [p for p in parts if p.get('group') == 'vest' and 'local' not in p and p['pos'][:, 2].mean() < -0.03]
+    if not vest:
+        return {}
+    VP = np.concatenate([p['pos'] for p in vest]); off = np.cumsum([0] + [len(p['pos']) for p in vest])
+    VT = np.concatenate([p['tri'] + o for p, o in zip(vest, off)])
+    vt = BVHTree.FromPolygons([tuple(v) for v in VP], [tuple(map(int, t)) for t in VT], all_triangles=True)
+    rep = {}
+
+    def cast(tree, x, y, z0, dz):
+        h = tree.ray_cast(Vector((x, y, z0)), Vector((0, 0, dz)), 2.0)
+        return None if h[0] is None else h[0][2]
+
+    for grp in BACK_GROUPS:
+        body = back_items(parts, grp)
+        if not body:
+            continue
+        P = np.concatenate([p['pos'] for p in body]); o2 = np.cumsum([0] + [len(p['pos']) for p in body])
+        T = np.concatenate([p['tri'] + o for p, o in zip(body, o2)])
+        pt = BVHTree.FromPolygons([tuple(v) for v in P], [tuple(map(int, t)) for t in T], all_triangles=True)
+        xs = np.arange(P[:, 0].min() + 0.004, P[:, 0].max(), step)
+        ys = np.arange(P[:, 1].min() + 0.004, P[:, 1].max(), step)
+        S = []
+        for y in ys:
+            for x in xs:
+                zb = cast(vt, x, y, -1.0, 1.0)          # carrier outer back surface (first hit from behind)
+                if zb is None:
+                    continue
+                zp = cast(pt, x, y, zb + 0.08, -1.0)    # item's inner face (first hit from the body side)
+                if zp is None or zp > zb + 0.06:
+                    continue
+                S.append((x, y, zb - zp))
+        if len(S) < 12:
+            log(f'seat_on_carrier {grp}: only {len(S)} samples, skipped'); continue
+        S = np.array(S)
+        # only the item's real contact face counts: cells where the inner face is far behind the carrier belong to parts that
+        # hang beside / below the contact area (side pouches, the foam mat): they follow the fitted field, they do not drive it
+        g0 = S[:, 2]
+        keep = g0 < np.percentile(g0, 30) + 0.045
+        Sx, Sy, Sg = S[keep, 0], S[keep, 1], S[keep, 2]
+        cx, cy = Sx.mean(), Sy.mean()
+        A = _poly_terms(Sx - cx, Sy - cy)
+        # asymmetric robust fit: cells where the carrier falls away under the item (its rolled edges, the gaps between the MOLLE
+        # rows, the item's own rounded edges) do not pull the field; then shifted so that at most ~8 % of the cells (thin
+        # proud features: webbing, the vest's shoulder straps) press a few mm into the soft item
+        w = np.ones(len(Sg), bool)
+        for _ in range(5):
+            coef, *_ = np.linalg.lstsq(A[w], Sg[w] - eps, rcond=None)
+            r = (Sg - eps) - A @ coef
+            w = r < 0.005
+        coef[0] += min(0.0, np.percentile(r, 8))
+        bx = (Sx.min(), Sx.max()); by = (Sy.min(), Sy.max())
+        field = lambda X, Y: _poly_terms(np.clip(X, *bx) - cx, np.clip(Y, *by) - cy) @ coef
+        after = Sg - field(Sx, Sy)
+        pc = lambda v: tuple(np.round(np.percentile(v * 1000, [10, 50, 90]), 1).tolist())
+        rep[grp] = (pc(Sg), pc(after))
+        for p in body:
+            c = p['pos'].mean(0)
+            if by[0] < c[1] < by[1] and max(np.ptp(p['pos'][:, 0]), np.ptp(p['pos'][:, 1])) > 0.08:
+                _refine(p)                                  # big faces lying on the carrier (not the mat roll / small fittings)
+            p['pos'] = p['pos'] + np.c_[np.zeros(len(p['pos'])), np.zeros(len(p['pos'])), field(p['pos'][:, 0], p['pos'][:, 1])]
+            if 'local' not in p and 'charts' not in p and p.get('nrm') is not None and len(p['nrm']) == len(p['pos']):
+                p['nrm'] = MU.vertex_normals(p['pos'], p['tri'])
+        log(f'seat_on_carrier {grp}: {len(body)} parts, contact gap mm p10/median/p90 before {rep[grp][0]} -> after {rep[grp][1]}')
+    return rep

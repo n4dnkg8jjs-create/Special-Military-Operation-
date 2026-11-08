@@ -408,7 +408,7 @@ def build(fac, presets_, helm_ctx, skins, lms, env, parts, mats, log=print):
                 # JPC cummerbund, left front (assault: outside the side armour, where the old radio pouch was)
                 Mp = K.side_M(env, 1.57, 1.10, 0.036) if pr['name'].startswith('assault_') else K.side_M(env, 1.15, 1.07, 0.015)
             else:
-                Mp = K.panel_M(vest_frame(vest), 0.075, 1.232 - vest_frame(vest)['yc'])
+                Mp = K.panel_M(vest_frame(vest), 0.075, 1.247 - vest_frame(vest)['yc'])   # v13b: 1.232 sat 15 mm in the mag pouch flap
             w, h, d = rs['w'], rs['h'], rs['d']
             ph = h * 0.62
             pouch = PO.local_part(PO.rbox(w + 0.012, ph, d + 0.012, 0.007, 1), Mp @ PO.T(0, ph / 2, (d + 0.012) / 2), m['fabric'])
@@ -445,7 +445,7 @@ def build(fac, presets_, helm_ctx, skins, lms, env, parts, mats, log=print):
             rd.append(ant)
         if L.get('ptt') and L.get('radio'):
             # PTT on the front of the left shoulder strap
-            sp_ = K.shoulder_strap(env, 'L', m['fabric'])
+            sp_ = K.shoulder_strap(env, 'L', m['fabric'], percol=True)
             Pp, Dp = PK._strap_line(sp_)
             i = int(np.argmin(np.abs(Pp[:, 1] - (1.37 if fac == 'ua' else 1.40)) + (Pp[:, 2] < 0.02) * 9))
             upd = Pp[min(i + 1, len(Pp) - 1)] - Pp[max(i - 1, 0)]; upd /= np.linalg.norm(upd)

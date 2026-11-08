@@ -158,19 +158,19 @@ def assault_pouches(env, fac):
     out = []
     side_M = K.side_M
     if fac == 'ru':
-        for th in (0.80, 1.05):
-            out += PO.grenade_pouch(m, side_M(env, th, 1.075, 0.016), w=0.066, h=0.095)
-        for th in (-0.80, -1.05):
+        # models_v13b: ONE grenade pouch per side between the mag shingle and the side armour (the two at 0.80 / 1.05 rad sat
+        # 25 mm inside the mag pouches and inside each other)
+        for th in (1.08, -1.08):
             out += PO.grenade_pouch(m, side_M(env, th, 1.075, 0.016), w=0.066, h=0.095)
         out += PO.grenade_pouch(m, side_M(env, 1.57, 1.10, 0.038))
         out += PO.ifak(m, side_M(env, -1.57, 1.10, 0.038), w=0.13)
-        out += PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.07, 0.015))
+        out += PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.015, 0.015))     # v13b: under the assault pack (was 37 mm inside it)
     else:
-        for th in (0.78, 1.02, -0.78, -1.02):
+        for th in (1.08, -1.08):        # models_v13b: one per side (see above)
             out += PO.grenade_pouch(m, side_M(env, th, 1.08, 0.016), w=0.066, h=0.095)
         pass   # v10: radio + PTT per preset (comms.py)
         out += PO.ifak(m, side_M(env, -1.57, 1.10, 0.036), w=0.13)
-        out += PO.tourniquet(m, side_M(env, -1.3, 1.08, 0.016))
+        # (models_v13b: side tourniquet dropped - it sat inside the IFAK / side armour; the front tourniquet stays)
     return K.tag(out, 'pouches_assault')
 
 

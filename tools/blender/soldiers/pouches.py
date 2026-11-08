@@ -82,6 +82,25 @@ def local_part(geom, M, mat, kind='fabric'):
 
 
 # ------------------------------------------------------------------ pouch assemblies
+# models_v13: every part an assembly function returns gets the same 'asm' id, so build_soldier.gear_weights can skin the whole
+# assembly (pouch + mags / flap / buckle / radio / antenna...) RIGIDLY with one weight set taken from the plate carrier where it
+# is mounted (was: each part rigid with the BODY's weights at its own centroid -> mags slid through their pouches, pouches
+# through each other and through the carrier's MOLLE when the spine bent: up to 3 cm)
+_ASM = [0]
+
+
+def assembly(fn):
+    def wrapped(*a, **k):
+        out = fn(*a, **k)
+        _ASM[0] += 1
+        for p in out:
+            p.setdefault('asm', _ASM[0])
+        return out
+    wrapped.__name__ = fn.__name__; wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
+@assembly
 def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.087, h=0.155, d=0.068, mag_col='mag'):
     out = []
     hb = h * (0.78 if open_top else 1.0)
@@ -117,6 +136,7 @@ def mag_pouch(mats, M, open_top=False, n_mags=2, w=0.087, h=0.155, d=0.068, mag_
     return out
 
 
+@assembly
 def grenade_pouch(mats, M, w=0.074, h=0.1, d=0.068):
     out = [local_part(rbox(w, h, d, 0.016, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(w + 0.004, 0.008, d + 0.006, 0.003, 2), M @ T(0, h + 0.004, d / 2 + 0.002), mats['fabric']))
@@ -125,6 +145,7 @@ def grenade_pouch(mats, M, w=0.074, h=0.1, d=0.068):
     return out
 
 
+@assembly
 def radio_pouch(mats, M, w=0.072, h=0.13, d=0.042, antenna=0.17):
     out = [local_part(rbox(w, h, d, 0.008, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
     # radio body sticking out the top + knobs + antenna
@@ -137,6 +158,7 @@ def radio_pouch(mats, M, w=0.072, h=0.13, d=0.042, antenna=0.17):
     return out
 
 
+@assembly
 def ifak(mats, M, w=0.165, h=0.115, d=0.082, cross=True):
     out = [local_part(rbox(w, h, d, 0.026, 3), M @ T(0, h / 2, d / 2), mats['fabric'])]
     # zipper line around (thin dark strip) and pull tabs
@@ -148,6 +170,7 @@ def ifak(mats, M, w=0.165, h=0.115, d=0.082, cross=True):
     return out
 
 
+@assembly
 def tourniquet(mats, M):
     """CAT tourniquet folded in a holder: black band with red tip"""
     out = [local_part(rbox(0.045, 0.11, 0.035, 0.008, 2), M @ T(0, 0.055, 0.0175), mats['hardware'], 'hard')]
@@ -156,6 +179,7 @@ def tourniquet(mats, M):
     return out
 
 
+@assembly
 def admin_pouch(mats, M, w=0.22, h=0.12, d=0.036, patch=None):
     out = [local_part(rbox(w, h, d, 0.012, 2), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(w * 0.98, 0.005, d + 0.002, 0.002, 1), M @ T(0, h - 0.01, d / 2), mats['hardware'], 'hard'))
@@ -182,12 +206,14 @@ def drag_handle(mats, M, w=0.11):
     return out
 
 
+@assembly
 def hydration(mats, M, w=0.2, h=0.3, d=0.045):
     out = [local_part(rbox(w, h, d, 0.02, 3, taper_top=0.1), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(w * 0.9, 0.006, d * 0.9, 0.002, 1), M @ T(0, h * 0.85, d / 2 + 0.001), mats['hardware'], 'hard'))
     return out
 
 
+@assembly
 def dump_pouch(mats, M, w=0.16, h=0.08, d=0.06):
     out = [local_part(rbox(w, h, d, 0.025, 3), M @ T(0, h / 2, d / 2), mats['fabric'])]
     out.append(local_part(rbox(0.035, h * 0.8, 0.006, 0.002, 1), M @ T(w * 0.25, h / 2, d + 0.002), mats['webbing'], 'hard'))

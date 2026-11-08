@@ -341,12 +341,13 @@ def _ao_receiver(m):
     return m.startswith('skin_') or m.startswith('balaclava') or m == 'eye'
 
 
-def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None, log=print, head_ao=True):
+def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None, log=print, head_ao=True, adjust=None):
     """presets: list of dict(name=..., parts=[node names], **descr).  Returns manifest list.
     bal_masks / vest_masks: per body variant, True = keep triangle (head under a balaclava / uniform under the plate carrier)"""
     g = W.g
     bal_masks = bal_masks or {}
     vest_masks = vest_masks or {}
+    # models_v13: adjust(node, pos, body_variant) -> pos: per-preset fit of kit to the preset's body (shoulder straps, kit.strap_field)
     used = sorted({n for p in presets for n in p['parts'] if n in rec.nodes})
     # ---------------------------------------------------------------- classify materials
     mats = set()
@@ -557,12 +558,15 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
         bal = [n for n in parts if n.startswith('balaclava_')]
         occ_nodes = tuple(n for n in parts if _is_headgear(n))
         occ_prims = [p for n in occ_nodes for p in rec.nodes[n]] if head_ao else []
+        bvar = pr.get('body', 'body_A')[-1]
         for n in parts:
             for pi_, p in enumerate(rec.nodes[n]):
                 m = rec.mat_name(p['mat'])
                 if m in TILE_MATS:
                     continue
                 pos, idx = p['pos'], p['idx']
+                if adjust is not None:
+                    pos = adjust(n, pos, bvar)
                 col = p['color'] if p.get('color') is not None else np.ones((len(pos), 3))
                 if occ_prims and _ao_receiver(m):
                     # helmet occlusion baked into this preset's vertex colours (helmets differ per preset)
@@ -592,7 +596,16 @@ def make(W, rec, fac, presets, tape_mat='tape', bal_masks=None, vest_masks=None,
             sel = np.isin(gear['nid'], [node_idx[n] for n in parts if n in node_idx])
             T = gear['tri'][sel]
             vs = np.unique(T); remap = -np.ones(len(gear['pos']), int); remap[vs] = np.arange(len(vs))
-            Ps.append(gear['pos'][vs]); Ns.append(gear['nrm'][vs]); Us.append(gear['uv'][vs]); Is.append(remap[T] + o1)
+            Pg = gear['pos'][vs].copy()
+            if adjust is not None:
+                vnode = np.full(len(gear['pos']), -1); vnode[T.reshape(-1)] = np.repeat(gear['nid'][sel], 3)
+                vn_ = vnode[vs]
+                for n in parts:
+                    if n in node_idx:
+                        m_ = vn_ == node_idx[n]
+                        if m_.any():
+                            Pg[m_] = adjust(n, Pg[m_], bvar)
+            Ps.append(Pg); Ns.append(gear['nrm'][vs]); Us.append(gear['uv'][vs]); Is.append(remap[T] + o1)
             Ws.append(gear['W'][vs]); Cs.append(gear['col'][vs]); o1 += len(vs)
         prim = dict(pos=np.concatenate(Ps), nrm=np.concatenate(Ns), uv=np.concatenate(Us), idx=np.concatenate(Is), mat=am,
                     W=np.concatenate(Ws), color=np.clip(np.concatenate(Cs), 0, 1))

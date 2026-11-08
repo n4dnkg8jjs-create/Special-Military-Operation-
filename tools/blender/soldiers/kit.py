@@ -17,22 +17,38 @@ def tag(parts, group):
     return parts
 
 
-def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.46, thick=0.011, gap=0.004, n=17):
-    """padded strap over the shoulder, conforming to the uniform surface via ray casts"""
+# models_v13: per body variant fit of the plate carrier's shoulder straps.  The vest is one mesh for all three MakeHuman bodies
+# and its straps were ray-fitted to the LARGEST shell (max hit over A/B/C) -> they stood 5-15 mm off body A / B and ~2-3 cm off
+# the lean body C.  shoulder_strap(field_key='vest') records, per side, how far each strap row would move inward to touch each
+# variant's shell (1 mm gap); strap_field() turns that into a displacement field that combo.make applies per preset (the preset's
+# body variant) to every kit node (the strap and whatever rides on it: PTT / cables / ruck straps).
+STRAP_FIELD = {}
+STRAP_GAP_FIT = 0.001
+
+
+def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.46, thick=0.011, gap=0.004, n=17, field_key=None,
+                   percol=False):
+    """padded strap over the shoulder, conforming to the uniform surface via ray casts.
+    percol (models_v13, plate-carrier straps): every one of the 3 columns follows the shell under it (the shoulder falls away
+    from the neck -> the strap tilts across its width) instead of all columns at the highest one (outer edge stood 5-15 mm off)"""
     sx = 1 if side == 'L' else -1
     cols = []
     yc = 1.36
     zc = env.zcen(yc)
+    phis = np.linspace(np.radians(-15), np.radians(195), n)
+    cols_v = [[] for _ in env.trees]
     for dx in (-width / 2, 0, width / 2):
         x = sx * (x0 + dx)
         o = np.array([x, yc, zc])
         pts = []
+        pv = [[] for _ in env.trees]
         # sweep from front-down over the top to back-down
-        for phi in np.linspace(np.radians(-15), np.radians(195), n):
+        for phi in phis:
             d = np.array([0, np.sin(phi), np.cos(phi)])
             best = None
-            for t in env.trees:
+            for ti, t in enumerate(env.trees):
                 h = t.ray_cast(Vector(o), Vector(d), 0.5)
+                pv[ti].append(np.array(h[0]) if h[0] is not None else o + d * 0.15)
                 if h[0] is not None and (best is None or h[3] > best[3]):
                     best = h
             if best is None:
@@ -40,6 +56,8 @@ def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.
             else:
                 pts.append(np.array(best[0]))
         cols.append(np.array(pts))
+        for ti in range(len(env.trees)):
+            cols_v[ti].append(np.array(pv[ti]))
     cols = np.array(cols)  # 3 x n x 3
     # take the max radial distance per row across the 3 columns so the strap bridges dips
     rad = np.linalg.norm(cols - np.array([0, yc, zc]) * [0, 1, 1] - [cols[..., 0].mean() * 0, 0, 0], axis=-1)
@@ -47,8 +65,38 @@ def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.
     ctr = np.array([0, yc, zc])
     rel = cols - ctr; rel[..., 0] = 0
     dirs = rel / np.linalg.norm(rel, axis=-1, keepdims=True)
-    r = np.linalg.norm(rel, axis=-1).max(0)
-    r = np.convolve(np.pad(r, 2, mode='edge'), np.ones(5) / 5, mode='valid')
+    def _sm(v):
+        if percol:
+            # models_v13e: 3-tap median first - a single ray grazing the stand collar / neck read 3 cm high on body C and
+            # tented the strap at the top of the shoulder
+            v = np.median(np.stack([np.r_[v[:1], v[:-1]], v, np.r_[v[1:], v[-1:]]]), 0)
+        out_ = np.convolve(np.pad(v, 2, mode='edge'), np.ones(5) / 5, mode='valid')
+        return np.maximum(out_, v - 0.002) if percol else out_      # smoothing a max can undercut a bump
+    if percol:
+        rc = np.array([_sm(v) for v in np.linalg.norm(rel, axis=-1)])          # 3 x n
+        # padded strap: the columns may differ by at most 14 mm (no sharp fold across the width)
+        rc = np.maximum(rc, rc.max(0, keepdims=True) - 0.014)
+        r = rc[1]
+    else:
+        r = np.linalg.norm(rel, axis=-1).max(0)
+        r = _sm(r)
+        rc = np.repeat(r[None], 3, 0)
+    if field_key is not None:
+        # per-variant radius (same max-over-columns + smoothing, one shell only); delta <= 0 = move inward
+        delta = {}
+        for ti, vn in enumerate('ABC'[:len(env.trees)]):
+            cv = np.array(cols_v[ti]) - ctr; cv[..., 0] = 0
+            if percol:
+                rv = np.array([_sm(v) for v in np.linalg.norm(cv, axis=-1)])
+                rv = np.maximum(rv, rv.max(0, keepdims=True) - 0.014)
+            else:
+                rv = np.linalg.norm(cv, axis=-1).max(0)
+                rv = np.convolve(np.pad(rv, 2, mode='edge'), np.ones(5) / 5, mode='valid')
+                # smoothing a max can undercut a bump: never closer than the raw per-row max
+                rv = np.maximum(rv, np.linalg.norm(cv, axis=-1).max(0) - 0.002)
+                rv = np.repeat(rv[None], 3, 0)
+            delta[vn] = np.minimum(rv + STRAP_GAP_FIT - (rc + gap), 0.0)          # 3 x n (per column)
+        STRAP_FIELD.setdefault(field_key, {})[sx] = dict(yc=yc, zc=float(zc), x0=x0, width=width, phis=phis, r=rc + gap, delta=delta)
     # trim to the strap extents (front end at y_front, back end at y_back)
     keep = []
     for k in range(n):
@@ -58,14 +106,17 @@ def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.
             continue
         keep.append(k)
     keep = np.array(keep)
+    if field_key is not None:
+        STRAP_FIELD[field_key][sx]['keep'] = (phis[keep[0]], phis[keep[-1]])
+        STRAP_FIELD[field_key][sx]['verts'] = None      # filled below (strap vertex positions: strap_field(strap_only=True))
     xs = np.array([sx * (x0 - width / 2), sx * x0, sx * (x0 + width / 2)])
     outer, inner = [], []
     for k in keep:
         for j in range(3):
             d = dirs[1, k]
             bulge = 1.0 if j == 1 else 0.55
-            outer.append([xs[j], *(ctr[1:] + d[1:] * (r[k] + gap + thick * bulge))])
-            inner.append([xs[j], *(ctr[1:] + d[1:] * (r[k] + gap))])
+            outer.append([xs[j], *(ctr[1:] + d[1:] * (rc[j, k] + gap + thick * bulge))])
+            inner.append([xs[j], *(ctr[1:] + d[1:] * (rc[j, k] + gap))])
     nk = len(keep)
     pos = np.concatenate([outer, inner])
     T = G.grid_tris(3, nk)
@@ -77,7 +128,66 @@ def shoulder_strap(env, side, mat, x0=0.095, width=0.05, y_front=1.43, y_back=1.
         a, b = ids[k], ids[(k + 1) % len(ids)]
         rim += [[a + 3 * nk, b + 3 * nk, b], [a + 3 * nk, b, a]]
     uv = np.concatenate([[[xs[j] * 2, k * 0.03] for k in range(nk) for j in range(3)]] * 2)
-    return G.orient_closed(G.part(pos, np.concatenate([T, Ti, np.array(rim)]), mat, uv))
+    out_ = G.orient_closed(G.part(pos, np.concatenate([T, Ti, np.array(rim)]), mat, uv))
+    if field_key is not None:
+        STRAP_FIELD[field_key][sx]['verts'] = np.array(out_['pos'])
+    return out_
+
+
+def strap_field(pos, variant, key='vest', rider=False, strap_only=False):
+    """displacement (n x 3) that seats the plate carrier's shoulder straps (and anything riding on them) on body `variant`'s
+    shell: per strap row the inward move recorded by shoulder_strap(field_key=key), interpolated over the sweep angle, full
+    across the strap width (+-1 cm, fading over 1.5 cm more), full from 2 cm under to 6 cm over the strap surface (fading over
+    2 / 3 cm), faded to 0 over the last 14 deg at both strap ends (they run into the panels, which do not move).
+    models_v13b: only the strap itself and what lies ON it moves (from 3 mm under the strap's inner face up; v13a also dented the
+    front panel's top corner by 22 mm and bent the tourniquet tip); 28 deg end fade (no kink where the strap leaves the lean body
+    for the panel top); rider=True (ruck straps / PTT / cables / hydration tube): the edge columns' move continues 3 cm past the
+    strap edges (a wider ruck strap lying over it moves as one)"""
+    out = np.zeros_like(pos)
+    F = STRAP_FIELD.get(key)
+    if not F:
+        return out
+    for sx, f in F.items():
+        if variant not in f['delta']:
+            continue
+        x = pos[:, 0] * sx
+        if rider:
+            dx = np.abs(x - f['x0']) - (f['width'] / 2 + 0.03)
+            wx = np.clip(1 - dx / 0.015, 0, 1)
+        else:
+            dx = np.abs(x - f['x0']) - (f['width'] / 2 + 0.002)
+            wx = np.clip(1 - dx / 0.004, 0, 1)
+        if not (wx > 0).any():
+            continue
+        dy = pos[:, 1] - f['yc']; dz = pos[:, 2] - f['zc']
+        phi = np.arctan2(dy, dz)
+        phi = np.where(phi < -np.pi / 2, phi + 2 * np.pi, phi)
+        rp = np.hypot(dy, dz)
+        # column blend across the strap width (columns at x0 - w/2, x0, x0 + w/2)
+        u = np.clip((x - f['x0']) / (f['width'] / 2), -1, 1)
+        cw = np.stack([np.clip(-u, 0, 1), 1 - np.abs(u), np.clip(u, 0, 1)], 1)
+        rr_ = np.atleast_2d(f['r'])
+        rr_ = np.repeat(rr_, 3, 0) if len(rr_) == 1 else rr_
+        r0 = sum(cw[:, j] * np.interp(phi, f['phis'], rr_[j]) for j in range(3))
+        dr = rp - r0
+        wr = np.clip((dr + 0.003) / 0.003, 0, 1) * np.clip(1 - (dr - 0.06) / 0.03, 0, 1)
+        a0, a1 = f.get('keep', (f['phis'][0], f['phis'][-1]))
+        # fade: from 15 deg past each strap end (riders running on: ruck straps) to full 18 deg inside it -> the strap ends keep
+        # ~40 % of the move and tuck under the panel tops (which stand off a lean body) instead of kinking
+        s2, span = np.radians(15), np.radians(18)
+        we = np.clip((phi - (a0 - s2)) / (span + s2), 0, 1) * np.clip(((a1 + s2) - phi) / (span + s2), 0, 1)
+        we = we * we * (3 - 2 * we)
+        dd_ = np.atleast_2d(f['delta'][variant])
+        dd_ = np.repeat(dd_, 3, 0) if len(dd_) == 1 else dd_
+        de = sum(cw[:, j] * np.interp(phi, f['phis'], dd_[j]) for j in range(3))
+        w = wx * wr * we
+        if strap_only and 'verts' in f:
+            from scipy.spatial import cKDTree
+            dv, _ = cKDTree(np.asarray(f['verts'])).query(pos)
+            w = w * (dv < 2e-4)
+        out[:, 1] += w * de * np.sin(phi)
+        out[:, 2] += w * de * np.cos(phi)
+    return out
 
 
 def panel_M(fr, x, y, h_extra=0.0):
@@ -119,7 +229,9 @@ def plate_carrier(env, fac):
         ths = (cth, np.pi - 0.48) if sgn > 0 else (-(np.pi - 0.48), -cth)
         out += tag([G.orient_closed(G.band(env, cy0, cy1, ths[0], ths[1], 0.003, 0.011 if fac == 'ua' else 0.013, nu=22, nv=5 if fac == 'ru' else 4,
                                            mat=m['fabric'], wrinkle=0.0015, seed=3 if sgn > 0 else 4))], 'vest')
-        out += tag([shoulder_strap(env, 'L' if sgn > 0 else 'R', m['fabric'])], 'vest')
+        sp_ = shoulder_strap(env, 'L' if sgn > 0 else 'R', m['fabric'], field_key='vest', percol=True)
+        sp_['strap'] = 'L' if sgn > 0 else 'R'
+        out += tag([sp_], 'vest')
     ffr, bfr = fp['frame'], bp['frame']
     fy = lambda y: y - ffr['yc']          # absolute height -> panel coordinate
     by = lambda y: y - bfr['yc']
@@ -151,23 +263,25 @@ def plate_carrier(env, fac):
         for k, x in enumerate((-0.092, 0.0, 0.092)):
             out += tag(PO.mag_pouch(m, panel_M(ffr, x, fy(1.072))), 'pouches_front')
         # (radio pouch: comms.py, per preset - v10)
-        out += tag(PO.grenade_pouch(m, panel_M(ffr, -0.075, fy(1.242))), 'pouches_front')
+        out += tag(PO.grenade_pouch(m, panel_M(ffr, -0.075, fy(1.250))), 'pouches_front')   # v13b: clear of the mag pouch flap
         # sides: grenade pouches (left), IFAK (right)
         out += tag(PO.grenade_pouch(m, side_M(env, 1.25, 1.075, 0.018)), 'pouches_side')
         out += tag(PO.grenade_pouch(m, side_M(env, 1.65, 1.075, 0.018)), 'pouches_side')
         out += tag(PO.ifak(m, side_M(env, -1.5, 1.07, 0.018), w=0.14), 'pouches_side')
         out += tag(PO.hydration(m, panel_M(bfr, 0, by(1.14))), 'pouches_back')
-        out += tag(PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.07, 0.017)), 'pouches_back')
+        out += tag(PO.dump_pouch(m, side_M(env, -(np.pi - 0.75), 1.02, 0.017)), 'pouches_back')   # v13b: was 1.07 (top 1 cm into the hydration carrier)
     else:
         # JPC-style: triple open-top mag shingle with visible mags, admin pouch, tourniquet, radio
         for k, x in enumerate((-0.088, 0.0, 0.088)):
             out += tag(PO.mag_pouch(m, panel_M(ffr, x, -0.15), open_top=True, n_mags=1, w=0.075, h=0.16, d=0.045), 'pouches_front')
-        out += tag(PO.admin_pouch(m, panel_M(ffr, 0, -0.005), w=0.2, h=0.1, d=0.028), 'pouches_front')
+        # models_v13b: admin pouch clear of the mag bases (they stood 14 mm up into it), narrower (clear of the tourniquet)
+        out += tag(PO.admin_pouch(m, panel_M(ffr, 0, fy(1.329)), w=0.17, h=0.088, d=0.028), 'pouches_front')
         # (models_v11: no flag patch on the admin pouch - identification is the tape bands only)
-        out += tag(PO.tourniquet(m, panel_M(ffr, -0.085, 0.075)), 'pouches_front')
+        out += tag(PO.tourniquet(m, panel_M(ffr, -0.117, fy(1.345))), 'pouches_front')
         # (radio pouch: comms.py, per preset - v10)
-        out += tag(PO.ifak(m, side_M(env, -1.75, 1.07, 0.015), w=0.15, cross=True), 'pouches_side')
-        out += tag(PO.grenade_pouch(m, side_M(env, -1.25, 1.09, 0.015)), 'pouches_side')
+        # v13b: spread (IFAK and grenade pouch overlapped by up to 13 mm)
+        out += tag(PO.ifak(m, side_M(env, -1.82, 1.07, 0.015), w=0.15, cross=True), 'pouches_side')
+        out += tag(PO.grenade_pouch(m, side_M(env, -1.13, 1.09, 0.015)), 'pouches_side')
         out += tag(PO.hydration(m, panel_M(bfr, 0, -0.16), w=0.21, h=0.28, d=0.05), 'pouches_back')
     return out
 
