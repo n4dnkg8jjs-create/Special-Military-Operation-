@@ -38,14 +38,16 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3
 const _u = new THREE.Vector3(), _w = new THREE.Vector3(), _lat = new THREE.Vector3(), _tg = new THREE.Vector3(), _hq = new THREE.Quaternion(), _m = new THREE.Matrix4(), _UP = new THREE.Vector3(0, 1, 0);
 const BONES = ['Spine', 'Spine1', 'Neck', 'Head', 'RightArm', 'LeftArm', 'LeftForeArm', 'LeftHand', 'LeftShoulder', 'RightShoulder', 'LeftUpLeg', 'RightUpLeg'];
 // twist helpers (twist.py): ArmTwist = -C_ARM x the upper arm's twist, ForeArmTwist = K_FORE x the hand's twist about the forearm,
-// both faded out from 100 to 180 deg (where a rotation's twist is ill-defined)
-const TW_C_ARM = 0.5, TW_K_FORE = (0.8 - 0.25) / (1 - 0.25), ELBOW_MAX = 150 * Math.PI / 180;
+// both faded out from 100 to 180 deg (where a rotation's twist is ill-defined); arms_v2: ElbowHelper = half the ForeArm local,
+// ShoulderHelper = half of (Arm x ArmTwist) - the joint rings ride them instead of collapsing in a two-bone blend
+const TW_C_ARM = 0.5, TW_K_FORE = (2 / 3 - 1 / 3) / (1 - 1 / 3), ELBOW_MAX = 150 * Math.PI / 180;   // arms_v2: forearm thirds
 const _tq = new THREE.Quaternion();
 function twistOf(q, ax) {   // signed twist (rad, wrapped) of local rotation q about unit axis ax
   let a = 2 * Math.atan2(q.x * ax.x + q.y * ax.y + q.z * ax.z, q.w);
   if (a > Math.PI) a -= 2 * Math.PI; else if (a <= -Math.PI) a += 2 * Math.PI;
   return a;
 }
+function halfRot(q) { if (q.w < 0) q.set(-q.x, -q.y, -q.z, -q.w); q.w += 1; return q.normalize(); }
 function twFade(a) { const t = THREE.MathUtils.clamp((Math.abs(a) - 1.745) / 1.396, 0, 1); return 1 - t * t * (3 - 2 * t); }
 // per side: bones + rest axes (bind pose = identity locals, so a child's bind translation is its parent's bone axis)
 function armRig(m) {
@@ -54,7 +56,8 @@ function armRig(m) {
     const arm = m.getObjectByName(side + 'Arm'), fore = m.getObjectByName(side + 'ForeArm'), hand = m.getObjectByName(side + 'Hand');
     if (!arm || !fore || !hand) continue;
     const u0 = fore.position.clone().normalize(), f0 = hand.position.clone().normalize();
-    out.push({ arm, fore, hand, at: m.getObjectByName(side + 'ArmTwist'), ft: m.getObjectByName(side + 'ForeArmTwist'), u0, f0, h0: new THREE.Vector3().crossVectors(u0, f0).normalize() });
+    out.push({ arm, fore, hand, at: m.getObjectByName(side + 'ArmTwist'), ft: m.getObjectByName(side + 'ForeArmTwist'), u0, f0, h0: new THREE.Vector3().crossVectors(u0, f0).normalize(),
+      el: m.getObjectByName(side + 'ElbowHelper'), sh: m.getObjectByName(side + 'ShoulderHelper') });
   }
   return out;
 }
@@ -64,6 +67,9 @@ export function driveTwist(s) {
   for (const r of R) {
     if (r.at) { const a = twistOf(r.arm.quaternion, r.u0); r.at.quaternion.setFromAxisAngle(r.u0, -TW_C_ARM * a * twFade(a)); }
     if (r.ft) { const a = twistOf(r.hand.quaternion, r.f0); r.ft.quaternion.setFromAxisAngle(r.f0, TW_K_FORE * a * twFade(a)); }
+    // arms_v2 joint volume helpers: half way between the bones meeting at the elbow / shoulder (twist.py half())
+    if (r.el) halfRot(r.el.quaternion.copy(r.fore.quaternion));
+    if (r.sh && r.at) halfRot(r.sh.quaternion.copy(r.arm.quaternion).multiply(r.at.quaternion));
   }
 }
 

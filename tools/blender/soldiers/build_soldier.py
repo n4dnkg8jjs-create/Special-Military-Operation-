@@ -419,6 +419,48 @@ STD_HELMET_DESC = {
 STD_HELMET_OF_PRESET = {'ru': ['A', 'B', 'C', 'A', 'B', 'D'], 'ua': ['A', 'B', 'C', 'A', 'D', 'C']}
 
 
+WAIST_BULK = 0.008      # arms_v2: extra jacket stand-off between the hem and the plate carrier (m), on top of the drape fill
+
+
+def waist_fill(P, zone, zc_of_y, log=None):
+    """arms_v2: a loose jacket hangs from the chest to the hips instead of following the waist in: per variant, around the trunk
+    axis, the jacket shell between the hips (0.86-0.96 m) and the chest under the carrier (1.10-1.14 m) is pushed out to the
+    straight line (drape) between the two radii at its bearing - the waist hollow fills (most at the sides / small of the back,
+    nothing where the belly already stands out), 85 % of the way, at most 3 cm; faded out at the hem and under the carrier.
+    returns (n, 3) offsets (horizontal, radial)"""
+    out = np.zeros_like(P)
+    y = P[:, 1]; zc = zc_of_y(y)
+    dx, dz = P[:, 0], P[:, 2] - zc
+    r = np.hypot(dx, dz); phi = np.arctan2(dx, dz)
+    nb = 24
+    b = ((phi + np.pi) / (2 * np.pi) * nb).astype(int) % nb
+    top = np.zeros(nb); hip = np.zeros(nb)
+    for k in range(nb):
+        mt = zone & (b == k) & (y > 1.10) & (y < 1.14); mh = zone & (b == k) & (y > 0.86) & (y < 0.96)
+        top[k] = np.percentile(r[mt], 90) if mt.sum() >= 3 else np.nan
+        hip[k] = r[mh].max() if mh.sum() >= 3 else np.nan
+    for a in (top, hip):
+        ok = np.isfinite(a)
+        if not ok.any():
+            return out
+        idx = np.arange(nb)
+        a[~ok] = np.interp(idx[~ok], idx[ok], a[ok], period=nb)
+        a[:] = (np.roll(a, 1) + 2 * a + np.roll(a, -1)) / 4
+    f = (phi + np.pi) / (2 * np.pi) * nb - 0.5
+    i0 = np.floor(f).astype(int) % nb; i1 = (i0 + 1) % nb; w = f - np.floor(f)
+    rt = top[i0] * (1 - w) + top[i1] * w; rh = hip[i0] * (1 - w) + hip[i1] * w
+    t = np.clip((y - 0.92) / 0.20, 0, 1)
+    drape = rh + (rt - rh) * t
+    import garment as GM
+    k = GM.sstep(0.885, 0.93, y) * (1 - GM.sstep(1.07, 1.13, y))
+    fill = np.clip(drape - r, 0, 0.030) * 0.85 * k * zone
+    out[:, 0] = fill * dx / np.maximum(r, 1e-6); out[:, 2] = fill * dz / np.maximum(r, 1e-6)
+    if log:
+        m = zone & (k > 0.5)
+        log(f'waist drape fill: median {1000 * np.median(fill[m]):.1f} mm, p90 {1000 * np.percentile(fill[m], 90):.1f}, max {1000 * fill.max():.1f}')
+    return out
+
+
 def thicken_uniform(R, log=print):
     """v6 (2026-11): baggier, layered field uniform (photos of UA / RU infantry 2023-24, previews/soldiers_v6/REFERENCES.md): every
     variant's uniform is pushed out along its normals by a per-vertex offset field instead of the old uniform 3 mm shell:
@@ -472,6 +514,19 @@ def thicken_uniform(R, log=print):
         # models_v13: no belt band over the jacket (worn out over the trousers): the jacket only bags a little at the waist
         dt_ = 0.0085 + 0.0030 * g(y - 0.5 * (b0 + b1), 0.045)
     dt_ += 0.0030 * g(y - 1.22, 0.10)                                   # chest / back (layers)
+    # arms_v2 (user: "jacket tight and thin as skin at the waist"): a field jacket has bulk - between the hem and the bottom of the
+    # plate carrier (~1.0 m) the jacket stands ~2.5-3 cm off the body: loose cloth gathered into soft horizontal bunches above the
+    # hem (stronger at the sides / back where it gathers, weaker over the belly), the hem edge standing a little off the hips.
+    # Faded out under the carrier (1.0 -> 1.07 m) where the jacket is pressed flat; the gear envelope (envelope()) is built from
+    # this shell, so belt / hip kit sits on it, not in it.
+    hd0 = y - GM.HEM
+    ang = np.arctan2(PA[:, 0], PA[:, 2])                                 # 0 = front, +-pi = back
+    sidef = 0.2 + 0.8 * np.sqrt((1 - np.cos(ang)) / 2)                  # front (zip, groin flap / belt kit) nearly flat, sides / back full
+    bk = GM.sstep(-0.3, -0.75, np.cos(ang))                              # back: packs hang low on the carrier - ends lower there
+    loose = GM.sstep(-0.012, 0.03, hd0) * (1 - GM.sstep(0.995 - 0.05 * bk, 1.07 - 0.08 * bk, y))
+    bunch = UT.crease((y - GM.HEM) / 0.034 + 0.35 * np.sin(ang * 2.0 + 1.3) + 0.25 * nz, 0.8)
+    dt_ += loose * (WAIST_BULK * sidef + 0.0045 * bunch * GM.sstep(0.01, 0.04, hd0) * (1 - GM.sstep(0.06, 0.11, hd0)))
+    dt_ += 0.0050 * g(hd0 - 0.008, 0.014)                                # hem stands off the hips
     for side, sx in (('Left', 1), ('Right', -1)):
         ap = J(side + 'Arm') + np.array([-sx * 0.04, -0.08, 0.0])
         dt_ *= 1 - 0.55 * g(np.linalg.norm(PA - ap, axis=1), 0.07)
@@ -488,6 +543,7 @@ def thicken_uniform(R, log=print):
         on_up = s1 < Lu
         s = np.where(on_up, s1, Lu + s2); th = np.where(on_up, th1, th2)
         ds = 0.0125 + 0.0045 * g(s - 0.5 * Lu, 0.09) * (0.6 + 0.4 * np.cos(th))       # fuller at mid upper arm, outer side
+        ds += 0.0030 * g(s - 0.45 * Lu, 0.12) + 0.0020 * g(s - (Lu + 0.45 * Lf), 0.08)  # arms_v2: a little more ease (upper arm / forearm)
         ds *= 1 - 0.45 * g(s1, 0.07) * (np.cos(th) < 0)                                   # inner side at the armpit
         de = s - (Lu + Lf)                                                                # 0 at the wrist
         bunch = np.exp(-((de + 0.065) / 0.05) ** 2)                                     # gathered over the last ~12 cm
@@ -513,6 +569,7 @@ def thicken_uniform(R, log=print):
         front = 0.5 + 0.5 * np.cos(th - fw)
         dk = s - Lu
         dl = 0.0140 + 0.0065 * g(s - 0.20, 0.13) * (0.55 + 0.45 * np.cos(th))             # full thigh (outer side more)
+        dl += 0.0030 * g(s - 0.22, 0.16) * on_up                                          # arms_v2: looser trouser leg
         dl += 0.0045 * g(s - 0.08, 0.10) * (1 - front)                                     # seat
         dl *= 1 - 0.55 * g(s1, 0.12) * np.clip(-np.cos(th) * 1.5, 0, 1) * on_up            # inner thigh at the crotch
         for c0, w0, a0 in ((-0.065, 0.035, 0.0035), (0.115, 0.035, 0.0030)):             # soft bagging above / below the knee
@@ -553,9 +610,16 @@ def thicken_uniform(R, log=print):
     _, inv = np.unique(np.round(PA, 5), axis=0, return_inverse=True)
     inv = inv.reshape(-1)
     d = (np.bincount(inv, d) / np.bincount(inv))[inv]
+    # arms_v2: waist drape per body variant (jacket trunk only - not sleeves, collar or trousers)
+    zone = (wj > 0.5) & (ws < 0.2) & (col < 0.5) & (PA[:, 1] > 0.84) & (PA[:, 1] < 1.16)
+    zj = np.array([J('Hips')[2], J('Spine')[2], J('Spine1')[2]]); yj = np.array([J('Hips')[1], J('Spine')[1], J('Spine1')[1]])
+    zc_of_y = lambda yy: np.interp(yy, yj, zj)
     for vn in 'ABC':
         v = R['variants'][vn]
         v['uniform_pos'] = v['uniform_pos'] + v['uniform_nrm'] * d[:, None]
+        wf = waist_fill(v['uniform_pos'], zone, zc_of_y, log=lambda m_: log(f'{vn}: ' + m_))
+        wf = (np.bincount(inv, wf[:, 0]) / np.bincount(inv))[inv][:, None] * [1, 0, 0] + (np.bincount(inv, wf[:, 2]) / np.bincount(inv))[inv][:, None] * [0, 0, 1]
+        v['uniform_pos'] = v['uniform_pos'] + wf
         v['uniform_nrm'] = MU.weld_normals(v['uniform_pos'], MU.vertex_normals(v['uniform_pos'], T), 1e-5)
     R['_thick'] = True
     R['_thick_d'] = d
