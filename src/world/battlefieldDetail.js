@@ -40,11 +40,15 @@
 //    metalness / roughness), merged per 180 m cell (near: all,
 //    far: the big pieces), near copy in the static shadow cache;
 //  - every cell registered in instancer.js LODS (updateLods switches near / far / off).
-// Gameplay: wire belts / heaps cost 3-4 on the nav grid (slower, avoided by routes, no cover, never on roads);
-// debris is decorative.  Everything deterministic per map (own RNG from the map id: no draw from world.rng).
+// Gameplay: wire belts are a men-only obstacle (nav.wire, WIRE_COST: routes on foot go through the passages left every
+// 22-38 m, the gaps where a coil would not sit on the ground, and torn coils); vehicles ignore wire and press a coil
+// flat when they cross it (City.crushCheck -> it.wire: instance crush colour, the cells become a lane; synced as the
+// fences are, net/battle.js 'ck').  Heaps of rolls cost 4 for everyone.  Debris is decorative, and no piece may reach
+// into / over a trench or float (fits(): rolled back otherwise).  Everything deterministic per map (own RNG from the map id: no draw from world.rng).
 import * as THREE from 'three';
 import { MAP, MAP_SIZE, onRoad, mulberry } from './city.js';
 import { instance, trs, LODS, PLACED, simplified } from './instancer.js';
+import { WIRE_COST } from './nav.js';
 import { markStatic } from '../engine/renderer.js';
 import { alphaCoverage, warAt } from './wear.js';
 
@@ -164,11 +168,29 @@ export function treeFate(w, name, x, z) {
     if (k < 0.45) { (w._bfTops ||= []).push([x, z, a, sc]); return 'stump_1'; }
     if (k < 0.78) { w._tpl ||= {}; for (const n of ['tree_poplar_broken_lod1', 'tree_birch_snapped_lod1']) if (!(n in w._tpl)) w._tpl[n] = null;   // (no leafy stand-in as their far LOD)
       const t = realTpl(w, 'tree_poplar_broken') ? 'tree_poplar_broken' : realTpl(w, 'tree_birch_snapped') ? 'tree_birch_snapped' : 'stump_1'; (w._bfTops ||= []).push([x, z, a, sc * 0.6]); return t; }
-    if (realTpl(w, 'fallen_trunk')) w.put('fallen_trunk', x + Math.cos(a) * 2.5, z + Math.sin(a) * 2.5, -a + (hash2(x, z, 17) - 0.5) * 0.3, { cost: 5, low: true, check: false, s: sc, inst: { cullDist: 420 } });
+    // uprooted: the trunk without the template's flat soil disc; the root plate itself (torn soil and sod, tangled roots,
+    // hanging clods) and the hole it came out of are written by the detail pass (rootPlate, w._bfRoots)
+    const bare = bareTrunkTpl(w);
+    if (bare && w.put(bare, x + Math.cos(a) * 2.5, z + Math.sin(a) * 2.5, -a + (hash2(x, z, 17) - 0.5) * 0.3, { cost: 5, low: true, check: false, s: sc, inst: { cullDist: 420 } })) { const P = w.place?.[bare]; if (P?.m.length) (w._bfRoots ||= []).push(P.m[P.m.length - 1].clone()); }
     return null;
   }
   if (u < pSnap + pStrip) { const n = shatteredTpl(w, sp); if (n) { if (hash2(x, z, 18) < 0.3) (w._bfScorch ||= []).push([x, z, 3.5, 0.25]); return n; } }
   return name;
+}
+// fallen_trunk (trees.glb) without its 'soil' sub-mesh: a flat 2 m disc standing at the root end that read as a cardboard
+// cut-out; the frame of the root plate it had (template-local) is kept for rootPlate()
+function bareTrunkTpl(w) {
+  const name = 'fallen_trunk_bare'; w._tpl ||= {};
+  if (!(name in w._tpl)) {
+    const base = realTpl(w, 'fallen_trunk'); let t = null;
+    if (base) {
+      t = base.clone(true); const rm = []; t.traverse(o => { if (o.isMesh && (Array.isArray(o.material) ? o.material : [o.material]).some(m => /soil/i.test(m?.name || ''))) rm.push(o); });
+      for (const o of rm) o.removeFromParent(); t.name = name; t.userData = {};
+      t.position.set(0, 0, 0); t.updateMatrixWorld(true); t.userData.bb = new THREE.Box3().setFromObject(t);
+    }
+    w._tpl[name] = t; w._tpl[name + '_lod1'] = null;
+  }
+  return w._tpl[name] ? name : null;
 }
 // farmland.js treelines(): put() rotation extras for the tree treeFate() chose -- about a third of the stripped trees
 // lean (0.1-0.45 rad) away from the burst; ry = the yaw put() is given (the lean is in the tree's own frame)
@@ -409,7 +431,10 @@ const newDB = () => ({ p: [], n: [], c: [], u: [], m: [], i: [] });
 class Debris {
   constructor() { this.cells = new Map(); this.M = new THREE.Matrix4(); this.pieces = 0; this.CS = 180; }
   cell(x, z) { const i = Math.floor(x / this.CS), j = Math.floor(z / this.CS), k = i + ',' + j; let c = this.cells.get(k); if (!c) this.cells.set(k, c = { near: newDB(), far: newDB(), x: (i + 0.5) * this.CS, z: (j + 0.5) * this.CS }); return c; }
-  begin(x, y, z, ry = 0, rx = 0, rz = 0, s = 1, far = false) { this.M.copy(trs(x, y, z, ry, s, rx, rz)); const c = this.cell(x, z); this.nb = c.near; this.fb = far ? c.far : null; this.y0 = y; this.pieces++; return this; }
+  // undo the last piece(s): buffer lengths before them (mark) -> truncate (rollback)
+  mark() { const L = b => b ? [b, b.p.length, b.n.length, b.c.length, b.u.length, b.m.length, b.i.length] : null; return [L(this.nb), L(this.fb), this.pieces]; }
+  rollback(m) { for (const e of [m[0], m[1]]) if (e) { const [b, p, n, c, u, mm, i] = e; b.p.length = p; b.n.length = n; b.c.length = c; b.u.length = u; b.m.length = mm; b.i.length = i; } this.pieces = m[2]; }
+  begin(x, y, z, ry = 0, rx = 0, rz = 0, s = 1, far = false) { this.M.copy(trs(x, y, z, ry, s, rx, rz)); const c = this.cell(x, z); this.nb = c.near; this.fb = far ? c.far : null; this.y0 = y; this._m = this.mark(); this.pieces++; return this; }
   part(geo, L, color) { _m4.multiplyMatrices(this.M, L); this.push(this.nb, geo, _m4, color); if (this.fb) this.push(this.fb, geo, _m4, color); }
   box(x, y, z, w, h, d, c, ry = 0, rx = 0, rz = 0) { this.part(G.box, lm(x, y, z, rx, ry, rz, w, h, d), c); }
   // cylinder centred at (x, y, z), axis = local y rotated by (rx, ry, rz); taper = top / bottom radius
@@ -500,6 +525,27 @@ const PC = {
   bottle(D, r) { D.cyl(0, 0.04, 0, 0.04, 0.26, mcol(pick(r, [0xa9b5a6, 0x6b8f6a, 0x8a9aa8]), r, 0, 0.35), 0, r() * 6, Math.PI / 2, 0.88, 6); },
   ration(D, r) { D.box(0, 0.02, 0, 0.22, 0.04, 0.14, col(pick(r, [0x8c7d5a, 0x4d6a3f, 0x6e6545]), r), r() * 6); },
 };
+// A tree's root plate torn out of the ground, standing on edge at the trunk's foot (local frame: the plate in the XY plane,
+// +z towards the trunk = the old ground surface with its sod, -z the underside the roots come out of): a lumpy disc of
+// soil, the sod skin, 5-6 thick tapering main roots (broken, pale ends), a dozen thin ones, clods hanging off the bottom
+// rim.  ~400 triangles, merged into the debris cell.
+function rootPlate(D, r) {
+  const soil = col(pick(r, [0x4a3a2b, 0x544232, 0x3f3226]), r), dark = soil.clone().multiplyScalar(0.72), sod = col(pick(r, [0x4f5532, 0x5a5636, 0x48502f]), r), bark = col(pick(r, [0x4a4038, 0x3f3a34]), r), pale = col(0xa08a68, r);
+  const R0 = 0.85 + r() * 0.35;
+  D.cyl(0, 0, -0.08, R0, 0.42, soil, -Math.PI / 2, 0, 0, 0.88, 10);                 // the soil body (narrower on the root side)
+  D.cyl(0, 0, 0.15, R0 * 1.04, 0.07, sod, Math.PI / 2, 0, 0, 1, 10);                // sod skin of the old surface
+  for (let k = 0; k < 7; k++) { const a = k / 7 * TAU + r() * 0.6, rr = R0 * (0.55 + r() * 0.45), s = 0.18 + r() * 0.22; D.part(G.ico, lm(Math.cos(a) * rr, Math.sin(a) * rr, -0.22 - r() * 0.15, r() * 3, r() * 6, r() * 3, s * 1.3, s, s), r() < 0.5 ? soil : dark); }   // lumps on the underside / rim
+  const dirTo = (dx, dy, dz) => { const L = Math.hypot(dx, dy, dz) || 1; dx /= L; dy /= L; dz /= L; return [Math.atan2(dz, dy), -Math.asin(Math.max(-1, Math.min(1, dx)))]; };   // (rx, rz) taking +y onto d (Euler YXZ, ry = 0)
+  const root = (x0, y0, z0, dx, dy, dz, len, rad, seg, end) => {
+    const [rx, rz] = dirTo(dx, dy, dz), L = Math.hypot(dx, dy, dz) || 1, ux = dx / L, uy = dy / L, uz = dz / L;
+    D.cyl(x0 + ux * len / 2, y0 + uy * len / 2, z0 + uz * len / 2, rad, len, bark, rx, 0, rz, 0.35, seg, true);
+    if (end) D.box(x0 + ux * len, y0 + uy * len, z0 + uz * len, rad * 1.1, rad * 2.2, rad * 1.1, pale, 0, rx, rz);   // the broken, pale end
+  };
+  const nMain = 5 + (r() * 2 | 0);
+  for (let k = 0; k < nMain; k++) { const a = k / nMain * TAU + (r() - 0.5) * 0.7; root(Math.cos(a) * R0 * 0.3, Math.sin(a) * R0 * 0.3, -0.2, Math.cos(a), Math.sin(a), -0.35 - r() * 0.5, R0 * 0.7 + 0.5 + r() * 0.8, 0.05 + r() * 0.04, 6, r() < 0.7); }
+  for (let k = 0; k < 14; k++) { const a = r() * TAU, rr = Math.sqrt(r()) * R0 * 0.8; root(Math.cos(a) * rr, Math.sin(a) * rr, -0.24, (r() - 0.5) * 1.2 + Math.cos(a) * 0.4, (r() - 0.5) * 1.2 + Math.sin(a) * 0.4 - 0.3, -1, 0.25 + r() * 0.7, 0.012 + r() * 0.016, 5, false); }
+  for (let k = 0; k < 4; k++) { const x = (r() - 0.5) * R0 * 1.2, s = 0.12 + r() * 0.16; D.part(G.ico, lm(x, -R0 * (0.75 + r() * 0.25), -0.3 - r() * 0.2, r() * 3, r() * 6, r() * 3, s, s * 1.4, s), dark); }   // clods hanging off the bottom rim
+}
 let grimeTex = null, dentTex = null;
 // Debris surface: vertex colour (albedo + contact darkening) x a tiling grime map; a dent / scratch normal map and a
 // roughness map from the same procedural canvases; per-vertex metalness and roughness (aMat: brass cases, galvanised
@@ -561,16 +607,33 @@ function build(w, opt) {
   const free = (x, z, r = 0.3, road = 0.4) => inMap(x, z) && !onRoad(x, z, road + r) && T.cutSDF(x, z) > r + 0.35 && !inBuilding(x, z, r) && !(w.solidHit && w.solidHit(x, z, r, r, 0, 0.05));
   const D = new Debris(), WB = new Map(), CSW = 180;
   const wcell = (x, z) => { const i = Math.floor(x / CSW), j = Math.floor(z / CSW), k = i + ',' + j; let c = WB.get(k); if (!c) WB.set(k, c = { near: new WireBuf(), far: new WireBuf(), x: (i + 0.5) * CSW, z: (j + 0.5) * CSW }); return c; };
-  const coils = [], coilCols = [], scorch = w._bfScorch || [], stats = { coils: 0, heaps: 0, pickets: 0, pieces: 0 }, spots = {};
+  const coils = [], coilCols = [], coilEnds = [], scorch = w._bfScorch || [], stats = { coils: 0, heaps: 0, pickets: 0, pieces: 0 }, spots = {};
   const mark = (k, x, z) => { const a = spots[k] ||= []; if (a.length < 40) a.push([Math.round(x), Math.round(z)]); };   // (a few of each, for tests / screenshots: window.__bf.spots)
   const navLine = (ax, az, bx, bz, hw, cost) => { if (!nav) return; const L = Math.hypot(bx - ax, bz - az); for (let t = 0; t <= L; t += 0.8) nav.circle(ax + (bx - ax) * t / L, az + (bz - az) * t / L, hw, cost); };
 
   // ---------------------------------------------------------------- pieces & clusters
   const tiltAt = (x, z, ry) => { const gx = (H(x + 0.3, z) - H(x - 0.3, z)) / 0.6, gz = (H(x, z + 0.3) - H(x, z - 0.3)) / 0.6, c = Math.cos(ry), s = Math.sin(ry); return [-Math.atan(gx * s + gz * c), Math.atan(gx * c - gz * s)]; };
+  // a written piece must neither reach into / over a trench or pit (any vertex in the cut) nor float: the vertices at its
+  // underside stay within ~15 cm of the ground under them (spoil lips, crater rims, parapets) -- else it is taken back out
+  const fits = (m, buried = false) => {
+    const b = m[0][0], v0 = m[0][1], v1 = b.p.length; if (v1 <= v0) return true;
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, y0 = 1e9;
+    for (let i = v0; i < v1; i += 3) { const x = b.p[i], y = b.p[i + 1], z = b.p[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; if (y < y0) y0 = y; }
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, rad = Math.hypot(x1 - x0, z1 - z0) / 2, nv = (v1 - v0) / 3, st = Math.max(1, Math.floor(nv / 48)) * 3;
+    const nearCut = T.cutSDF(cx, cz) < rad + 0.4;
+    for (let i = v0; i < v1; i += st) {
+      const x = b.p[i], y = b.p[i + 1], z = b.p[i + 2];
+      if (nearCut && T.cutSDF(x, z) < 0.04) return false;
+      if (!buried && y < y0 + 0.06 && y - H(x, z) > 0.15) return false;
+    }
+    return true;
+  };
+  const guard = (f, buried = false) => { const m0 = D._m; f(); const m = D._m; if (m === m0 || fits(m, buried)) return true; D.rollback(m); return false; };   // (D._m: set by the piece's begin())
   const piece = (name, x, z, far, ry = R() * TAU) => {
-    const r = R; if (name === 'gradTail' || name === 'mortarTail') { const tilt = name === 'gradTail' ? 0.25 + R() * 0.6 : R() * 0.5; D.begin(x, H(x, z) - 0.02, z, ry, tilt, 0, 1, far); }
-    else { const [rx, rz] = tiltAt(x, z, ry); D.begin(x, H(x, z) - 0.008, z, ry, rx, rz, 1, far); }
-    PC[name](D, r); stats.pieces++;
+    const r = R; let ok;
+    if (name === 'gradTail' || name === 'mortarTail') { const tilt = name === 'gradTail' ? 0.25 + R() * 0.6 : R() * 0.5; ok = guard(() => { D.begin(x, H(x, z) - 0.02, z, ry, tilt, 0, 1, far); PC[name](D, r); }, true); }
+    else { const [rx, rz] = tiltAt(x, z, ry); ok = guard(() => { D.begin(x, H(x, z) - 0.008, z, ry, rx, rz, 1, far); PC[name](D, r); }); }
+    if (ok) stats.pieces++; return ok;
   };
 
   // ---------------------------------------------------------------- own occupancy (0.5 m cells): wire, stakes and heaps never overlap
@@ -583,7 +646,7 @@ function build(w, opt) {
   const clear = (x, z, r) => inMap(x, z) && !onRoad(x, z, r + 0.8) && T.cutSDF(x, z) > r + 1.2 && !inBuilding(x, z, r + 0.6) && !(w.solidHit && w.solidHit(x, z, r, r, 0, 0.25))
     && !toothNear(x, z, r + 1.0) && !(w.nearTrail && w.nearTrail(x, z, r + 0.5)) && !craterNear(x, z, 0.3) && !navHard(x, z, r) && !taken(x, z, r);
   // lip: right at a trench edge (parapet sandbags, cases thrown out of a bay): only clear of the cut itself
-  const piece2 = (name, x, z, far, ry, lip = false) => { if ((lip ? inMap(x, z) && !onRoad(x, z, 0.5) && T.cutSDF(x, z) > 0.28 && !inBuilding(x, z, 0.2) && !(w.solidHit && w.solidHit(x, z, 0.2, 0.2, 0, 0.05)) : free(x, z, 0.22)) && !taken(x, z, 0.15)) { piece(name, x, z, far, ry); return true; } return false; };
+  const piece2 = (name, x, z, far, ry, lip = false) => { if ((lip ? inMap(x, z) && !onRoad(x, z, 0.5) && T.cutSDF(x, z) > 0.28 && !inBuilding(x, z, 0.2) && !(w.solidHit && w.solidHit(x, z, 0.2, 0.2, 0, 0.05)) : free(x, z, 0.22)) && !taken(x, z, 0.15)) return piece(name, x, z, far, ry); return false; };
 
   // ---------------------------------------------------------------- stakes / coils
   const PCOL = [0x4b3123, 0x3c3832, 0x55392a];
@@ -606,6 +669,10 @@ function build(w, opt) {
     const L = Math.hypot(bx - ax, bz - az), ang = Math.atan2(-(bz - az), bx - ax), rz = Math.atan2(g.yb - g.ya, L), rx = -Math.atan(g.cross);
     const M = trs(ax, g.ya - 0.035, az, ang, 1, rx, rz).multiply(new THREE.Matrix4().makeScale(L / COIL_L / Math.cos(rz), o.sy ?? (0.88 + R() * 0.16), o.sz ?? (0.92 + R() * 0.14)));
     coils.push(M); coilCols.push(new THREE.Color(Math.min(1, Math.max(0, o.rust ?? R() * 0.5)), o.crush ?? (R() < 0.1 ? 0.3 + R() * 0.4 : R() * 0.1), o.tear ?? 0)); stats.coils++;
+    coilEnds.push([ax, az, bx, bz]);
+    // nav (men only, vehicles ignore wire): the coil is a real obstacle on foot; a tear in it is a gap a man can get through
+    const t = o.tear ?? 0;
+    if (nav) { if (t > 0.12 && t < 0.88) { nav.wireSeg(ax, az, ax + (bx - ax) * (t - 0.09), az + (bz - az) * (t - 0.09), 0.55, WIRE_COST.belt); nav.wireSeg(ax + (bx - ax) * (t + 0.09), az + (bz - az) * (t + 0.09), bx, bz, 0.55, WIRE_COST.belt); } else nav.wireSeg(ax, az, bx, bz, 0.55, WIRE_COST.belt); }
   };
   // walk a polyline at 0.5 m; split into runs where ok(x, z, ux, uz) holds (>= minRun m)
   const runsOf = (poly, ok, minRun = 3) => {
@@ -627,6 +694,9 @@ function build(w, opt) {
     const at = s => run[Math.min(run.length - 1, Math.max(0, Math.round(s / 0.5)))];
     const dir = s => { const a = at(Math.max(0, s - 1)), b = at(Math.min(L, s + 1)); const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; };
     let laid = 0;
+    // passages: a 1.6-2.4 m gap every 22-38 m (both rows at the same place) -- the way out for the position's own patrols /
+    // the gap left for the next coil, so a belt never seals a stretch of front for men on foot
+    const passages = []; if (L > 14) for (let p = 6 + R() * 9; p < L - 5; p += 22 + R() * 16) { const wd = 1.6 + R() * 0.8; passages.push([p, p + wd]); }
     // mark a coil as the end of its stretch (the shader drops its last loops to the ground): .97 end, .99 both ends
     const endOf = p => { if (!p) return; const b = p.col.b; if (b === 0) p.col.b = 0.97; else if (b < 0.12) p.col.b = 0.99; };
     for (let row = 0; row < rows; row++) {
@@ -634,6 +704,8 @@ function build(w, opt) {
       let s = 0, open = true, prevEnd = null;
       while (s < L - 1.5) {
         let e = Math.min(L, s + (row && s === 0 ? 2 + R() * 2 : 3.5 + R() * 2.5)); if (L - e < 1.8) e = L;
+        const ps = passages.find(([p0, p1]) => p1 > s && p0 < e);
+        if (ps) { if (ps[0] - s >= 1.8) e = ps[0]; else { endOf(prevEnd); open = true; prevEnd = null; s = ps[1]; continue; } }
         let g = null, a, b;
         for (let tries = 0; tries < 3 && e - s >= 1.8; tries++) {
           const [ux, uz] = dir((s + e) / 2); a = at(s); b = at(e); a = [a[0] - uz * lat, a[1] + ux * lat]; b = [b[0] - uz * lat, b[1] + ux * lat];
@@ -653,7 +725,7 @@ function build(w, opt) {
       if (row === 0 && !open) { const p = at(L); picket(p[0], p[1], 1.0 + R() * 0.2); }
     }
     const hw = rows === 2 ? 1.0 : 0.55;
-    for (let s = 0; s <= L; s += 0.5) { const p = at(s); claim(p[0], p[1], hw); if (nav && s % 1 === 0) nav.circle(p[0], p[1], hw + 0.1, 3); }
+    for (let s = 0; s <= L; s += 0.5) { const p = at(s); claim(p[0], p[1], hw); }
     return laid;
   };
 
@@ -753,7 +825,7 @@ function build(w, opt) {
         const u = p[0] / Lf, y = p[1] * (0.45 + 0.2 * Math.sin(u * 9)) + 0.2, [wx, wz] = P(u, p[2]), g = H(wx, wz); return [wx, Math.max(g + 0.012, g + y), wz];
       }), lod ? 0.02 : 0.012, 0, cl);
     }
-    for (let u = 0; u <= 1.0001; u += 0.1) { const [px, pz] = P(u); claim(px, pz, 0.6); if (nav) nav.circle(px, pz, 0.6, 3); }
+    for (let u = 0; u <= 1.0001; u += 0.1) { const [px, pz] = P(u); claim(px, pz, 0.6); if (nav && u > 0.05) { const [qx, qz] = P(u - 0.1); nav.wireSeg(qx, qz, px, pz, 0.6, WIRE_COST.loose); } }
   };
   for (const sy of systems) {
     const fl = Math.hypot(sy.front[0], sy.front[1]) || 1, fx = sy.front[0] / fl, fz = sy.front[1] / fl, line = (sy.lines || []).flat();
@@ -837,7 +909,7 @@ function build(w, opt) {
     const M = wreckM.find(m => Math.abs(m.elements[12] - x) < 0.6 && Math.abs(m.elements[14] - z) < 0.6), e = M?.elements;
     const [ax, az] = e ? unit([e[8], e[10]]) : unit([Math.cos(R() * TAU), 1]), side = R() < 0.5 ? -1 : 1, back = R() < 0.6 ? -1 : 1;
     const sx = x + ax * back * 3.6 - az * side * 1.5, sz = z + az * back * 3.6 + ax * side * 1.5;
-    if (free(sx, sz, 0.3)) { D.begin(sx, H(sx, sz) - 0.01, sz, Math.atan2(-az * back, ax * back), 0, 0, 1, true); PC.links(D, R); stats.pieces++; }
+    if (free(sx, sz, 0.3) && guard(() => { D.begin(sx, H(sx, sz) - 0.01, sz, Math.atan2(-az * back, ax * back), 0, 0, 1, true); PC.links(D, R); })) stats.pieces++;
     for (let k = 0; k < 1 + (R() * 2 | 0); k++) piece2('wheel', x - az * side * (2.6 + R() * 1.5) + ax * (R() - 0.5) * 5, z + ax * side * (2.6 + R() * 1.5) + az * (R() - 0.5) * 5, true);
     for (let k = 0; k < 3 + (R() * 4 | 0); k++) { const a = R() * TAU, d = 2.4 + R() * 3.5; piece2(R() < 0.6 ? 'era' : 'frag', x + Math.cos(a) * d, z + Math.sin(a) * d, false); }
     mark('wreck', x, z);
@@ -849,7 +921,7 @@ function build(w, opt) {
   for (const [x, z, r] of w.burntSpots || []) if (r <= 10) houses.push([x, z, r * 0.6 + 2.5]);
   for (const [x, z, r] of houses) {
     const hit = hash2(x, z, 31) * TAU, n = 5 + (R() * 5 | 0);
-    for (let k = 0; k < n; k++) { const a = hit + (R() - 0.5) * 1.6, d = r + 0.5 + R() * R() * 5; piece2(W8([['brick', 4], ['plank', 2], ['beam', 1], ['chunk', 1], ['sheet', 1]]), x + Math.cos(a) * d, z + Math.sin(a) * d, true); }
+    for (let k = 0; k < n; k++) { const a = hit + (R() - 0.5) * 1.6, d = r + 0.5 + R() * R() * 5, nm = W8([['brick', 4], ['plank', 2], ['beam', 1], ['chunk', 1], ['sheet', 1]]); piece2(nm, x + Math.cos(a) * d, z + Math.sin(a) * d, nm === 'beam'); }   // (far copy: the beams only -- bricks / chunks are sub-pixel at 50+ m)
     for (let k = 0; k < 1 + (R() * 3 | 0); k++) { const d = r + 1 + R() * 6, o = (R() - 0.5) * r * 1.4; piece2('sheet', x + WIND[0] * d - WIND[1] * o, z + WIND[1] * d + WIND[0] * o, true); }
     mark('house', x + Math.cos(hit) * r, z + Math.sin(hit) * r);
   }
@@ -858,7 +930,7 @@ function build(w, opt) {
     const ps = b.panels.filter(p => p.state >= 2 && p.floor <= 5); let n = 0;
     for (const p of ps) {
       if (n > 5 || R() < 0.5) continue; const c = b.panelCenter(p), o = b.outward(p), d = 2 + R() * 3 + p.floor * 0.4;
-      if (tight(['window', 'chunk', 'rebar', R() < 0.5 ? 'plank' : 'brick'], c.x + o.x * d, c.z + o.z * d, 1.6)) n++;
+      if (tight(['window', 'chunk', 'rebar', R() < 0.5 ? 'plank' : 'brick'], c.x + o.x * d, c.z + o.z * d, 1.6, false)) n++;   // (near only: small stuff)
     }
   }
   // fallen branches under the shelled / stripped trees (only there)
@@ -872,10 +944,18 @@ function build(w, opt) {
   }
   // tops of the snapped belt trees (treeFate), lying from their stumps the way the blast threw them
   for (const [x, z] of w._bfTops || []) mark('stump', x, z);
-  for (const [x, z, a, k] of w._bfTops || []) { const px = x + Math.cos(a) * 0.4, pz = z + Math.sin(a) * 0.4; if (T.cutSDF(px, pz) < 1) continue; D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, true); PC.log(D, R, k); stats.pieces++; }
+  for (const [x, z, a, k] of w._bfTops || []) { const px = x + Math.cos(a) * 0.4, pz = z + Math.sin(a) * 0.4; if (T.cutSDF(px, pz) < 1) continue; if (guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, k > 0.8); PC.log(D, R, k); })) stats.pieces++; }   // (far copy: the big trunks only)
+  // root plates of the uprooted belt trees (treeFate): at the trunk's root end (template z -4.4, its plate normal along the
+  // trunk), the hole beside it on the far side
+  const RP0 = new THREE.Matrix4().makeTranslation(0.08, 1.13, -4.38), HV = new THREE.Vector3();
+  for (const M of w._bfRoots || []) {
+    const Mp = M.clone().multiply(RP0), e = Mp.elements; D.begin(e[12], e[13], e[14], 0, 0, 0, 1, true); D.M.copy(Mp); D.y0 = H(e[12], e[14]); rootPlate(D, R); stats.pieces++;
+    HV.set(0.08, 0, -5.7).applyMatrix4(M); if (T.cutSDF(HV.x, HV.z) > 2.5) w.addCrater?.(HV.x, HV.z, 2.4 + R() * 0.8, 0);
+    mark('roots', e[12], e[14]);
+  }
   // map-specific debris (w.bfExtra: e.g. ruins.js -- the real-place maps' ruins): written into the same per-cell buffers
   // (no extra draw calls), with their own RNG (bf's stream is not touched), after everything above has claimed its ground
-  for (const f of w.bfExtra || []) try { f({ D, PC, H, free, claim, taken, scorch, stats, mark, inBuilding }); } catch (e) { console.warn('bfExtra', e); }
+  for (const f of w.bfExtra || []) try { f({ D, PC, H, free, claim, taken, scorch, stats, mark, inBuilding, guard }); } catch (e) { console.warn('bfExtra', e); }
   // ---------------------------------------------------------------- 6. scorched patches (war map scorch channel)
   for (let i = 0, made = 0; i < 900 && made < (rural ? 90 : 30); i++) { const x = (R() - 0.5) * MAP_SIZE * 0.95, z = (R() - 0.5) * MAP_SIZE * 0.95, h = heatAt(w, x, z); if (h < 0.5 || R() > h * 0.5 || onRoad(x, z, 1)) continue; scorch.push([x, z, 2 + R() * 5, 0.3 + R() * 0.35]); made++; }
   paintScorch(w, scorch);
@@ -886,6 +966,19 @@ function build(w, opt) {
     const t = [0, 1, 2].map(l => { const m = new THREE.Mesh(coilGeo(l), mI); m.name = 'bf_concertina' + (l ? '_lod' + l : ''); return m; });
     instance(scene, t[0], coils, { mid: t[1], lod: t[2], nearDist: 35, lodDist: 110, cullDist: 460, shadows: false, colors: coilCols, cell: 120 });
     for (const [ms] of PLACED[PLACED.length - 1].parts) for (const m of ms) pixHook(m);
+    // run over by a vehicle (City.crushCheck: any vehicle; host side, synced like the fences -- net/battle.js 'ck'): the
+    // coil is pressed flat (instance colour G = crush, read by the wire shader) and the ground it covered is a lane for men
+    const map = coils.map(() => []), _c = new THREE.Color();
+    for (const [ms, idx] of PLACED[PLACED.length - 1].parts) idx.forEach((gi, j) => { for (const m of ms) map[gi].push([m, j]); });
+    const crush = it => {
+      for (const [m, j] of map[it.coil]) { m.getColorAt(j, _c); _c.g = 1; m.setColorAt(j, _c); m.instanceColor.needsUpdate = true; }
+      const [ax, az, bx, bz] = coilEnds[it.coil]; nav?.wireSeg(ax, az, bx, bz, 0.7, WIRE_COST.crushed, true);
+    };
+    coilEnds.forEach(([ax, az, bx, bz], i) => {
+      const it = { t: null, M: new THREE.Matrix4(), x: (ax + bx) / 2, z: (az + bz) / 2, ry: Math.atan2(-(bz - az), bx - ax), hx: Math.hypot(bx - ax, bz - az) / 2, hz: 0.5, crush: 'any', type: 'wire', coil: i, wire: crush };
+      (w.crushables ||= []).push(it);
+      if (w.crushGrid) { const k = Math.floor(it.x / 10) + ',' + Math.floor(it.z / 10); (w.crushGrid.get(k) || w.crushGrid.set(k, []).get(k)).push(it); }   // (city map: its crushables were built before this pass)
+    });
   }
   const lodCell = (near, far, cx, cz, CS, d1, d2) => { LODS.push({ near: near ? [near] : [], mid: null, far: far ? [far] : [], cx, cz, dm: d1, d1, d2, state: -1, hr: CS * 0.5 }); };
   let wireMeshes = 0;

@@ -1143,7 +1143,7 @@ export class City {
   // Crushable street furniture: own InstancedMeshes (index per item kept) + a spatial grid
   buildCrushables() {
     const items = this.crushables || []; this.crushGrid = new Map();
-    const byTpl = new Map(); for (const it of items) (byTpl.get(it.t) || byTpl.set(it.t, []).get(it.t)).push(it);
+    const byTpl = new Map(); for (const it of items) if (it.t) (byTpl.get(it.t) || byTpl.set(it.t, []).get(it.t)).push(it);   // (t null: drawn elsewhere -- wire coils, it.wire)
     for (const [t, list] of byTpl) {
       t.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(t.matrixWorld).invert();
       const meshes = [];
@@ -1153,7 +1153,8 @@ export class City {
     }
     for (const it of items) { const k = Math.floor(it.x / 10) + ',' + Math.floor(it.z / 10); (this.crushGrid.get(k) || this.crushGrid.set(k, []).get(k)).push(it); }
   }
-  setCrushMatrix(it, M) { const m = new THREE.Matrix4(); for (const { im, rel } of it.meshes) { im.setMatrixAt(it.i, m.multiplyMatrices(M, rel)); im.instanceMatrix.needsUpdate = true; } }
+  // (wire coils, battlefieldDetail.js: it.wire flattens the coil in place)
+  setCrushMatrix(it, M) { if (it.wire) return it.wire(it); const m = new THREE.Matrix4(); for (const { im, rel } of it.meshes) { im.setMatrixAt(it.i, m.multiplyMatrices(M, rel)); im.instanceMatrix.needsUpdate = true; } }
   // vehicles flatten wooden / thin-metal fences, benches and bins; tanks also topple concrete panels
   crushCheck(v, game) {
     if (!this.crushGrid) return;
@@ -1170,6 +1171,7 @@ export class City {
         const fall = new THREE.Matrix4().multiplyMatrices(it.M, new THREE.Matrix4().makeRotationX(side * (1.35 + Math.random() * 0.2)));
         fall.multiply(new THREE.Matrix4().makeScale(1, it.type === 'po2' ? 1 : 0.85, it.type === 'po2' ? 1 : 0.5));
         this.setCrushMatrix(it, fall);
+        if (it.wire) continue;   // (the coil's nav is the men-only wire layer: lowered by it.wire)
         this.nav.setRect(it.x, it.z, it.hx, it.hz + 0.2, it.ry, 1, 0);
         if (game) { game.fx.dustCloud(new THREE.Vector3(it.x, 0.3, it.z), Math.max(2, it.hx), 1, 5, [0.6, 0.56, 0.5]); game.sfx(it.type === 'po2' ? 'debris' : Math.random() < 0.5 ? 'impact_metal' : 'debris', new THREE.Vector3(it.x, 0.5, it.z), { gain: 0.8 }); }
       }
@@ -1228,7 +1230,7 @@ export class City {
   }
   addCrater(x, z, size, cell = null) {
     if (!this.craterMesh) { (this.pendingCraters ||= []).push([x, z, size, cell]); return; }
-    if (this.terrain && this.terrain.cutSDF(x, z) < size * 0.5) return; // decal would float over a trench
+    if (this.terrain && this.terrain.cutSDF(x, z) < size * 0.68 + 0.3) return; // decal (radius ~0.63 size) would hang over a trench
     const c = this.craterMesh; if (c.count >= this.craterCap) return;
     // the decal is a flat card: on uneven ground (crater bowl / rim, parapet, rubble, balka slope) it would hang in the air
     // or be swallowed -- lift it to the highest point under it, skip it where the ground is too uneven

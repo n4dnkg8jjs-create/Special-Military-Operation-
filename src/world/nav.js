@@ -17,6 +17,10 @@ export const VEH_COST = {
 // query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
 // exposed, the search would flood the map).
 export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2 };
+// barbed wire (this.wire, per-metre extra cost for men only, set by world/battlefieldDetail.js): an intact belt is a real
+// obstacle on foot (~3 m of belt = a 100 m detour), so routes go through the gaps / passages; vehicles ignore it (they
+// flatten the coil: crushed cells drop to a low value).  Values: 0 none, WIRE_COST.belt intact, .crushed / .loose.
+export const WIRE_COST = { belt: 34, loose: 8, crushed: 2 };
 export const TERRAIN_OCC = { terrain: true, h: 0, ref: null, cx: 0, cz: 0, hx: 0, hz: 0, cos: 1, sin: 0 };
 
 class Heap {
@@ -43,6 +47,7 @@ export class NavGrid {
     this.cover = new Uint8Array(N);     // 8-direction cover bitmask
     this.low = new Uint8Array(N);       // 1 = low cover (rubble, sandbags, wrecks) vs 0 = wall
     this.road = new Uint8Array(N);      // 2 = paved road, 1 = dirt track (vehicles prefer and drive faster on them)
+    this.wire = null;                   // barbed wire: extra per-metre cost for infantry only (WIRE_COST), vehicles ignore it
     // set by Terrain when the map has field fortifications / rubble relief:
     //   veh[i]    0 = any vehicle, 1 = wheeled vehicles can't cross (trench; tanks cross slowly), 2 = no vehicle (AT ditch,
     //             dragon's teeth, dugout roofs, dense forest)
@@ -128,6 +133,16 @@ export class NavGrid {
     for (let z = z0; z <= z1; z += this.cell) for (let x = x0; x <= x1; x += this.cell) { const i = this.idx(x, z); if (i >= 0) this.road[i] = Math.max(this.road[i], v); }
   }
   roadAt(x, z) { const i = this.idx(x, z); return i < 0 ? 0 : this.road[i]; }
+  // barbed wire along a segment (half width hw): set = max with what is there (v > 0), or lower to v (crushed / cleared)
+  wireSeg(ax, az, bx, bz, hw, v, lower = false) {
+    const N = this.n * this.n; this.wire ||= new Uint8Array(N);
+    const L = Math.hypot(bx - ax, bz - az) || 1e-6, ux = (bx - ax) / L, uz = (bz - az) / L, c = this.cell;
+    for (let z = Math.min(az, bz) - hw - c; z <= Math.max(az, bz) + hw + c; z += c) for (let x = Math.min(ax, bx) - hw - c; x <= Math.max(ax, bx) + hw + c; x += c) {
+      const i = this.idx(x, z); if (i < 0) continue; const px = this.cx(i) - ax, pz = this.cz(i) - az, t = px * ux + pz * uz;
+      if (t < -0.2 || t > L + 0.2 || Math.abs(px * uz - pz * ux) > hw) continue;
+      this.wire[i] = lower ? Math.min(this.wire[i], v) : Math.max(this.wire[i], v);
+    }
+  }
   circle(cx, cz, r, val, lowCover = false) {
     for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
       if ((x - cx) ** 2 + (z - cz) ** 2 > r * r) continue;
@@ -212,6 +227,7 @@ export class NavGrid {
     // exposed() / the cover map) are slow going for a man on foot but no obstacle: clamp them to ~2x open ground so squads
     // pick their way over a ruin or through a gap in a heap instead of a long detour round it
     let c = (this.low[k] && this.cost[k] > INF_COST.rubble ? INF_COST.rubble : this.cost[k]) + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
+    if (this.wire && this.wire[k]) c += this.wire[k];
     if (this._thr) c += this.exposed(k) * INF_COST.threat;
     return c;
   }

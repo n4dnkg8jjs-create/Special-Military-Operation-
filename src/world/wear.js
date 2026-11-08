@@ -328,6 +328,7 @@ export function weatherMaterial(m, { amount = 1, soot = 0, key = 'w' } = {}) {
 // weather every env asset material once (env GLBs only: never vehicles / soldiers)
 export function weatherEnv(assets) {
   if (assets._weathered) return; assets._weathered = true;
+  cleanHouseTemplates(assets);   // (before anything derives burnt / ruined variants from them)
   const amt = { panel_kit: 1, city: 1, farmland: 0.9, modern: 0.8, props: 0.7, fortifications: 0.5, wires: 0.4 };
   for (const [k, a] of Object.entries(amt)) {
     const g = assets.gltf[k]; if (!g) continue;
@@ -491,6 +492,54 @@ function tessellate(P, N, U, maxL) {
   }
   return [oP, oN, oU];
 }
+// welded islands of a non-indexed triangle soup (flat positions): [triangle ids] per island
+function islandsOf(P) {
+  const n = P.length / 3, par = new Int32Array(n), ids = new Map();
+  const find = q => { while (par[q] !== q) { par[q] = par[par[q]]; q = par[q]; } return q; };
+  for (let i = 0; i < n; i++) { const k = Math.round(P[i * 3] * 500) + ',' + Math.round(P[i * 3 + 1] * 500) + ',' + Math.round(P[i * 3 + 2] * 500); const j = ids.get(k); if (j === undefined) { ids.set(k, i); par[i] = i; } else par[i] = find(j); }
+  for (let t = 0; t < n / 3; t++) { const a = find(t * 3), b = find(t * 3 + 1), c = find(t * 3 + 2); par[b] = a; par[c] = a; }
+  const out = new Map(); for (let t = 0; t < n / 3; t++) { const r = find(t * 3); (out.get(r) || out.set(r, []).get(r)).push(t); }
+  return [...out.values()];
+}
+// Window frames, sills, panes and shutters whose wall is gone on one side (a shell hole beside the window, a wall cut
+// down to a stub) would hang in the air: small islands in the window band (0.6-3.3 m), flat against a wall (thin across
+// x or z), are dropped unless there is wall just beyond both their ends.  Returns the set of triangle ids to drop.
+export function floatingWindows(P) {
+  const isl = islandsOf(P), drop = new Set(), cand = [], wall = [];
+  const tri = t => [P[t * 9], P[t * 9 + 1], P[t * 9 + 2], P[t * 9 + 3], P[t * 9 + 4], P[t * 9 + 5], P[t * 9 + 6], P[t * 9 + 7], P[t * 9 + 8]];
+  for (const ts of isl) {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const t of ts) for (let k = 0; k < 3; k++) { const x = P[t * 9 + k * 3], y = P[t * 9 + k * 3 + 1], z = P[t * 9 + k * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const dx = x1 - x0, dz = z1 - z0, ax = dx < 0.3 && dz > 0.35 ? 'x' : dz < 0.3 && dx > 0.35 ? 'z' : null;
+    if (ts.length <= 48 && y0 > 0.6 && y1 < 3.3 && ax && Math.max(dx, dz) < 2.6) cand.push({ ts, ax, w: ax === 'x' ? (x0 + x1) / 2 : (z0 + z1) / 2, u0: ax === 'x' ? z0 : x0, u1: ax === 'x' ? z1 : x1, ym: (y0 + y1) / 2 });
+    else for (const t of ts) wall.push(t);
+  }
+  if (!cand.length) return drop;
+  const W = { x: [], z: [] };   // vertical wall triangles by the axis they face along: [w, u/y of 3 vertices]
+  for (const t of wall) {
+    const v = tri(t), e1 = [v[3] - v[0], v[4] - v[1], v[5] - v[2]], e2 = [v[6] - v[0], v[7] - v[1], v[8] - v[2]], nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0], L = Math.hypot(nx, ny, nz) || 1;
+    if (Math.abs(nx) / L > 0.8) W.x.push([(v[0] + v[3] + v[6]) / 3, v[2], v[1], v[5], v[4], v[8], v[7]]);
+    else if (Math.abs(nz) / L > 0.8) W.z.push([(v[2] + v[5] + v[8]) / 3, v[0], v[1], v[3], v[4], v[6], v[7]]);
+  }
+  const inT = (u, y, a) => { const [, au, ay, bu, by, cu, cy] = a, d = (by - cy) * (au - cu) + (cu - bu) * (ay - cy); if (Math.abs(d) < 1e-9) return false; const l1 = ((by - cy) * (u - cu) + (cu - bu) * (y - cy)) / d, l2 = ((cy - ay) * (u - cu) + (au - cu) * (y - cy)) / d; return l1 >= -0.01 && l2 >= -0.01 && l1 + l2 <= 1.01; };
+  const held = (c, u) => W[c.ax].some(a => Math.abs(a[0] - c.w) < 0.45 && inT(u, c.ym, a));
+  for (const c of cand) if (!held(c, c.u0 - 0.18) || !held(c, c.u1 + 0.18)) for (const t of c.ts) drop.add(t);
+  return drop;
+}
+// the house_* templates as shipped: a window left hanging in a shell hole (house_d) goes (geometry index edited once)
+export function cleanHouseTemplates(assets) {
+  const g = assets.gltf.city; if (!g) return;
+  g.scene.traverse(o => {
+    if (!o.isMesh || !/^house_[a-z]$/.test(o.name) || o.userData.windowsCleaned) return; o.userData.windowsCleaned = true;
+    const geo = o.geometry, pos = geo.attributes.position, idx = geo.index, n = idx ? idx.count : pos.count, P = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const k = idx ? idx.getX(i) : i; P[i * 3] = pos.getX(k); P[i * 3 + 1] = pos.getY(k); P[i * 3 + 2] = pos.getZ(k); }
+    // (template frame: apply the node's own scale so the window band / thickness tests are in metres)
+    const sc = o.scale; for (let i = 0; i < n; i++) { P[i * 3] *= sc.x; P[i * 3 + 1] *= sc.y; P[i * 3 + 2] *= sc.z; }
+    const drop = floatingWindows(P); if (!drop.size) return;
+    const keep = []; for (let t = 0; t < n / 3; t++) if (!drop.has(t)) for (let k = 0; k < 3; k++) keep.push(idx ? idx.getX(t * 3 + k) : t * 3 + k);
+    const g2 = geo.clone(); g2.setIndex(keep); o.geometry = g2;
+  });
+}
 export function houseRuin(tpl, mode, seed = 1) {
   tpl.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(tpl.matrixWorld).invert(), geos = []; let mat = null;
@@ -524,7 +573,7 @@ export function houseRuin(tpl, mode, seed = 1) {
       const x = frame.axis === 'x' ? cx + along * hx : cx + side * hx, z = frame.axis === 'x' ? cz + side * hz : cz + along * hz;
       holes.push([x, z, Math.min(hx, hz) * (0.7 + R() * 0.55) + (h ? 0 : 0.6), R() * 100]);
     }
-    const [tp, tn, tu] = tessellate(roofP, roofN, roofU, 0.9), kp = [], kn = [], ku = [];
+    const [tp, tn, tu] = tessellate(roofP, roofN, roofU, 1.3), kp = [], kn = [], ku = [];
     for (let i = 0; i < tp.length / 9; i++) {
       const mx = (tp[i * 9] + tp[i * 9 + 3] + tp[i * 9 + 6]) / 3, mz = (tp[i * 9 + 2] + tp[i * 9 + 5] + tp[i * 9 + 8]) / 3;
       if (holes.some(([x, z, r, k]) => { const d = Math.hypot(mx - x, mz - z), ang = Math.atan2(mz - z, mx - x); return d < r * (0.62 + 0.55 * hn(k, (ang + 3.15) * 1.6)); })) continue;
@@ -532,13 +581,15 @@ export function houseRuin(tpl, mode, seed = 1) {
     }
     outP = [...restP, ...kp]; outN = [...restN, ...kn]; outU = [...restU, ...ku];
   } else {
-    // stub: no roof; walls cut at a ragged height wandering round the outline
-    const [tp, tn, tu] = tessellate(restP, restN, restU, 0.6), k0 = R() * 50, h0 = 0.9 + R() * 0.7, P = 2 * (hx + hz) * 2, kp = [], kn = [], ku = [];
+    // stub / flat: no roof; walls cut at a ragged height wandering round the outline ('flat': knee-high, the corners and a
+    // stretch or two standing higher -- the outline, plinth and floor stay readable)
+    const flat = mode === 'flat', [tp, tn, tu] = tessellate(restP, restN, restU, 0.6), k0 = R() * 50, h0 = flat ? 0.45 + R() * 0.4 : 0.9 + R() * 0.7, P = 2 * (hx + hz) * 2, kp = [], kn = [], ku = [];
     const corner = R() * 6.28, cutH = (x, z) => {
       const ang = Math.atan2((z - cz) / Math.max(hz, 0.5), (x - cx) / Math.max(hx, 0.5)), t = (ang + Math.PI) / 6.2832 * P / 0.55;
       let h = h0 + (hn(k0, t * 0.25) - 0.5) * 1.3 + (hn(k0 + 7, Math.floor(t)) - 0.5) * 0.45;
-      if (hn(k0 + 3, t * 0.12) < 0.22) h = 0.15 + hn(k0 + 9, t) * 0.3;                                         // fallen outright
-      const dc = Math.abs(((ang - corner + 9.42) % 6.2832) - 3.1416); if (dc < 0.35) h = Math.max(h, 2.2 + (0.35 - dc) * 1.5);   // a corner still up
+      if (hn(k0 + 3, t * 0.12) < (flat ? 0.3 : 0.22)) h = 0.15 + hn(k0 + 9, t) * 0.3;                          // fallen outright
+      const dc = Math.abs(((ang - corner + 9.42) % 6.2832) - 3.1416); if (dc < 0.35) h = Math.max(h, (flat ? 1.5 : 2.2) + (0.35 - dc) * 1.5);   // a corner still up
+      if (flat) { const dc2 = Math.abs(((ang - corner - 2.4 + 9.42) % 6.2832) - 3.1416); if (dc2 < 0.25) h = Math.max(h, 1.1 + (0.25 - dc2) * 2); }   // another corner, lower
       return bb.min.y + Math.max(0.12, Math.min(eave - bb.min.y - 0.1, h));
     };
     for (let i = 0; i < tp.length / 9; i++) {
@@ -547,12 +598,23 @@ export function houseRuin(tpl, mode, seed = 1) {
       for (let q = 0; q < 9; q++) { kp.push(tp[i * 9 + q]); kn.push(tn[i * 9 + q]); } for (let q = 0; q < 6; q++) ku.push(tu[i * 6 + q]);
     }
     outP = kp; outN = kn; outU = ku;
+    // the chimney stack often survives (brick, built from the floor): the roof's chimney island, set down on the floor
+    if (R() < 0.65) for (const ts of islandsOf(roofP)) {
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+      for (const t of ts) for (let k = 0; k < 3; k++) { const x = roofP[t * 9 + k * 3], y = roofP[t * 9 + k * 3 + 1], z = roofP[t * 9 + k * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+      if (x1 - x0 > 1.2 || z1 - z0 > 1.2 || x1 - x0 < 0.25 || z1 - z0 < 0.25 || y1 - y0 < 1.5) continue;
+      const drop = y0 - (bb.min.y + 0.45) + (flat ? 0.6 : 0.2) + R() * 0.6;   // (a stump of it: the top part, sunk to the floor)
+      for (const t of ts) { for (let k = 0; k < 9; k++) outP.push(roofP[t * 9 + k] - (k % 3 === 1 ? drop : 0)); for (let k = 0; k < 9; k++) outN.push(roofN[t * 9 + k]); for (let k = 0; k < 6; k++) outU.push(roofU[t * 6 + k]); }
+      break;
+    }
   }
+  // nothing left hanging: window frames / sills / panes whose wall went with the hole or the cut
+  { const drop = floatingWindows(outP); if (drop.size) { const kp = [], kn = [], ku = []; for (let t = 0; t < outP.length / 9; t++) { if (drop.has(t)) continue; for (let k = 0; k < 9; k++) { kp.push(outP[t * 9 + k]); kn.push(outN[t * 9 + k]); } for (let k = 0; k < 6; k++) ku.push(outU[t * 6 + k]); } outP = kp; outN = kn; outU = ku; } }
   if (!outP.length) return null;
   const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(outP, 3)); g2.setAttribute('normal', new THREE.Float32BufferAttribute(outN, 3)); g2.setAttribute('uv', new THREE.Float32BufferAttribute(outU, 2));
   g2.computeBoundingSphere();
   const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_' + mode;
-  const shell = new THREE.Mesh(g2, ruinMat(mat, mode === 'stub' ? 0.55 : 0.18, 'ruin_' + mode)); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
+  const shell = new THREE.Mesh(g2, ruinMat(mat, mode === 'holed' ? 0.18 : 0.55, 'ruin_' + (mode === 'holed' ? 'holed' : 'stub'))); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
   if (mode === 'holed') {   // fallen ceiling and slate on the floor (only seen through the holes)
     const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.45, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.2, cz);
     const floor = new THREE.Mesh(fl, ruinFloorMat()); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);

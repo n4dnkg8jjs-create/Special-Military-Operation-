@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary, craterTexture } from './city.js';
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
-import { instance, instanceRuns, trs, LODS, treeLod } from './instancer.js';
+import { instance, instanceRuns, trs, LODS, treeLod, simplified } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
@@ -258,7 +258,10 @@ const Real = {
   rubbleInst(t, mats) {
     const bb = t.userData.bbM ||= new THREE.Box3().setFromObject(t), r = Math.max(0.5, (bb.max.x - bb.min.x + bb.max.z - bb.min.z) / 4), h = Math.max(0.3, bb.max.y);
     const S = new THREE.Matrix4().makeScale(r, h, r * 0.85); for (const M of mats) (this._moundM ||= []).push(M.clone().multiply(S));
-    return { cullDist: 240, cell: 180 };
+    // (v2) 60-240 m: the scan simplified to ~1/4 of its triangles (meshopt, ~2 cm error at the heap's scale: sub-pixel
+    // there); the full scan only near the camera
+    const mid = simplified(t, 0.25, 0.012);
+    return mid ? { mid, nearDist: 60, lodDist: 240, cullDist: 240, cell: 180, midShadows: true } : { cullDist: 240, cell: 180 };
   },
   moundsFlush() {
     const list = this._moundM; if (!list?.length) return;
@@ -494,16 +497,21 @@ const Real = {
         // 3 roof broken open, 4 wall stubs on a heap
         const roll = R(), fate = this.ruinHouse ? this.ruinHouse(x, z) : null, state = fate ?? (roll < dRub ? 2 : roll < dRub + dBurn ? 1 : 0);
         this.houseState.set(b, state === 4 ? 2 : state === 3 ? 1 : state);
-        if (state === 2) rubble(x, z, (1.0 + R() * 0.3) * best.s);
+        // flattened: the outline stays readable -- knee-high wall stubs, plinth, a corner / chimney standing, the heap inside
+        // the walls (ruins.js adds the heap and the fallen timber); a bare heap only where the variant cannot be built
+        const flat = state === 2 && this.ruin ? ruinTpl(this, best.t.n, 'flat') : null;
+        if (state === 2 && !flat) rubble(x, z, (1.0 + R() * 0.3) * best.s);
         else {
-          const mode = state === 3 ? 'holed' : state === 4 ? 'stub' : null, rv = mode && ruinTpl(this, best.t.n, mode);
+          if (flat) R();   // (keeps the world stream as with the heap)
+          const mode = state === 3 ? 'holed' : state === 4 ? 'stub' : flat ? 'flat' : null, rv = mode && ruinTpl(this, best.t.n, mode);
           const name = state === 1 ? (this.burntTpl(best.t.n) || best.t.n) : rv || best.t.n, ryh = ry + (R() - 0.5) * 0.06;
           // wall stubs: slow going and good cover for infantry, no way through for wheeled vehicles
-          const o = state === 4 && rv ? { s: best.s, cost: 7, low: true, occ: 1.3, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } } : { s: best.s, occ: state === 1 || state === 4 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } };
+          const low = (state === 4 || state === 2) && rv, o = low ? { s: best.s, cost: 7, low: true, occ: state === 2 ? 0.9 : 1.3, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } } : { s: best.s, occ: state === 1 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } };
           if (!this.put(name, x, z, ryh, o)) continue D;
-          if (state === 4 && rv) this.nav.setVeh(x, z, b.L / 2 * 0.8, b.D / 2 * 0.8, b.rot, 1);
+          if (low) this.nav.setVeh(x, z, b.L / 2 * 0.8, b.D / 2 * 0.8, b.rot, 1);
           if (state === 1 || state === 4) this.burntSpots.push([x, z, state === 1 ? 8 : 6]);
           if (this.ruin && state) this.ruin.houses.push({ x, z, y: this.tplBaseY(this.tpl(name), x, z, ryh, best.s), ry: ryh, s: best.s, t: best.t.n, mode: state === 1 ? 'shell' : mode || 'shell' });
+          if (state === 2) this.burntSpots.push([x, z, 5]);
         }
         this.houseSpots.push([x, z, state === 2 || state === 4]);
       } else if (b.cls === 'shed') {

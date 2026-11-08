@@ -95,12 +95,14 @@ function planBlock(w, b) {
   const ex = b.extras ||= [], v = new THREE.Vector3(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
   const at = (lx, y, lz, ry, s = 1) => { b.toWorld(lx, y, lz, v); q.setFromAxisAngle(Y, b.rot + ry); return new THREE.Matrix4().compose(v, q, new THREE.Vector3(s, s, s)); };
   const pile = (lx, lz, outRy, big, s) => {   // heap against the facade, +Z of the pile = away from the building
-    const name = big ? 'collapse_pile_large' : 'collapse_pile_small', T = pileTpl(w, name); if (!T || !kit.pieces[name]) return;
+    // (big heaps: the small pile stretched flat-ish, 2.9k triangles instead of the large one's 9.1k)
+    const name = 'collapse_pile_small', T = pileTpl(w, name); if (!T || !kit.pieces[name]) return;
+    const sx = big ? s * 1.75 : s, sy = big ? s * 1.15 : s;
     b.toWorld(lx, 0, lz, v); const ry = b.rot + outRy + (R() - 0.5) * 0.3, x = v.x, z = v.z;
-    if (Math.abs(x) > MAP_SIZE / 2 - 10 || Math.abs(z) > MAP_SIZE / 2 - 10 || w.terrain.cutSDF(x, z) < T.r * s + 1 || w.net?.hit(x, z, T.r * s * 0.45)) return;
-    const Mg = trs(x, 0, z, ry, s);
+    if (Math.abs(x) > MAP_SIZE / 2 - 10 || Math.abs(z) > MAP_SIZE / 2 - 10 || w.terrain.cutSDF(x, z) < T.r * sx + 1 || w.net?.hit(x, z, T.r * sx * 0.45)) return;
+    const Mg = new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(Y, ry), new THREE.Vector3(sx, sy, sx));
     ex.push({ piece: name, M: Mg.clone().multiply(new THREE.Matrix4().makeTranslation(T.off.x, T.off.y, T.off.z)) });
-    S.heaps.push({ tpl: T.obj, M: Mg, x, z, r: T.r * s, top: T.top * s, b }); st.piles++;
+    S.heaps.push({ tpl: T.obj, M: Mg, x, z, r: T.r * sx, top: T.top * sy, b }); st.piles++;
   };
   const furn = ['debris_wardrobe', 'debris_bed', 'debris_table', 'debris_radiator'].filter(n => kit.pieces[n]);
   for (const [a, c] of plan.fab) {
@@ -157,7 +159,8 @@ function ruinRubble(w, add) {
     else if (e.kind === 'fab') for (const sd of [-1, 1]) for (let col2 = e.a - 1; col2 <= e.c + 1; col2 += 2) { const p = b.toWorld(-b.L / 2 + (col2 + 0.5) * W + (R() - 0.5) * 2, 0, sd * (b.D / 2 + 1.4 + R() * 2)); add(p.x, p.z, 0.6 + R() * 0.5, R() * TAU, b, R() < 0.5 ? 'fan' : 'heap'); }
   }
   // flattened houses: a stub of wall round a heap of brick, slate and timber
-  for (const h of S.houses) if (h.mode === 'stub') add(h.x + (R() - 0.5) * 1.5, h.z + (R() - 0.5) * 1.5, (0.62 + R() * 0.22) * h.s, R() * TAU, null, 'house');
+  // (flattened: a fuller heap, still inside the outline; the scanned heaps are ~3.4 m in radius at scale 1)
+  for (const h of S.houses) if (h.mode === 'stub' || h.mode === 'flat') { const fr = houseFrame(w, h.t), k = fr ? Math.min(fr.hx, fr.hz) * h.s / 3.4 : 1; add(h.x + (R() - 0.5) * 1.2, h.z + (R() - 0.5) * 1.2, Math.max(0.5, Math.min(1.05, k * (h.mode === 'flat' ? 1.15 : 0.95))) * (0.9 + R() * 0.15), R() * TAU, null, 'house'); }
   nav.vehDirty = true;
 }
 function vehDisc(nav, x, z, r, v) {
@@ -211,7 +214,7 @@ function treeFate(w, n, x, z, s = 1) {
   if (u < pStump) { S.stumps.push([x, z, s, fall]); st.stump = (st.stump || 0) + 1; return null; }
   const urban = URBAN_T[n];
   if (urban) {
-    if (u < pStump + pBroken && urban[1]) { (w._bfTops ||= []).push([x, z, fall, 0.7 * s]); st.broken = (st.broken || 0) + 1; return urban[1]; }
+    if (u < pStump + pBroken && urban[1]) { if (hash2(x, z, 50) < 0.5) (w._bfTops ||= []).push([x, z, fall, 0.7 * s]); st.broken = (st.broken || 0) + 1; return urban[1]; }
     if (u < pStump + pBroken + pStrip && urban[0]) { st.stripped = (st.stripped || 0) + 1; return urban[0]; }
     return n;
   }
@@ -378,19 +381,20 @@ function ruinDebris(w, api) {
   const put = (name, x, z, far = false, rr = 0.3, road = false) => {
     if (!(road ? Math.abs(x) < MAP_SIZE / 2 - 5 && Math.abs(z) < MAP_SIZE / 2 - 5 && w.terrain.cutSDF(x, z) > rr + 0.3 && !api.inBuilding(x, z, rr) && !(w.solidHit && w.solidHit(x, z, rr, rr, 0, 0.05)) : free(x, z, rr)) || taken(x, z, rr * 0.5)) return false;
     const ry = R() * TAU, gx = (H(x + 0.3, z) - H(x - 0.3, z)) / 0.6, gz = (H(x, z + 0.3) - H(x, z - 0.3)) / 0.6, c = Math.cos(ry), s = Math.sin(ry);
-    D.begin(x, H(x, z) - 0.01, z, ry, -Math.atan(gx * s + gz * c), Math.atan(gx * c - gz * s), 1, far); lib(name)(D, R); claim(x, z, rr * 0.5); n++; return true;
+    if (!api.guard(() => { D.begin(x, H(x, z) - 0.01, z, ry, -Math.atan(gx * s + gz * c), Math.atan(gx * c - gz * s), 1, far); lib(name)(D, R); })) return false;   // (never into / over a trench, never floating)
+    claim(x, z, rr * 0.5); n++; return true;
   };
   // a piece up on a slab (inside a block, no ground checks)
-  const up = (name, x, y, z, far = true) => { D.begin(x, y, z, R() * TAU, (R() - 0.5) * 0.2, (R() - 0.5) * 0.2, 1, far); lib(name)(D, R); n++; };
+  const up = (name, x, y, z, far = name === 'slab') => { D.begin(x, y, z, R() * TAU, (R() - 0.5) * 0.2, (R() - 0.5) * 0.2, 1, far); lib(name)(D, R); n++; };
   const W8 = tbl => { let s = 0; for (const [, p] of tbl) s += p; let u = R() * s; for (const [k, p] of tbl) if ((u -= p) < 0) return k; return tbl[0][0]; };
   const SPILL = [['slab', 3], ['chunk', 4], ['rebar', 2], ['window', 2], ['glass', 2], ['insul', 1], ['radiator', 0.6], ['furn', 0.5], ['plank', 0.6], ['sheet', 0.4]];
-  const BIG = new Set(['slab', 'furn', 'beam']);
+  const BIG = new Set(['slab', 'beam']);   // (the far copy: big readable pieces only)
   // ---- panel blocks: spill along every facade foot under damaged panels (more under the worse ones), the crater floors
   for (const b of w.buildings || []) {
     if (!b.panels || !b.toWorld) continue;
     const brick = /brick/.test(b.kind);
     for (const p of b.panels) {
-      const bad = p.gone ? 3 : p.state; if (bad < 2 || R() > (bad === 3 ? 0.3 : 0.1) * Ld) continue;
+      const bad = p.gone ? 3 : p.state; if (bad < 2 || R() > (bad === 3 ? 0.22 : 0.07) * Ld) continue;
       const c = b.panelCenter(p), o = b.outward(p), m = 1 + (R() * (bad === 3 ? 2.5 : 1.5) | 0);
       for (let k = 0; k < m; k++) {
         const d = 1.2 + R() * (2.5 + Math.min(p.floor, 8) * 0.45), t = (R() - 0.5) * W * 1.4, x = c.x + o.x * d + o.z * t, z = c.z + o.z * d - o.x * t;
@@ -425,14 +429,23 @@ function ruinDebris(w, api) {
       }
     }
     // the stuff the house shed round its walls
-    const nn = h.mode === 'stub' ? 5 : h.mode === 'shell' ? 3 : h.mode === 'holed' ? 2 : 0, rad = Math.max(fr.hx, fr.hz) * h.s;
+    // flattened / stubs: the roof timber and slate came down inside the walls, some of it spilling out over them
+    if (h.mode === 'stub' || h.mode === 'flat') {
+      const M2 = trs(h.x, 0, h.z, h.ry, h.s), v = new THREE.Vector3();
+      for (let k = 0; k < (h.mode === 'flat' ? 6 : 4); k++) {
+        const u = (R() - 0.5) * 1.6, q = (R() - 0.5) * 1.6; v.set(fr.cx + u * fr.hx, 0, fr.cz + q * fr.hz).applyMatrix4(M2);
+        const name = W8([['beam', 3], ['sheet', 2], ['plank', 1.5], ['brick', 1]]);
+        if (api.guard(() => { D.begin(v.x, H(v.x, v.z) - 0.04, v.z, R() * TAU, (R() - 0.5) * 0.5, (R() - 0.5) * 0.5, h.s, name === 'beam'); lib(name)(D, R); }, true)) n++;
+      }
+    }
+    const nn = h.mode === 'stub' || h.mode === 'flat' ? 3 : h.mode === 'shell' ? 2 : h.mode === 'holed' ? 1 : 0, rad = Math.max(fr.hx, fr.hz) * h.s;
     for (let k = 0; k < nn; k++) { const a = R() * TAU, d = rad + 0.6 + R() * 3, x = h.x + Math.cos(a) * d, z = h.z + Math.sin(a) * d; const name = W8([['brick', 4], ['chunk', 2], ['sheet', h.mode === 'holed' ? 3 : 1.5], ['beam', burnt ? 1.5 : 0.6], ['plank', 1], ['furn', 0.3], ['window', 0.6], ['glass', 0.6]]); put(name, x, z, BIG.has(name), 0.4); }
-    if (h.mode === 'shell' || h.mode === 'stub') scorch.push([h.x, h.z, rad + 2.5, h.mode === 'shell' ? 0.45 : 0.3]);
+    if (h.mode === 'shell' || h.mode === 'stub' || h.mode === 'flat') scorch.push([h.x, h.z, rad + 2.5, h.mode === 'shell' ? 0.45 : 0.3]);
   }
   // ---- stumps (treeFate: the trunk lies beside it)
   for (const [x, z, s, a] of S.stumps) {
-    D.begin(x, H(x, z) - 0.04, z, R() * TAU, (R() - 0.5) * 0.08, (R() - 0.5) * 0.08, 1, true); RP.stump(D, R, s); n++; claim(x, z, 0.4);
-    const px = x + Math.cos(a) * 0.6, pz = z + Math.sin(a) * 0.6; if (w.terrain.cutSDF(px, pz) > 1 && !w.net?.hit(px, pz, 1)) { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, true); PC.log(D, R, 0.8 * s); n++; }
+    if (api.guard(() => { D.begin(x, H(x, z) - 0.04, z, R() * TAU, (R() - 0.5) * 0.08, (R() - 0.5) * 0.08, 1, false); RP.stump(D, R, s); }, true)) { n++; claim(x, z, 0.4); }
+    const px = x + Math.cos(a) * 0.6, pz = z + Math.sin(a) * 0.6; if (w.terrain.cutSDF(px, pz) > 1 && !w.net?.hit(px, pz, 1) && api.guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, s > 1.05); PC.log(D, R, 0.8 * s); })) n++;
   }
   // ---- streets: litter on the carriageways and verges, densest by the ruins (glass, chunks, branches, slabs, wire)
   const roads = w.osm.roads.filter(r => r.type !== 'track');
@@ -440,7 +453,7 @@ function ruinDebris(w, api) {
     const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1], L = Math.hypot(bx - ax, bz - az); if (L < 1) continue;
     for (let t = R() * 6; t < L; t += 4 + R() * 8) {
       const x0 = ax + (bx - ax) * t / L, z0 = az + (bz - az) * t / L, near = S.heat ? S.heat(x0, z0) : 0.5;
-      if (R() > (w.urban ? 0.2 : 0.14) * Ld * (0.4 + near)) continue;
+      if (R() > (w.urban ? 0.12 : 0.1) * Ld * (0.4 + near)) continue;
       const o = (R() - 0.5) * (r.w + 3), x = x0 - (bz - az) / L * o, z = z0 + (bx - ax) / L * o;
       const name = w.urban ? W8([['chunk', 4], ['glass', 2], ['branch', 2], ['slab', 1], ['brick', 2], ['sheet', 0.5], ['frag', 1], ['window', 0.5], ['plank', 0.6], ['tyre', 0.1]]) : W8([['branch', 4], ['brick', 2], ['sheet', 1.5], ['chunk', 1], ['frag', 1], ['plank', 1]]);
       put(name, x, z, BIG.has(name), 0.35, true);

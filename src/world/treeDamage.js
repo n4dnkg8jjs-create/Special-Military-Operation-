@@ -21,7 +21,7 @@ import { TRUNKS } from './vegetation.js';
 import { MAP_SIZE } from './city.js';
 
 const TREE = /^(tree_|leafy_summer_|bush_)/, NOT_TREE = /fallen|stump|_lod\d*$|_mid$|row$/;
-const LEAF_CAP = 600, WOOD_CAP = 200, TOP_CAP = 40, STUMP_CAP = 400, GC = 8;
+const LEAF_CAP = 900, WOOD_CAP = 200, TOP_CAP = 40, STUMP_CAP = 400, GC = 8, BR3_CAP = 16, BRC_CAP = 70, BRV = 4;   // (branches: per variant, 3D in flight / flat cards at rest)
 const BIG_TRUNK = 0.4, WHEEL_TRUNK = 0.12, LIGHT_TRUNK = 0.04;   // (WHEEL_TRUNK: a heavy 8x8 pushes over saplings up to this; a light truck / pickup only brush (LIGHT_TRUNK); bigger trees: wheeled vehicles drive round)   // trunk-shape radius (vegetation.js trunkShape, bark + lower limbs: ~1.6-2x the bole) of a tree a tank cannot push over; ~10-30 % of the trees per map
 const isLeafMat = m => !!m && (m.alphaTest > 0 || m.transparent || /leaf|leaves|foliage/i.test(m.name || ''));
 const leafOf = im => (Array.isArray(im.material) ? im.material.some(isLeafMat) : isLeafMat(im.material));
@@ -66,6 +66,42 @@ function tplInfo(tpl) {
     leafCol: leafMat ? albedo(leafMat, true, 0x56602f) : null, barkCol: albedo(barkMat, false, 0x4d4339) };
 }
 
+// ---- branches blown off a crown: one procedural skeleton per variant (main limb along +x 0..1, side twigs, leaf clusters
+// on the leafy variants), built twice from the same 2D layout -- a thin 3D mesh (in flight: it tumbles) and a flat
+// alpha-cut card drawn from the same strokes / colours (at rest on the ground, or far from the camera): the swap happens
+// when the piece lies flat, so the silhouette and colour do not change.
+function branchSkel(seed, leafy) {
+  let a = seed; const r = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const segs = [], leaves = [], bend = (r() - 0.5) * 0.25;
+  let px = 0, pz = 0, ang = (r() - 0.5) * 0.2;
+  for (let i = 0; i < 4; i++) { const L = 0.25, nx = px + Math.cos(ang) * L, nz = pz + Math.sin(ang) * L, r0 = 0.03 * (1 - i * 0.2), r1 = 0.03 * (1 - (i + 1) * 0.2); segs.push([px, pz, nx, nz, r0, Math.max(0.006, r1)]); px = nx; pz = nz; ang += bend; }
+  const tw = 3 + (r() * 3 | 0);
+  for (let k = 0; k < tw; k++) {
+    const t = 0.25 + r() * 0.6, sd = k % 2 ? 1 : -1, bx = t, bz = Math.sin(t * 3) * 0.02 + bend * t, ta = sd * (0.5 + r() * 0.5), L = 0.15 + r() * 0.22, ex = bx + Math.cos(ta) * L, ez = bz + Math.sin(ta) * L;
+    segs.push([bx, bz, ex, ez, 0.012, 0.005]);
+    if (leafy) for (let q = 0; q < 3; q++) { const u = 0.45 + q * 0.27; leaves.push([bx + (ex - bx) * u + (r() - 0.5) * 0.05, bz + (ez - bz) * u + (r() - 0.5) * 0.05, 0.05 + r() * 0.04]); }
+  }
+  if (leafy) for (let q = 0; q < 4; q++) leaves.push([px - q * 0.06 + (r() - 0.5) * 0.04, pz + (r() - 0.5) * 0.08, 0.05 + r() * 0.04]);
+  return { segs, leaves };
+}
+const BR_BARK = new THREE.Color(0.30, 0.25, 0.20), BR_LEAF = new THREE.Color(0.30, 0.36, 0.17), BR_Z = 0.35;   // (card covers z -0.35..0.35)
+function branchGeo(S) {
+  const pos = [], col = [], push = (g, c) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); col.push(c.r, c.g, c.b); } };
+  for (const [x0, z0, x1, z1, r0, r1] of S.segs) {
+    const L = Math.hypot(x1 - x0, z1 - z0), g = new THREE.CylinderGeometry(r1, r0, L, 4, 1).toNonIndexed(); g.rotateZ(-Math.PI / 2); g.rotateY(-Math.atan2(z1 - z0, x1 - x0)); g.translate((x0 + x1) / 2, r0, (z0 + z1) / 2); push(g, BR_BARK);
+  }
+  for (const [x, z, s] of S.leaves) { const g = new THREE.PlaneGeometry(s * 2, s * 1.4).toNonIndexed(); g.rotateX(-Math.PI / 2); g.rotateY(Math.random() * 6.28); g.translate(x, 0.025, z); push(g, BR_LEAF); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals(); return g;
+}
+function branchCard(S) {
+  const W = 256, Hh = Math.round(256 * BR_Z * 2), cv = document.createElement('canvas'); cv.width = W; cv.height = Hh; const x = cv.getContext('2d');
+  const P = (u, v) => [u * W, (v + BR_Z) / (2 * BR_Z) * Hh], css = c => `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+  x.lineCap = 'round'; x.strokeStyle = css(BR_BARK.clone().convertLinearToSRGB());
+  for (const [x0, z0, x1, z1, r0, r1] of S.segs) { x.lineWidth = Math.max(1.5, (r0 + r1) * W); x.beginPath(); x.moveTo(...P(x0, z0)); x.lineTo(...P(x1, z1)); x.stroke(); }
+  x.fillStyle = css(BR_LEAF.clone().convertLinearToSRGB());
+  for (const [u, v, s] of S.leaves) { const [px, py] = P(u, v); x.beginPath(); x.ellipse(px, py, s * W, s * 0.7 * W, 0.6, 0, 6.283); x.fill(); }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 export function setupTreeDamage(g) {
   const T = new TreeDamage(g);
   if (g.fx) { g.fx.onBlast = (pos, p) => T.blast(pos.x, pos.y, pos.z, p); g.fx.onUpdate = dt => T.update(dt); }
@@ -171,6 +207,16 @@ export class TreeDamage {
     const mk = (n) => ({ cap: n, px: new Float32Array(n), py: new Float32Array(n), pz: new Float32Array(n), vx: new Float32Array(n), vy: new Float32Array(n), vz: new Float32Array(n),
       a: new Float32Array(n), b: new Float32Array(n), wa: new Float32Array(n), wb: new Float32Array(n), sx: new Float32Array(n), sy: new Float32Array(n), t: new Float32Array(n), life: new Float32Array(n), fl: new Float32Array(n), mode: new Uint8Array(n), head: 0, hw: 0, alive: 0 });
     this.L = mk(LEAF_CAP); this.W = mk(WOOD_CAP);
+    // branches: per variant a 3D pool (in flight) and a card pool (lying flat / far); 0-1 bare, 2-3 leafy
+    this.BR = [];
+    for (let v = 0; v < BRV; v++) {
+      const S = branchSkel(911 + v * 37, v >= 2), m3 = new THREE.InstancedMesh(branchGeo(S), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, flatShading: true }), BR3_CAP);
+      const cg = new THREE.PlaneGeometry(1, BR_Z * 2); cg.rotateX(-Math.PI / 2); cg.translate(0.5, 0.012, 0);
+      const mc = new THREE.InstancedMesh(cg, new THREE.MeshStandardMaterial({ map: branchCard(S), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.95 }), BRC_CAP);
+      for (const [m, cap] of [[m3, BR3_CAP], [mc, BRC_CAP]]) { for (let i = 0; i < cap; i++) { m.setMatrixAt(i, z); m.setColorAt(i, white); } m.count = 0; m.frustumCulled = false; m.visible = false; m.receiveShadow = true; m.name = 'td_branch'; sc.add(m); }
+      m3.castShadow = true;
+      this.BR.push({ m3, mc, P: mk(BR3_CAP), C: { head: 0, n: 0 } });
+    }
     // stumps (trees.glb), fallen tops: lazily per template
     const G = this.g.assets?.gltf?.trees?.scene;
     this.stumpT = ['stump_1', 'stump_2'].map(n => G?.getObjectByName(n)).filter(Boolean).map(t => this.dynPool(t, STUMP_CAP, true));
@@ -237,7 +283,7 @@ export class TreeDamage {
     const R = 9 * Math.sqrt(power), RL = R * 1.4, reach = RL + 6;
     const cam = this.g.renderer?.camera?.position, cd = cam ? Math.hypot(cam.x - bx, cam.z - bz) : 0;
     const vis = cd < 420 ? (cd < 220 ? 1 : 0.45) : 0;   // particle budget by camera distance (state changes always)
-    let leafBudget = Math.round(280 * vis), woodBudget = Math.round(70 * vis);
+    let leafBudget = Math.round(420 * vis), woodBudget = Math.round(70 * vis);
     this.stats.blasts++;
     for (let gx = Math.floor((bx - reach) / GC); gx <= Math.floor((bx + reach) / GC); gx++) for (let gz = Math.floor((bz - reach) / GC); gz <= Math.floor((bz + reach) / GC); gz++) {
       const l = this.grid.get(gx * 4096 + gz); if (!l) continue;
@@ -254,7 +300,7 @@ export class TreeDamage {
           let f1 = f0 - qL * (I.bush ? 0.7 : 0.9); if (f1 < 0.25) f1 = 0;
           if (f0 - f1 > 0.015) {
             this.f[t] = f1; this.setFoliage(t, f1); this.cover(t, f0, f1); if (f1 === 0) this.stats.stripped++;
-            if (leafBudget > 0) { const n = Math.min(leafBudget, Math.round((f0 - f1) * (I.bush ? 14 : 34) * Math.min(2, I.r * s / 2.5) * (0.6 + vis * 0.4))); leafBudget -= n; this.leaves(t, n, bx, by, bz, qL); }
+            if (leafBudget > 0) { const n = Math.min(leafBudget, Math.round((f0 - f1) * (I.bush ? 18 : 48) * Math.min(2, I.r * s / 2.5) * (0.6 + vis * 0.4))); leafBudget -= n; this.leaves(t, n, bx, by, bz, qL); }
           }
         }
         if (I.bush) continue;
@@ -322,8 +368,9 @@ export class TreeDamage {
       const x = cw.x + Math.cos(a) * rr, y = cw.y + (R() - 0.5) * 2 * cy, z = cw.z + Math.sin(a) * rr;
       let dx = x - bx, dy = y - by, dz = z - bz; const d = Math.hypot(dx, dy, dz) || 1; dx /= d; dy /= d; dz /= d;
       const v = sp * (0.4 + R() * 0.8);
-      B.px[i] = x; B.py[i] = y; B.pz[i] = z; B.vx[i] = dx * v + (R() - .5) * 2; B.vy[i] = Math.max(0, dy) * v + 1 + R() * 3; B.vz[i] = dz * v + (R() - .5) * 2;
-      B.a[i] = R() * 6.28; B.b[i] = R() * 6.28; B.wa[i] = (R() - .5) * 14; B.wb[i] = (R() - .5) * 10; const sz = (I.bush ? 0.14 : 0.2) + R() * 0.14;   // (leaf + leafy twig clusters: readable at RTS distances) B.sx[i] = sz * 0.75; B.sy[i] = sz;
+      // blasted up and out of the crown (a column of leaves over the burst), then fluttering down for half a minute
+      B.px[i] = x; B.py[i] = y; B.pz[i] = z; B.vx[i] = dx * v + (R() - .5) * 3; B.vy[i] = Math.max(0.35, dy + 0.5) * v + 3 + R() * 6; B.vz[i] = dz * v + (R() - .5) * 3;
+      B.a[i] = R() * 6.28; B.b[i] = R() * 6.28; B.wa[i] = (R() - .5) * 14; B.wb[i] = (R() - .5) * 10; const sz = (I.bush ? 0.14 : 0.2) + R() * 0.14; B.sx[i] = sz * 0.75; B.sy[i] = sz;   // (leaf + leafy twig clusters: readable at RTS distances)
       B.t[i] = 0; B.life[i] = 20 + R() * 15; B.fl[i] = floor + 0.02; B.mode[i] = 1;
       const v2 = 0.7 + R() * 0.5; c.copy(col).multiplyScalar(v2); if (R() < 0.18) c.lerp(this._c.setRGB(0.42, 0.33, 0.16), 0.6); this.leafMesh.setColorAt(i, c);
     }
@@ -333,7 +380,8 @@ export class TreeDamage {
     if (n <= 0) return;
     const I = this.tInfo[t], s = this.s[t], B = this.W, R = Math.random, c = this._c2 ||= new THREE.Color(), H = Math.max(2, I.h * s);
     for (let k = 0; k < n; k++) {
-      const i = this.spawn(B), branch = R() < (big ? 0.35 : 0.2), y = this.y[t] + (branch ? H * (0.45 + R() * 0.45) : 0.3 + R() * Math.min(3, H * 0.4));
+      if (R() < (big ? 0.35 : 0.2)) { this.branch(t, bx, bz, q); continue; }
+      const i = this.spawn(B), branch = false, y = this.y[t] + (branch ? H * (0.45 + R() * 0.45) : 0.3 + R() * Math.min(3, H * 0.4));
       const a = R() * 6.283, x = this.x[t] + Math.cos(a) * 0.2, z = this.z[t] + Math.sin(a) * 0.2;
       let dx = x - bx, dz = z - bz; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
       const v = (branch ? 3 : 7) + R() * (branch ? 6 : 13) * Math.min(1.6, q + 0.4);
@@ -346,8 +394,54 @@ export class TreeDamage {
     }
     this.woodMesh.instanceColor.needsUpdate = true; this.woodMesh.visible = true;
   }
+  // a branch blown off the crown: thrown as a 3D piece (tumbling), set down flat, then swapped to its flat card (same
+  // layout and colours) -- or a card from the start beyond ~150 m from the camera
+  branch(t, bx, bz, q) {
+    const I = this.tInfo[t], s = this.s[t], R = Math.random, H = Math.max(2, I.h * s), v = (I.leafy && this.f[t] > 0 ? 2 : 0) + (R() < 0.5 ? 1 : 0), B = this.BR[v];
+    const a = R() * 6.283, x = this.x[t] + Math.cos(a) * I.r * s * 0.4, z = this.z[t] + Math.sin(a) * I.r * s * 0.4, y = this.y[t] + H * (0.5 + R() * 0.4), L = 0.9 + R() * 1.6;
+    let dx = x - bx, dz = z - bz; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
+    const cam = this.g.renderer?.camera?.position, far = cam && Math.hypot(cam.x - x, cam.z - z) > 150, c = this._c2 ||= new THREE.Color(); c.setScalar(0.8 + R() * 0.4);
+    if (far) { this.card(B, x, this.y[t], z, R() * 6.283, L, c); return; }   // (a few pixels at that range: straight to the ground)
+    const P = B.P, i = P.head; P.head = (P.head + 1) % P.cap; if (P.mode[i]) P.alive--; if (i >= P.hw) P.hw = i + 1; P.alive++;
+    const sp = 3 + R() * 5 * Math.min(1.6, q + 0.4);
+    P.px[i] = x; P.py[i] = y; P.pz[i] = z; P.vx[i] = dx * sp + (R() - 0.5) * 2; P.vy[i] = 2 + R() * 4; P.vz[i] = dz * sp + (R() - 0.5) * 2;
+    P.a[i] = R() * 6.28; P.b[i] = R() * 6.28; P.wa[i] = (R() - 0.5) * 6; P.wb[i] = (R() - 0.5) * 5; P.sx[i] = L; P.t[i] = 0; P.mode[i] = 1; P.fl[i] = R() * 6.283;
+    B.m3.setColorAt(i, c); B.m3.instanceColor.needsUpdate = true; B.m3.visible = true;
+  }
+  card(B, x, y, z, yaw, L, c) {
+    const C = B.C, i = C.head; C.head = (C.head + 1) % BRC_CAP; if (i >= C.n) C.n = i + 1;
+    const ter = this.g.city?.terrain, gy = ter ? ter.heightAt(x, z) : y;
+    this._q.setFromAxisAngle(this._v.set(0, 1, 0), yaw); this._m.compose(this._v2.set(x, gy, z), this._q, this._s.set(L, L, L));
+    B.mc.setMatrixAt(i, this._m); B.mc.setColorAt(i, c); B.mc.count = C.n; B.mc.visible = true;
+    const a = B.mc.instanceMatrix; a.addUpdateRange(i * 16, 16); a.needsUpdate = true; B.mc.instanceColor.needsUpdate = true;
+  }
+  stepBranches(dt) {
+    const ter = this.g.city?.terrain, m = this._m, q = this._q, e = this._e, v = this._v, s = this._s, c = this._c3 ||= new THREE.Color();
+    for (const B of this.BR) {
+      const P = B.P; if (!P.alive) continue; let dirty = false;
+      for (let i = 0; i < P.hw; i++) {
+        const md = P.mode[i]; if (!md) continue; P.t[i] += dt;
+        const gy = ter ? ter.heightAt(P.px[i], P.pz[i]) : 0;
+        if (md === 1) {   // flying, tumbling
+          P.vy[i] -= 9.8 * dt; P.px[i] += P.vx[i] * dt; P.py[i] += P.vy[i] * dt; P.pz[i] += P.vz[i] * dt; P.a[i] += P.wa[i] * dt; P.b[i] += P.wb[i] * dt;
+          if (P.py[i] <= gy + 0.02 && P.vy[i] < 0) { P.mode[i] = 2; P.t[i] = 0; P.py[i] = gy + 0.02; P.life[i] = P.a[i]; P.wa[i] = P.b[i]; }   // (keep the landing attitude to ease out of)
+        }
+        let pitch = P.a[i], roll = P.b[i];
+        if (P.mode[i] === 2) {   // settling: slides a little, eases flat over 0.35 s, then becomes the card
+          const k = Math.min(1, P.t[i] / 0.35), f = 1 - k * k * (3 - 2 * k), slow = Math.exp(-6 * dt); P.vx[i] *= slow; P.vz[i] *= slow; P.px[i] += P.vx[i] * dt; P.pz[i] += P.vz[i] * dt; P.py[i] = gy + 0.02;
+          pitch = Math.atan2(Math.sin(P.life[i]), Math.cos(P.life[i])) * f; roll = Math.atan2(Math.sin(P.wa[i]), Math.cos(P.wa[i])) * f;
+          if (k >= 1) { B.m3.getColorAt(i, c); this.card(B, P.px[i], P.py[i], P.pz[i], P.fl[i], P.sx[i], c); P.mode[i] = 0; P.alive--; m.makeScale(0, 0, 0); B.m3.setMatrixAt(i, m); dirty = true; continue; }
+        }
+        m.compose(v.set(P.px[i], P.py[i], P.pz[i]), q.setFromEuler(e.set(pitch, P.fl[i], roll, 'YXZ')), s.set(P.sx[i], P.sx[i], P.sx[i]));
+        B.m3.setMatrixAt(i, m); dirty = true;
+      }
+      if (dirty) { B.m3.count = P.hw; const a = B.m3.instanceMatrix; a.clearUpdateRanges(); a.addUpdateRange(0, P.hw * 16); a.needsUpdate = true; }
+      if (!P.alive) { P.hw = 0; B.m3.count = 0; B.m3.visible = false; }
+    }
+  }
   update(dt) {
     if (!(dt > 0)) return;
+    if (this.BR?.some(B => B.P.alive)) this.stepBranches(dt);
     if (this.L.alive) this.stepLeaves(dt);
     if (this.W.alive) this.stepWood(dt);
     if (this.falling?.length) this.stepTops(dt);

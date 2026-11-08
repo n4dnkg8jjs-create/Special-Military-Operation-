@@ -5,6 +5,7 @@ import { instance, trs, farLod } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
+import { ruinTpl } from './ruins.js';
 import { battlefieldDetail, treeFate, treeTilt } from './battlefieldDetail.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
@@ -487,7 +488,13 @@ export class Farmland extends City {
         const hn = houseNames[Math.floor(R() * houseNames.length)], bn = burnt ? this.burntTpl(hn) : null;
         if (!destroyed) { if (!this.put(hn, hx, hz, face + (R() - .5) * 0.08, { occ: 3.2 })) continue; }
         else if (bn) { if (!this.put(bn, hx, hz, face + (R() - .5) * 0.1, { occ: 2.4 })) continue; (this.burntSpots ||= []).push([hx, hz, 9]); }
-        else { const pool = this.rubblePool('house'); (this._houseRubble ||= []).push([pool[Math.floor(R() * pool.length)], trs(hx, 0, hz, R() * 6, 1.15 + R() * 0.35)]); this.nav.circle(hx, hz, 4.5, 6, true); this.solidAdd(hx, hz, 5.6, 5.6, 0, 'house'); }
+        else {
+          // flattened: wall stubs along the outline (plinth, a corner / the chimney standing: wear.js houseRuin 'flat') with the
+          // heap inside them, not a heap on an empty plot; the bare heap only if the variant cannot be built / placed
+          const pool = this.rubblePool('house'), ht = pool[Math.floor(R() * pool.length)], hr = R() * 6, hs = 1.15 + R() * 0.35, fl = ruinTpl(this, hn, 'flat');
+          if (fl && this.put(fl, hx, hz, face, { cost: 7, low: true, occ: 0.9 })) { (this._houseRubble ||= []).push([ht, trs(hx, 0, hz, hr, hs * 0.58)]); this.nav.circle(hx, hz, 2.6, 6, true); this.nav.setVeh(hx, hz, 4, 4, face, 1); }
+          else { (this._houseRubble ||= []).push([ht, trs(hx, 0, hz, hr, hs)]); this.nav.circle(hx, hz, 4.5, 6, true); this.solidAdd(hx, hz, 5.6, 5.6, 0, 'house'); }
+        }
         this.houseSpots.push([hx, hz, destroyed]);
         // street fence with a gate, side fences around the front yard
         const fn = fences[Math.floor(R() * 2)], fr = along ? 0 : Math.PI / 2;
