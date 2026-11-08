@@ -16,7 +16,7 @@ export const VEH_COST = {
 // heurThr 1.6 cut the exposed share of routes from 52 % to 45 % for 1 % more length, ~1.6 ms a query). thrIter: a threat
 // query that has not reached its goal after this many A* steps is redone without the threat (open steppe: everything is
 // exposed, the search would flood the map).
-export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2 };
+export const INF_COST = { scrape: 0.35, wallBand: -0.15, threat: 0.9, heur: 1.0, heurThr: 1.6, thrIter: 40000, rubble: 2.2, trenchOut: 9, trenchLip: 1.5 };
 // barbed wire (this.wire, per-metre extra cost for men only, set by world/battlefieldDetail.js): an intact belt is a real
 // obstacle on foot (~3 m of belt = a 100 m detour), so routes go through the gaps / passages; vehicles ignore it (they
 // flatten the coil: crushed cells drop to a low value).  Values: 0 none, WIRE_COST.belt intact, .crushed / .loose.
@@ -229,7 +229,46 @@ export class NavGrid {
     let c = (this.low[k] && this.cost[k] > INF_COST.rubble ? INF_COST.rubble : this.cost[k]) + (cl < 0.9 ? INF_COST.scrape : cl < 2.6 ? INF_COST.wallBand : 0);
     if (this.wire && this.wire[k]) c += this.wire[k];
     if (this._thr) c += this.exposed(k) * INF_COST.threat;
+    if (this._cc) c += this._cc(k);   // opts.conceal (enemy AI, ai_tactics.concealCost): open ground dearer than tree belts / walls
+    if (this._trm) c = this.trenchCost(k, c);
     return c;
+  }
+  // trench routing (both ends in the same trench system, game.requestPath): along the floor of the cut (cells on the lip
+  // dearer than the floor), never over the parapet and across the open unless the cut is not connected (trenchOut per metre)
+  trenchCost(k, c) {
+    if (!this.trench[k]) return c + INF_COST.trenchOut;
+    const T = this.terrain, y = T?.heightAt ? T.heightAt(this.cx(k), this.cz(k)) : -1;
+    return 1 + (y > -0.6 ? INF_COST.trenchLip : 0) + (this.clear[k] < 0.9 ? INF_COST.scrape : 0) + (this.wire && this.wire[k] ? this.wire[k] : 0);
+  }
+  // are (sx, sz) and (tx, tz) both in the cut of one trench system (game.city.trenchSystems)? -> requestPath opts.trench
+  trenchPair(sx, sz, tx, tz, systems) {
+    if (!this.trench || !systems?.length) return false;
+    const inCut = (x, z) => { for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const i = this.idx(x + dx * 0.6, z + dz * 0.6); if (i >= 0 && this.trench[i]) return true; } return false; };
+    if (!inCut(sx, sz) || !inCut(tx, tz)) return false;
+    const seg = (x, z, l) => { let d = 1e9; for (let i = 1; i < l.length; i++) { const [ax, az] = l[i - 1], [bx, bz] = l[i], ux = bx - ax, uz = bz - az, L2 = ux * ux + uz * uz || 1, t = Math.max(0, Math.min(1, ((x - ax) * ux + (z - az) * uz) / L2)); d = Math.min(d, Math.hypot(x - ax - ux * t, z - az - uz * t)); } return d; };
+    const near = (T, x, z) => { if (Math.hypot(T.center[0] - x, T.center[1] - z) > T.radius + 6) return false; for (const l of [...T.lines, ...(T.comms || [])]) if (l?.length > 1 && seg(x, z, l) < 4) return true; return T.slots.some(o => Math.hypot(o.x - x, o.z - z) < 3) || T.dugouts?.some(d => Math.hypot(d.door[0] - x, d.door[1] - z) < 3); };
+    return systems.find(T => near(T, sx, sz) && near(T, tx, tz)) || false;
+  }
+  // a walk along the floor of trench system T (fire-trench + communication-trench centre lines, joined where they meet) from
+  // (ax, az) to (bx, bz): [[x, z]...] ending at the goal, or null (an end > 4 m from every line, or the lines don't connect)
+  trenchRoute(T, ax, az, bx, bz) {
+    if (Math.hypot(bx - ax, bz - az) < 2.5) return [[bx, bz]];
+    const L = [...T.lines, ...(T.comms || [])].filter(l => l?.length > 1), cum = L.map(l => { const c = [0]; for (let j = 1; j < l.length; j++) c.push(c[j - 1] + Math.hypot(l[j][0] - l[j - 1][0], l[j][1] - l[j - 1][1])); return c; });
+    const proj = (i, x, z) => { const l = L[i]; let b = { d: 1e9 }; for (let j = 1; j < l.length; j++) { const [px, pz] = l[j - 1], ux = l[j][0] - px, uz = l[j][1] - pz, L2 = ux * ux + uz * uz || 1, t = Math.max(0, Math.min(1, ((x - px) * ux + (z - pz) * uz) / L2)), qx = px + ux * t, qz = pz + uz * t, d = Math.hypot(x - qx, z - qz); if (d < b.d) b = { d, s: cum[i][j - 1] + Math.sqrt(L2) * t, x: qx, z: qz }; } return b; };
+    const P = [], adj = [], st = L.map(() => []), add = (x, z) => { P.push([x, z]); adj.push([]); return P.length - 1; };
+    const link = (a, b) => { const d = Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]); adj[a].push([b, d]); adj[b].push([a, d]); };
+    L.forEach((l, i) => l.forEach((p, j) => st[i].push([cum[i][j], add(p[0], p[1])])));
+    L.forEach((l, i) => l.forEach((p, j) => { for (let k = 0; k < L.length; k++) if (k !== i) { const q = proj(k, p[0], p[1]); if (q.d < 2.5) { const n = add(q.x, q.z); st[k].push([q.s, n]); link(st[i][j][1], n); } } }));
+    // an end joins the nearest line it can reach without leaving the cut (a firing bay / MG cell off the trench: up to 8 m)
+    const Tr = this.terrain, cutTo = (x, z, q) => { if (q.d < 1.2 || !Tr?.cutSDF) return true; const m = Math.ceil(q.d / 0.4); for (let k = 1; k < m; k++) if (Tr.cutSDF(x + (q.x - x) * k / m, z + (q.z - z) * k / m) > 0.05) return false; return true; };
+    const end = (x, z) => { let bi = -1, bq = { d: 8 }; for (let i = 0; i < L.length; i++) { const q = proj(i, x, z); if (q.d < bq.d && cutTo(x, z, q)) { bq = q; bi = i; } } if (bi < 0) return -1; const n = add(bq.x, bq.z); st[bi].push([bq.s, n]); return n; };
+    const A = end(ax, az), B = end(bx, bz); if (A < 0 || B < 0) return null;
+    for (const S of st) { S.sort((p, q) => p[0] - q[0]); for (let j = 1; j < S.length; j++) link(S[j - 1][1], S[j][1]); }
+    const N = P.length, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), done = new Uint8Array(N); dist[A] = 0;
+    for (;;) { let u = -1, du = Infinity; for (let i = 0; i < N; i++) if (!done[i] && dist[i] < du) { du = dist[i]; u = i; } if (u < 0 || u === B) break; done[u] = 1; for (const [v, w] of adj[u]) if (du + w < dist[v]) { dist[v] = du + w; prev[v] = u; } }
+    if (!isFinite(dist[B])) return null;
+    const out = []; for (let k = B; k !== -1; k = prev[k]) out.push(P[k]); out.reverse(); out.push([bx, bz]);
+    return out.filter((p, i) => i === 0 || Math.hypot(p[0] - out[i - 1][0], p[1] - out[i - 1][1]) > 0.3).map(p => [p[0], p[1]]);
   }
   // can the threat (this._thr = [x, z]) see into cell k? Marches from the cell towards the threat (1 m steps to 8 m, then
   // 2 m to 32 m): a wall / building / wreck / rubble heap / sandbags (cost >= 6) on the way, or a trench floor, hides it.
@@ -250,9 +289,9 @@ export class NavGrid {
     const s = this.idx(sx, sz), t = this.idx(tx, tz); if (s < 0 || t < 0) return null;
     if (s === t) return [[tx, tz]];
     const n = this.n, gen = ++this.gen, g = this.g, from = this.from, st = this.stamp, cl = this.closed;
-    this._thr = opts?.threat || null; this._thrGen = gen;
+    this._thr = opts?.threat || null; this._thrGen = gen; this._trm = !!opts?.trench && !!this.trench; this._cc = opts?.conceal || null;
     try {
-      const ti = t % n, tj = (t / n) | 0, HW = this._thr ? INF_COST.heurThr : INF_COST.heur;
+      const ti = t % n, tj = (t / n) | 0, HW = this._thr || this._cc ? INF_COST.heurThr : INF_COST.heur;
       const h = k => { const dx = Math.abs(k % n - ti), dz = Math.abs(((k / n) | 0) - tj); return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)) * HW; };
       const heap = new Heap(); g[s] = 0; st[s] = gen; from[s] = -1; heap.push(h(s), s);
       const D = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1], DX = [1, -1, 0, 0, 1, -1, 1, -1], DZ = [0, 0, 1, -1, 1, 1, -1, -1], C = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
@@ -273,10 +312,10 @@ export class NavGrid {
         }
       }
       this.lastIter = it;
-      if (this._thr && best !== t && it >= cap) { this._thr = null; return this.findPathInf(sx, sz, tx, tz, clearance, maxIter, null); }
+      if (this._thr && best !== t && it >= cap) { this._thr = null; return this.findPathInf(sx, sz, tx, tz, clearance, maxIter, this._trm ? { trench: true } : null); }
       const raw = []; for (let k = best; k !== -1; k = from[k]) raw.push(k); raw.reverse();
       return this.smoothInf(raw, clearance, best === t ? [tx, tz] : null);
-    } finally { this._thr = null; }
+    } finally { this._thr = null; this._trm = false; this._cc = null; }
   }
   // cost of walking the straight segment a->b (0.5 m samples of infCost)
   segCostInf(ax, az, bx, bz) {

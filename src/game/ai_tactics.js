@@ -66,6 +66,106 @@ export function covered(g, x, z, tx, tz) {
   const cc = g.city.concealAt ? g.city.concealAt.call(g.city, x, z) : 1;
   return cc < 0.6 ? 0.7 : 0;
 }
+// ------------------------------------------------------------------ concealment (v8)
+// How the front moves since 2023 (previews/ai_v8/PROGRESS.md): the sky is full of drones, so men cross open ground as
+// little as they can — along tree lines, through ruins and gardens, in trenches and dead ground — in small groups, and halt
+// only where a drone can't see them. game.spotFor gives the drone picture of every unit not 'hidden' (game.hiddenSpot:
+// buildings, heavy foliage, covered trench bays) within ~700 m of the other side's men, so this matters for both sides.
+// concealment of a ground point: 0 = hidden (heavy foliage, trench floor), 0.3 = partial (light foliage / tree belt edge,
+// right along a wall or a building), 0.6 = rubble / low cover, 1 = open
+export const CONCEAL = { open: 0.9, wall: 0.25, light: 0.35, low: 0.5 };   // extra route cost per metre (nav.findPath opts.conceal)
+export function concealOf(g, x, z) {
+  const nav = g.nav, k = nav.idx(x, z); if (k < 0) return 1;
+  if (nav.trench && nav.trench[k] >= 9) return 0;
+  const C = g.city, cc = C.concealAt ? C.concealAt.call(C, x, z) : 1;
+  if (cc < 0.45) return 0;
+  if (nav.clear[k] < 2.6 && nav.cost[k] !== 255) return 0.3;
+  if (cc < 0.6) return 0.35;
+  return nav.low[k] ? 0.6 : 1;
+}
+// the per-cell route cost function for nav.findPath(..., { conceal }) (cached per game)
+export function concealCost(g) {
+  if (g._aiCC) return g._aiCC;
+  const nav = g.nav, C = g.city, ca = C.concealAt;
+  return (g._aiCC = k => {
+    if (nav.trench && nav.trench[k] >= 9) return 0;
+    const cc = ca ? ca.call(C, nav.cx(k), nav.cz(k)) : 1;
+    if (cc < 0.45) return 0;
+    if (nav.clear[k] < 2.6) return CONCEAL.wall;
+    if (cc < 0.6) return CONCEAL.light;
+    return nav.low[k] ? CONCEAL.low : CONCEAL.open;
+  });
+}
+// a concealed infantry route (falls back to the plain one when the concealed search does not get there)
+// Long routes: the concealed search runs to a sub-goal ~horizon m ahead on the plain route (the most concealed spot near it):
+// a bound is at most ~90 m, and a concealed search across the whole map would run out of steps and fall back to the plain one.
+export function concealedPath(g, from, to, threat = null, horizon = 230) {
+  const nav = g.nav, S = g._aiCCstat ||= [0, 0];
+  let goal = to, plain = null;
+  if (Math.hypot(to[0] - from[0], to[1] - from[1]) > horizon) {
+    plain = nav.findPath(from[0], from[1], to[0], to[1], 0.45, false, 60000);
+    if (plain && plain.length) {
+      let acc = 0, px = from[0], pz = from[1], q = plain[plain.length - 1];
+      for (const [x, z] of plain) { const d = Math.hypot(x - px, z - pz); if (acc + d >= horizon) { const f = (horizon - acc) / (d || 1); q = [px + (x - px) * f, pz + (z - pz) * f]; break; } acc += d; px = x; pz = z; }
+      let bs = 1e9; goal = q;
+      for (let r = 0; r <= 40; r += 8) for (let a = 0; a < (r ? 10 : 1); a++) { const x = q[0] + Math.cos(a / 10 * 6.283) * r, z = q[1] + Math.sin(a / 10 * 6.283) * r; if (!nav.passable(nav.idx(x, z), 0.5)) continue; const sc = concealOf(g, x, z) + r * 0.008; if (sc < bs) { bs = sc; goal = [x, z]; } }
+    }
+  }
+  let p = nav.findPath(from[0], from[1], goal[0], goal[1], 0.45, false, 60000, threat ? { conceal: concealCost(g), threat } : { conceal: concealCost(g) });
+  if (!p || p.length < 1 || Math.hypot(p[p.length - 1][0] - goal[0], p[p.length - 1][1] - goal[1]) > 12) { S[1]++; p = plain || nav.findPath(from[0], from[1], to[0], to[1], 0.45, false, 60000); }
+  else S[0]++;
+  return p;
+}
+// mean concealment along a straight line (sampled every 3 m)
+export function lineConceal(g, ax, az, bx, bz) {
+  const d = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(d / 3)); let s = 0;
+  for (let i = 1; i <= n; i++) s += concealOf(g, ax + (bx - ax) * i / n, az + (bz - az) * i / n);
+  return s / n;
+}
+// The next bound along a (concealed) route: the furthest point within maxLen m of route that the squad can reach by its
+// own (near-straight) path without leaving the cover the route keeps to, ending if possible in a concealed spot and not
+// on top of another squad (dispersion: drones and shells). avoid = [[x, z], ...] friendly squads.
+export function nextBound(g, path, from, maxLen, avoid = null) {
+  const pts = [[from[0], from[1]], ...path];
+  const cand = []; let acc = 0, rc = 0, rn = 0;
+  for (let i = 1; i < pts.length && acc < maxLen; i++) {
+    const [ax, az] = pts[i - 1], [bx, bz] = pts[i], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
+    for (let s = Math.min(4, L); ; s += 4) {
+      const f = Math.min(1, s / L), x = ax + (bx - ax) * f, z = az + (bz - az) * f, a = acc + L * f;
+      if (a > maxLen) break;
+      rc += concealOf(g, x, z); rn++;
+      cand.push([x, z, a, rc / rn]);
+      if (f >= 1) break;
+    }
+    acc += L;
+  }
+  if (!cand.length) return { p: pts[pts.length - 1], open: 1 };
+  let best = null, bs = -1e9;
+  for (const [x, z, a, routeC] of cand) {
+    const chord = lineConceal(g, from[0], from[1], x, z);
+    if (chord > routeC + 0.15 && a > 12) continue;   // the straight way would leave the tree line / wall the route follows
+    const end = concealOf(g, x, z);
+    let sc = a / maxLen * 2 - end * 1.2;
+    if (avoid) for (const [fx, fz] of avoid) { const d = Math.hypot(fx - x, fz - z); if (d < 22) sc -= (22 - d) * 0.12; }
+    if (sc > bs) { bs = sc; best = [x, z, chord]; }
+  }
+  if (!best) { const c = cand[Math.min(cand.length - 1, 2)]; best = [c[0], c[1], lineConceal(g, from[0], from[1], c[0], c[1])]; }
+  return { p: [best[0], best[1]], open: best[2] };
+}
+// A vehicle hide: within r of `from`, preferably back towards `back` ([dx, dz] unit), out of sight of `tgt` from the turret,
+// under tree cover / behind a building. null if nothing better than where it stands.
+export function vehicleHide(g, from, tgt, back, r = 60) {
+  const nav = g.nav; let best = null, bs = -1e9;
+  for (let rr = 12; rr <= r; rr += 12) for (let a = 0; a < 12; a++) {
+    const t = a / 12 * 6.283, x = from[0] + Math.sin(t) * rr, z = from[1] + Math.cos(t) * rr, i = nav.idx(x, z);
+    if (i < 0 || !(nav.passableV ? nav.passableV(i, 2.0, true) : nav.passable(i, 2.0))) continue;
+    const dot = Math.sin(t) * back[0] + Math.cos(t) * back[1];
+    const cc = concealOf(g, x, z); let sc = dot * 0.8 - rr * 0.01 - cc * 1.5 + (cc === 0 ? 1.5 : 0);   // under the trees: the drones can't see it (game.hiddenSpot)
+    if (tgt && !sees(g, x, z, tgt[0], tgt[1], 2.7, 1.5)) sc += 2;
+    if (sc > bs) { bs = sc; best = [x, z]; }
+  }
+  return best;
+}
 // sight line between two ground points (eye heights h1, h2)
 export function sees(g, ax, az, bx, bz, h1 = 1.6, h2 = 1.4) {
   const y1 = (g.city.groundHeight?.(ax, az) || 0) + h1, y2 = (g.city.groundHeight?.(bx, bz) || 0) + h2;
@@ -116,6 +216,7 @@ export function firePosition(g, target, dir, r0, r1, spread, vehicle = false, av
       const top = sees(g, x, z, tx, tz, 2.7, 1.2); if (!top) { sc -= 2; } else sc += 2;
       if (top && !sees(g, x, z, tx, tz, 0.9, 1.2)) sc += 1.2;   // hull-down
       if (nav.coverFrom(x, z, tx, tz) >= 0.5) sc += 0.4;
+      if (top) sc += (1 - concealOf(g, x, z)) * 0.6;   // v8: at the edge of a tree line / by a building rather than out in the field
     } else {
       const s = sees(g, x, z, tx, tz, 1.5, 1.2); sc += s ? 2 : -1.5;
       sc += covered(g, x, z, tx, tz) * 1.4;

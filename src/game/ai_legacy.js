@@ -3,13 +3,21 @@ import { trenchNear, trenchMen } from './trench.js';
 import { campaignArmy, campaignDefenders } from './campaignBattle.js';
 import { SPAWNS, OBJECTIVES, MAP } from '../world/city.js';
 import { TUNING } from '../config.js';
+import { Intel, concealedPath, nextBound, concealOf, vehicleHide, firePosition } from './ai_tactics.js';
 
+// v8 (previews/ai_v8/PROGRESS.md): both commanders fight the way the front has since 2023 — infantry moves concealed
+// (tree lines, ruins, trenches; concealed A* + bounds that end in cover, spread out so a drone / a shell finds one group,
+// not three), carriers drop their squads far out of sight of the objective, squads halt on a line of departure while the
+// drones look and the guns work on what they found, then go in by bounds with one squad covering the other; tanks are
+// mobile artillery from hides behind the infantry (shoot and scoot, never leading); defenders stay hidden and hold their
+// fire until the enemy is close. And no cheating: the commander knows only what its side has spotted (Intel), like v2.
 // LEGACY enemy commander (v1), kept for A/B benchmarks (?aiold, tools/ai_bench.mjs) and as the base class of the
 // v2 Commander in ai.js (deployment, building/trench/cover helpers, the howitzer). Phase 1: dug-in defenders hold both objectives. Phase 2 (after the player takes an
 // objective, or 40% into the round): counterattack waves from the north — mounted approach riding on
 // armour, dismount at staging, fire-team bounding through cover with smoke, flanking routes, tank
 // overwatch with stand-off from RPG teams, assault squads storming garrisoned buildings, artillery.
 // per-objective AI points; objectives without hand-placed points get ones derived from the objective (enemy side = -Z)
+const D2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 export const objXZ = k => { const o = OBJECTIVES.find(q => q.id === k) || OBJECTIVES[0]; return [o.x, o.z]; };
 export const STAGING = new Proxy({}, { get: (_, k) => MAP.ai.staging?.[k] || (([x, z]) => [[x - 40, z - 90], [x + 40, z - 95], [x, z - 110], [x - 70, z - 80]])(objXZ(k)) });
 export const OVERWATCH = new Proxy({}, { get: (_, k) => MAP.ai.overwatch?.[k] || (([x, z]) => [[x - 50, z - 130], [x + 50, z - 130]])(objXZ(k)) });
@@ -18,6 +26,7 @@ export class CommanderV1 {
   constructor(game) {
     this.g = game; this.units = []; this.waveI = 0; this.artT = 70 + Math.random() * 40; this.n = 0;
     this.counter = false;
+    this.intel = new Intel(game, 'enemy'); this.prepT = {}; this.stats = { overwatch: 0, scoots: 0, prepFires: 0, fires: 0 };   // v8: what our side knows (no all-seeing threat checks)
     // [fraction of remaining time, foot squads, mounted squads, tanks, assault squads]
     // finite reserves: three counterattack waves (about the size of the player's company in total), and a wave
     // waits while the enemy still has plenty of men in the field — no endless stream
@@ -53,7 +62,7 @@ export class CommanderV1 {
   // Battle starts: the deployed army races for the objectives.
   begin() {
     for (const b of this.army) {
-      if (b.kind === 'mech') { const st = this.stagingFor(b.obj); b.v.orderMove(st[0], st[1], 0, true); }
+      if (b.kind === 'mech') { const st = this.dismountPoint(b.obj); b.v.orderMove(st[0], st[1], 0, true); }
       if (b.kind === 'tank') b.v.orderMove(b.home[0], b.home[1], 0, false);
       this.units.push(b);
     }
@@ -82,6 +91,7 @@ export class CommanderV1 {
   update(dt) {
     const g = this.g;
     if (!this.started) return;
+    this.intelT = (this.intelT || 0) - dt; if (this.intelT <= 0) { this.intelT = 1; this.intel.update(); }
     this.assessT = (this.assessT || 0) - dt; if (this.assessT <= 0) { this.assessT = 3; this.assess(); }
     if (!this.counter && (g.objectives.some(o => o.captured) || g.time > g.roundLen * 0.3)) {
       this.counter = true; const rem = Math.max(120, g.roundLen - g.time);
@@ -94,30 +104,111 @@ export class CommanderV1 {
       else this.waves[this.waveI].t = g.time + 20; // hold the wave back until the field thins out
     }
     for (const b of this.units) if (!b.dead) { b.t -= dt; if (b.t <= 0) { b.t = 1.2 + Math.random() * 0.6; this.think(b); } }
-    // artillery on spotted player concentrations
+    // artillery on what our side has found (drone picture, sightings, contacts: Intel) — v8: it used to pick the densest
+    // group of ALL player units, seen or not
     this.artT -= dt;
     if (this.artT <= 0) {
       this.artT = 70 + Math.random() * 55;
-      const targets = g.unitsOf('player').filter(u => (u.type === 'squad' && !u.mounted) || u.type === 'vehicle');
-      targets.sort((a, b) => this.clusterScore(b) - this.clusterScore(a));
       // counter-battery: a player howitzer that has been firing gives its position away (sound ranging / radar)
       const pg = g.vehicles.find(v => v.side === 'player' && v.kind === 'spg' && !v.destroyed && g.time - (v.lastFireT ?? -999) < 90);
-      const t = pg && Math.random() < 0.5 ? pg : targets[0]; if (!t) return;
-      const c = t.center(); const err = t === pg ? 40 : t.type === 'vehicle' ? 30 : 22;
-      // our own howitzer takes the mission if it can; otherwise divisional fire from off the map
-      const own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
-      const ap = new THREE.Vector3(c.x + (Math.random() - .5) * err, 0, c.z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
-      if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.artT *= 0.75; if (t === pg) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); return; }
-      // the heavy battery (152 / 155 mm, game/fireMission.js) on a real concentration: rationed there (cooldown, count, never danger close)
-      if (t !== pg && this.clusterScore(t) >= 2 && g.fires?.aiCall(ap.x, ap.z)) return;
-      // off-map fire support is rationed like the player's: a fixed number of missions per battle
-      if ((g.enemyMortars ??= (g.campaign?.enemyMortars ?? TUNING.mortarStrikes)) <= 0) return;
-      g.enemyMortars--;
-      g.callStrike(c.x + (Math.random() - .5) * err, c.z + (Math.random() - .5) * err, 6, 16, 'enemy', 9, 'mortar');
-      g.hud?.alert('Incoming mortar fire!', 'bad');
+      const cl = this.intel.cluster(25);
+      if (!(pg && Math.random() < 0.5) && !cl) { this.artT = 12; return; }   // nothing known yet: look again soon
+      const cb = pg && (!cl || Math.random() < 0.5);
+      if (cb) { if (this.fireOn(pg.pos.x, pg.pos.z, 40, false, true)) g.hud?.alert('Enemy counter-battery fire on our howitzer!', 'bad'); }
+      else if (this.fireOn(cl.e.x, cl.e.z, cl.e.veh ? 30 : cl.e.contact ? 30 : 22, cl.score >= 3)) this.artT *= 0.9;
     }
   }
-  clusterScore(u) { const c = u.center(); let n = 0; for (const o of this.g.unitsOf('player')) if (o !== u && o.center().distanceTo(c) < 40) n++; return n + (u.type === 'vehicle' ? 0.5 : 0) + Math.random(); }
+  // one fire mission on (x, z): our own howitzer if it can, else the heavy battery on a real concentration (rationed in
+  // game/fireMission.js: cooldown, count, never danger close), else the rationed mortar missions. true = fired
+  fireOn(x, z, err, heavy = false, cb = false) {
+    const r = this.fireOn_(x, z, err, heavy, cb); if (r) this.stats.fires++; return r;
+  }
+  fireOn_(x, z, err, heavy, cb) {
+    const g = this.g, own = this.spg && !this.spg.destroyed && this.spg.weapons[0].ammo > 0 && !this.spg.spg.mission ? this.spg : null;
+    const ap = new THREE.Vector3(x + (Math.random() - .5) * err, 0, z + (Math.random() - .5) * err), ad = own ? Math.hypot(ap.x - own.pos.x, ap.z - own.pos.z) : 0;
+    if (own && (ad >= own.def.minRange || (ad <= own.def.directRange && own.spgSees(ap)))) { own.fireAt = { p: ap }; this.artT *= 0.75; return true; }
+    if (cb) return false;
+    if (heavy && g.fires?.aiCall(ap.x, ap.z)) return true;
+    if ((g.enemyMortars ??= (g.campaign?.enemyMortars ?? TUNING.mortarStrikes)) <= 0) return false;
+    g.enemyMortars--; g.callStrike(ap.x, ap.z, 6, 16, 'enemy', 9, 'mortar'); g.hud?.alert('Incoming mortar fire!', 'bad');
+    return true;
+  }
+  // v8 prep fire before a squad goes in from its line of departure: on the strongest known position at the objective,
+  // once per objective in 90 s (the rounds come down while the squad waits in cover)
+  ldPrep(obj) {
+    const g = this.g; if (g.time - (this.prepT[obj] ?? -999) < 90) return false;
+    const [ox, oz] = this.objPos(obj), cl = this.intel.cluster(60, [ox, oz], 120); if (!cl) return false;
+    this.prepT[obj] = g.time; this.stats.prepFires++;
+    return this.fireOn(cl.e.x, cl.e.z, cl.e.dug ? 12 : 20, cl.score >= 3);
+  }
+  // how far out carriers drop their squads (out of sight of the objective, short of the ATGM / FPV killing zone; the maps
+  // are 0.5-1.4 km, so this is a fraction of the map, not the real 1-2 km)
+  dismountR() { return Math.max(150, Math.min(320, (MAP.sizeM || 600) * 0.22)); }
+  // the dismount point for objective `obj`: dismountR out on the line objective -> staging, in a vehicle hide (tree cover /
+  // behind a building / out of the objective's sight)
+  dismountPoint(obj) {
+    const g = this.g, [ox, oz] = this.objPos(obj), st = this.stagingFor(obj);
+    let dx = st[0] - ox, dz = st[1] - oz; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+    const R = Math.max(L, this.dismountR()), p = g.nav.nearestFree(ox + dx * R, oz + dz * R, 2.0, 30);
+    return vehicleHide(g, p, [ox, oz], [dx, dz], 36) || p;
+  }
+  // the intel-based threat check (v8: v1 used to look at every player unit)
+  threatsNear(p, r) { const l = this.intel.near(p.x, p.z, r, 30); return { n: l.length, rpg: this.intel.rpgNear(p.x, p.z, r) }; }
+  isInf(b) { return !!b.sq && b.kind !== 'atgm' && b.kind !== 'fpv' && b.kind !== 'spg'; }
+  // other squads of ours (positions + where they are going): bounds keep ~20 m off them (dispersion)
+  friendSpots(sq) {
+    const c = sq.center(), out = [];
+    for (const q of this.g.squads) { if (q === sq || q.side !== 'enemy' || q.destroyed || q.mounted || !q.effective.length) continue; const p = q.center(); if (Math.hypot(p.x - c.x, p.z - c.z) > 160) continue; out.push([p.x, p.z]); if (q.order?.type === 'move') out.push([q.order.x, q.order.z]); }
+    return out;
+  }
+  // bounding overwatch between squads: near the enemy one squad moves while the others of the same objective / operation
+  // stay down and cover it; then the next one goes (capped: nobody waits more than ~14 s)
+  overwatchWait(b, near) {
+    if (!near) { b.owT = 0; return false; }
+    const c = b.sq.center(), mv = q => q.sq.effective.some(s => (s.path && s.pathI < s.path.length) || s.pathReq);
+    const mates = this.units.filter(q => q !== b && !q.dead && this.isInf(q) && !q.sq.destroyed && !q.sq.mounted && q.sq.effective.length && (b.op ? q.op === b.op : q.obj === b.obj) && q.sq.center().distanceTo(c) < 140);
+    if (!mates.length || !mates.some(mv) || (b.owT || 0) > 14) { b.owT = 0; return false; }
+    b.owT = (b.owT || 0) + 1.5; b.wait = 1.5; this.stats && (this.stats.overwatch = (this.stats.overwatch || 0) + 1);
+    return true;
+  }
+  // fire discipline: a squad that is hidden (garrison, dug in, observing, in reserve) holds its fire until the enemy is
+  // close or it is found anyway (under fire): every burst gives the position away (game.spotFor: firing = seen / heard far)
+  fireDiscipline(b, hold) {
+    const g = this.g, sq = b.sq; if (!sq || sq.mounted) return;
+    if (!hold) { if (b.aiHold) { b.aiHold = false; sq.holdFire = false; } return; }
+    const c = sq.center(), R = (MAP.sizeM || 600) > 900 ? 170 : 110;
+    const close = this.intel.near(c.x, c.z, R, 8).length > 0 || this.threatsNear(c, 45).n > 0;
+    if (close || sq.underFireT < 2.5) b.freeT = g.time;
+    const hold2 = g.time - (b.freeT ?? -999) > 40;   // free for 40 s after the last close contact / incoming fire
+    if (hold2 !== !!b.aiHold) { b.aiHold = hold2; sq.holdFire = hold2; }
+  }
+  // v8 tank drill ("mobile artillery"): wait in a hide behind the own infantry, out of the enemy's sight and under tree cover
+  // where there is any; when there is something known to shoot at, come up to a hull-down firing position, fire on it for
+  // ~15-25 s (direct fire at what is seen, area fire at the reported position), then back into the hide before the drones /
+  // ATGMs find it (shoot and scoot). Never closer to the enemy than the own infantry. tgt = [x, z] to engage, back = unit
+  // vector towards our side, hot = there is something to shoot at
+  tankDrill(b, tgt, back, r0, r1, hot) {
+    const g = this.g, v = b.v, vp = [v.pos.x, v.pos.z], now = g.time;
+    let inf = 1e9; for (const q of g.squads) if (q.side === 'enemy' && !q.destroyed && !q.mounted && q.kind !== 'atgm' && q.kind !== 'fpv' && q.effective.length) { const c = q.center(); inf = Math.min(inf, Math.hypot(c.x - tgt[0], c.z - tgt[1])); }
+    r0 = Math.min(Math.max(r0, inf + 50), r1 + 150); r1 = Math.max(r1, r0 + 50);   // (no own infantry out yet: stand off at r1 + 150)
+    const hit = v.hp < (b.hp0 ?? v.hp) - 0.5; b.hp0 = v.hp;
+    const drone = v.droneThreat && now - v.droneThreat.t < 3;
+    const hideAt = (from, why) => { const h = vehicleHide(g, from, tgt, back, 84) || g.nav.nearestFree(from[0] + back[0] * 45, from[1] + back[1] * 45, 2.2, 20); b.dr = 'hide'; b.drT = now; b.hideUntil = now + 18 + Math.random() * 15; b.hideP = h; v.fireAt = null; v.orderMove(h[0], h[1], null, true); if (b.task) b.task.why = why; };
+    if (!b.dr) return hideAt(b.home || vp, 'into a hide');
+    if (b.dr === 'fire') {
+      if (v.firedT < 2 && b.shot0 == null) b.shot0 = now;
+      const up = now - b.drT;
+      if (hit || drone || (b.shot0 != null && now - b.shot0 > 15 + Math.random() * 10) || up > (hot ? 60 : 30) || (!v.path && D2(vp, b.fp) > 30 && up > 40)) { this.stats && (this.stats.scoots = (this.stats.scoots || 0) + 1); return hideAt(vp, hit ? 'hit — back into cover' : 'shoot and scoot: back into the hide'); }
+      // area fire on the reported position while it has no target of its own in sight
+      if (!v.path && !v.target) { const e = this.intel.list(30).filter(e => Math.hypot(e.x - vp[0], e.z - vp[1]) < 600).sort((a, c) => Math.hypot(a.x - tgt[0], a.z - tgt[1]) - Math.hypot(c.x - tgt[0], c.z - tgt[1]))[0]; if (e && Math.hypot(e.x - vp[0], e.z - vp[1]) > 40) v.fireAt = { p: new THREE.Vector3(e.x, 0.6, e.z), until: now + 4 }; }
+      return;
+    }
+    // in the hide
+    if (v.path || now < b.hideUntil || !hot) return;
+    const fp = firePosition(g, tgt, back, r0, r1, 0.75, true); if (!fp) { b.hideUntil = now + 10; return; }
+    b.dr = 'fire'; b.drT = now; b.shot0 = null; b.fp = fp; v.orderMove(fp[0], fp[1], Math.atan2(tgt[0] - fp[0], tgt[1] - fp[1]), true);
+    if (b.task) b.task.why = 'up into a firing position';
+  }
   spawnWave(w) {
     const g = this.g, sp = SPAWNS.attacker;
     const target = () => { const held = g.objectives.filter(o => o.owner === 'player'), free = g.objectives.filter(o => o.owner === 'neutral'); const l = held.length ? held : free.length ? free : g.objectives; return l[this.n++ % l.length].id; };
@@ -125,7 +216,7 @@ export class CommanderV1 {
     for (let i = 0; i < w.mech; i++) {
       const [x, z] = at(i), obj = target(); const v = g.makeVehicle('enemy', 'btr', x + (Math.random() - .5) * 6, z, 0);
       const s = g.makeSquad('enemy', x, z, 0, 'Enemy squad'); s.board(v, true);
-      const st = this.stagingFor(obj); v.orderMove(st[0], st[1], 0, true);
+      const st = this.dismountPoint(obj); v.orderMove(st[0], st[1], 0, true);
       this.units.push({ kind: 'mech', sq: s, v, obj, state: 'approach', t: 1, flank: this.flank() });
     }
     for (let i = 0; i < w.foot; i++) {
@@ -162,8 +253,6 @@ export class CommanderV1 {
   flank() { const r = Math.random(); return r < 0.3 ? -1 : r < 0.6 ? 1 : 0; }
   stagingFor(obj) { const l = STAGING[obj]; return l[Math.floor(Math.random() * l.length)]; }
   objPos(obj) { const o = OBJECTIVES.find(o => o.id === obj); return [o.x, o.z]; }
-  // nearest player squad/vehicle within r of p
-  threatsNear(p, r) { let n = 0, rpg = 0; for (const u of this.g.unitsOf('player')) { if (u.type === 'squad' && u.mounted) continue; const c = u.center(); if (c.distanceTo(p) < r) { n++; if (u.type === 'squad' && u.effective.some(s => s.weaponKey === 'rpg7' || s.rpg22 > 0)) rpg++; } } return { n, rpg }; }
   // v7: a squad dug into a trench stays and fights while it is in contact (under fire in the last 15 s, or enemy known within
   // 250 m): it goes to ground in the trench (squad.trenchThink / cower) and returns fire. It leaves only when overrun (enemy in the
   // trench or within 22 m) - or once the contact has gone quiet (a covered withdrawal / the next task). Every 'pull back / regroup
@@ -194,8 +283,9 @@ export class CommanderV1 {
     if (b.kind === 'mech' && b.state === 'approach') {
       const v = b.v, [ox, oz] = this.objPos(b.obj);
       const arrived = !v.path || v.destroyed || v.immobile;
-      const danger = sq.underFireT < 2 || v.hp < v.def.hp * 0.85 || this.threatsNear(v.pos, 130).n > 0;
-      const near = Math.hypot(v.pos.x - ox, v.pos.z - oz) < 150;
+      // v8: out well short of the objective (dismountPoint), or at once when something known is within reach of the carrier
+      const danger = sq.underFireT < 2 || v.hp < v.def.hp * 0.85 || this.threatsNear(v.pos, this.dismountR() * 0.8).n > 0;
+      const near = Math.hypot(v.pos.x - ox, v.pos.z - oz) < this.dismountR() - 10;
       if ((arrived || danger || near) && sq.mounted) {
         if (!v.destroyed) v.halt();
         sq.dismount(Math.atan2(ox - v.pos.x, oz - v.pos.z));
@@ -205,6 +295,7 @@ export class CommanderV1 {
     }
     if (b.v && !b.v.destroyed && b.vState === 'support' && !sq.mounted) this.supportVehicle(b);
     if (sq.mounted) return;
+    this.fireDiscipline(b, b.state === 'hold' && (!!sq.building || !!sq.trench));   // v8: a hidden garrison holds fire until the enemy is close
     if (sq.routing) { b.state = 'routed'; return; }
     if (b.state === 'routed') { b.state = 'advance'; b.wait = 8; }
     const [ox, oz] = this.objPos(b.obj);
@@ -244,9 +335,9 @@ export class CommanderV1 {
     // assault squads: storm a player-held building near the objective
     if (b.kind === 'assault' && dObj < 90) {
       // player dug into a trench near the objective: clear it
-      const Tp = (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - ox, T.center[1] - oz) < T.radius + 90 && trenchMen(g, T, 'player').length).sort((p, q) => Math.hypot(p.center[0] - c.x, p.center[1] - c.z) - Math.hypot(q.center[0] - c.x, q.center[1] - c.z))[0];
+      const Tp = (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - ox, T.center[1] - oz) < T.radius + 90 && this.knownIn(T)).sort((p, q) => Math.hypot(p.center[0] - c.x, p.center[1] - c.z) - Math.hypot(q.center[0] - c.x, q.center[1] - c.z))[0];
       if (Tp && Math.hypot(Tp.center[0] - c.x, Tp.center[1] - c.z) < Tp.radius + 110) { sq.orderClearTrench(Tp); b.wait = 8; return; }
-      const target = this.g.allBuildings().filter(bl => bl.slots.some(sl => sl.occupant && sl.occupant.squad.side === 'player')).sort((p, q) => Math.hypot(p.x - ox, p.z - oz) - Math.hypot(q.x - ox, q.z - oz))[0];
+      const target = this.knownBuildings().sort((p, q) => Math.hypot(p.x - ox, p.z - oz) - Math.hypot(q.x - ox, q.z - oz))[0];
       if (target && Math.hypot(target.x - c.x, target.z - c.z) < 110) { sq.orderGarrison(target); b.wait = 4; return; }
     }
     if (b.state === 'hold') {
@@ -286,32 +377,52 @@ export class CommanderV1 {
       sq.focus = contact.u; sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 16, true, false, true);
       b.wait = 6 + Math.random() * 6; b.bound++; return;
     }
-    // next bound: ~30–40 m along the route, offset to the flank while still far out
-    const path = g.nav.findPath(c.x, c.z, ox, oz, 0.45, false, 60000);
-    if (!path || path.length < 2) { sq.orderMove(ox, oz, null, 16, true); return; }
-    const step = dObj < 60 ? dObj + 5 : 28 + Math.random() * 14;
-    let acc = 0, px = c.x, pz = c.z, tx = ox, tz = oz;
-    for (const [x, z] of path) { const d = Math.hypot(x - px, z - pz); if (acc + d >= step) { const f = (step - acc) / d; tx = px + (x - px) * f; tz = pz + (z - pz) * f; break; } acc += d; px = x; pz = z; tx = x; tz = z; }
-    if (b.flank && dObj > 70) { const dx = ox - c.x, dz = oz - c.z, L = Math.hypot(dx, dz) || 1; [tx, tz] = g.nav.nearestFree(tx + (-dz / L) * b.flank * 22, tz + (dx / L) * b.flank * 22, 0.5, 10); }
+    // v8 line of departure: the first time a squad comes within ~LD of its objective it goes to ground concealed; the drones
+    // look (Intel), the guns prepare what they found (ldPrep), then it goes in. Not when the objective is ours to take empty.
+    const LD = this.dismountR() * 0.8, objO = g.objectives.find(o => o.id === b.obj);
+    if (!this.ops && dObj < LD && dObj > 70 && b.ldObj !== b.obj && objO?.owner !== 'neutral') {
+      if (!b.ldT) { b.ldT = g.time; const cv = this.coverSpot(c, new THREE.Vector3(ox, 0, oz), 16); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(ox - cv[0], oz - cv[1]), 16, false); b.wait = 4; return; }
+      const known = this.intel.near(ox, oz, 130, 60).length;
+      if (g.time - b.ldT < (known ? 10 : 22)) { b.wait = 3; return; }
+      b.ldObj = b.obj; b.ldT = 0;
+      if (known && this.ldPrep(b.obj)) { b.wait = 14; return; }   // the rounds come down, then the squad goes
+    }
+    // next bound along a concealed route (tree lines, ruins, walls, trenches: ai_tactics.concealedPath), ending in cover and
+    // ~20 m off the other squads; while still far out the route aims past the objective's flank (several directions)
+    const nearE = dObj < LD + 60 || this.threatsNear(c, 300).n > 0;
+    if (this.overwatchWait(b, nearE && dObj > 45)) return;
+    let gx = ox, gz = oz;
+    if (b.flank && dObj > 120) { const dx = ox - c.x, dz = oz - c.z, L = Math.hypot(dx, dz) || 1; [gx, gz] = g.nav.nearestFree(ox + (-dz / L) * b.flank * 45, oz + (dx / L) * b.flank * 45, 0.5, 15); }
+    const th0 = this.intel.near(c.x, c.z, 320, 45)[0];
+    const path = concealedPath(g, [c.x, c.z], [gx, gz], th0 ? [th0.x, th0.z] : null);
+    if (!path || path.length < 1) { sq.orderMove(ox, oz, null, 16, true); return; }
+    const step = dObj < 60 ? dObj + 5 : nearE ? 28 + Math.random() * 14 : 75;
+    const nb = nextBound(g, path, [c.x, c.z], step, dObj < 60 ? null : this.friendSpots(sq)), [tx, tz] = nb.p, openLeg = nb.open > 0.6 && nearE;
     const facing = Math.atan2(ox - tx, oz - tz);
     const assault = dObj < 60 && sq.effective.length >= 3;
     if (sq.underFireT < 5 && (b.smokes ?? 2) > 0 && Math.random() < 0.55) {
       const thrower = sq.effective.find(s => !s.inside); if (thrower) { b.smokes = (b.smokes ?? 2) - 1; g.combat.throwSmoke(thrower, new THREE.Vector3(ox, 0, oz)); }
     }
     // under fire: move by fire teams (half covers while the other half moves)
-    sq.orderMove(tx, tz, facing, assault ? 14 : 18, assault || sq.underFireT > 6, false, sq.underFireT < 6);
+    // open ground near the enemy: fire teams bound (one covers, one moves: half the men in the open at a time), wider spacing
+    sq.orderMove(tx, tz, facing, assault ? 14 : openLeg ? 22 : 18, assault || sq.underFireT > 6, false, (sq.underFireT < 6 || openLeg) && sq.effective.length > 3);
     b.bound++;
-    b.wait = assault ? 2 : 5 + Math.random() * 7;
+    b.wait = assault ? 2 : nearE ? 4 + Math.random() * 5 : 1.5;
   }
   // a trench system near (x,z) with room for most of the squad and no player troops in it
   freeTrench(x, z, r, sq) {
     const g = this.g, n = sq.effective.length;
-    return (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - x, T.center[1] - z) < T.radius + r && T.slots.filter(sl => !sl.occupant || !sl.occupant.effective).length >= Math.min(n, 4) && !trenchMen(g, T, 'player').length)
+    return (g.city.trenchSystems || []).filter(T => Math.hypot(T.center[0] - x, T.center[1] - z) < T.radius + r && T.slots.filter(sl => !sl.occupant || !sl.occupant.effective).length >= Math.min(n, 4) && !this.knownIn(T))
       .sort((p, q) => Math.hypot(p.center[0] - x, p.center[1] - z) - Math.hypot(q.center[0] - x, q.center[1] - z))[0] || null;
   }
+  // v8 (no cheating): is the enemy KNOWN to be in trench system T / which buildings is he known to hold (identified squads)
+  knownIn(T, age = 60) { return this.intel.list(age).some(e => !e.veh && Math.hypot(e.x - T.center[0], e.z - T.center[1]) < T.radius + 6 && (e.contact || e.u.trench === T)); }
+  knownBld(bl) { const g = this.g; if (this._kbT !== Math.floor(g.time)) { this._kbT = Math.floor(g.time); this._kb = new Set(this.knownBuildings(30)); } return this._kb.has(bl); }
+  knownBuildings(age = 60) { const s = new Set(); for (const e of this.intel.list(age)) if (!e.veh && !e.contact && e.u.building && !e.u.building.collapsedAll) s.add(e.u.building); return [...s]; }
   thinkDefender(b) {
     const g = this.g, sq = b.sq, o = g.objectives.find(q => q.id === b.obj);
     if (sq.routing) return;
+    this.fireDiscipline(b, !!sq.building || !!sq.trench);   // v8: hidden until the enemy is close
     // building collapsed / lost the garrison -> fall back to the next building near the objective
     if (!sq.building && !sq.trench && !sq.effective.some(s => s.path) && sq.effective.length) {
       const T = this.freeTrench(o.x, o.z, 80, sq); if (T && Math.random() < 0.6) { sq.orderTrench(T); return; }
@@ -326,7 +437,13 @@ export class CommanderV1 {
     const t = this.threatsNear(v.pos, 70);
     // stand-off: never sit within RPG range of enemy infantry without own infantry close by
     if (t.rpg > 0 && sq.center().distanceTo(v.pos) > 35 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(v.pos.x - ox, 0, v.pos.z - oz).normalize(); const p = v.pos.clone().addScaledVector(back, 45); v.orderMove(p.x, p.z); return; }
-    if (v.pos.distanceTo(c) > 70 && !v.path) { const [ox, oz] = this.objPos(b.obj); const back = new THREE.Vector3(c.x - ox, 0, c.z - oz).normalize(); const p = c.clone().addScaledVector(back, 35); v.orderMove(p.x, p.z); }
+    // v8: the carrier follows 50-130 m behind its squad, hull-down on the objective where it can (fire support from the
+    // rear, not leading); it used to close up to 35 m behind the men
+    const [ox, oz] = this.objPos(b.obj), dc = v.pos.distanceTo(c), ahead = Math.hypot(v.pos.x - ox, v.pos.z - oz) < Math.hypot(c.x - ox, c.z - oz) + 25;
+    if ((dc > 130 || ahead) && !v.path && this.g.time - (b.svT || 0) > 12) {
+      b.svT = this.g.time; const back = new THREE.Vector3(c.x - ox, 0, c.z - oz).normalize(), dO = Math.hypot(c.x - ox, c.z - oz);
+      const p = firePosition(this.g, [ox, oz], [back.x, back.z], dO + 50, dO + 120, 0.5, true) || [c.x + back.x * 70, c.z + back.z * 70]; v.orderMove(p[0], p[1]);
+    }
     if (v.hp < v.def.hp * (this.cautious() ? 0.5 : 0.4) && !b.retreated) { b.retreated = true; const [x, z] = this.stagingFor(b.obj); v.orderMove(x, z - 60); }
   }
   // bailed-out enemy crews fall back towards their own lines and defend themselves
@@ -345,7 +462,7 @@ export class CommanderV1 {
     for (let rr = 0; rr <= r; rr += 2) for (let a = 0; a < 16; a++) {
       const x = p.x + Math.cos(a / 16 * 6.283) * rr, z = p.z + Math.sin(a / 16 * 6.283) * rr, i = nav.idx(x, z);
       if (!nav.passable(i, 0.45)) continue;
-      const sc = nav.coverFrom(x, z, T.x, T.z) - rr * 0.015 + (nav.low[i] ? 0.05 : 0);
+      const sc = nav.coverFrom(x, z, T.x, T.z) - rr * 0.015 + (nav.low[i] ? 0.05 : 0) + (1 - concealOf(this.g, x, z)) * 0.4;   // v8: + out of sight (tree belt, wall)
       if (sc > bs) { bs = sc; best = [x, z]; }
     }
     return best;
@@ -356,14 +473,14 @@ export class CommanderV1 {
     for (const bl of this.g.allBuildings()) {
       if (bl.collapsedAll) continue; const dx = bl.x - c.x, dz = bl.z - c.z, d = Math.hypot(dx, dz); if (d > r || d < 8) continue;
       const along = (dx * dir.x + dz * dir.z) / (d || 1); if (along < 0.3) continue;
-      if (!bl.slots.some(s => !s.occupant && !s.panel.gone) || bl.slots.some(s => s.occupant && s.occupant.squad.side !== sq.side)) continue;
+      if (!bl.slots.some(s => !s.occupant && !s.panel.gone) || this.knownBld(bl)) continue;
       const sc = d - along * 20; if (sc < bs) { bs = sc; best = bl; }
     }
     return best;
   }
   nearBuilding(c, r, sq) {
     let best = null, bd = r;
-    for (const bl of this.g.allBuildings()) { if (bl.collapsedAll) continue; const [lx, lz] = bl.toLocal(c.x, c.z); const d = Math.max(0, Math.abs(lx) - bl.L / 2) + Math.max(0, Math.abs(lz) - bl.D / 2); if (d < bd && bl.slots.some(s => !s.occupant && !s.panel.gone) && !bl.slots.some(s => s.occupant && s.occupant.squad.side !== sq.side)) { bd = d; best = bl; } }
+    for (const bl of this.g.allBuildings()) { if (bl.collapsedAll) continue; const [lx, lz] = bl.toLocal(c.x, c.z); const d = Math.max(0, Math.abs(lx) - bl.L / 2) + Math.max(0, Math.abs(lz) - bl.D / 2); if (d < bd && bl.slots.some(s => !s.occupant && !s.panel.gone) && !this.knownBld(bl)) { bd = d; best = bl; } }
     return best;
   }
   // the enemy howitzer: stays emplaced in the rear; after firing it sometimes relocates ("shoot and scoot") to dodge
@@ -373,7 +490,7 @@ export class CommanderV1 {
     const S = v.spg;
     if (b.state === 'emplaced' && S.missions > (b.seen ?? 0)) {
       b.seen = S.missions;
-      const threat = g.vehicles.some(o => o.side === 'player' && o.kind === 'spg' && !o.destroyed) ? 0.55 : 0.25;
+      const threat = g.vehicles.some(o => o.side === 'player' && o.kind === 'spg' && !o.destroyed && g.time - (o.lastFireT ?? -999) < 300) ? 0.55 : 0.25;   // (v8: a player battery that has been heard firing)
       if (!S.mission && Math.random() < threat) {
         b.home ??= [v.pos.x, v.pos.z];
         const a = Math.random() * Math.PI * 2, r = 35 + Math.random() * 35;
@@ -383,25 +500,28 @@ export class CommanderV1 {
     } else if (b.state === 'relocating' && !v.path && S.state !== 'packing') b.state = 'emplaced';
   }
   thinkVehicle(b) {
-    const v = b.v; if (v.destroyed) { b.dead = true; return; }
-    if (v.crew < 2 || v.hp < v.def.hp * (this.cautious() ? 0.45 : 0.35)) { if (!b.retreating) { b.retreating = true; v.orderMove(b.home[0], b.home[1] - 80); } return; }
-    if (v.path) return;
+    const v = b.v, g = this.g; if (v.destroyed) { b.dead = true; return; }
+    if (v.crew < 2 || v.hp < v.def.hp * (this.cautious() ? 0.45 : 0.35)) { if (!b.retreating) { b.retreating = true; v.fireAt = null; v.orderMove(b.home[0], b.home[1] - 80); } return; }
     // the player's objectives bleed us: shift the tank's overwatch onto one of them (stand-off, not a charge)
-    if (b.kind === 'tank' && this.bleeding && this.g.time > (b.shiftT || 0)) {
-      const o = this.g.objectives.find(q => q.id === b.obj);
-      if (o && o.owner !== 'player') { const n = this.pickObjective(v.pos, b.obj); if (n !== b.obj) { b.obj = n; b.home = OVERWATCH[n][Math.floor(Math.random() * 2)]; b.shiftT = this.g.time + 60; v.orderMove(b.home[0], b.home[1], 0, false); return; } }
+    if (b.kind === 'tank' && this.bleeding && g.time > (b.shiftT || 0) && !v.path) {
+      const o = g.objectives.find(q => q.id === b.obj);
+      if (o && o.owner !== 'player') { const n = this.pickObjective(v.pos, b.obj); if (n !== b.obj) { b.obj = n; b.home = OVERWATCH[n][Math.floor(Math.random() * 2)]; b.shiftT = g.time + 60; b.dr = null; } }
     }
     const t = this.threatsNear(v.pos, 75), f = this.friendsNear(v.pos, 40);
-    if (t.rpg > 0 && f === 0) { // back off out of RPG range
-      const away = new THREE.Vector3(0, 0, -1); for (const u of this.g.unitsOf('player')) if (u.type === 'squad' && u.center().distanceTo(v.pos) < 75) away.add(v.pos.clone().sub(u.center()).normalize());
-      away.normalize(); const p = v.pos.clone().addScaledVector(away, 50); const [x, z] = this.g.nav.nearestFree(p.x, p.z, 2.2, 20); v.orderMove(x, z); return;
+    if (t.rpg > 0 && f === 0 && !v.path) { // back off out of RPG range (from the known infantry: v8, no all-seeing)
+      const away = new THREE.Vector3(); for (const e of this.intel.near(v.pos.x, v.pos.z, 80, 30)) if (!e.veh) away.add(new THREE.Vector3(v.pos.x - e.x, 0, v.pos.z - e.z).normalize());
+      if (away.lengthSq() < 0.01) away.set(0, 0, -1); away.normalize(); const p = v.pos.clone().addScaledVector(away, 50); const [x, z] = g.nav.nearestFree(p.x, p.z, 2.2, 20); v.orderMove(x, z);
+      if (b.dr) { b.dr = 'hide'; b.drT = g.time; b.hideUntil = g.time + 15; } return;
     }
     if (b.kind === 'vdefend') return;
-    b.idle = v.target ? 0 : (b.idle || 0) + 1.5;
-    if (b.idle > 20) {
-      b.idle = 0; const [ox, oz] = this.objPos(b.obj); const d = Math.hypot(v.pos.x - ox, v.pos.z - oz);
-      if (d > 90 && f > 0) { const p = v.pos.clone().lerp(new THREE.Vector3(ox, 0, oz), 40 / d); v.orderMove(p.x, p.z); }
-    }
+    // v8: the tank drill (tankDrill: hide behind the infantry, up to fire on what is known at the objective, back again).
+    // It used to creep up to the objective whenever it had nothing to shoot at.
+    const [ox, oz] = this.objPos(b.obj), known = this.intel.list(30).filter(e => Math.hypot(e.x - ox, e.z - oz) < 230);
+    const tgtE = known.find(e => e.armour) || known.sort((a, c) => c.pow - a.pow)[0];
+    const fight = g.squads.some(q => q.side === 'enemy' && !q.destroyed && !q.mounted && q.underFireT < 5 && Math.hypot(q.center().x - ox, q.center().z - oz) < 220);
+    let bx = b.home[0] - ox, bz = b.home[1] - oz, L = Math.hypot(bx, bz);
+    if (L < 30) { const sp = SPAWNS.attacker[0]; bx = sp[0] - ox; bz = sp[1] - oz; L = Math.hypot(bx, bz) || 1; }
+    this.tankDrill(b, tgtE ? [tgtE.x, tgtE.z] : [ox, oz], [bx / L, bz / L], 150, 260, !!tgtE || fight);
   }
 }
 
