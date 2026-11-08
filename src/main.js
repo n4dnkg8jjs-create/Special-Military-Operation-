@@ -237,7 +237,7 @@ function pickMap(id) {
   for (const el of document.querySelectorAll('.mapcard')) el.classList.toggle('sel', el.dataset.map === id);
   $('mapKicker').innerHTML = `${m.name}<span class="size-big">${m.size.toUpperCase()} · ${m.sizeM} × ${m.sizeM} m</span>`;
   const obs = m.objectives.map(o => `<b>${o.id} — ${o.name}</b>`), list = obs.length > 1 ? `${obs.slice(0, -1).join(', ')} and ${obs[obs.length - 1]}` : obs[0];
-  $('mapBrief').innerHTML = `${m.blurb} Your motorized rifle company rides in on armour with an assault squad on the lead tank. Capture ${list}, then hold ${obs.length > 2 ? 'them all' : obs.length > 1 ? 'both' : 'it'} against counterattacks until the round ends. Ammunition is limited, wounded must be pulled back, and squads that lose their nerve will break.`;
+  $('mapBrief').innerHTML = m.blurb;   // the map's own summary (objectives are listed beside it)
 }
 if ($('mapPick')) {
   for (const m of Object.values(MAPS)) {

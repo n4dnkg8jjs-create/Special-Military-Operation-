@@ -4,9 +4,11 @@
 //  - the animated backdrop (backdrop.js) runs only while the menu or the loading screen is visible
 //  - skirmish detail panel mirrors the selected map card (big preview + objectives)
 //  - loading screen field notes
+//  - the intro (title reveal, once per session) and the menu ambience (menuAudio.js)
 // main.js keeps owning the actual launch logic (#startBtn, #campaignBtn, #versusBtn, #quality, #mapPick).
 import { applyBrand } from './brand.js';
 import { Backdrop } from './backdrop.js';
+import { startMenuAudio, stopMenuAudio, menuAudioEnabled, setMenuAudio } from './menuAudio.js';
 
 const $ = id => document.getElementById(id);
 applyBrand();
@@ -45,6 +47,57 @@ const fa = $('fpvAuto');
 if (fa) {
   try { fa.checked = localStorage.getItem('smo_fpvfeed_open') === '1'; } catch { }
   fa.addEventListener('change', () => { try { localStorage.setItem('smo_fpvfeed_open', fa.checked ? '1' : '0'); } catch { } });
+}
+
+// ---------------------------------------------------------------- menu ambience (menuAudio.js): from the first click / key
+// press while the menu is up (autoplay rules), faded out as soon as the menu is hidden (a battle / campaign / versus loads)
+const ma = $('menuAudio');
+if (ma) { ma.checked = menuAudioEnabled(); ma.addEventListener('change', () => { setMenuAudio(ma.checked); if (ma.checked) startMenuAudio(); }); }
+if (menu) {
+  const menuUp = () => !menu.classList.contains('hidden');
+  const kick = () => { if (menuUp()) startMenuAudio(); };
+  addEventListener('pointerdown', kick, true); addEventListener('keydown', kick, true);
+  new MutationObserver(() => { if (!menuUp()) stopMenuAudio(); }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+}
+
+// ---------------------------------------------------------------- intro (once per session, home view only): dark screen,
+// the title revealed large in the centre, a hold, then it glides to its place at the left while the backdrop pushes in
+// and the entries slide in. Web Animations on transform / opacity / filter only. Any key or click skips it.
+// Not under automation (headless screenshots of the menu) unless ?intro is given.
+const INTRO = (() => {
+  const Q = new URLSearchParams(location.search);
+  if (!menu || !menu.querySelector('.mv-home .title') || menu.dataset.view !== 'home') return false;
+  if (Q.has('intro')) return true;
+  if (['autostart', 'cbattle', 'ctest', 'vsbattle', 'vsreplay', 'campaign', 'versus', 'join'].some(k => Q.has(k))) return false;
+  if (navigator.webdriver || matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+  try { if (sessionStorage.getItem('smo_intro')) return false; sessionStorage.setItem('smo_intro', '1'); } catch { }
+  return true;
+})();
+if (INTRO) {
+  const t = menu.querySelector('.mv-home .title'), veil = document.createElement('div'); veil.className = 'menu-veil';
+  menu.insertBefore(veil, menu.querySelector('.menu-top')); menu.classList.add('intro');   // dark + title / entries held back (style.css) until the animation runs
+  const run = () => {
+    const r = t.getBoundingClientRect();
+    const s = Math.min(1.45, innerWidth * 0.78 / Math.max(1, r.width)), dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2);
+    const T = `translate(${dx}px,${dy}px) scale(${s})`, D = 5200, hold = 0.56, A = [];
+    t.style.transformOrigin = '50% 50%';
+    A.push(t.animate([
+      { transform: `translate(${dx}px,${dy}px) scale(${s * 1.05})`, opacity: 0, filter: 'blur(10px)', offset: 0, easing: 'cubic-bezier(.2,.7,.2,1)' },
+      { transform: T, opacity: 1, filter: 'blur(0px)', offset: 0.32, easing: 'linear' },
+      { transform: T, opacity: 1, filter: 'blur(0px)', offset: hold, easing: 'cubic-bezier(.65,0,.25,1)' },
+      { transform: 'none', opacity: 1, filter: 'blur(0px)', offset: 1 }], { duration: D, fill: 'both' }));   // (easing per keyframe: an overall easing would warp the hold)
+    A.push(veil.animate([{ opacity: 1 }, { opacity: 1, offset: hold - 0.04, easing: 'ease-in-out' }, { opacity: 0 }], { duration: D, fill: 'both' }));
+    const bgc = $('menuBg'); if (bgc) A.push(bgc.animate([{ transform: 'scale(1.08)' }, { transform: 'scale(1.08)', offset: hold - 0.04, easing: 'cubic-bezier(.3,0,.2,1)' }, { transform: 'none' }], { duration: D + 600, fill: 'both' }));
+    const late = [...menu.querySelectorAll('.mainnav .nav-item'), menu.querySelector('.menu-foot')].filter(Boolean);
+    late.forEach((el, i) => A.push(el.animate([{ opacity: 0, transform: 'translateX(-1.2rem)' }, { opacity: 1, transform: 'none' }], { duration: 800, delay: D * hold + 700 + i * 90, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'both' })));
+    let done = false;
+    const end = () => { if (done) return; done = true; removeEventListener('keydown', skip, true); removeEventListener('pointerdown', skip, true); menu.classList.remove('intro'); for (const a of A) a.cancel(); veil.remove(); t.style.transformOrigin = ''; };
+    const skip = e => { e.preventDefault(); e.stopPropagation(); end(); };
+    addEventListener('keydown', skip, true); addEventListener('pointerdown', skip, true);
+    Promise.all(A.map(a => a.finished)).then(end, () => { });
+    window.__intro = { skip: end };   // test hook
+  };
+  requestAnimationFrame(() => (document.fonts?.ready || Promise.resolve()).then(run));
 }
 
 // ---------------------------------------------------------------- skirmish detail: mirror the selected map card

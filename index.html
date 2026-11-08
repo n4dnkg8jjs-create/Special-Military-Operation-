@@ -29,22 +29,20 @@
 
   <section class="mv mv-home" data-v="home" aria-label="Main menu">
     <div class="hero">
-      <div class="hero-kicker"><i aria-hidden="true"></i><span data-brand="subtitle"></span></div>
       <h1 class="title" data-brand="title"></h1>
-      <p class="tagline" data-brand="tagline"></p>
     </div>
     <nav class="mainnav" aria-label="Game mode">
-      <button id="campaignBtn" class="nav-item" style="--i:0"><span class="ni-k">01</span><span class="ni-t">Campaign</span><span class="ni-d">Command a brigade sector, turn by turn, between battles</span></button>
-      <button id="skirmishBtn" class="nav-item" style="--i:1"><span class="ni-k">02</span><span class="ni-t">Skirmish</span><span class="ni-d">One battle against the AI on the map you choose</span></button>
-      <button id="versusBtn" class="nav-item" style="--i:2"><span class="ni-k">03</span><span class="ni-t">Versus</span><span class="ni-d">Two commanders over a direct peer-to-peer link</span></button>
-      <button id="settingsBtn" class="nav-item nav-minor" style="--i:3"><span class="ni-k">04</span><span class="ni-t">Settings &amp; controls</span><span class="ni-d">Graphics quality and the key reference</span></button>
+      <button id="campaignBtn" class="nav-item" style="--i:0"><span class="ni-t">Campaign</span></button>
+      <button id="skirmishBtn" class="nav-item" style="--i:1"><span class="ni-t">Skirmish</span></button>
+      <button id="versusBtn" class="nav-item" style="--i:2"><span class="ni-t">Versus</span></button>
+      <button id="settingsBtn" class="nav-item nav-minor" style="--i:3"><span class="ni-t">Settings</span></button>
     </nav>
   </section>
 
   <section class="mv mv-skirmish" data-v="skirmish" aria-label="Skirmish setup" inert>
     <div class="mv-head">
       <button class="back" data-back aria-label="Back to the main menu"><i aria-hidden="true"></i><span>Back</span></button>
-      <div><div class="kicker">Single battle · vs AI</div><h2>Skirmish</h2></div>
+      <h2>Skirmish</h2>
     </div>
     <div class="sk-body">
       <div class="sk-maps">
@@ -74,7 +72,6 @@
           </div>
         </div>
         <div class="sk-go">
-          <div class="sk-hint">Deploy, then press <kbd>Enter</kbd> to start the clock</div>
           <button id="startBtn" class="cta"><span>Deploy</span><i aria-hidden="true"></i></button>
         </div>
       </aside>
@@ -84,15 +81,17 @@
   <section class="mv mv-settings" data-v="settings" aria-label="Settings and controls" inert>
     <div class="mv-head">
       <button class="back" data-back aria-label="Back to the main menu"><i aria-hidden="true"></i><span>Back</span></button>
-      <div><div class="kicker">Options</div><h2>Settings &amp; controls</h2></div>
+      <h2>Settings</h2>
     </div>
     <div class="set-body">
       <div class="panel set-card">
-        <div class="label">Graphics</div>
-        <label class="set-row" for="quality"><span><b>Quality preset</b><small>Shadows, draw distance, effects. Applies to the next battle.</small></span>
+        <div class="label">Options</div>
+        <label class="set-row" for="quality"><span><b>Quality</b></span>
           <select id="quality"><option value="high" selected>High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
-        <label class="set-row" for="fpvAuto" style="margin-top:.8rem"><span><b>FPV drone view</b><small>Start battles with the FPV camera panel open (top right). In battle the <kbd>FPV</kbd> tab or <kbd>N</kbd> opens / closes it.</small></span>
+        <label class="set-row" for="fpvAuto" style="margin-top:.8rem"><span><b>FPV view at start</b></span>
           <input type="checkbox" id="fpvAuto" style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--accent)"></label>
+        <label class="set-row" for="menuAudio" style="margin-top:.8rem"><span><b>Menu audio</b></span>
+          <input type="checkbox" id="menuAudio" style="width:1.1rem;height:1.1rem;flex:none;accent-color:var(--accent)"></label>
       </div>
       <div class="panel set-card keys">
         <div class="label">Controls</div>
@@ -109,8 +108,7 @@
   </section>
 
   <footer class="menu-foot">
-    <span class="mf-keys"><span class="mf-back"><kbd>Esc</kbd> Back</span><span><kbd>↵</kbd> Select</span></span>
-    <span class="mf-note">Independent, non-commercial project · map data © OpenStreetMap contributors</span>
+    <span class="mf-note">Map data © OpenStreetMap contributors</span>
   </footer>
 </div>
 
@@ -129,9 +127,9 @@
   </div>
 </div>
 
-<!-- HUD (battle), WARNO layout (previews/ui_warno/RESEARCH.md): teal strip along the top with the score box in the centre,
-     deck (unit cards by arm, tabs in the strip) top left, minimap + force table top right with the message feed beside it,
-     unit panel bottom centre, orders (Movement / Combat / Support) bottom right. Look: style.css "Battle HUD v6". -->
+<!-- HUD (battle). Layout: score box top centre, force table + message log top left, fps top right, one dock along the
+     bottom: minimap · deck (unit cards by arm) · unit panel over the orders (Movement / Combat / Support).
+     Look: style.css "Battle HUD v7". -->
 <div id="hud" class="hidden">
   <div id="topbar">
     <div class="tb-main">
