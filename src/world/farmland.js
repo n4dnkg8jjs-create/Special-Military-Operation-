@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, mulberry, catenary, rectMinus, roadPieces } from './city.js';
+import { City, MAP, MAP_SIZE, BOUNDS, ROADS, onRoad, footOnRoad, mulberry, catenary, rectMinus, roadPieces } from './city.js';
 import { BLOCK } from './nav.js';
 import { instance, trs, farLod } from './instancer.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -15,6 +15,8 @@ const XS = [-702, -640, -559.5, -395, -359.5, -124.5, -20, 10, 103.5, 180, 224.5
 const ZS = [-702, -560, -547.5, -335, -294.5, -175, -143.5, -22, 63.5, 190, 323.5, 335, 401, 545, 702];
 const T_PLOW = 0, T_STUB = 1, T_FALLOW = 2, T_SUN = 3, T_CORN = 4;
 
+// ground pads / play equipment that lie flat on the ground: never partly over a road or pavement (z-fight, clipping)
+const PAD = /playground|court|gym|pad|sandbox|swing|carousel|slide|bin|container|waste|goal|bench/i;
 export class Farmland extends City {
   constructor(scene, assets, quality) {
     super(scene, assets, quality);
@@ -115,9 +117,10 @@ export class Farmland extends City {
   // queue an instanced placement; nav footprint, optional occluder, crushable fences
   put(name, x, z, ry = 0, o = {}) {
     const t = this.tpl(name); if (!t) return false;
-    const s = o.s || 1, bb = t.userData.bb, hx = (bb.max.x - bb.min.x) / 2 * s, hz = (bb.max.z - bb.min.z) / 2 * s;
+    const s = o.s || 1, bb = t.userData.bb, hx = (bb.max.x - bb.min.x) / 2 * s * (o.sx || 1), hz = (bb.max.z - bb.min.z) / 2 * s;   // (o.sx: stretch along local x -- fence runs cut to a piece)
     if (o.check !== false) {
       if (onRoad(x, z, o.roadPad ?? Math.max(hx, hz) * 0.5)) return false;
+      if (PAD.test(name) && footOnRoad(x, z, hx * 0.95, hz * 0.95, ry)) return false;   // flat pads (playgrounds, courts, bin pads): the whole footprint off the road and pavement
       const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] === BLOCK) return false;
       if (this.overlapsBuilding(x, z, hx, hz, 0.5)) return false;
     }
@@ -129,8 +132,9 @@ export class Farmland extends City {
     if (o.cost !== 0 && !o.crush && !/bush|fallen|haybale/.test(name)) this.solidAdd(x, z, fx, fz, ry, house ? 'house' : tree ? 'tree' : name);
     // base: lowest ground under the footprint (trees / bushes: under the trunk), never a corner in the air
     const y = o.y ?? (tree || /bush|clump|tree_|leafy/.test(name) ? this.baseY(x, z, 0.35 * s, 0.35 * s) : this.tplBaseY(t, x, z, ry, s));
-    const M = trs(x, y, z, ry, s, o.rx || 0, o.rz || 0);
-    if (o.crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush: o.crush, type: o.crush === 'tank' ? 'po2' : 'fenceH' }); this.nav.rect(x, z, hx, hz, ry, o.crush === 'any' ? 3 : 7, 0.1); return true; }
+    const M = trs(x, y + (/playground|court|pad|sandbox/i.test(name) ? 0.03 : 0), z, ry, s, o.rx || 0, o.rz || 0);
+    if (o.sx && o.sx !== 1) M.multiply(new THREE.Matrix4().makeScale(o.sx, 1, 1));   // (a flat base slab coplanar with the ground z-fought)
+    if (o.crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush: o.crush, type: o.crush === 'tank' ? 'po2' : 'fenceH' }); this.nav.rect(x, z, hx, hz, ry, o.crush === 'any' ? 3 : 7, 0.1); if (o.crush === 'tank') this.nav.setVeh(x, z, hx + 0.3, hz + 0.3, ry, 1); return true; }
     const key = name + (o.group || '');
     (this.place[key] ||= { t, m: [], opts: o.inst || {}, lodName: o.lod, midName: o.mid ?? (o.lod && this.hasTpl(name + '_mid') ? name + '_mid' : null) }).m.push(M);
     if (o.cost !== 0) {

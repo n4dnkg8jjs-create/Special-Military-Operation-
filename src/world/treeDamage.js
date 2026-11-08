@@ -169,6 +169,23 @@ export class TreeDamage {
       else if (r >= WHEEL_TRUNK) { nav.setVeh(this.x[t], this.z[t], r + 0.3, r + 0.3, 0, 1); big++; }   // wheeled vehicles can't push it over: round it
     }
     this.stats.bigTrunks = big;
+    // deep woods: single trunks leave hull-wide gaps on the grid, but a wood is a maze of trunks, stumps, brush and
+    // fallen timber a vehicle wedges itself in. Standing trees counted per 8 m cell over a 24 m window: an open grove /
+    // tree row stays drivable, a wood is closed to wheeled vehicles (layer 1: tracked cross only at a heavy cost), its
+    // interior to every vehicle (layer 2) -- routes go round the woods instead of into them. Roads through keep open.
+    { const C = 8, cnt = new Map(), key = (i, j) => i + ',' + j; nav.veh ||= new Uint8Array(nav.n * nav.n);
+      for (let t = 0; t < this.N; t++) if (this.tr[t] >= WHEEL_TRUNK * 0.75) { const k = key(Math.floor(this.x[t] / C), Math.floor(this.z[t] / C)); cnt.set(k, (cnt.get(k) || 0) + 1); }
+      let wood = 0;
+      for (const k of cnt.keys()) {
+        const [i, j] = k.split(',').map(Number); let n = 0;
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) n += cnt.get(key(i + a, j + b)) || 0;
+        const val = n >= 17 ? 2 : n >= 10 ? 1 : 0; if (!val) continue; wood++;
+        for (let z = j * C + nav.cell / 2; z < (j + 1) * C; z += nav.cell) for (let x = i * C + nav.cell / 2; x < (i + 1) * C; x += nav.cell) {
+          const q = nav.idx(x, z); if (q < 0 || nav.road?.[q]) continue; nav.veh[q] = Math.max(nav.veh[q], val);
+        }
+      }
+      this.stats.woodCells = wood; if (wood) big++;
+    }
     if (big) { nav.vehDirty = true; nav.finalize(); }
   }
   crush(v) {
@@ -337,7 +354,12 @@ export class TreeDamage {
     if (!top) { top = this.dynPool(I.tpl, TOP_CAP, false); this.tops.set(I.tpl, top); }   // (full bark mesh: the simplified one had holes - tops looked see-through)
     const slot = top.head; top.head = (top.head + 1) % top.cap;
     const it = top.items[slot] || (top.items[slot] = { M: new THREE.Matrix4() });
-    it.t = t; it.th = 0; it.w = 0.25 + Math.min(1.2, q) * 0.5; it.dx = dx; it.dz = dz; it.hs = hs; it.L = Math.max(2, I.h * s); it.rest = false; it.thf = 1.5 + hash(t, 11) * 0.12; it.slot = slot; it.age = 0;
+    it.t = t; it.th = 0; it.w = 0.25 + Math.min(1.2, q) * 0.5; it.dx = dx; it.dz = dz; it.hs = hs; it.L = Math.max(2, I.h * s); it.rest = false; it.slot = slot; it.age = 0;
+    // lands on the ground along its length: the fall stops where the trunk first meets the terrain on its way down (a
+    // slope falling away: past horizontal; a bank, a heap: earlier), not at a fixed angle that floats it over a dip
+    { const ter = this.g.city?.terrain, gh = this.g.city?.groundHeight; let th = Math.PI / 2;
+      if (ter || gh) { th = 2.2; for (const f of [0.3, 0.5, 0.7, 0.9]) { const d = it.L * f, px = this.x[t] + dx * (0.7 + d), pz = this.z[t] + dz * (0.7 + d), g = gh ? gh(px, pz) : ter.heightAt(px, pz); th = Math.min(th, Math.atan2(d, g - this.y[t])); } }
+      it.thf = Math.max(1.0, Math.min(2.0, th + (hash(t, 11) - 0.5) * 0.04)); }
     it.M.copy(this.tP[t].matrices[this.tI[t]]);
     this.topPose(top, it);
     (this.falling ||= []).includes(top) || this.falling.push(top);
@@ -458,7 +480,7 @@ export class TreeDamage {
         const fl = Math.sin(tt * 3.1 + B.a[i]) * 0.9;   // flutter
         B.px[i] += (B.vx[i] + fl * Math.cos(B.b[i])) * dt; B.py[i] += B.vy[i] * dt; B.pz[i] += (B.vz[i] + fl * Math.sin(B.b[i])) * dt;
         B.a[i] += B.wa[i] * dt; B.b[i] += B.wb[i] * dt;
-        if (B.py[i] <= B.fl[i]) { B.py[i] = B.fl[i]; B.mode[i] = 2; B.a[i] = -Math.PI / 2; B.t[i] = 0; }
+        if (B.py[i] <= B.fl[i] + 3) { const gy = (this.g.city?.terrain ? this.g.city.terrain.heightAt(B.px[i], B.pz[i]) : B.fl[i] - 0.02) + 0.02; if (B.py[i] <= gy) { B.py[i] = gy; B.mode[i] = 2; B.a[i] = -Math.PI / 2; B.t[i] = 0; } }   // (on the ground where it comes down, not the tree's foot level)
       } else if (tt < B.life[i] - 1.5) continue;   // resting on the ground: nothing to write
       let k = 1; if (md === 2) { k = Math.max(0, (B.life[i] - tt) / 1.5); if (tt >= B.life[i]) { B.mode[i] = 0; B.alive--; k = 0; } }
       if (k <= 0) m.makeScale(0, 0, 0);

@@ -6,6 +6,7 @@ import { clipDuration, hasClip } from './soldier.js';
 import { twoBone, driveTwist } from './soldierPose.js';
 import { SPAWNS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
+const SEAT_DROP = [0.13, 0.13, 0.08];   // seated men (driver, front medic, rear medic): below the clip's seated frame (cab roof clearance; measured head bone -> roof lining 0.01 m before)
 
 // Casualty evacuation: an unarmoured civilian double-cab pickup (assets/vehicles/pickup.glb, tools/blender/vehicles/pickup.py)
 // with a driver and two medics, in player control on every battle (the enemy has one too, run by a simple AI).
@@ -201,7 +202,9 @@ export class MedevacTruck extends Vehicle {
   seatMan(m, dt) {
     const s = m.s, seat = this.wpos(`ride_seat_${m.i + 1}`, _w), out = this.left().negate(), f = this.fwd();
     s.inCab = this.mstate !== 'away';
-    s.pos.copy(seat).addScaledVector(out, 0.62).addScaledVector(f, 0.10); s.pos.y = seat.y - 0.84;
+    // (v10) the clip's seated frame has the H-point ~10 cm over the cab's seat cushion: helmets went through the roof
+    // lining -- sunk into the cushion and 4 cm back against the backrest, the helmet clears the roof by a hand's width
+    s.pos.copy(seat).addScaledVector(out, 0.62).addScaledVector(f, 0.06); s.pos.y = seat.y - 0.84 - (SEAT_DROP[m.i] ?? 0.1);
     s.heading = Math.atan2(out.x, out.z); s.vel.set(0, 0, 0);
     if (!s.alive) { if (!s.cabSlump) this.slump(s); s.sync(); return; }   // v9: killed in his seat: slumped there (soldier.deathTick: no ragdoll in the cab)
     s.netClip = clipOf('exit'); s.netTs = 1e-4; s.netClipT = 0;

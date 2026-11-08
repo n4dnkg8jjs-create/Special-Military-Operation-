@@ -216,6 +216,20 @@ export function fitParts(b, W, maxDepth = 5) {
   const parts = b.parts || [[b.x, b.z, b.L, b.D]], c = Math.cos(b.rot), s = Math.sin(b.rot);
   // building frame: lx along b.rot's local X, lz along local Z (Building.toLocal)
   const R = parts.map(([x, z, L, D]) => { const dx = x - b.x, dz = z - b.z, lx = dx * c - dz * s, lz = dx * s + dz * c; return { x0: lx - L / 2, x1: lx + L / 2, z0: lz - D / 2, z1: lz + D / 2 }; });
+  // a short connector piece of an outline (one stair section, both sides <= ~4 modules) would become a separate one-
+  // section block (own end walls, own damage: a lone tower beside its wings): merge it into the part it continues --
+  // the touching part whose long axis runs through it -- so that wing simply runs on to the next part
+  for (let i = R.length - 1; i >= 0 && R.length > 1; i--) {
+    const p = R[i]; if (Math.max(p.x1 - p.x0, p.z1 - p.z0) > 4.2 * W) continue;
+    const q = R.find((q, j) => {
+      if (j === i) return false; const longX = q.x1 - q.x0 >= q.z1 - q.z0;
+      if (longX) return (Math.abs(p.x0 - q.x1) < 0.8 || Math.abs(p.x1 - q.x0) < 0.8) && Math.min(p.z1, q.z1) - Math.max(p.z0, q.z0) > Math.min(p.z1 - p.z0, q.z1 - q.z0) * 0.5;
+      return (Math.abs(p.z0 - q.z1) < 0.8 || Math.abs(p.z1 - q.z0) < 0.8) && Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0) > Math.min(p.x1 - p.x0, q.x1 - q.x0) * 0.5;
+    });
+    if (!q) continue;
+    if (q.x1 - q.x0 >= q.z1 - q.z0) { q.x0 = Math.min(q.x0, p.x0); q.x1 = Math.max(q.x1, p.x1); } else { q.z0 = Math.min(q.z0, p.z0); q.z1 = Math.max(q.z1, p.z1); }
+    R.splice(i, 1);
+  }
   const snap = (len, n0, max) => { let n = Math.max(2, Math.min(max, Math.round(len / W))); if (n * W > len + 0.9 && n > 2) n--; return n * W; };
   // does part i touch another part at its side (axis 'x' | 'z', end -1 | 1)?
   const touch = (i, ax, end) => R.some((q, j) => {
@@ -300,14 +314,18 @@ const Real = {
     this.trackMat = mkTrack(T.track ? 0xffffff : 0xb0a28a, trackTex);
     const gravelMat = mkTrack(T.track ? 0xd9d2c4 : 0xc4b9a4, trackTex); gravelMat.customProgramCacheKey = this.trackMat.customProgramCacheKey;
     const B = { asphalt: new GeoBuf(true), walk: new GeoBuf(true), track: new GeoBuf(), gravel: new GeoBuf() }, dashes = [], curbs = [];
+    // every carriageway / pavement ribbon at its own height: higher classes over lower ones (paved > street > drive), and
+    // within a class each road a few mm over the previous one (ri % 5) -- two coplanar ribbons crossing or meeting
+    // (different edge-wear attributes) z-fought / flickered at every crossing
+    let ri = 0;
     for (const r of D.roads) {
-      const P = r.pts; if (P.length < 2) continue;
+      const P = r.pts; if (P.length < 2) continue; ri++;
       const hw = r.w / 2, x0 = P[0][0], x1 = P[P.length - 1][0], z0 = P[0][1], z1 = P[P.length - 1][1], horiz = Math.abs(x1 - x0) > Math.abs(z1 - z0) ? 1 : 0;
       if (r.type === 'paved' || r.type === 'street' || r.type === 'drive') {
         // crossing ribbons of one class would be coplanar and z-fight at the junction: higher classes sit a few mm up
-        ribbon(B.asphalt, P, hw, r.type === 'paved' ? 0.058 : r.type === 'street' ? 0.054 : 0.05, { horiz, ext: 0.5 });
-        if (urban && swOf(r) > 0.05) ribbon(B.walk, P, hw + swOf(r), 0.03, { horiz, tile: 4 });
-        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.066, z, Math.atan2(-uz, ux))); });
+        ribbon(B.asphalt, P, hw, (r.type === 'paved' ? 0.082 : r.type === 'street' ? 0.066 : 0.05) + (ri % 5) * 0.003, { horiz, ext: 0.5 });
+        if (urban && swOf(r) > 0.05) ribbon(B.walk, P, hw + swOf(r), 0.026 + (ri % 5) * 0.003, { horiz, tile: 4 });
+        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 0.5, r)) dashes.push(trs(x, 0.1, z, Math.atan2(-uz, ux))); });
         if (urban && r.type !== 'drive' && swOf(r) >= 1.5) for (const sd of [-1, 1]) walk(P, 1, (x, z, ux, uz) => { const cx = x - uz * hw * sd, cz = z + ux * hw * sd; if (this.net.hit(cx, cz, 0.6, r) || this.rng() < 0.05) return; curbs.push(trs(cx, 0.08, cz, Math.atan2(-uz, ux), 1, 0, (this.rng() - 0.5) * 0.04)); });
       } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, r.type === 'gravel' ? 0.04 : 0.035, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
       // nav: vehicles prefer roads (2 paved, 1 dirt)
@@ -326,7 +344,7 @@ const Real = {
       const disc = (Bf, x, z, rad, y, tile) => { const n = 18, c = Bf.n; Bf.pos.push(x, y, z); Bf.uv.push(x / tile, z / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad; Bf.pos.push(px, y, pz); Bf.uv.push(px / tile, pz / tile); if (Bf.ex) Bf.ex.push(0, rad, 1); Bf.idx.push(c, c + 1 + (i + 1) % n, c + 1 + i); } };
       for (const [, L] of ends) { if (L.length < 2) continue; const [p] = L[0], hw = Math.max(...L.map(([, r]) => r.w / 2));
         disc(B.asphalt, p[0], p[1], hw, 0.047, 7);
-        const sw = Math.max(...L.map(([, r]) => swOf(r))); if (urban && sw > 0.05) disc(B.walk, p[0], p[1], hw + sw, 0.028, 4); } }
+        const sw = Math.max(...L.map(([, r]) => swOf(r))); if (urban && sw > 0.05) disc(B.walk, p[0], p[1], hw + sw, 0.022, 4); } }
     const add = (buf, mat, ro = 0) => { const g = buf.geometry(); if (!g) return; const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = ro; this.scene.add(m); return m; };
     add(B.walk, walkM); add(B.asphalt, asphalt); add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
     if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
@@ -363,7 +381,7 @@ const Real = {
         }
       } else if (cls === 'hall' || cls === 'store') halls.push({ ...b, cls });
       else if (cls === 'garages') garages.push(b);
-      else tplQ.push({ ...b, cls });
+      else tplQ.push({ ...b, cls, src: b });
     }
     // whole-module rounding can still push a block into a separate neighbouring outline (another block, a hall, a garage
     // row): shorten it by a module at the end facing the conflict (up to 3 modules)
@@ -496,7 +514,7 @@ const Real = {
         // state: 0 intact, 1 burnt-out shell, 2 flattened (heap); ruins.js (the map's battle profile, own RNG) adds
         // 3 roof broken open, 4 wall stubs on a heap
         const roll = R(), fate = this.ruinHouse ? this.ruinHouse(x, z) : null, state = fate ?? (roll < dRub ? 2 : roll < dRub + dBurn ? 1 : 0);
-        this.houseState.set(b, state === 4 ? 2 : state === 3 ? 1 : state);
+        this.houseState.set(b.src || b, state === 4 ? 2 : state === 3 ? 1 : state);
         // flattened: the outline stays readable -- knee-high wall stubs, plinth, a corner / chimney standing, the heap inside
         // the walls (ruins.js adds the heap and the fallen timber); a bare heap only where the variant cannot be built
         const flat = state === 2 && this.ruin ? ruinTpl(this, best.t.n, 'flat') : null;
@@ -507,7 +525,7 @@ const Real = {
           const name = state === 1 ? (this.burntTpl(best.t.n) || best.t.n) : rv || best.t.n, ryh = ry + (R() - 0.5) * 0.06;
           // wall stubs: slow going and good cover for infantry, no way through for wheeled vehicles
           const low = (state === 4 || state === 2) && rv, o = low ? { s: best.s, cost: 7, low: true, occ: state === 2 ? 0.9 : 1.3, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } } : { s: best.s, occ: state === 1 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } };
-          if (!this.put(name, x, z, ryh, o)) continue D;
+          if (!this.put(name, x, z, ryh, o)) { this.houseState.delete(b.src || b); continue D; }
           if (low) this.nav.setVeh(x, z, b.L / 2 * 0.8, b.D / 2 * 0.8, b.rot, 1);
           if (state === 1 || state === 4) this.burntSpots.push([x, z, state === 1 ? 8 : 6]);
           if (this.ruin && state) this.ruin.houses.push({ x, z, y: this.tplBaseY(this.tpl(name), x, z, ryh, best.s), ry: ryh, s: best.s, t: best.t.n, mode: state === 1 ? 'shell' : mode || 'shell' });
@@ -534,28 +552,42 @@ const Real = {
     const flen = n => { const bb = this.tpl(n).userData.bb; return Math.max(1.5, bb.max.x - bb.min.x); };
     const fruit = urban ? ['tree_walnut_leafy', 'leafy_summer_chestnut', 'tree_acacia_leafy', 'leafy_summer_birch'] : ['tree_walnut_leafy', 'tree_acacia_leafy', 'leafy_summer_chestnut', 'tree_acacia_shelled'];
     const lod = n => this.tpl(n + '_lod1') && this.hasTpl(n + '_lod1') ? n + '_lod1' : null;
+    // a fence panel (length L, centred x, z along ux, uz unit) may stand only on open ground: off the carriageways and
+    // pavements over its whole length, clear of blocks / halls / garages
+    const fenceOk = (x, z, ux, uz, L) => { const n = Math.max(2, Math.ceil(L / 2)); for (let i = 0; i <= n; i++) { const t = i / n - 0.5, px = x + ux * L * t, pz = z + uz * L * t; if (this.net.hit(px, pz, 0.35) || this.terrain.cutSDF(px, pz) < 1.2) return false; } return !this.segBlocked(x, z, ux, uz, L); };
+    this.fenceOk = fenceOk;
     for (const p of D.plots || []) {
       const [a, b, c, d] = p.pts, fx = p.f[0], fz = p.f[1];   // a-b on the street side, f = unit vector towards the street
       const nx = -fx, nz = -fz, ux = b[0] - a[0], uz = b[1] - a[1], fr = Math.hypot(ux, uz) || 1, dep = Math.hypot(d[0] - a[0], d[1] - a[1]);
       const h = D.buildings[p.h], hs = h ? this.houseState?.get(h) : undefined;
+      // only real private-sector plots: the plot's building is a house that was built (not a shed / garage, not a
+      // house dropped for a dug position), and the plot is not part of a block's courtyard, a school or a works
+      if (!h || h.cls !== 'house' || hs === undefined || this.areaIs((a[0] + c[0]) / 2, (a[1] + c[1]) / 2, ['school', 'kindergarten', 'industrial', 'garages', 'parking', 'pitch', 'retail']) || this.overlapsBuilding((a[0] + c[0]) / 2, (a[1] + c[1]) / 2, fr / 2, dep / 2, 2)) continue;
       const wrecked = hs === 2 || (hs === undefined && R() < dRub);
       const fn = fenceNames[Math.floor(R() * fenceNames.length)], L = flen(fn), ry = Math.atan2(-uz, ux);
-      // street fence with a gate in front of the house
-      const gateT = h ? ((h.x - a[0]) * ux + (h.z - a[1]) * uz) / fr : fr / 2;
-      for (let t = L / 2; t < fr - L / 2 + 0.01; t += L) {
-        const x = a[0] + ux / fr * t + nx * 0.5, z = a[1] + uz / fr * t + nz * 0.5;
-        if (R() < (wrecked ? 0.55 : 0.14) || this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.segBlocked(x, z, ux / fr, uz / fr, L) || this.solidHit(x, z, L / 2, 0.12, ry, 0.05, k => k === 'fence')) continue;
-        if (Math.abs(t - gateT) < L * 0.6 && !urban) { this.put('gate_village', x, z, ry, { crush: 'any', check: false }); continue; }
-        if (Math.abs(t - gateT) < L * 0.6) continue;   // urban: open gateway
-        if (this.houseNear(x, z, ry)) continue;
-        if (this.put(fn, x, z, ry + (R() - 0.5) * (wrecked ? 0.25 : 0.05), { crush: 'any', check: false })) this.solidAdd(x, z, L / 2, 0.1, ry, 'fence');
-      }
-      // side fences along the yard (first ~20 m)
-      if (!urban || R() < 0.5) for (const [e0, sgn] of [[a, 1], [b, -1]]) for (let w = 3; w < Math.min(urban ? 9 : 22, dep - 2); w += L) {
-        if (R() < (wrecked ? 0.6 : 0.3)) continue;
-        const x = e0[0] + nx * w + ux / fr * 0.4 * sgn, z = e0[1] + nz * w + uz / fr * 0.4 * sgn;
-        if (this.net.hit(x, z, 0.4) || this.terrain.cutSDF(x, z) < 1.6 || this.segBlocked(x, z, nx, nz, L) || this.solidHit(x, z, L / 2, 0.12, ry + Math.PI / 2, 0.05, k => k === 'fence') || this.houseNear(x, z, ry + Math.PI / 2)) continue;
-        if (this.put(fn, x, z, ry + Math.PI / 2, { crush: 'any', check: false })) this.solidAdd(x, z, L / 2, 0.1, ry + Math.PI / 2, 'fence');
+      // street fence with a gate in front of the house. The city kit's house fences are 18 m runs: every stretch between
+      // the plot corners and the gateway is cut into pieces (<= 12 m, the run scaled to the piece: no panel sticking past a
+      // corner, over the road or through the neighbour's house); village panels (~3 m) are laid at their own length
+      const gateT = h ? ((h.x - a[0]) * ux + (h.z - a[1]) * uz) / fr : fr / 2, gw = 3.4;
+      const lay = (ox, oz, dx, dz, s0, s1, pBreak) => {   // fence pieces from s0 to s1 along (dx, dz) from (ox, oz)
+        const len = s1 - s0; if (len < 1.5) return; const n = Math.max(1, Math.ceil(len / (L > 6 ? 12 : L) - 0.05)), pl = len / n, ryP = Math.atan2(-dz, dx);
+        const piece = (t, pl, deep) => {
+          const x = ox + dx * t, z = oz + dz * t;
+          // blocked (a street corner, a house standing on the line, a tree, a heap): the halves on their own, down to ~2 m
+          if (!fenceOk(x, z, dx, dz, pl) || this.solidHit(x, z, pl / 2, 0.12, ryP, 0.05, kd => kd === 'fence') || this.solidHit(x, z, pl / 2 - 0.2, 0.1, ryP, 0.02, kd => kd !== 'fence')) { if (deep < 2 && pl > 4) { piece(t - pl / 4, pl / 2, deep + 1); piece(t + pl / 4, pl / 2, deep + 1); } return; }
+          const nm = urban && wrecked && R() < 0.4 && this.tpl('fence_house_broken') ? 'fence_house_broken' : fn;
+          if (this.put(nm, x, z, ryP + (R() - 0.5) * (wrecked ? 0.08 : 0.02), { crush: 'any', check: false, sx: pl / flen(nm) })) this.solidAdd(x, z, pl / 2, 0.1, ryP, 'fence');
+        };
+        for (let k = 0; k < n; k++) if (R() >= pBreak) piece(s0 + (k + 0.5) * pl, pl, 0);
+      };
+      { const ox = a[0] + nx * 0.5, oz = a[1] + nz * 0.5, dx = ux / fr, dz = uz / fr, g0 = Math.max(0.3, Math.min(fr - 0.3 - gw, gateT - gw / 2));
+        lay(ox, oz, dx, dz, 0.3, g0, wrecked ? 0.45 : 0.08); lay(ox, oz, dx, dz, g0 + gw, fr - 0.3, wrecked ? 0.45 : 0.08);
+        if (!urban && R() > (wrecked ? 0.55 : 0.14)) { const x = ox + dx * (g0 + gw / 2), z = oz + dz * (g0 + gw / 2); if (fenceOk(x, z, dx, dz, 2.5)) this.put('gate_village', x, z, ry, { crush: 'any', check: false }); } }
+      // side fences along the yard (first ~10-22 m), on the plot's own side edges a-d / b-c whatever their angle: a
+      // neighbour sharing the edge finds the run there and leaves it
+      for (const [e0, e1] of [[a, d], [b, c]]) {
+        const ex = e1[0] - e0[0], ez = e1[1] - e0[1], el = Math.hypot(ex, ez) || 1;
+        lay(e0[0], e0[1], ex / el, ez / el, 0.8, Math.min(urban ? 16 : 22, el - 1), wrecked ? 0.5 : 0.2);
       }
       // behind the house: outbuildings; then the garden (paint) with fruit trees
       const hx = h ? h.x : a[0] + ux / 2 + nx * 10, hz = h ? h.z : a[1] + uz / 2 + nz * 10, back = h ? ((h.x - a[0]) * nx + (h.z - a[1]) * nz) + 9 : 18;
@@ -728,10 +760,20 @@ const Real = {
     const R = this.rng, D = this.osm;
     for (const l of D.lines) {
       if (l.t === 'wall' || (l.t === 'fence' && this.urban)) {
-        // walls: precast PO-2 panels (only tanks push through); fences: profiled sheet / mesh (anything flattens them)
-        const wall = l.t === 'wall', n = wall ? (R() < 0.7 ? 'fence_po2_a' : 'fence_po2_b') : (R() < 0.6 ? 'fence_house_prof' : 'fence_house_plain'), t = this.tpl(n); if (!t) continue;
-        const len = Math.max(2, t.userData.bb.max.x - t.userData.bb.min.x);
-        walk(l.pts, len, (x, z, ux, uz) => { if (R() < (wall ? 0.18 : 0.3) || this.net.hit(x, z, 0.6) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len) || this.solidHit(x, z, len / 2, 0.2, Math.atan2(-uz, ux), 0.05, k => k === 'fence')) return; if (this.put(wall && R() < 0.15 ? 'fence_po2_broken' : !wall && R() < 0.2 ? 'fence_house_broken' : n, x, z, Math.atan2(-uz, ux), { crush: wall ? 'tank' : 'any', check: false })) this.solidAdd(x, z, len / 2, 0.12, Math.atan2(-uz, ux), 'fence'); });
+        // walls: precast PO-2 panels (tracked armour shoves them over, wheeled vehicles are stopped); fences: a private
+        // plot's profiled sheet / picket fence only where the line runs along house plots; the works', garage
+        // cooperatives' and rail yards' fences are PO-2 panels too; the rest (school / kindergarten rails, courtyard
+        // railings: no kit for them) is left out rather than drawn as a village fence across a courtyard
+        let wall = l.t === 'wall';
+        if (!wall) {
+          const S = []; walk(l.pts, 6, (x, z) => S.push([x, z]));
+          const plot = S.filter(([x, z]) => this.inVillage(x, z, 3)).length >= S.length * 0.5;
+          const works = S.filter(([x, z]) => this.areaIs(x, z, ['industrial', 'garages', 'railway', 'construction', 'landfill']) || (this.hallRects || []).some(([hx, hz, L, Dd]) => Math.hypot(x - hx, z - hz) < Math.max(L, Dd) / 2 + 12)).length >= S.length * 0.5;
+          if (!plot && !works) continue; wall = !plot;
+        }
+        const n = wall ? (R() < 0.7 ? 'fence_po2_a' : 'fence_po2_b') : (R() < 0.6 ? 'fence_house_prof' : 'fence_house_plain'), t = this.tpl(n); if (!t) continue;
+        const tl = Math.max(2, t.userData.bb.max.x - t.userData.bb.min.x), len = wall ? tl : Math.min(tl, 9);   // (house fence runs are 18 m: 9 m pieces along the line, scaled)
+        walk(l.pts, len, (x, z, ux, uz) => { if (R() < (wall ? 0.18 : 0.3) || [-0.5, -0.25, 0, 0.25, 0.5].some(f => this.net.hit(x + ux * len * f, z + uz * len * f, 0.4) || this.solidHit(x + ux * len * f, z + uz * len * f, 0.3, 0.1, 0, 0, k => k === 'fence')) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len) || this.solidHit(x, z, len / 2, 0.2, Math.atan2(-uz, ux), 0.05, k => k === 'fence')) return; if (this.put(wall && R() < 0.15 ? 'fence_po2_broken' : !wall && R() < 0.2 ? 'fence_house_broken' : n, x, z, Math.atan2(-uz, ux), { crush: wall ? 'tank' : 'any', check: false, sx: len / tl })) this.solidAdd(x, z, len / 2, 0.12, Math.atan2(-uz, ux), 'fence'); });
       } else if (l.t === 'pipe') {
         const t = this.tpl('pipe_straight_a'); if (!t) continue; const bb = t.userData.bb, len = Math.max(2, Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)), alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z);
         walk(l.pts, len, (x, z, ux, uz) => { if (this.net.hit(x, z, 1) || this.net.hit(x + ux * len * 0.6, z + uz * len * 0.6, 0.8) || this.net.hit(x - ux * len * 0.6, z - uz * len * 0.6, 0.8) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len * 1.3) || this.solidHit(x, z, len / 2, 0.3, Math.atan2(-uz, ux), 0.05)) return; const ry = Math.atan2(-uz, ux) + (alongX ? 0 : Math.PI / 2); this.put(R() < 0.12 ? 'pipe_straight_torn' : 'pipe_straight_a', x, z, ry, { cost: 5, low: true, check: false, inst: { cell: 300 } }); });

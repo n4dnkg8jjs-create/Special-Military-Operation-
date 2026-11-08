@@ -820,6 +820,7 @@ export class City {
       if (this.buildings.some(b => b !== own && (() => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + rr * 0.7 && Math.abs(lz) < b.D / 2 + rr * 0.7; })())) return;
       if (this.terrain.cutSDF(x, z) < rr + 1) return;
       const M = trs(x, 0, z, ry, sc); (place.get(t) || place.set(t, []).get(t)).push(M); this.terrain.stamp(t, M);
+      if (this.real) this.solidAdd(x, z, rr * 0.6, rr * 0.6, 0, 'rubble');   // (benches, bins, cars, trees placed later keep off the heap)
       // passable for everyone, slow; big heaps give low cover (vehicles climb them: see groundHeight)
       const top = t.userData.h * sc;
       this.nav.circle(x, z, rr * 0.65, top > 1.1 ? 7 : top > 0.5 ? 5 : 3, true);
@@ -1026,6 +1027,7 @@ export class City {
       const bb = t.userData.bb ||= new THREE.Box3().setFromObject(t); const hx = (bb.max.x - bb.min.x) / 2 * s, hz = (bb.max.z - bb.min.z) / 2 * s;
       // refuse placements on roads or overlapping blocked cells
       if (onRoad(x, z, Math.max(hx, hz) * 0.6)) return false;
+      if (/playground|court|gym|pad|sandbox|swing|carousel|slide|bin|container|waste|bench/i.test(type + (t.name || '')) && footOnRoad(x, z, hx * 0.95, hz * 0.95, ry)) return false;
       if (this.terrain.cutSDF(x, z) < Math.max(hx, hz) + 0.8) return false;
       const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] === BLOCK) return false;
       if (this.buildings.some(b => { const [lx, lz] = b.toLocal(x, z); return Math.abs(lx) < b.L / 2 + hx + 1 && Math.abs(lz) < b.D / 2 + hz + 1; })) return false;
@@ -1033,7 +1035,7 @@ export class City {
       if (this.solidHit(x, z, hx, hz, ry, 0.1, crush ? (k => k === 'fence') : null)) return false;
       this.solidAdd(x, z, hx, hz, ry, crush ? 'fence' : type);
       const M = trs(x, this.tplBaseY(t, x, z, ry, s), z, ry, s);
-      if (crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush, type }); if (cost) this.nav.rect(x, z, hx, hz, ry, crush === 'any' ? Math.min(cost, 3) : cost, 0.15); return true; }
+      if (crush) { (this.crushables ||= []).push({ t, M, x, z, ry, hx, hz, crush, type }); if (cost) this.nav.rect(x, z, hx, hz, ry, crush === 'any' ? Math.min(cost, 3) : cost, 0.15); if (crush === 'tank') this.nav.setVeh(x, z, hx + 0.3, hz + 0.3, ry, 1); return true; }
       (place[type + k] ||= { t, m: [] }).m.push(M);
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
       return true;
@@ -1083,7 +1085,7 @@ export class City {
       const fx = /lamp/.test(n) ? 0.3 : hx, fz = /lamp/.test(n) ? 0.3 : hz; // lamps: only the post matters
       if (this.solidHit(x, z, fx, fz, ry, 0.1)) return false;
       this.solidAdd(x, z, fx, fz, ry, n);
-      (place[n] ||= { t, m: [] }).m.push(trs(x, /lamp/.test(n) ? this.baseY(x, z, 0.2, 0.2) : this.tplBaseY(t, x, z, ry), z, ry));
+      (place[n] ||= { t, m: [] }).m.push(trs(x, /lamp/.test(n) ? this.baseY(x, z, 0.2, 0.2) : this.tplBaseY(t, x, z, ry) + (/playground|court|gym|pad/.test(n) ? 0.03 : 0), z, ry));
       if (cost) this.nav.rect(x, z, hx, hz, ry, cost, 0.15);
       if (occ) this.nav.addOccluder(x, z, hx * 0.95, hz * 0.95, ry, (bb.max.y - bb.min.y) * 0.8, null);
       return true;
@@ -1179,7 +1181,8 @@ export class City {
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
       const list = this.crushGrid.get((cx + i) + ',' + (cz + j)); if (!list) continue;
       for (const it of list) {
-        if (it.crushed || (it.crush === 'tank' && v.kind !== 'tank')) continue;
+        // concrete panels (PO-2 walls): tracked armour shoves them over, wheeled vehicles are stopped (nav veh layer 1)
+        if (it.crushed || (it.crush === 'tank' && (v.def.wheeled || v.kind === 'btr'))) continue;
         const dx = v.pos.x - it.x, dz = v.pos.z - it.z, c = Math.cos(it.ry), s = Math.sin(it.ry);
         const lx = dx * c - dz * s, lz = dx * s + dz * c;
         if (Math.abs(lx) > it.hx + v.def.width * 0.45 || Math.abs(lz) > it.hz + v.def.length * 0.45) continue;
@@ -1190,6 +1193,7 @@ export class City {
         this.setCrushMatrix(it, fall);
         if (it.wire) continue;   // (the coil's nav is the men-only wire layer: lowered by it.wire)
         this.nav.setRect(it.x, it.z, it.hx, it.hz + 0.2, it.ry, 1, 0);
+        if (it.crush === 'tank' && this.nav.veh) { this.nav.clearVeh(it.x, it.z, it.hx + 0.3, it.hz + 0.3, it.ry, 1); const r = Math.max(it.hx, it.hz) + 1; this.nav.refreshArea(it.x - r, it.z - r, it.x + r, it.z + r); }
         if (game) { game.fx.dustCloud(new THREE.Vector3(it.x, 0.3, it.z), Math.max(2, it.hx), 1, 5, [0.6, 0.56, 0.5]); game.sfx(it.type === 'po2' ? 'debris' : Math.random() < 0.5 ? 'impact_metal' : 'debris', new THREE.Vector3(it.x, 0.5, it.z), { gain: 0.8 }); }
       }
     }

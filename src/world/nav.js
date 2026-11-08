@@ -82,6 +82,14 @@ export class NavGrid {
       if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0) { this.cost[i] = val; this.low[i] = low; } }
     }
   }
+  // lift a vehicle restriction <= max inside an oriented rectangle (a crushed concrete panel); trench / teeth cells keep theirs
+  clearVeh(cx, cz, hx, hz, rot, max = 1) {
+    if (!this.veh) return; const c = Math.cos(rot), s = Math.sin(rot), r = Math.hypot(hx, hz) + this.cell;
+    for (let z = cz - r; z <= cz + r; z += this.cell) for (let x = cx - r; x <= cx + r; x += this.cell) {
+      const dx = x - cx, dz = z - cz, lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { const i = this.idx(x, z); if (i >= 0 && this.veh[i] <= max && !this.teethN?.has(i) && !this.trench?.[i]) this.veh[i] = 0; }
+    }
+  }
   // vehicle restriction (max) inside an oriented rectangle, see this.veh
   setVeh(cx, cz, hx, hz, rot, val) {
     this.veh ||= new Uint8Array(this.n * this.n); this.vehDirty = true;
