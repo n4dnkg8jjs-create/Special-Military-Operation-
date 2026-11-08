@@ -20,7 +20,7 @@ if (process.env.BROKER === 'cloud' && process.env.HTTPS_PROXY) launchOpts.proxy 
 const browser = await chromium.launch(launchOpts);
 const noUdp = RELAY ? await chromium.launch({ ...launchOpts, args: [...launchOpts.args, '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'] }) : null;
 const mk = async (name, norender, vp = { width: 1280, height: 760 }, B = browser) => { const ctx = await B.newContext({ viewport: vp }); await ctx.addInitScript(([n, a]) => { localStorage.setItem('smo_quality', 'low'); localStorage.setItem('smo_noaudio', a ? '0' : '1'); localStorage.setItem('smo_norender', n ? '1' : '0'); localStorage.setItem('smo.campaign.v2.tutorial', 'done'); }, [norender, !!process.env.AUDIO]); const p = await ctx.newPage(); p.setDefaultNavigationTimeout(180000);   // (a busy shared machine loads slowly)
-  p.on('pageerror', e => console.log(`[${name} pageerror]`, e.message)); p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log(`[${name} ${m.type()}]`, m.text().slice(0, 200)); }); return p; };
+  p.on("pageerror", e => console.log(`[${name} pageerror]`, e.stack || e.message)); p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log(`[${name} ${m.type()}]`, m.text().slice(0, 200)); }); return p; };
 const snap = (P, f) => P.screenshot({ path: path.join(out, f), timeout: 120000 }).catch(e => console.log('screenshot skipped', f, e.message.split('\n')[0]));
 const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
 const msg = p => p.$eval('.vs-msg', e => e.textContent);
@@ -47,7 +47,7 @@ if (!process.env.SKIP_NAT && !RELAY) { const B2 = await chromium.launch({ ...lau
   const H = await mk('h2', true), ctx = await B2.newContext({ viewport: { width: 1280, height: 760 } }); await ctx.addInitScript(() => { localStorage.setItem('smo_noaudio', '1'); localStorage.setItem('smo_norender', '1'); });
   const G = await ctx.newPage(); const code = await host(H);
   await G.goto(`${base}?versus=1${broker}`); await G.fill('.vs-codein', code); await G.click('.vs-joinbtn');
-  await G.waitForFunction(() => /strict network/.test(document.querySelector('.vs-msg').textContent), null, { timeout: 30000 }).catch(() => {});
+  await G.waitForFunction(() => /strict network/.test(document.querySelector('.vs-msg').textContent), null, { timeout: 45000 }).catch(() => {});
   ok(/strict network/.test(await msg(G)), 'joiner, no direct path: ' + await msg(G));
   await H.waitForFunction(() => /strict network/.test(document.querySelector('.vs-msg').textContent), null, { timeout: 20000 }).catch(() => {});
   ok(/strict network/.test(await msg(H)), 'host, no direct path: ' + await msg(H));
@@ -63,7 +63,7 @@ await G.type('.vs-codein', code.toLowerCase()); ok(await G.$eval('.vs-codein', e
 await snap(G, 'joiner_code.png');
 await G.click('.vs-joinbtn');
 await G.waitForFunction(() => /Connected/.test(document.querySelector('.vs-msg')?.textContent || ''), null, { timeout: RELAY ? 45000 : 20000 });
-if (RELAY) ok(/through relay/.test(await msg(G)), 'joiner connected through the relay: ' + await msg(G));
+if (RELAY) ok(/backup relay/.test(await msg(G)), 'joiner connected through the relay: ' + await msg(G));
 console.log('joiner status:', await msg(G)); console.log('host status:', await msg(H).catch(() => '(left lobby)'));
 await snap(G, 'joiner_connected.png');
 await Promise.all([H.waitForSelector('#c2 .c2-end', { timeout: 60000 }), G.waitForSelector('#c2 .c2-end', { timeout: 60000 })]);

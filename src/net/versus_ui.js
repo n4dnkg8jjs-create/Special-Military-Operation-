@@ -87,7 +87,7 @@ export async function openVersus() {
   const connected = (p, start) => {
     let went = false; const go = () => { if (went) return; went = true; start(); };
     window.__vsPeer = p;   // test hook
-    const via = () => p.mode === 'relay' ? ' (through relay)' : '';
+    const via = () => p.mode === 'relay' ? ' through the backup relay (no direct path between your networks)' : ' directly (peer-to-peer)';
     say(`Connected${via()} — measuring ping…`, 'ok');
     p.on('ping', ms => { if (!went) { say(`Connected${via()} — ping ${ms} ms`, 'ok'); setTimeout(go, 900); } });
     setTimeout(go, 2500);
@@ -99,14 +99,14 @@ export async function openVersus() {
     ice: STRICT_NAT,
     relay: "Couldn't connect directly, and the backup relay servers couldn't be reached either. Check both internet connections and try again, or try another Wi-Fi.",
     busy: 'That game already has two players.',
-  }[f.kind] || 'Connection failed: ' + (f.msg || f.kind));
+  }[f.kind] || 'Connection failed: ' + (f.msg || f.kind)) + ((f.kind === 'ice' || f.kind === 'relay') && f.msg ? ` (direct link: ${f.msg})` : '');
 
   // ---- host by room code
   $('.vs-host').onclick = async () => {
     const old = lsGet(HOST_KEY); if (old?.saved && old.saved.phase !== 'over' && !confirm('Hosting a new game replaces your saved versus game (week ' + old.saved.turn + '). Continue?')) return;
     reset(); const p = peer = new RoomPeer('host'); busy = true; $('.vs-host').classList.add('hidden');
     say('Getting a room code…', 'busy');
-    p.on('status', s => { if (p !== peer) return; if (s === 'waiting') say('Waiting for opponent…', 'busy'); else if (s === 'connecting') say('Opponent found — connecting…', 'busy'); else if (s === 'relay') say('Direct link blocked by the network — connecting through the backup relay…', 'busy'); });
+    p.on('status', (s, info) => { if (p !== peer) return; if (s === 'waiting') say('Waiting for opponent…', 'busy'); else if (s === 'connecting') say('Opponent found — connecting directly…', 'busy'); else if (s === 'relay') say(`No direct link yet${info ? ' (' + info + ')' : ''} — still trying, and connecting through the backup relay at the same time…`, 'busy'); });
     p.on('fail', f => { if (p !== peer) return; if (f.kind === 'ice' || f.kind === 'relay') say((f.kind === 'relay' ? failMsg(f) : STRICT_NAT) + ' Still waiting — they can try again with the same code.', 'bad'); else { say(failMsg(f), 'bad'); if (f.kind === 'broker' && !p.code) reset(); } });
     p.on('open', () => connected(p, () => hostSession(p, defs, $('.vs-op').value, side())));
     const code = await p.host();
@@ -133,7 +133,7 @@ export async function openVersus() {
     clearTimeout(joinT); reset(); const p = peer = new RoomPeer('guest'); busy = true; $('.vs-joinbtn').disabled = true;
     codeIn.value = formatCode(code);
     say(`Looking for game ${formatCode(code)}…`, 'busy');
-    p.on('status', s => { if (p !== peer) return; if (s === 'connecting') say(`Connecting to ${formatCode(code)}…`, 'busy'); else if (s === 'relay') say('Direct link blocked by the network — connecting through the backup relay…', 'busy'); });
+    p.on('status', (s, info) => { if (p !== peer) return; if (s === 'connecting') say(`Connecting to ${formatCode(code)} directly…`, 'busy'); else if (s === 'relay') say(`No direct link yet${info ? ' (' + info + ')' : ''} — still trying, and connecting through the backup relay at the same time…`, 'busy'); });
     p.on('fail', f => {
       if (p !== peer) return;
       if (persistent && ['notfound', 'busy', 'ice', 'relay'].includes(f.kind) && performance.now() - t0 < 120000) {
@@ -208,7 +208,9 @@ export async function openVersus() {
 // sent meanwhile are re-sent (the host ignores duplicates by sequence number). Battles run in a full-screen iframe
 // (?vsbattle=1) with the link carried through window.__vs; a joiner reconnecting mid-battle gets the battle again.
 export const HOST_KEY = 'smo.versus.v2.host', GUEST_KEY = 'smo.versus.v2.guest';
-const DROP_MS = 25000, DROP_BATTLE_MS = 60000, LIVE_MS = 20 * 60000;
+// liveness: any message (pings every 3 s) resets it. Tolerant: a relayed link can stall for many seconds in a burst
+// and recovers (relay messages are resent, a battle resyncs its world state), so only a long silence counts as a drop
+const DROP_MS = 45000, DROP_BATTLE_MS = 90000, LIVE_MS = 20 * 60000;
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
 const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { } };
 const sideName = f => (f === 'UA' ? 'Ukraine' : 'Russia');
@@ -220,7 +222,7 @@ function linkState(peer, code, onMsg, onDrop) {
   S.bind = p => {
     S.peer = p; S.connected = true; S.lastHeard = performance.now(); window.__vsPeer = p;
     p.on('*', m => { if (p !== S.peer) return; S.lastHeard = performance.now(); try { S.onMsg(m); } catch (e) { console.error('versus message', m.t, e); } });
-    p.on('ping', () => { if (p === S.peer) S.lastHeard = performance.now(); });
+    p.on('ping', () => { if (p === S.peer) S.lastHeard = performance.now(); }); p.on('alive', () => { if (p === S.peer) S.lastHeard = performance.now(); });   // (alive: the other side's ping arrived)
     p.on('close', () => { if (p === S.peer) S.drop('closed'); });
   };
   S.drop = why => { if (!S.connected) return; S.connected = false; const p = S.peer; S.peer = null; try { p?.close(); } catch { } console.info('versus link lost:', why); S.onDrop(why); };
@@ -231,7 +233,7 @@ function linkState(peer, code, onMsg, onDrop) {
   S.route = m => { const bp = S.bp; if (!bp) return; if (m.t === 'manifest') bp.last.manifest = m.d; for (const f of bp.handlers[m.t] || []) try { f(m.d); } catch (e) { console.error(e); } };
   S.openFrame = (opts, done, fail = null) => {
     S.closeFrame();
-    S.bp = { handlers: {}, last: {}, open: true, on(t, f) { (this.handlers[t] ||= []).push(f); if (t === 'manifest' && this.last.manifest) f(this.last.manifest); return this; }, off() { }, send: (t, d) => { if (t === 'manifest') S.manifest = d; S.send(t, d); }, sendSnap: (t, d) => { if (S.peer && S.connected) S.peer.sendSnap(t, d); } };
+    S.bp = { handlers: {}, last: {}, open: true, on(t, f) { (this.handlers[t] ||= []).push(f); if (t === 'manifest' && this.last.manifest) f(this.last.manifest); return this; }, off() { }, send: (t, d) => { if (t === 'manifest') S.manifest = d; S.send(t, d); }, sendSnap: (t, d) => { if (S.peer && S.connected) S.peer.sendSnap(t, d); }, backlog: () => (S.peer && S.connected ? S.peer.backlog?.() || 0 : 0) };
     window.__vs = { peer: S.bp, opts, done, fail };
     const f = h('iframe', { src: `${location.pathname}?vsbattle=1`, class: 'vs-frame', allow: 'autoplay; fullscreen' });
     document.body.appendChild(f); S.frame = f; holdPage(true); return f;

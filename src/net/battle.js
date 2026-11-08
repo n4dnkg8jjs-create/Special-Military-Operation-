@@ -22,6 +22,12 @@ const r2 = v => Math.round(v * 100) / 100;
 const enc = a => (a && a.isVector3 ? { v: [r2(a.x), r2(a.y), r2(a.z)] } : Array.isArray(a) ? a.map(enc) : (a && typeof a === 'object') ? (Object.values(a).some(x => x && typeof x === 'object' && !x.isVector3 && !Array.isArray(x)) ? null : Object.fromEntries(Object.entries(a).map(([k, x]) => [k, enc(x)]))) : a);
 const dec = a => (a && a.v && a.v.length === 3 ? new THREE.Vector3(...a.v) : Array.isArray(a) ? a.map(dec) : (a && typeof a === 'object') ? Object.fromEntries(Object.entries(a).map(([k, x]) => [k, dec(x)])) : a);
 const flip = s => (s === 'player' ? 'enemy' : 'player');
+const STATE_EV = new Set(['bs', 'bg', 'rb', 'cr', 'ft', 'ck', 'tc']);
+const EV_CAP = 90, EV_BACKLOG = 192 * 1024;
+// which cosmetic events to keep when a tick has too many: blasts and gunfire over impacts / foley / lights
+const SFX_RANK = k => /explosion|shell|mortar|howitzer|tankgun|collapse|rpg|atgm/.test(k) ? 5 : /cannon|hmg|mg_|rifle|dmr|ac_/.test(k) ? 4 : /death|pain|shout|wounded|curse/.test(k) ? 3 : /whizz|ricochet|impact/.test(k) ? 1 : 2;
+const FX_RANK = { explosion: 5, muzzleBlastTank: 5, smokeScreen: 5, collapseDust: 4, dustCloud: 4, emitter: 4, muzzle: 3, tracer: 3, vehicleDust: 2, impact: 1, blood: 1, light: 0 };
+const evRank = e => (e[0] === 'sfx' ? SFX_RANK(e[1]) : FX_RANK[e[1]] ?? 2) + Math.random() * 0.5;
 
 // ------------------------------------------------------------------------------------------------------- host
 export function hostBattle(game, peer) {
@@ -38,28 +44,36 @@ export function hostBattle(game, peer) {
   // the joiner makes itself for its puppets (clientSmooth)
   for (const v of game.vehicles) if (v.fx) v.fx = nest(v.fx.bind(v));
   // the rest of Game.init (map smoke columns, burning flats) runs right after this, identically seeded on the joiner: not events
-  Promise.resolve().then(() => { ev.length = 0; });
-  const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { if (p || !/^(ui_|radio)/.test(n)) ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };   // (not the host's own interface sounds: order clicks while it deploys told the joiner it was busy)
+  Promise.resolve().then(() => { ev.length = 0; if (game.netLog) game.netLog.length = 0; });   // (and any world-state event of it: the joiner's own seeded init makes the same)
+  // sounds: every positional one (the joiner's mixer places it against ITS listener); of the unpositioned ones only the
+  // world's (the distant batteries firing) - not the host's own interface / radio call-outs (order clicks while it
+  // deploys told the joiner it was busy), its own mortar launch or its victory / defeat jingle
+  const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { if (p || !/^(ui_|radio|victory|defeat|mortar_launch)/.test(n)) ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };
+  // world-state events (building damage, rubble, craters, fortifications, crushed trees / props): numbered and kept, so a
+  // joiner that missed some (the link dropped, a relay lost them) asks for them again ('wsync') and stays in sync.
+  // The number goes last in the event: [..., seq]
+  const log = game.netLog = [];
+  const st = e => { e.push(log.length + 1); log.push(e); ev.push(e); };
   const C = game.city;
   C.buildings.forEach((b, bi) => {
     const ss = b.setState.bind(b), sg = b.setGone.bind(b);
-    b.setState = (p, s) => { ev.push(['bs', bi, b.panels.indexOf(p), s]); return ss(p, s); };
-    b.setGone = p => { ev.push(['bg', bi, b.panels.indexOf(p)]); return sg(p); };
+    b.setState = (p, s) => { st(['bs', bi, b.panels.indexOf(p), s]); return ss(p, s); };
+    b.setGone = p => { st(['bg', bi, b.panels.indexOf(p)]); return sg(p); };
   });
-  const sr = C.spawnRubble.bind(C); C.spawnRubble = (x, z, s) => { ev.push(['rb', r2(x), r2(z), s]); return sr(x, z, s); };
-  const ac = C.addCrater.bind(C); C.addCrater = (x, z, s, cell) => { ev.push(['cr', r2(x), r2(z), s]); return ac(x, z, s, cell); };
-  if (C.damageFortAt) { const df = C.damageFortAt.bind(C); C.damageFortAt = (x, z, p, r) => { const n = df(x, z, p, r); if (n) ev.push(['ft', r2(x), r2(z), p, r]); return n; }; }
+  const sr = C.spawnRubble.bind(C); C.spawnRubble = (x, z, s) => { st(['rb', r2(x), r2(z), s]); return sr(x, z, s); };
+  const ac = C.addCrater.bind(C); C.addCrater = (x, z, s, cell) => { st(['cr', r2(x), r2(z), s]); return ac(x, z, s, cell); };
+  if (C.damageFortAt) { const df = C.damageFortAt.bind(C); C.damageFortAt = (x, z, p, r) => { const n = df(x, z, p, r); if (n) st(['ft', r2(x), r2(z), p, r]); return n; }; }
   // trees pushed over by a vehicle (world/treeDamage.js crush, from vehicle.update: the joiner runs no vehicle physics).
   // Shelled trees need nothing: they follow from the replayed explosions. The crush's dust / leaves come from the
   // joiner's own snap (nested here: not recorded); its sound is an ordinary sfx event
   const TD = game.treeDamage;
   if (TD?.crush) { const sn = TD.snap.bind(TD), cr = nest(TD.crush.bind(TD)); let on = false;
     TD.crush = v => { on = true; try { return cr(v); } finally { on = false; } };
-    TD.snap = (t, bx, bz, q, w) => { if (on) ev.push(['tc', t, r2(bx), r2(bz)]); return sn(t, bx, bz, q, w); }; }
+    TD.snap = (t, bx, bz, q, w) => { if (on) st(['tc', t, r2(bx), r2(bz)]); return sn(t, bx, bz, q, w); }; }
   // fences / benches / panels flattened by a vehicle (world/city.js crushCheck, host only): the fallen pose goes over
   if (C.crushCheck && C.setCrushMatrix) { const sc = C.setCrushMatrix.bind(C), cc = C.crushCheck.bind(C); let on = false;
     C.crushCheck = (v, g) => { on = true; try { return cc(v, g); } finally { on = false; } };
-    C.setCrushMatrix = (it, M) => { if (on) ev.push(['ck', (C.crushables || []).indexOf(it), M.elements.map(x => Math.round(x * 1000) / 1000)]); return sc(it, M); }; }
+    C.setCrushMatrix = (it, M) => { if (on) st(['ck', (C.crushables || []).indexOf(it), M.elements.map(x => Math.round(x * 1000) / 1000)]); return sc(it, M); }; }
   // gun recoil (vehicle.recoil, decays in sync): counted per shot so the joiner kicks its puppet's gun on every round
   for (const v of game.vehicles) { let r = v.recoil || 0; Object.defineProperty(v, 'recoil', { get: () => r, set: x => { if (x >= 0.35 && x > r + 0.05) { v._shots = (v._shots || 0) + 1; v._shotK = x; } r = x; }, configurable: true }); }
   game.netKnown = new Set(game.squads.map(q => q.id));   // squads in the spawn manifest; later ones (bailed-out crews) go out with the snapshots
@@ -69,16 +83,31 @@ export function hostBattle(game, peer) {
   // the joiner's mortar missions: the base allowance + its own campaign upgrades / prep fire (deployCampaign applyMods
   // stored them in game.mods.enemy; the host's own count went into game.mortars)
   game.mortarsEnemy = TUNING.mortarStrikes + (game.mods?.enemy?.mortar || 0); game.mortarsEnemyN = 0;
-  peer.on('mortar', ({ x, z }) => { game.mortarsEnemyN++; if (game.mortarsEnemy > 0 && game.phase !== 'deploy') { game.mortarsEnemy--; game.callStrike(x, z, 6, 16, 'enemy', 9, 'mortar'); game.sfx('mortar_launch', null, { gain: 0.4 }); } });
+  peer.on('mortar', ({ x, z }) => { game.mortarsEnemyN++; if (game.mortarsEnemy > 0 && game.phase !== 'deploy') { game.mortarsEnemy--; game.callStrike(x, z, 6, 16, 'enemy', 9, 'mortar'); ev.push(['sfx', 'mortar_launch', null, { gain: 0.4 }]); } });   // (the joiner's own launch: its sound, not the host's)
   const sb = game.startBattle.bind(game);
   game.startBattle = () => { if (game.phase !== 'deploy') return; game.hostReady = true; if (game.guestReady) sb(); else game.hud?.alert('Ready — waiting for the opponent to finish deploying', 'good'); };
   peer.on('ready', () => { game.guestReady = true; game.hud?.alert('Opponent is ready', 'good'); if (game.hostReady) sb(); });
-  // snapshots + events
+  // the joiner missed world-state events: everything after the last one it applied, in batches
+  peer.on('wsync', d => { const have = Math.max(0, d?.have | 0); for (let i = have; i < log.length; i += 400) peer.send('ev', log.slice(i, i + 400)); game.netResyncs = (game.netResyncs || 0) + 1; });
+  // snapshots + events. Per tick (10 Hz) the cosmetic events (effects, sounds) are capped, the loudest / most visible
+  // kept; while the link has a backlog (a slow relay, a burst) they are dropped altogether - a sound or a muzzle flash
+  // seconds late is worse than none, and queued they delayed everything behind them (pings, snapshots, state).
+  // World-state events always go.
   let acc = 0, nSnap = 0;
+  const N = game.netStat = { ev: 0, shed: 0, ticks: 0 };
   game.netTick = dt => {
     acc += dt; if (acc < 0.1) return; acc = 0;
-    if (ev.length) { peer.send('ev', ev.splice(0, ev.length)); }
-    const sn = snapshot(game); if (!(nSnap++ % 20)) window.__lastSnapSize = JSON.stringify(sn).length; peer.sendSnap('snap', sn);   // (size for the tests every 2 s: not a second full stringify per snapshot)
+    if (ev.length) {
+      let out = ev.splice(0, ev.length);
+      const full = (peer.backlog?.() || 0) > EV_BACKLOG, cos = out.filter(e => e[0] === 'fx' || e[0] === 'sfx');
+      if (full || cos.length > EV_CAP) {
+        const keep = full ? new Set() : new Set(cos.map((e, i) => [evRank(e), i]).sort((a, b) => b[0] - a[0]).slice(0, EV_CAP).map(x => cos[x[1]]));
+        const n0 = out.length; out = out.filter(e => (e[0] !== 'fx' && e[0] !== 'sfx') || keep.has(e)); N.shed += n0 - out.length;
+      }
+      N.ev += out.length; if (out.length) peer.send('ev', out);
+    }
+    N.ticks++;
+    const sn = snapshot(game); sn.sn = log.length; if (!(nSnap++ % 20)) window.__lastSnapSize = JSON.stringify(sn).length; peer.sendSnap('snap', sn);   // (size for the tests every 2 s: not a second full stringify per snapshot)
   };
 }
 
@@ -174,6 +203,9 @@ export function clientBattle(game, peer) {
   // incoming
   peer.on('snap', s => { if (!game.lastSnap || s.t >= game.lastSnap.t) game.lastSnap = s; });
   peer.on('ev', list => replay(game, list));
+  // world-state events come numbered: applied strictly in order; a gap (lost on the way) is asked for again
+  game.netSync = { have: 0, wait: new Map(), askT: -1e9, behindT: 0, asked: 0 };
+  game.netAsk = () => { const S = game.netSync, now = performance.now(); if (now - S.askT < 2500) return; S.askT = now; S.asked++; peer.send('wsync', { have: S.have }); };
   game.netClient = true;
 }
 function netSquad(game, sm) {
@@ -182,7 +214,21 @@ function netSquad(game, sm) {
 function rolesFor(sm) { const pool = { assault: ASSAULT_ROLES, crew: CREW_ROLES, atgm: ATGM_ROLES, fpv: FPV_ROLES, medevac: MEDIC_ROLES }[sm.kind] || SQUAD_ROLES; return sm.roles.map(n => pool.find(r => r.role === n) || CREW_ROLES.find(r => r.role === n) || pool[0]); }
 
 function replay(g, list) {
-  for (const e of list) {
+  const S = g.netSync;
+  for (let e of list) {
+    if (S && STATE_EV.has(e[0]) && typeof e[e.length - 1] === 'number' && e.length > { bs: 4, bg: 3, rb: 4, cr: 4, ft: 5, ck: 3, tc: 4 }[e[0]]) {
+      const q = e[e.length - 1];
+      if (q <= S.have) continue;                                   // (had it: a resync overlaps what came normally)
+      if (q > S.have + 1) { S.wait.set(q, e); g.netAsk(); continue; }   // a gap before it: hold it, ask for the missing ones
+      applyEv(g, e); S.have = q;
+      while (S.wait.has(S.have + 1)) { const w = S.wait.get(S.have + 1); S.wait.delete(S.have + 1); applyEv(g, w); S.have++; }
+      continue;
+    }
+    applyEv(g, e);
+  }
+}
+function applyEv(g, e) {
+  {
     try {
       if (e[0] === 'fx') g.fx[e[1]]?.(...dec(e[2]).map(x => (x === null ? undefined : x)));   // (JSON turns undefined / Infinity into null: the defaults apply again, e.g. an endless fire's life)
       else if (e[0] === 'sfx') g.sfx(e[1], dec(e[2]), dec(e[3]) || undefined);
@@ -203,12 +249,16 @@ function replay(g, list) {
 export function clientFrame(g, dt) {
   const s = g.lastSnap; if (!s) return;
   if (s === g._appliedSnap) return clientSmooth(g, dt);
-  g._appliedSnap = s;
+  g._appliedSnap = s; g._snapAt = performance.now();
+  // world state behind the host's (events lost on the way, a dropped link): ask for the missing ones
+  const S = g.netSync; if (S && s.sn > S.have) { if (!S.behindT) S.behindT = performance.now(); else if (performance.now() - S.behindT > 1500) g.netAsk(); } else if (S) S.behindT = 0;
   g.time = s.t; globalThis.__gameTime = g.time; if (s.st) g.stats = { player: s.st.enemy, enemy: s.st.player };   // (the host's sides: swapped, as everything here)
   if (s.ph !== 'deploy' && g.phase === 'deploy') { g.phase = s.ph; for (const m of g.zoneMeshes || []) m.visible = false; g.hud?.battleStarted?.(); }
   g.phase = s.ph;
   if (s.tk) { g.tickets = { player: s.tk[1], enemy: s.tk[0], max: s.tk[2] }; g.ticketDrain = { player: s.tk[4], enemy: s.tk[3] }; }   // host tickets, seen from the joiner's side
-  s.o.forEach(([own, ctl, con], i) => { const o = g.objectives[i]; if (!o) return; o.owner = own === 'neutral' ? own : flip(own); o.control = -ctl; o.contested = !!con; o.ring?.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8); });
+  s.o.forEach(([own, ctl, con], i) => { const o = g.objectives[i]; if (!o) return; const was = o.owner; o.owner = own === 'neutral' ? own : flip(own);
+    if (was !== o.owner && g.phase !== 'deploy' && g._objInit) g.sfx(o.owner === 'player' ? 'radio' : 'ui_alert');   // (the joiner's own call-outs: the host's never come over)
+    o.control = -ctl; o.contested = !!con; o.ring?.material.color.set(o.owner === 'player' ? (o.contested ? 0xd8b25a : 0x8fb069) : o.owner === 'enemy' ? 0xc8483a : 0xb8b4a8); });
   // squads born on the host after the manifest (bailed-out crews): built here, under the player's orders if they are ours
   for (const sm of s.ns || []) {
     if (g.netMap.has(sm.id)) continue;
@@ -285,18 +335,23 @@ export function clientFrame(g, dt) {
       e.aim.set(q[8], q[9], q[10]); e.phase = DRONE_PHASE[q[11]] || 'cruise'; e.jam = !!q[12]; e.age = q[13] || 0; e.num = q[14] || 0; e.sq = g.netMap.get(id); }
     for (const k of [...M.keys()]) if (!live.has(k)) M.delete(k);
   }
-  if (s.over && !g.over) { g.over = true; const r = s.over; g.result = { ...r, win: !r.win, title: r.win ? 'DEFEAT' : 'VICTORY', why: r.why }; g.hud?.showEnd(g.result); }
+  g._objInit = true;
+  if (s.over && !g.over) { g.over = true; const r = s.over; g.result = { ...r, win: !r.win, title: r.win ? 'DEFEAT' : 'VICTORY', why: r.why }; g.sfx(g.result.win ? 'victory' : 'defeat'); g.hud?.showEnd(g.result); }
   clientSmooth(g, dt);
 }
 // every frame: ease toward the last snapshot, animate, sync, local cosmetics (exhaust, engine sound)
 function clientSmooth(g, dt) {
   const k = Math.min(1, dt * 10);
+  // between snapshots (5 Hz over the relay, fewer while it is congested) the targets move on with the last known velocity
+  // (dead reckoning, at most 0.7 s past the snapshot): men and vehicles glide instead of stepping from fix to fix
+  const dr = g._snapAt && performance.now() - g._snapAt < 700 ? dt : 0;
   for (const sq of g._netSq || []) for (const so of sq.soldiers) {
-    if (so._np) { so.pos.lerp(so._np, k); so.heading += Math.atan2(Math.sin(so._nh - so.heading), Math.cos(so._nh - so.heading)) * k; }
+    if (so._np) { if (dr && so.state !== 'dead' && so.inside !== 'ride') so._np.addScaledVector(so.vel, dr); so.pos.lerp(so._np, k); so.heading += Math.atan2(Math.sin(so._nh - so.heading), Math.cos(so._nh - so.heading)) * k; }
     so.animate(dt, g.camDist(so.pos)); so.sync();
   }
   for (const v of g.vehicles) {
     if (!v._np || v._hidden) continue;
+    if (dr && !v.destroyed && v.speed) { v._np.x += Math.sin(v._nh) * v.speed * dr; v._np.z += Math.cos(v._nh) * v.speed * dr; }
     v.pos.lerp(v._np, k); v.heading += Math.atan2(Math.sin(v._nh - v.heading), Math.cos(v._nh - v.heading)) * k; v.dist = (v.dist || 0) + (v.speed || 0) * dt;
     v.sync(); if (!v.destroyed) v.fx?.(dt);
     // fire damage / wreck (vehicle.update does it on the host): the paint burns from the fire point, a tossed turret falls
