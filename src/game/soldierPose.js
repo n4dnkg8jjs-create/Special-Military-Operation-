@@ -16,6 +16,11 @@ import * as THREE from 'three';
 //    conform it to the terrain as before).
 // Offsets are post-multiplied on the clip's local rotations of a few bones; the clean clip pose is snapshotted each frame and
 // restored when the mixer has not run this frame (distant-soldier animation LOD), so nothing accumulates.
+// arms_v1: joint limits for the procedural layer - the death flail bends elbows only about their hinge and only toward flexion
+// (<= 150 deg; it used to swing the forearm about its own long axis / backwards past straight) and swings the upper arms without
+// twisting them; and the arm TWIST HELPER bones (*ArmTwist / *ForeArmTwist, tools/blender/soldiers/twist.py) are re-driven from
+// the arm / hand locals whenever this layer changed them (driveTwist, same formula the clips bake), so the forearm / shoulder skin
+// follows the IK'd support hand instead of keeping the clip's twist.
 
 export const RECOIL = {   // peak muzzle flip / chest rock / random yaw (deg), spring frequency (Hz) and damping ratio
   ak74m: { flip: 2.6, rock: 1.4, yaw: 0.8, hz: 4.2, zeta: 0.6 },
@@ -32,6 +37,35 @@ const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _t = new THREE.Vector3(), _ax = new THREE.Vector3(), _ax2 = new THREE.Vector3();
 const _u = new THREE.Vector3(), _w = new THREE.Vector3(), _lat = new THREE.Vector3(), _tg = new THREE.Vector3(), _hq = new THREE.Quaternion(), _m = new THREE.Matrix4(), _UP = new THREE.Vector3(0, 1, 0);
 const BONES = ['Spine', 'Spine1', 'Neck', 'Head', 'RightArm', 'LeftArm', 'LeftForeArm', 'LeftHand', 'LeftShoulder', 'RightShoulder', 'LeftUpLeg', 'RightUpLeg'];
+// twist helpers (twist.py): ArmTwist = -C_ARM x the upper arm's twist, ForeArmTwist = K_FORE x the hand's twist about the forearm,
+// both faded out from 100 to 180 deg (where a rotation's twist is ill-defined)
+const TW_C_ARM = 0.5, TW_K_FORE = (0.8 - 0.25) / (1 - 0.25), ELBOW_MAX = 150 * Math.PI / 180;
+const _tq = new THREE.Quaternion();
+function twistOf(q, ax) {   // signed twist (rad, wrapped) of local rotation q about unit axis ax
+  let a = 2 * Math.atan2(q.x * ax.x + q.y * ax.y + q.z * ax.z, q.w);
+  if (a > Math.PI) a -= 2 * Math.PI; else if (a <= -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+function twFade(a) { const t = THREE.MathUtils.clamp((Math.abs(a) - 1.745) / 1.396, 0, 1); return 1 - t * t * (3 - 2 * t); }
+// per side: bones + rest axes (bind pose = identity locals, so a child's bind translation is its parent's bone axis)
+function armRig(m) {
+  const out = [];
+  for (const side of ['Left', 'Right']) {
+    const arm = m.getObjectByName(side + 'Arm'), fore = m.getObjectByName(side + 'ForeArm'), hand = m.getObjectByName(side + 'Hand');
+    if (!arm || !fore || !hand) continue;
+    const u0 = fore.position.clone().normalize(), f0 = hand.position.clone().normalize();
+    out.push({ arm, fore, hand, at: m.getObjectByName(side + 'ArmTwist'), ft: m.getObjectByName(side + 'ForeArmTwist'), u0, f0, h0: new THREE.Vector3().crossVectors(u0, f0).normalize() });
+  }
+  return out;
+}
+// twist helpers from the current arm / hand locals (after any procedural change; ragdoll.js calls it after writing the limbs)
+export function driveTwist(s) {
+  const R = s.armRig || (s.armRig = s.model ? armRig(s.model) : []);
+  for (const r of R) {
+    if (r.at) { const a = twistOf(r.arm.quaternion, r.u0); r.at.quaternion.setFromAxisAngle(r.u0, -TW_C_ARM * a * twFade(a)); }
+    if (r.ft) { const a = twistOf(r.hand.quaternion, r.f0); r.ft.quaternion.setFromAxisAngle(r.f0, TW_K_FORE * a * twFade(a)); }
+  }
+}
 
 // impulse (rad/s) that gives a peak displacement of 1 rad for a spring of this frequency / damping
 function peakGain(hz, zeta) {
@@ -49,6 +83,7 @@ export function poseInit(s) {
   const m = s.model; if (!m || !s.mixer) return;
   const b = {}; for (const n of BONES) b[n] = m.getObjectByName(n);
   if (!b.Spine1 || !b.RightArm || !b.LeftArm || !b.LeftForeArm || !b.LeftHand) return;
+  s.armRig = armRig(m);
   s.pl = { b, base: BONES.map(() => new THREE.Quaternion()), rc: new Float32Array(8), applied: false, death: null, synT: 0, relP: new THREE.Vector3(), relQ: new THREE.Quaternion() };
 }
 
@@ -82,9 +117,10 @@ export function poseDeath(s, rel, power, landT) {
       S('Spine1', [1, 0, 0], -7 * fr * k, 2.2, 0.45), S('Spine1', [0, 1, 0], 10 * sd * k, 2.0, 0.4), S('Spine', [0, 0, 1], 4 * sd * k, 1.8, 0.45),
       // head lags the jolt, then lolls
       S('Neck', [1, 0, 0], (5 * fr + 4 * r()) * k, 1.6, 0.3), S('Head', [0, 1, 0], 9 * r(), 1.4, 0.3),
-      // arms let go of the rifle and flail loose
+      // arms let go of the rifle and flail loose: upper arms swing (no twist about their own axis), elbows bend about their hinge
+      // (elbow: one-sided, toward flexion only - see poseTick)
       S('LeftArm', [r(), 0.2 * r(), r()], 10 + 8 * Math.random(), 1.6, 0.3), S('RightArm', [r(), 0.2 * r(), r()], 10 + 8 * Math.random(), 1.5, 0.3),
-      S('LeftForeArm', [1, 0, 0.3 * r()], 12 * Math.random(), 2.0, 0.35), S('RightForeArm', [1, 0, 0.3 * r()], 12 * Math.random(), 2.0, 0.35),
+      S('LeftForeArm', [0, 0, 1], 12 * Math.random(), 2.0, 0.35), S('RightForeArm', [0, 0, 1], 12 * Math.random(), 2.0, 0.35),
     ],
     head: (Math.random() < 0.5 ? -1 : 1) * (8 + 20 * Math.random()) * D2R,   // lasting turn of the head (about its own up axis)
     // lasting splay of the limbs once he is down: upper arms / thighs swung about the WORLD vertical through the shoulder / hip joint,
@@ -92,6 +128,13 @@ export function poseDeath(s, rel, power, landT) {
     land: landT || 0.8, splay: [(4 + 22 * Math.random()) * D2R, (4 + 22 * Math.random()) * D2R, (2 + 10 * Math.random()) * D2R, (2 + 10 * Math.random()) * D2R],
   };
   if (!pl.b.RightForeArm) pl.b.RightForeArm = s.model.getObjectByName('RightForeArm');
+  // joint limits: upper-arm swing axes made perpendicular to the arm (no twist); forearms flex about the elbow hinge
+  for (const p of pl.death.sp) {
+    const r = (s.armRig || []).find(a => a.arm.name === p.bone || a.fore.name === p.bone);
+    if (!r) continue;
+    if (p.bone === r.arm.name) { p.ax.addScaledVector(r.u0, -p.ax.dot(r.u0)); if (p.ax.lengthSq() < 1e-6) p.ax.copy(r.h0); p.ax.normalize(); }
+    else { p.ax.copy(r.h0); p.hinge = r; }
+  }
   pl.rc.fill(0);
 }
 
@@ -105,6 +148,13 @@ function rotWorld(o, axis, ang) {
   o.quaternion.premultiply(_q2);
 }
 function rotLocal(o, axis, ang) { if (o && ang) o.quaternion.multiply(_q.setFromAxisAngle(axis, ang)); }
+// elbow flail: rotate the forearm about its hinge axis (in the upper arm's frame) toward flexion only, total flexion <= ELBOW_MAX
+function flexElbow(r, ang) {
+  ang = Math.abs(ang); if (!ang) return;
+  const fd = _a.copy(r.f0).applyQuaternion(r.fore.quaternion), now = Math.acos(THREE.MathUtils.clamp(fd.dot(r.u0), -1, 1));
+  ang = Math.min(ang, Math.max(0, ELBOW_MAX - now));
+  if (ang > 0) r.fore.quaternion.premultiply(_tq.setFromAxisAngle(r.h0, ang));
+}
 
 // analytic two-bone IK (shoulder a, elbow b, wrist c) to world target t, then the hand's world rotation set to hq
 function twoBone(a, b, c, t, hq) {
@@ -148,8 +198,9 @@ export function poseTick(s, dt, mixed, near) {
   const rec = aiming && (Math.abs(rc[0]) + Math.abs(rc[2]) + Math.abs(rc[4]) + Math.abs(rc[6]) > 2e-4);
   const D = pl.death && s.state === 'dead' ? pl.death : null;
   if (D) { D.t += dt * (s.deathTs || 1); for (const p of D.sp) stepSp(p, dt * (s.deathTs || 1)); }
-  if (pl.applied && !mixed) restore(pl);
-  if ((!rec && !D) || !near) { pl.applied = false; return; }
+  const restored = pl.applied && !mixed;
+  if (restored) restore(pl);
+  if ((!rec && !D) || !near) { pl.applied = false; if (restored) driveTwist(s); return; }
   snapshot(pl);
   const b = pl.b;
   if (rec) {
@@ -169,7 +220,7 @@ export function poseTick(s, dt, mixed, near) {
   }
   if (D) {
     const env = 1 - THREE.MathUtils.smoothstep(D.t, D.end - 0.3, D.end), hk = THREE.MathUtils.smoothstep(D.t, 0.25, 1.3);
-    for (const p of D.sp) { const o = b[p.bone]; if (o) rotLocal(o, p.ax, p.x * env); }
+    for (const p of D.sp) { const o = b[p.bone]; if (!o) continue; if (p.hinge) flexElbow(p.hinge, p.x * env); else rotLocal(o, p.ax, p.x * env); }
     rotLocal(b.Neck, _UP, D.head * 0.35 * hk); rotLocal(b.Head, _UP, D.head * 0.65 * hk);
     const sk = THREE.MathUtils.smoothstep(D.t, D.land + 0.05, D.land + 0.7);
     if (sk > 0) {
@@ -186,6 +237,7 @@ export function poseTick(s, dt, mixed, near) {
     }
   }
   pl.applied = true;
+  driveTwist(s);
 }
 function stepSp(p, dt) {
   const n = Math.max(1, Math.ceil(dt * 240)), h = dt / n;

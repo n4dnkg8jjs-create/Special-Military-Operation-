@@ -871,18 +871,39 @@ def smooth_(t):
     return t * t * (3 - 2 * t)
 
 
-def write(rig, clips, path, sockets=True):
+def arm_torso(sk):
+    import check_anims as CA
+
+    class _M:
+        pass
+    m = _M(); m.idx = sk.idx; m.rest = sk.head
+    return CA.Torso(CA.body_geometry(), m)
+
+
+def write(rig, clips, path, sockets=True, armfix=True):
+    """arms_v1: every clip's arms go through armfix.apply_clip (anatomical swivel / twist re-solve, hands kept) on the way out,
+    and the twist helper bones (twist.py, appended by SoldierWriter) get their driven tracks; `clips` (and .cache/clips.pkl)
+    keep the authored arms"""
+    import armfix as AF
     W = AS.SoldierWriter(rig.sk, 'soldier_anims')
     g = W.g
+    sk = W.skx
+    torso = arm_torso(sk) if armfix else None
     if sockets:
         import build_soldier as BS
         BS.add_sockets(W, rig, pickle.load(open(f'{BUILD}/body.pkl', 'rb')))
     for c in clips.values():
         F = len(c['lq'])
         t = np.arange(F) / FPS
+        lq = c['lq']
+        if armfix:
+            lq, _ = AF.apply_clip(sk, lq, c['root'], torso=torso, loop=c['loop'], name=c['name'])
+        elif lq.shape[1] < sk.n:
+            import twist
+            lq = twist.drive(sk, np.concatenate([lq, np.tile([0, 0, 0, 1.0], (F, sk.n - lq.shape[1], 1))], 1))
         tracks = [(W.nodes['Hips'], 'translation', t, c['root'])]
-        for i, n in enumerate(rig.sk.names):
-            tracks.append((W.nodes[n], 'rotation', t, c['lq'][:, i]))
+        for i, n in enumerate(sk.names):
+            tracks.append((W.nodes[n], 'rotation', t, lq[:, i]))
         g.animation(c['name'], tracks, extras=dict(loop=c['loop'], speed=c['speed'], root_motion=c['root_motion']))
     W.save(path)
 
@@ -892,7 +913,15 @@ if __name__ == '__main__':
     # build_anims.py a b ...         -> only clips a, b -> .cache/anims_test.glb + .cache/clips_test.pkl (preview; assets untouched)
     # build_anims.py --merge a b ... -> rebuild a, b and merge them into the cached full set (.cache/clips.pkl: every other clip is kept
     #                                   as previously built, order kept, new names appended) -> assets/soldiers/soldier_anims.glb
+    # build_anims.py --rewrite [--out p] -> no clip rebuilt: the cached full set (.cache/clips.pkl) re-written (armfix + twist helpers)
     args = sys.argv[1:]
+    if '--rewrite' in args:
+        R, rig = setup()
+        out = args[args.index('--out') + 1] if '--out' in args else f'{ASSETS}/soldier_anims.glb'
+        t0 = time.time()
+        write(rig, pickle.load(open(f'{BUILD}/clips.pkl', 'rb')), out)
+        print('rewrote', out, '%.1fs' % (time.time() - t0))
+        sys.exit(0)
     merge = '--merge' in args
     only = [a for a in args if not a.startswith('--')] or None
     R, rig = setup()

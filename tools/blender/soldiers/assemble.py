@@ -3,6 +3,8 @@ import numpy as np
 from scipy.spatial import cKDTree
 import gltfw, mhbody as M, meshutil as MU
 from qmath import qnorm
+import twist
+TWIST = True      # arms_v1: append the 4 arm twist helper bones (twist.py) to every soldier / anims skeleton
 
 
 def top4(W):
@@ -18,7 +20,8 @@ def eye_uv(pos):
 class SoldierWriter:
     def __init__(self, skel, name='soldier'):
         self.g = gltfw.GLB()
-        self.sk = skel
+        self.sk = skel                                       # callers' weight arrays are (n, skel.n) on the base skeleton
+        self.skx = skel = twist.extend(skel) if TWIST else skel   # written skeleton (+ twist helpers, appended)
         self.root = self.g.node(name)
         self.nodes = {}
         for i, n in enumerate(skel.names):
@@ -65,7 +68,10 @@ class SoldierWriter:
         for p in prims:
             q = dict(p)
             if 'W' in q:
-                j, w = top4(q.pop('W'))
+                Wd = q.pop('W')
+                if self.skx is not self.sk:
+                    Wd = twist.split_weights(self.skx, q['pos'], Wd)
+                j, w = top4(Wd)
                 q['joints'] = j; q['weights'] = w
             out.append(q)
         mesh = self.g.mesh(name, out)

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { driveTwist } from './soldierPose.js';   // arms_v1: twist helper bones follow the ragdoll's limbs
 
 // Light procedural ragdoll for corpses ("in reason"): position-based dynamics (60 Hz, 4 iterations) on 19 joint particles of the
 // soldier skeleton, no physics engine.  soldier.js hands the body over during the death clip (at its 'ragdoll' event, earlier when
@@ -353,6 +354,7 @@ export class Ragdoll {
       worldNow[k] = W[k];
     }
     // hands / feet children keep their locals; their world follows automatically
+    driveTwist(this);   // arms_v1: *ArmTwist / *ForeArmTwist from the new upper-arm locals (this.model / this.armRig)
   }
   pelvisGround(out = new THREE.Vector3()) { const p = this.p[PI.pelvis]; return out.set(p.x, this.ground(p.x, p.z), p.z); }
   sleep() {

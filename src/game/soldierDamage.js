@@ -6,7 +6,8 @@ import * as THREE from 'three';
 // Cost: no per-soldier (or per-hit) material clones and no extra uniform uploads.  The soldier atlas / uniform materials are
 // patched once (shared program); each soldier's wound data rides in 4 extra "data bones" appended to the skeleton of its
 // skinned meshes: they are not in the scene graph, their matrixWorld holds raw floats, and the existing per-skeleton bone
-// texture (already uploaded every frame for skinning; 31 -> 35 bones keeps it 12 x 12 texels) carries them to the shader.
+// texture (already uploaded every frame for skinning; 35 skeleton bones (31 + 4 arm twist helpers, arms_v1) + 4 -> 39 bones: 16 x 16
+// texels) carries them to the shader.
 // Wound positions are in the mesh's bind space (bind pose, metres, +Y up, +Z front), so the stains stay on the cloth
 // through every clip, the ragdoll and LODs.  Undamaged soldiers cost two texel fetches per vertex and a uniform branch.
 

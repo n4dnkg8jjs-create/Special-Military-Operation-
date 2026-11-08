@@ -1,5 +1,6 @@
 """soldiers_v10 joint deformation QA (joints.py): LBS of the uniform (variant A) over every clip of assets/soldiers/soldier_anims.glb,
-per-triangle area ratio + anisotropy, worst / mean badness per bone.  run: python3 joints_check.py [data.pkl from a dump] [W.npy]"""
+per-triangle area ratio + anisotropy, worst / mean badness per bone.  run: python3 joints_check.py [data.pkl from a dump] [W.npy] [--glb anims.glb]
+arms_v1: when the GLB has the arm twist helper bones (twist.py) the weights are split onto them the way the soldier writer does."""
 import sys, pickle, numpy as np
 sys.path.insert(0, '/home/claude/special-military-operation-/tools/blender/soldiers')
 import check_anims as CA
@@ -8,9 +9,20 @@ D = pickle.load(open(sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].endswith('
 Wfile = [a for a in sys.argv[1:] if a.endswith('.npy')]
 P = D['uni']['A']; T = D['uni_tri']; W = np.load(Wfile[0]) if Wfile else D['uni_W']
 idx = D['skel_idx']; names = {v: k for k, v in idx.items()}
-G = CA.read_glb('/home/claude/special-military-operation-/assets/soldiers/soldier_anims.glb'); M = CA.Model(G)
-gi = np.array([M.idx[names[i]] for i in range(len(names))])
+GLB = sys.argv[sys.argv.index('--glb') + 1] if '--glb' in sys.argv else '/home/claude/special-military-operation-/assets/soldiers/soldier_anims.glb'
+G = CA.read_glb(GLB); M = CA.Model(G)
 rest = D['skel_head']
+if 'LeftForeArmTwist' in M.idx:
+    import twist
+
+    class _S:
+        pass
+    s0 = _S(); s0.names = [names[i] for i in range(len(names))]; s0.idx = dict(idx); s0.head = np.asarray(rest)
+    s0.parent = np.array([s0.idx.get(M.names[M.parent[M.idx[n]]], -1) for n in s0.names]); s0.tail = s0.head.copy(); s0.n = len(s0.names)
+    sx = twist.extend(s0)
+    W = twist.split_weights(sx, P, W)
+    idx = sx.idx; names = {v: k for k, v in idx.items()}; rest = sx.head
+gi = np.array([M.idx[names[i]] for i in range(len(names))])
 # top-4 like the GLB
 o = np.argsort(-W, 1)[:, :4]; w4 = np.take_along_axis(W, o, 1); w4 /= w4.sum(1, keepdims=True)
 e1 = P[T[:, 1]] - P[T[:, 0]]; e2 = P[T[:, 2]] - P[T[:, 0]]
@@ -21,7 +33,7 @@ R0 = np.stack([np.stack([np.sum(e1 * u0, 1), np.sum(e1 * v0, 1)], 1), np.stack([
 R0i = np.linalg.inv(R0 + np.eye(2) * 1e-12)
 acc = np.zeros(len(T)); nfr = 0; worst_area = np.ones(len(T)); worst_aniso = np.ones(len(T)); where = [None] * len(T); where_a = [None] * len(T)
 clips = [c for c in G['anims'] if not any(c.startswith(x) for x in ('medevac_cab', 'hatch_exit'))]
-skip_clip = set(a for a in sys.argv[1:] if not a.endswith(('.pkl', '.npy')))
+skip_clip = set(a for a in sys.argv[1:] if not a.endswith(('.pkl', '.npy', '.glb')) and a != '--glb')
 for c in clips:
     pose = M.pose(c)
     for f in range(0, pose['F'], 2):
