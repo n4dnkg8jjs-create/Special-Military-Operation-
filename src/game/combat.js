@@ -745,21 +745,24 @@ export class Combat {
       this.updateImmobile(v); return;
     }
     if (!r.penetrated) { this.updateImmobile(v); return; }
-    v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1));
+    // FPV: how well the warhead lands varies a lot (impact angle, a stand-off-less crush fuze, where on the hull) -- most
+    // hits are mediocre, a clean one into the compartment is rare: q scales what the jet and blast do inside
+    const q = W === WEAPONS.fpv ? 0.35 + 0.65 * Math.random() ** 1.6 : 1;
+    v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1)) * q;
     const msgs = [];
     // big shaped charges (ATGM, FPV warhead) through thin armour: the jet and blast wreck the compartment
     if (W.type === 'atgm' && r.residual > 250) {
-      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : v.kind === 'ifv' ? 1.35 : 1);
-      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25)) { v.burning = 0.01; msgs.push('on fire'); }
+      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : v.kind === 'ifv' ? 1.35 : 1) * q;
+      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25) * q) { v.burning = 0.01; msgs.push('on fire'); }
     }
-    // an FPV warhead on the engine deck: engine wrecked, fuel and oil very often catch
-    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.65) { v.burning = 0.01; msgs.push('engine on fire'); }
+    // an FPV warhead on the engine deck: engine wrecked, fuel and oil often catch
+    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.5 * q) { v.burning = 0.01; msgs.push('engine on fire'); }
     const crewHit = role => { const c = v.crewList.find(m => (m.role === role || (role === 'gun_crew' && m.role === 'loader')) && m.hp > 0); /* (Bohdana rear: the gun crew = its loaders) */ if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
     for (const e of fx) {
       const part = v.parts.find(p => p.name === e); if (!part) continue;
-      if (part.crew) crewHit(part.crew);
-      if (part.ammo && Math.random() < part.ammo * (k === 'ke' ? 1 : 0.8)) { msgs.push('ammunition detonated'); v.crewList.forEach(c => c.hp = 0); v.crew = 0; v.knockOut(true); break; }
-      if (part.fuel && Math.random() < part.fuel && !v.burning) { v.burning = 0.01; msgs.push('on fire'); }
+      if (part.crew && Math.random() < 0.55 + 0.45 * q) crewHit(part.crew);
+      if (part.ammo && Math.random() < part.ammo * (k === 'ke' ? 1 : 0.8) * q * q) { msgs.push('ammunition detonated'); v.crewList.forEach(c => c.hp = 0); v.crew = 0; v.knockOut(true); break; }
+      if (part.fuel && Math.random() < part.fuel * q && !v.burning) { v.burning = 0.01; msgs.push('on fire'); }
       if (part.engine) { v.immob.engine = true; msgs.push('engine knocked out'); }
       if (part.gun) { v.gunDisabled = true; msgs.push('gun destroyed'); }
       if (part.optics) { v.opticsDamaged = true; msgs.push('sights damaged'); }
