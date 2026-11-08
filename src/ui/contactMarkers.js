@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 
-// Unconfirmed contacts. Enemy units are always drawn at their real position, but until the player's side has really
-// identified one (unit.spotted: the detection meter in game.spotFor has filled / the unit is in line of sight), a "?"
-// on a hostile label tab (the same red tab + white APP-6 diamond as the unit labels) floats above it: one per squad / vehicle, never per man. It fades out (~0.3 s) when the contact
-// is confirmed (the normal enemy banner takes over) and fades back in when contact is lost.
-// Purely cosmetic: targeting, AI knowledge and engagement rules still go by spotting (game.seen / unit.spotted).
+// Unconfirmed contacts (tier 1 of game.spotFor's three: hidden / contact / identified). An enemy unit the player's side
+// knows is there but has not identified - seen on the drone picture of the open ground, heard firing, lost from sight a
+// moment ago - is not drawn at all: a "?" on a hostile label tab (the same red tab + white APP-6 diamond as the unit labels)
+// floats at its ESTIMATED position (unit.qx / qz: a grid ref with an error; it moves with the unit while the side's drones
+// watch it, sits still on a fix by ear), one per squad / vehicle, never per man. It fades in / out (~0.3 s), eases toward a
+// new fix, and dims as the report gets older (gone after game.js CONTACT_TTL). Identified units (unit.spotted) have their
+// model and banner instead; hidden ones (tier 0) nothing at all.
 // One draw call: an InstancedBufferGeometry quad billboarded in the vertex shader, sized by camera distance (about a
 // constant screen size, bounded), drawn over the terrain (no depth test) so it never sinks into a hill or a roof.
 // No per-frame allocations: instance data lives in one preallocated Float32Array.
@@ -64,29 +66,20 @@ export class ContactMarkers {
     this.mesh = new THREE.Mesh(geo, this.mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = 12; this.mesh.name = 'contactMarkers';
     game.scene.add(this.mesh);
   }
-  // is u an enemy the player sees only as an unconfirmed contact right now?
+  // is u an enemy the player knows only as an unconfirmed contact right now? (a squad aboard / a medevac crew in its cab:
+  // its vehicle carries the "?")
   static unconfirmed(u) {
-    if (u.side === 'player' || u.destroyed || u.spotted || u.concealed) return false;
-    if (u.type === 'squad') return !u.mounted && !u.medevac;
+    if (u.side === 'player' || u.destroyed || u.tier !== 1) return false;
+    if (u.type === 'squad') return !u.mounted && !(u.medevac && u.effective.every(s => s.inCab || s.inside === 'btr'));
     return u.mstate !== 'away';
   }
-  // an unspotted unit holed up in a building / cellar or in heavy foliage (forest, dense treeline belt: conceal < 0.45)
-  // gives nothing away: not drawn at all and no "?" until it is spotted (or shows itself by firing). Used by the host
-  // (game.spotFor) and the multiplayer joiner (net/battle.js).
-  static concealed(u, g) {
-    if (u.side === 'player' || u.destroyed || u.spotted) return false;
-    const C = g.city, ca = C?.concealAt, heavy = (x, z) => !!ca && ca.call(C, x, z) < 0.45;
-    if (u.type === 'vehicle') return heavy(u.pos.x, u.pos.z);
-    let n = 0, hid = 0;
-    for (const s of u.soldiers) { if (!s.alive || s.state === 'dead' || s.inside === 'btr') continue; n++; if (s.inBuilding || s.cellar || heavy(s.pos.x, s.pos.z)) hid++; }
-    return n > 0 && hid >= n * 0.75;
-  }
-  // where the marker sits: above the squad leader / first man still standing, above a vehicle's roof
-  anchor(u, out) {
-    if (u.type === 'vehicle') { const p = u.pos; return out.set(p.x, (p.y || 0) + 5.2, p.z); }
-    let s = u.leader; if (!s || !s.alive || s.inside === 'btr' || s.cellar) { s = null; for (const m of u.soldiers) if (m.alive && m.inside !== 'btr' && !m.cellar) { s = m; break; } }
-    if (!s) return null;
-    return out.set(s.pos.x, s.pos.y + 3.0, s.pos.z);
+  // where the marker sits: over the estimated position (eased toward a new fix), above the ground / a roof-high vehicle
+  anchor(u, out, k) {
+    if (u.qx == null) return null;
+    if (u._qx == null || (u._qA || 0) < 0.02 || Math.hypot(u._qx - u.qx, u._qz - u.qz) > 60) { u._qx = u.qx; u._qz = u.qz; }
+    else { u._qx += (u.qx - u._qx) * k; u._qz += (u.qz - u._qz) * k; }
+    const gh = this.g.city?.groundHeight?.(u._qx, u._qz) || 0;
+    return out.set(u._qx, Math.max(0, gh) + (u.type === 'vehicle' ? 5.2 : 3.0), u._qz);
   }
   update(dt) {
     if (!this.mesh) return;
@@ -94,13 +87,14 @@ export class ContactMarkers {
     this.mat.uniforms.uTime.value += dt;
     // ~32 px tall on screen whatever the zoom (bounded), from the vertical field of view and the viewport height
     this.mat.uniforms.uPx.value = 2 * Math.tan(cam.fov * Math.PI / 360) * 32 / Math.max(300, innerHeight);
-    let n = 0;
+    let n = 0; const now = g.time, km = Math.min(1, dt * 2.5);
     const each = u => {
       const on = ContactMarkers.unconfirmed(u);
       let f = u._qA || 0; f = on ? Math.min(1, f + k) : Math.max(0, f - k); u._qA = f;
       if (f <= 0.01 || n >= MAX || (u.destroyed && !on)) return;
-      if (!this.anchor(u, this.v)) return;
-      const i = n * 4; a[i] = this.v.x; a[i + 1] = this.v.y; a[i + 2] = this.v.z; a[i + 3] = f; this.slots[n++] = u;
+      if (!this.anchor(u, this.v, km)) return;
+      const age = now - (u.qt ?? now), dim = age < 10 ? 1 : Math.max(0.35, 1 - (age - 10) / 15 * 0.65);   // an old report: fainter
+      const i = n * 4; a[i] = this.v.x; a[i + 1] = this.v.y; a[i + 2] = this.v.z; a[i + 3] = f * dim; this.slots[n++] = u;
     };
     for (const u of g.squads) each(u);
     for (const u of g.vehicles) each(u);
@@ -137,7 +131,7 @@ export class ContactMarkers {
     if (!u) { if (el && this.tipU) { el.style.display = 'none'; this.tipU = null; } return; }
     if (!el) {
       el = this.tip = document.createElement('div'); el.id = 'contactTip';   // look: style.css #contactTip
-      el.innerHTML = '<span class="tab">?</span><span class="tx"><b>Unconfirmed contact</b><span>No line of sight · right-click: area fire / close in</span></span>';
+      el.innerHTML = '<span class="tab">?</span><span class="tx"><b>Unconfirmed contact</b><span>Not identified · right-click: area fire / close in · FPV team: fly a drone over to look</span></span>';
       document.body.appendChild(el);
     }
     this.tipU = u; el.style.display = 'flex'; el.style.transform = `translate(${Math.round(m[0] + 16)}px,${Math.round(m[1] + 14)}px)`; el.style.left = '0'; el.style.top = '0';

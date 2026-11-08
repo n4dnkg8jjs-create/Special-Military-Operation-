@@ -229,6 +229,7 @@ export class HUD {
   updateInfo(force) {
     const sel = [...this.selected].filter(u => !u.destroyed);
     this.updateOrders(sel);
+    if (this.inspect && this.inspect.side !== 'player' && !this.inspect.destroyed && !(this.inspect.tier >= 1)) this.inspect = null;   // a contact gone cold: nothing left to inspect
     const u = this.inspect || (sel.length === 1 ? sel[0] : null);
     let html = '';
     if (u) html = this.unitPanel(u);
@@ -244,7 +245,7 @@ export class HUD {
   // WARNO-style unit card: side-coloured head with the NATO symbol, portrait + cell gauges, weapon table (range, ammo), notes
   unitPanel(u) {
     // an enemy nobody has identified yet: nothing but the fact that something is there
-    if (u.side !== 'player' && !u.spotted && !u.destroyed) return `<div class="ui-head"><span class="ui-tab h">${unitSymbol('contact', 'hostile')}</span><div class="tt"><h4>Unconfirmed contact</h4><div class="sub">No line of sight · not identified</div></div></div><div class="kv"><div><span>Right-click</span><b>area fire / close in</b></div></div>`;
+    if (u.side !== 'player' && !u.spotted && !u.destroyed) return `<div class="ui-head"><span class="ui-tab h">${unitSymbol('contact', 'hostile')}</span><div class="tt"><h4>Unconfirmed contact</h4><div class="sub">Not identified · ${u.qt != null ? `reported ${Math.max(0, Math.round(this.g.time - u.qt))} s ago` : 'position approximate'}</div></div></div><div class="kv"><div><span>Right-click</span><b>area fire / close in</b></div><div><span>FPV team</span><b>right-click: fly over, identify, strike</b></div></div>`;
     const own = u.side === 'player', aff = own ? 'friend' : 'hostile', kind = unitKindOf(u);
     const row = (a, b) => `<div><span>${a}</span><b>${b}</b></div>`;
     const meter = (label, f, val, cls, cells = 10) => `<span>${label}</span><div class="meter ${cls}" style="--n:${cells}"><i style="width:${Math.round(Math.max(0, Math.min(1, f)) * 100)}%"></i></div><b>${val}</b>`;
@@ -458,8 +459,9 @@ export class HUD {
     };
     // unconfirmed contacts: a faint hollow diamond, no men, no type
     x.strokeStyle = 'rgba(217,71,61,.55)'; x.lineWidth = 1;
-    for (const u of g.squads) if (u.side === 'enemy' && !u.spotted && !u.concealed && !u.destroyed && !u.mounted && !u.medevac) { const c = (u.leader?.alive ? u.leader : u.soldiers.find(s => s.alive))?.pos; if (c) { const px = P(c.x), pz = P(c.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); } }
-    for (const v of g.vehicles) if (v.side === 'enemy' && !v.spotted && !v.concealed && !v.destroyed) { const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
+    // (at the estimated position, like the "?": game.spotFor tier 1; hidden enemies are not on the map at all)
+    for (const u of g.squads) if (ContactMarkers.unconfirmed(u)) { const px = P(u.qx), pz = P(u.qz); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
+    for (const v of g.vehicles) if (ContactMarkers.unconfirmed(v)) { const px = P(v.qx), pz = P(v.qz); x.beginPath(); x.moveTo(px, pz - 3.5); x.lineTo(px + 3.5, pz); x.lineTo(px, pz + 3.5); x.lineTo(px - 3.5, pz); x.closePath(); x.stroke(); }
     for (const sq of g.squads) {
       if (sq.destroyed || (sq.side === 'enemy' && !sq.spotted) || sq.mounted) continue;
       const friend = sq.side === 'player';
@@ -469,6 +471,7 @@ export class HUD {
     }
     for (const v of g.vehicles) {
       if (v.side === 'enemy' && !v.spotted && !v.destroyed) continue;
+      if (v.mstate === 'away') continue;
       const friend = v.side === 'player';
       if (v.destroyed) { x.strokeStyle = 'rgba(0,0,0,.6)'; x.lineWidth = 1.5; const px = P(v.pos.x), pz = P(v.pos.z); x.beginPath(); x.moveTo(px - 3, pz - 3); x.lineTo(px + 3, pz + 3); x.moveTo(px + 3, pz - 3); x.lineTo(px - 3, pz + 3); x.stroke(); continue; }
       x.save(); x.translate(P(v.pos.x), P(v.pos.z)); x.rotate(-v.heading);

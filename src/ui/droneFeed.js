@@ -166,7 +166,7 @@ export class DroneFeed {
     }
     const t = d.target, sq = d._sq;
     I.pos.copy(d.pos); I.vel.copy(d.vel); I.phase = d.phase; I.jam = !!d.jam && d.phase === 'dive'; I.age = d.age;
-    if (d.aim && d.phase === 'dive') I.tgt.copy(d.aim); else if (t) I.tgt.copy(t.type === 'vehicle' ? t.pos : (d.man?.pos || t.center()));
+    if (d.aim && d.phase === 'dive') I.tgt.copy(d.aim); else if (d.look && d.look.lengthSq() > 0) I.tgt.copy(d.look); else if (t) I.tgt.copy(t.type === 'vehicle' ? t.pos : (d.man?.pos || t.center()));   // (look: a contact's reported spot, not where it really is)
     I.pilot = d.pilot?.pos || null; I.pilotOk = !!d.pilot?.effective; I.name = sq?.name || 'FPV team'; I.num = sq?.support?.launched || 0; I.mesh = d.mesh; I.side = sq?.side || 'player';
     return I;
   }

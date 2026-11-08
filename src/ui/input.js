@@ -35,34 +35,37 @@ export class Input {
     return best;
   }
   screenOf(p) { const v = new THREE.Vector3(p.x, (p.y || 0) + 1, p.z).project(this.g.renderer.camera); return v.z > 1 ? null : [(v.x * .5 + .5) * innerWidth, (-v.y * .5 + .5) * innerHeight]; }
-  // contacts: also enemy units not (yet) identified - drawn with a "?" (ui/contactMarkers.js); their "?" itself counts too
+  // contacts: also enemy units not (yet) identified - picked by their "?" only (ui/contactMarkers.js: drawn at the
+  // estimated position; the unit itself is not drawn, so it can't be found by hovering where it really is)
   unitAt(x, y, side = null, contacts = false) {
     if (contacts && side !== 'player') { const c = this.g.hud?.contacts?.pick(x, y); if (c) return c; }
     let best = null, bd = 26;
     for (const sq of this.g.squads) {
-      if (sq.destroyed || sq.mounted || (side && sq.side !== side) || (sq.side === 'enemy' && !sq.spotted && !contacts)) continue;
+      if (sq.destroyed || sq.mounted || (side && sq.side !== side) || (sq.side === 'enemy' && !sq.spotted)) continue;
       for (const s of sq.soldiers) { if (!s.alive || s.inside === 'btr') continue; const p = this.screenOf(s.pos); if (!p) continue; const d = Math.hypot(p[0] - x, p[1] - y); if (d < bd) { bd = d; best = sq; } }
     }
     for (const v of this.g.vehicles) {
-      if (v.destroyed || (side && v.side !== side) || (v.side === 'enemy' && !v.spotted && !contacts)) continue;
+      if (v.destroyed || (side && v.side !== side) || (v.side === 'enemy' && !v.spotted) || v.mstate === 'away') continue;
       const p = this.screenOf(v.pos); if (!p) continue; const d = Math.hypot(p[0] - x, p[1] - y) - 14; if (d < bd) { bd = d; best = v; }
     }
     return best;
   }
   contactAt(x, y) { const u = this.unitAt(x, y, 'enemy', true); return u && !u.spotted ? u : null; }
-  // right-click on an unconfirmed contact: no lock-on (nobody has eyes on it). Units in range put area fire on where it
-  // was seen (recon by fire, 20 s); the rest close in to about two thirds of their weapon range
+  // right-click on an unconfirmed contact: no lock-on (nobody has eyes on it). FPV teams send a drone to look (it circles
+  // the "?", identifies what is there and strikes it - game/support.js); units in range put area fire on where it is
+  // reported (recon by fire, 20 s); the rest close in to about two thirds of their weapon range
   engageContact(sel, u) {
-    const g = this.g, c = u.type === 'vehicle' ? u.pos : u.center(); let fire = 0, move = 0;
+    const g = this.g, c = new THREE.Vector3(u.qx ?? 0, 0, u.qz ?? 0); let fire = 0, move = 0, fpv = 0;
     for (const s of sel) {
       if (s.kind === 'spg' || s.kind === 'medevac' || s.destroyed) continue;   // (FIRE AT on a howitzer = a fire mission)
+      if (s.type === 'squad' && s.support?.drones != null) { s.focus = u; fpv++; continue; }
       const p = s.center(), d = Math.hypot(c.x - p.x, c.z - p.z), f = Math.atan2(c.x - p.x, c.z - p.z);
       const R = s.type === 'vehicle' ? Math.min(900, WEAPONS[s.weapons?.[0]?.key]?.range || 800) : Math.max(250, ...s.effective.map(m => m.weapon?.type === 'at' ? 0 : m.weapon?.range || 0));
       if (d <= R && !(s.type === 'squad' && s.mounted)) { s.fireAt = { p: new THREE.Vector3(c.x, 0.4, c.z), until: g.time + 20 }; s.target = null; fire++; continue; }
       const k = Math.max(0, d - R * 0.66) / d, x = p.x + (c.x - p.x) * k, z = p.z + (c.z - p.z) * k;
       if (s.type === 'squad') s.orderMove(x, z, f, 18, this.runMode); else s.orderMove(x, z, f, this.runMode); move++;
     }
-    if (fire || move) { this.hud.groundMarker?.(c); g.hud.alert(`Unconfirmed contact: ${[fire ? `${fire} unit${fire > 1 ? 's' : ''} firing on the area` : '', move ? `${move} closing in` : ''].filter(Boolean).join(' · ')}`); g.sfx('ui_order'); }
+    if (fire || move || fpv) { this.hud.groundMarker?.(c); g.hud.alert(`Unconfirmed contact: ${[fpv ? `FPV ${fpv > 1 ? 'teams' : 'team'} tasked to look and strike` : '', fire ? `${fire} unit${fire > 1 ? 's' : ''} firing on the area` : '', move ? `${move} closing in` : ''].filter(Boolean).join(' · ')}`); g.sfx('ui_order'); }
   }
   down(e) {
     if (e.button === 0) { this.drag = { x: e.clientX, y: e.clientY, btn: 0 }; }
@@ -112,7 +115,7 @@ export class Input {
       // click: attack / mount / garrison / move
       const target = this.unitAt(e.clientX, e.clientY, null, true);
       if (target && target.side === 'enemy' && !target.spotted) { this.engageContact(sel, target); return; }
-      if (target && target.side === 'enemy') { for (const u of sel) u.orderAttack(target); this.g.sfx('ui_order'); return; }
+      if (target && target.side === 'enemy') { for (const u of sel) if (u.type === 'squad' && u.support?.drones != null) u.focus = target; else u.orderAttack(target); this.g.sfx('ui_order'); return; }   // (an FPV team stays put: the target is its drone's next one)
       if (target && target.type === 'vehicle' && target.side === 'player' && (target.kind === 'btr' || target.kind === 'ifv') && !target.passengers) {
         const sq = sel.find(u => u.type === 'squad' && !u.mounted); if (sq) { sq.orderMount(target); this.g.sfx('ui_order'); return; }
       }

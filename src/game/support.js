@@ -7,7 +7,8 @@ import { trunkHit } from '../world/vegetation.js';
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
 // FPV flight model: a quad steers by tilting its thrust - acceleration-limited (~2.6 g sideways, more in the dive),
 // the airframe banks / pitches into the acceleration and yaws smoothly into the flight path, with a little turbulence
-const FPV_ACC = 26, FPV_ACC_DIVE = 38;
+const FPV_ACC = 34, FPV_ACC_DIVE = 46;   // (a racing quad: ~3.5 g sideways, snappy - no floaty drift)
+const FPV_CRUISE = 38;   // m/s, ~137 km/h: the 7-10" strike quads fly 100-150 km/h
 const _up = new THREE.Vector3(), _fw = new THREE.Vector3(), _rt = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const TUNING_EVADE_MISS = 0.26;   // a hull jinking at speed in the drone's terminal dive: the pilot loses it this much more often (vehicle.drive evade)
 const UP = new THREE.Vector3(0, 1, 0);
@@ -84,6 +85,7 @@ export class AtgmTeam {
       this.seatLocal = new THREE.Vector3(0, 0, -0.75); this.loaderLocal = new THREE.Vector3(-0.88, 0, 0.1); this.loaderQ = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 2); this.groundTube = null; this.lroot = obj;
     }
     this.g.scene.add(obj); this.launcher = obj; this.muzzle = obj.getObjectByName('muzzle');
+    if (this.sq.side !== 'player' && this.sq.tier !== 2) { obj.userData.fogHid = true; obj.traverse(o => { o.layers.mask = 0; }); }   // an unidentified enemy team's launcher: not drawn (game.js fogSquad)
     this.seatPos = s.pos.clone(); this.spent = [];
     this.poseLauncher(s.heading);
   }
@@ -305,9 +307,11 @@ export class AtgmTeam {
 // v5 ("a tiny bit more effective", ~10-15 %): terminal-dive miss chances x0.85, jink-miss 0.3 -> 0.26, enemy EW jams x0.85,
 // ground fire brings it down x0.88 less often, and the pilot passes over caged hulls when there is a bare one about.
 export const FPV_DRONES = 10;
-const FPV_MISS = { moving: 0.17, parked: 0.068, inf: 0.10 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
+// terminal miss chances (the pilot loses it in the last metres): a parked hull or men lying still are near-certain hits -
+// what saves them is a cage / net, EW or being shot down; a hull jinking at speed or men on the move a little more often
+const FPV_MISS = { moving: 0.10, parked: 0.01, inf: 0.03, infMoving: 0.08 }, FPV_EW = 0.85, FPV_SHOTDOWN = 0.88;
 export class FpvTeam {
-  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 13 + Math.random() * 8; this.W = WEAPONS.fpv; }   // first sortie after the pilot has a picture
+  constructor(sq) { this.sq = sq; this.g = sq.game; this.drones = FPV_DRONES; this.launched = 0; this.drone = null; this.scanT = 3 + Math.random() * 3; this.W = WEAPONS.fpv; this.reach = Math.max(WEAPONS.fpv.range, (MAP.sizeM || 1000) * 1.5); }   // reach: a strike quad flies 5-10 km - on these maps, anywhere   // first sortie after the pilot has a picture
   status() { return this.drone ? (this.drone.phase === 'launch' ? 'LAUNCHING DRONE' : 'DRONE AIRBORNE') : !this.drones ? 'OUT OF DRONES' : this.scanT > 3 ? `PREPPING · ${this.drones} LEFT` : `${this.drones} DRONE${this.drones > 1 ? 'S' : ''} READY`; }
   capacity() { return this.drones + this.launched; }   // FPV_DRONES + campaign fpvDrones mods (campaignBattle adds to .drones)
   pilot() { return this.sq.effective[0]; }
@@ -323,27 +327,58 @@ export class FpvTeam {
     const p = this.pilot();
     if (this.drone && this.drone.phase !== 'launch') { p.supportClip = 'fpv_pilot'; p.supportAlt = ['crouch_idle']; p.noRifle = true; p.stance = 'crouch'; for (const s of crew) s.aimStopT = Math.max(s.aimStopT || 0, 0.3); }
     if (this.drone?.phase === 'launch') { const h = this.helper(); h.supportClip = 'fpv_launch'; h.supportAlt = ['crouch_idle']; h.noRifle = true; }
+    // a new target ordered (right-click): the drone in the air goes for it unless already diving; on the ground the team
+    // launches at it within a couple of seconds (the next drone is kept ready for an order)
+    if (sq.focus !== this._focus) { this._focus = sq.focus; const f = sq.focus;
+      if (f && !f.destroyed) { const d = this.drone, tier = f.tierBy?.[sq.side] || 0;
+        if (d && d.phase !== 'dive' && d.phase !== 'fall' && d.target !== f && tier >= 1) { const cc = f.ctc?.[sq.side]; d.target = f; d.contact = tier < 2 && !!cc; d.spec = false; d.found = false; d.aim = null; d.aimLocal = null; d.man = null; if (cc) { d.dest.set(cc.x, 0, cc.z); d.destT = cc.t; } if (d.phase === 'search') d.phase = 'cruise'; if (sq.side === 'player') g.hud?.alert(`${sq.name}: drone retasked`); }
+        else if (!d) { this.scanT = Math.min(this.scanT, 1.5); if (moving) sq.halt(); } } }   // (a team on the move stops to launch)
     if (this.drone || !this.drones) return;
     if ((this.scanT -= dt) > 0 || moving) return;
     this.scanT = 1.5;
-    // targets: ordered focus, then vehicles (prefer moving/exposed), then infantry in the open
-    // the pilot needs no line of sight of his own: anything his side has spotted in the last ~25 s (recon drones,
-    // observers, other units) is a target - the drone finds it on its own camera on the way in
-    const from = p.pos; let best = null, bs = -1e9;
-    for (const u of g.enemiesOf(sq.side)) {
-      if (u.destroyed || !(u.seenBy?.[sq.side] != null && g.time - u.seenBy[sq.side] < 25 || g.seen(sq.side, u, from))) continue;
-      const c = u.type === 'vehicle' ? u.pos : u.center(); const d = c.distanceTo(from); if (d > this.W.range || d < 30) continue;
-      // squads in panel blocks are out of reach; men at the windows of a cottage are not (fly it in through the window) -
-      // unless they are down in the cellar
-      if (u.type === 'squad' && (u.mounted || (u.building && !(u.building.house && u.effective.some(m => m.inBuilding && !m.cellar && !m.cellarMove))))) continue;
-      const taken = g.squads.some(o => o !== sq && o.side === sq.side && (o.support?.missile?.t === u || o.support?.drone?.target === u));
-      const sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) - (u.cage || 0) * 80 + (Math.abs(u.speed || 0) < 1 ? 15 : 0) : 60 + u.effective.length * 8) - d * 0.08;
+    // targets: the ordered focus first, then what the side knows (game.spotFor tiers). Identified units (seen in the last
+    // ~25 s: the side knows what they are) - vehicles first (bare hulls before caged ones), then infantry in the open; the
+    // pilot needs no line of sight of his own (recon drones, observers, other units). Unidentified contacts (a "?") are
+    // worth a drone too: it flies to the reported spot, circles it until its camera finds what is there, then strikes
+    // (flyDrone 'search'). No peeking: a contact is flown at where it was REPORTED, scored without knowing its type.
+    const from = p.pos, side = sq.side; let best = null, bs = -1e9, bc = false;
+    for (const u of g.enemiesOf(side)) {
+      if (u.destroyed || (u.type === 'squad' && u.mounted)) continue;
+      const tier = u.tierBy?.[side] || 0, close = g.seen(side, u, from);
+      if (tier < 1 && !close) continue;
+      const contact = tier < 2 && !close, idt = !contact || (u.seenBy?.[side] != null && g.time - u.seenBy[side] < 25);
+      const cc = u.ctc?.[side], c = contact ? tmpB.set(cc.x, 0, cc.z) : u.type === 'vehicle' ? u.pos : u.center(); const d = Math.hypot(c.x - from.x, c.z - from.z); if (d > this.reach || d < 30) continue;
+      const taken = g.squads.some(o => o !== sq && o.side === side && (o.support?.missile?.t === u || o.support?.drone?.target === u));
+      let sc;
+      if (idt) {
+        // squads in panel blocks are out of reach; men at the windows of a cottage are not (fly it in through the window) -
+        // unless they are down in the cellar
+        if (!this.strikable(u)) continue;
+        sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) - (u.cage || 0) * 80 + (Math.abs(u.speed || 0) < 1 ? 15 : 0) : 60 + u.effective.length * 8) - d * 0.08;
+      } else {
+        if (sq.focus !== u && g.time - cc.t > 12) continue;   // (on its own the pilot only goes for a fresh report)
+        sc = (sq.focus === u ? 1000 : 0) - (taken ? 250 : 0) + 85 - d * 0.08;
+      }
+      if (sc > bs) { bs = sc; best = u; bc = contact; }
+    }
+    if (best) this.launch(best, bc);
+  }
+  // can a drone get at it? (a squad aboard / in a panel block: no; men at a cottage window: yes, unless down in the cellar)
+  strikable(u) { return !(u.type === 'squad' && (u.mounted || (u.building && !(u.building.house && u.effective.some(m => m.inBuilding && !m.cellar && !m.cellarMove))))); }
+  // searching over a contact: the best target its side has identified (this drone's camera, game.spotFor) under it
+  findInView(d) {
+    const g = this.g, side = this.sq.side; let best = null, bs = -1e9;
+    for (const u of g.enemiesOf(side)) {
+      if (u.destroyed || u.seenBy?.[side] == null || g.time - u.seenBy[side] > 1.5 || !this.strikable(u)) continue;
+      const c = u.type === 'vehicle' ? u.pos : u.center(), dh = Math.hypot(c.x - d.pos.x, c.z - d.pos.z); if (dh > 85) continue;
+      const sc = (u === d.target ? 150 : 0) + (u.type === 'vehicle' ? (u.abandoned ? -300 : u.kind === 'tank' ? 300 : 260) - (u.cage || 0) * 80 : 60 + u.effective.length * 8) - dh;
       if (sc > bs) { bs = sc; best = u; }
     }
-    if (best) this.launch(best);
+    return best;
   }
-  launch(target) {
-    const g = this.g, h = this.helper();
+  // contact: the target is only a "?" - the drone is flown at its reported position (dest) and looks for it there
+  launch(target, contact = false) {
+    const g = this.g, h = this.helper(), cc = target.ctc?.[this.sq.side];
     this.drones--; this.launched++;
     const A = g.assets.gltf; let mesh = A.fpv_drone ? A.fpv_drone.scene.clone(true) : null;
     if (mesh) mesh.traverse(o => { if (o.isMesh) o.visible = !/_LOD1$/i.test(o.name); });
@@ -351,8 +386,10 @@ export class FpvTeam {
     mesh.scale.setScalar(1.3); mesh.visible = false; g.scene.add(mesh);
     // the assistant holds it up in both hands, then tosses it (clip event `release`)
     if (h.root) { h.root.add(mesh); mesh.position.set(0, 1.2, 0.35); mesh.rotation.set(0, 0, 0); mesh.scale.setScalar(1); mesh.visible = true; }
-    this.drone = { phase: 'launch', t: evTime(g, 'fpv_launch', 'release', 1.1), lt: 0, helper: h, target, aim: null, mesh, pos: h.pos.clone().setY(1.6), vel: new THREE.Vector3(), props: [0, 1, 2, 3].map(i => mesh.getObjectByName('prop_' + i)).filter(Boolean), pilot: this.pilot(), alt: (MAP.kind === 'rural' ? 18 : 32) + Math.random() * 10, age: 0 };
-    if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: FPV drone launched at ${target.name || 'infantry'}`);
+    this.drone = { phase: 'launch', t: evTime(g, 'fpv_launch', 'release', 1.1), lt: 0, helper: h, target, aim: null, mesh, pos: h.pos.clone().setY(1.6), vel: new THREE.Vector3(), props: [0, 1, 2, 3].map(i => mesh.getObjectByName('prop_' + i)).filter(Boolean), pilot: this.pilot(), alt: (MAP.kind === 'rural' ? 8 : 14) + Math.random() * 4, age: 0,   // low approach (terrain-following; climbs over what is in the way)
+      contact: contact && !!cc, dest: cc ? new THREE.Vector3(cc.x, 0, cc.z) : new THREE.Vector3(), destT: cc?.t ?? -1, look: new THREE.Vector3() };
+    if (this.drone.contact) { const S = g.fogS?.fpv; if (S) S.contact++; }
+    if (this.sq.side === 'player') g.hud?.alert(this.drone.contact ? `${this.sq.name}: FPV drone launched to look at an unconfirmed contact` : `${this.sq.name}: FPV drone launched at ${target.name || 'infantry'}`);
   }
   // pick the impact point on the target: vehicles — engine deck / turret roof from above; infantry — a man
   aimPoint(t) {
@@ -378,7 +415,13 @@ export class FpvTeam {
     for (const p of d.props) p.rotation.y += dt * 90;
     // pilot down or team gone: link lost, the drone drops
     if (!d.pilot.effective && d.phase !== 'fall') { d.phase = 'fall'; }
-    if (t.destroyed && d.phase !== 'fall') { // retarget something nearby or ditch
+    const side = this.sq.side;
+    if (d.contact && d.phase !== 'fall') {   // flying at a "?": eyes on the target itself (anyone's) -> fly at it; a fresh report -> the new spot
+      const c = t.ctc?.[side];
+      if (!t.destroyed && t.tierBy?.[side] === 2 && this.strikable(t)) { d.contact = false; d.found = true; }
+      else if (c && c.t > d.destT) { d.dest.set(c.x, 0, c.z); d.destT = c.t; }
+    }
+    if (t.destroyed && !d.contact && !d.spec && d.phase !== 'fall') { // retarget something nearby or ditch
       const alt = g.enemiesOf(this.sq.side).filter(u => !u.destroyed && !(u.type === 'squad' && (u.mounted || u.building)) && g.seen(this.sq.side, u) && (u.type === 'vehicle' ? u.pos : u.center()).distanceTo(d.pos) < 600)
         .sort((a, b) => (b.type === 'vehicle') - (a.type === 'vehicle') || (a.type === 'vehicle' ? a.pos : a.center()).distanceTo(d.pos) - (b.type === 'vehicle' ? b.pos : b.center()).distanceTo(d.pos))[0];
       if (alt) { d.target = alt; d.aim = null; d.aimLocal = null; d.man = null; if (d.phase === 'dive') d.phase = 'cruise'; } else d.phase = 'fall';
@@ -387,32 +430,61 @@ export class FpvTeam {
     let want;
     if (d.phase === 'fall') { d.vel.y -= 9.8 * dt; d.vel.multiplyScalar(0.99); }
     else {
-      const tc = tgt.type === 'vehicle' ? tgt.pos : (d.man?.effective ? d.man.pos : tgt.center());
+      const tc = d.contact || d.spec ? d.dest : tgt.type === 'vehicle' ? tgt.pos : (d.man?.effective ? d.man.pos : tgt.center());
       const hd = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z);
+      d.look.copy(d.aim && d.phase === 'dive' ? d.aim : tc);   // where its camera points (the drone view, the joiner's copy)
+      // over a contact's reported spot: circle it, camera down (someone identified it meanwhile: straight at it)
+      if (d.phase === 'search' && !d.contact && !d.spec) d.phase = 'cruise';
+      if (d.phase === 'cruise' && d.contact && hd < 22) { d.phase = 'search'; d.searchT = 0; d.scanK = 0; d.orbA = Math.atan2(d.pos.x - tc.x, d.pos.z - tc.z); }
       // terminal attack: a steep dive (roof / engine deck), only once the drone can see down onto the target
-      if (d.phase === 'cruise' && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? FPV_MISS.moving : FPV_MISS.parked) : FPV_MISS.inf) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || (d.jam = Math.random() < (M[od]?.ewJam || 0) * FPV_EW); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
+      if (d.phase === 'cruise' && !d.contact && hd < 10 + d.alt * 0.5 && (hd < 9 || !g.nav.occluded(d.pos.x, d.pos.y, d.pos.z, tc.x, 1.5, tc.z, null, tgt.type === 'vehicle' ? tgt : tgt.building))) { d.phase = 'dive'; d.aim = this.aimPoint(tgt); { const sd = this.sq.side, od = sd === 'player' ? 'enemy' : 'player', M = g.mods || {}; d.miss = Math.random() < ((tgt.type === 'vehicle' ? (Math.abs(tgt.speed || 0) > 3 ? FPV_MISS.moving : FPV_MISS.parked) : tgt.effective?.some(m => m.vel.lengthSq() > 1) ? FPV_MISS.infMoving : FPV_MISS.inf) + (tgt.type === 'vehicle' && tgt.evadeT > 0.5 && Math.abs(tgt.speed || 0) > 3 ? TUNING_EVADE_MISS : 0)) / (1 + (M[sd]?.fpvHit || 0)) || (d.jam = Math.random() < (M[od]?.ewJam || 0) * FPV_EW); } if (d.miss) d.aim.add(new THREE.Vector3((Math.random() - .5) * 12, 0, (Math.random() - .5) * 12)).setY(0); }
       // (d.jam, set above: the enemy's EW took this dive's link - ui/droneFeed.js shows the video going)
-      if (d.phase === 'climb') { want = tmpA.set(0, 9, 0); if (d.pos.y > Math.min(d.alt, 16)) d.phase = 'cruise'; }
+      // climb-out: up and away toward the target at once (no hover over the launch point)
+      if (d.phase === 'climb') { const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1; want = tmpA.set((tc.x - d.pos.x) / h * 16, 8, (tc.z - d.pos.z) / h * 16); if (d.pos.y > Math.min(d.alt, 8)) d.phase = 'cruise'; }
       else if (d.phase === 'cruise') { // fly level at altitude; climb over anything tall in the way
-        const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1, vy = THREE.MathUtils.clamp((d.alt - d.pos.y) * 1.2, -5, 9);
+        // low and fast along the ground, then a pop-up ~70 m out so the terminal dive comes in at ~40-50 deg
+        const h = Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) || 1, gy = Math.max(0, g.city.groundHeight?.(d.pos.x, d.pos.z) || 0), alt = (h < 75 && !d.contact ? Math.max(d.alt, 20) : d.alt) + gy, vy = THREE.MathUtils.clamp((alt - d.pos.y) * 1.5, -6, 10);
         const ax = d.pos.x + (tc.x - d.pos.x) / h * Math.min(h, 30), az = d.pos.z + (tc.z - d.pos.z) / h * Math.min(h, 30);
         const blk = g.nav.occluded(d.pos.x, d.pos.y - 2, d.pos.z, ax, d.pos.y - 2, az, null, tgt.type === 'vehicle' ? tgt : null);
         if (blk && !blk.foliage && !blk.smokeUntil) d.alt = Math.min(60, Math.max(d.alt, blk.h + 6));
-        const sp = d.pos.y < d.alt - 6 ? 12 : 30; want = tmpA.set((tc.x - d.pos.x) / h * sp, vy, (tc.z - d.pos.z) / h * sp);
+        const sp = d.pos.y < alt - 10 ? 20 : FPV_CRUISE * Math.min(1, 0.45 + h / 120); want = tmpA.set((tc.x - d.pos.x) / h * sp, vy, (tc.z - d.pos.z) / h * sp);   // (eases off for the last ~70 m: the pilot lines up)
+      }
+      else if (d.phase === 'search') {
+        // a slow orbit ~16 m round the reported spot, lower than the cruise: game.spotFor counts this drone's camera
+        // (70 m radius, steep looks into tree belts) - whatever it identifies becomes the target; nothing in ~10 s: the
+        // pilot puts it on the reported spot (a speculative strike: it may still catch someone hiding there)
+        d.searchT += dt; d.orbA += dt * 0.7;
+        const ox = tc.x + Math.sin(d.orbA) * 24, oz = tc.z + Math.cos(d.orbA) * 24, alt = Math.max(16, Math.min(d.alt + 8, 26));
+        want = tmpA.set((ox - d.pos.x) * 1.2, THREE.MathUtils.clamp((alt - d.pos.y) * 1.2, -5, 6), (oz - d.pos.z) * 1.2);
+        { const hl = Math.hypot(want.x, want.z); if (hl > 18) { want.x *= 18 / hl; want.z *= 18 / hl; } }
+        if ((d.scanK -= dt) <= 0 && d.contact) {
+          d.scanK = 0.25; const f = this.findInView(d);
+          if (f) { d.target = f; d.contact = false; d.found = true; d.aim = null; d.aimLocal = null; d.man = null; d.phase = 'cruise'; const S = g.fogS?.fpv; if (S) S.found++;
+            if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone has eyes on ${f.type === 'vehicle' ? f.name : 'infantry'} — striking`, 'good'); }
+        }
+        if (d.contact && d.searchT > 10) {
+          d.contact = false; d.spec = true; d.phase = 'dive'; d.miss = false; d.man = null;
+          d.aim = new THREE.Vector3(tc.x + (Math.random() - 0.5) * 4, Math.max(0, g.city.groundHeight?.(tc.x, tc.z) || 0) + 0.3, tc.z + (Math.random() - 0.5) * 4);
+          const S = g.fogS?.fpv; if (S) S.spec++;
+          if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: nothing found at the contact — drone put on the reported position`);
+        }
       }
       else { // terminal dive, tracking the target
         // vehicles: the pilot leads a moving hull (aims where it will be when he arrives) and corrects at a rate that doesn't
         // depend on the frame rate; a driver who jinks in the last second leaves him aiming at empty road (vehicle.drive evade)
-        if (tgt.type === 'vehicle' && !d.miss) { const p = this.aimPoint(tgt), tgo = Math.min(1.5, d.pos.distanceTo(p) / 34), sp = tgt.speed || 0; p.x += Math.sin(tgt.heading) * sp * tgo * 0.8; p.z += Math.cos(tgt.heading) * sp * tgo * 0.8; d.aim.lerp(p, 1 - Math.exp(-dt * 4)); }
+        if (d.spec) { /* speculative strike: straight onto the reported spot */ }
+        else if (tgt.type === 'vehicle' && !d.miss) { const p = this.aimPoint(tgt), tgo = Math.min(1.5, d.pos.distanceTo(p) / 34), sp = tgt.speed || 0; p.x += Math.sin(tgt.heading) * sp * tgo * 0.8; p.z += Math.cos(tgt.heading) * sp * tgo * 0.8; d.aim.lerp(p, 1 - Math.exp(-dt * 4)); }
         else if (d.man?.effective && !d.man.inBuilding && !d.miss && !d.dodged) d.aim.set(d.man.pos.x, 0.9, d.man.pos.z);
-        want = tmpA.subVectors(d.aim, d.pos).normalize().multiplyScalar(34);
+        want = tmpA.subVectors(d.aim, d.pos).normalize().multiplyScalar(36);
+        // last ~10 m of a good dive: the pilot holds it on the aim point (no fly-past for want of acceleration)
+        if (!d.miss && !d.dodged && d.pos.distanceTo(d.aim) < 10) d.vel.lerp(want, 1 - Math.exp(-dt * 12));
       }
       // steer: accelerate toward the wanted velocity, capped (no instant direction changes)
       const acc = tmpB.subVectors(want, d.vel).multiplyScalar(2.2), am = d.phase === 'dive' ? FPV_ACC_DIVE : FPV_ACC, al = acc.length();
       if (al > am) acc.multiplyScalar(am / al);
       (d.acc ||= new THREE.Vector3()).lerp(acc, 1 - Math.exp(-dt * 10)); d.vel.addScaledVector(d.acc, dt);
       // the targeted vehicle's crew sees / hears it coming: vehicle.drive() weaves and breaks away while this is fresh
-      if (tgt.type === 'vehicle' && (d.phase === 'dive' || (d.phase === 'cruise' && Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) < 160))) tgt.droneThreat = { t: g.time, phase: d.phase, x: d.pos.x, z: d.pos.z, dist: d.pos.distanceTo(tc), id: d };
+      if (tgt.type === 'vehicle' && !d.contact && !d.spec && (d.phase === 'dive' || (d.phase === 'cruise' && Math.hypot(tc.x - d.pos.x, tc.z - d.pos.z) < 160))) tgt.droneThreat = { t: g.time, phase: d.phase, x: d.pos.x, z: d.pos.z, dist: d.pos.distanceTo(tc), id: d };
       this.reactions(d, dt);
       if (d.phase === 'fall') return this.moveDrone(d, dt);
     }
@@ -472,7 +544,7 @@ export class FpvTeam {
       if (s.droneShooter) {
         s.droneAlertT = 1.5; s.heading = Math.atan2(d.pos.x - s.pos.x, d.pos.z - s.pos.z);
         if (!s.inBuilding && Math.random() < dt * 4) { const mz = s.muzzleWorld(tmpB); g.fx.muzzle(mz, tmpA.subVectors(d.pos, mz).normalize(), 0.8); if (g.camDist(mz) < 120) g.sfx(s.weapon.sound === 'mg' ? 'mg_near' : 'rifle_near', s.pos, { gain: 0.7 }); }
-        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN * (s.inBuilding ? 0.5 : 1);
+        const p = (dist < 35 ? 0.03 : 0.01) * (s.weaponKey === 'pkm' ? 1.6 : 1) * (d.phase === 'dive' ? 1.4 : 1) * FPV_SHOTDOWN * (s.inBuilding ? 0.5 : 1) * (d.vel.lengthSq() > 625 ? 0.45 : 1);   // (a quad going 90+ km/h is a very hard snap shot)
         if (Math.random() < p * dt * 4) { if (Math.random() < 0.25) { d.phase = 'fall'; d.vel.multiplyScalar(0.4); d.vel.y = 2; if (sq.side === 'player') g.hud?.alert(`${sq.name} shot down an FPV drone`, 'good'); else if (this.sq.side === 'player') g.hud?.alert(`${this.sq.name}: drone shot down`, 'bad'); return; } }
         continue;
       }
@@ -497,17 +569,17 @@ export class FpvTeam {
       d.reacted = true; const m = d.man;
       if (Math.random() < 0.55) { m.dodgeT = 1.2; m.stance = 'prone'; const side = Math.random() < 0.5 ? 1 : -1, h = m.heading + side * Math.PI / 2; m.dodgeClip = side > 0 ? 'dodge_dive_L' : 'dodge_dive_R';
         const nx = m.pos.x + Math.sin(h) * 2.2, nz = m.pos.z + Math.cos(h) * 2.2, i = g.nav.idx(nx, nz); if (i >= 0 && g.nav.passable(i, 0.3)) { m.path = null; (this.dodgers ||= []).push({ m, x: nx, z: nz, t: 0.45 }); }
-        if (Math.random() < 0.22) d.dodged = true; }
+        if (Math.random() < (m.vel.lengthSq() > 1 ? 0.14 : 0.06)) d.dodged = true; }
       else { m.droneAlertT = 2; if (Math.random() < 0.08) { d.phase = 'fall'; d.vel.y = 3; } }
     }
   }
   impact(d, at) {
-    const g = this.g; this.drone = null; this.scanT = 38 + Math.random() * 20;   // next drone prepped (battery, warhead armed): ~15 % quicker than v6
+    const g = this.g; this.drone = null; this.scanT = 22 + Math.random() * 10;   // next drone prepped (battery, warhead armed): ~15 % quicker than v6
     g.scene.remove(d.mesh); d.snd?.stop();
     const t = d.target;
-    if (t.type === 'vehicle') (g.fpvLog ||= []).push({ hit: d.phase === 'dive' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7, miss: !!d.miss, moving: Math.abs(t.speed || 0) > 2, evaded: !!t.evadeLog?.has(d), d: +at.distanceTo(t.pos).toFixed(1), phase: d.phase });
-    (g.supportLog ||= []).push(`${Math.round(g.time)} ${this.sq.side[0]} FPV ${d.phase} y${at.y.toFixed(1)} d${Math.round(at.distanceTo(t.type === 'vehicle' ? t.pos : t.center()))} ${t.type === 'vehicle' ? t.kind : 'inf'}${d.miss ? ' miss' : ''}${d.dodged ? ' dodged' : ''}${t.cage ? ' cage' : ''}`);
-    if (d.phase === 'dive' && t.type === 'vehicle' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7) {
+    if (t.type === 'vehicle' && !d.spec) (g.fpvLog ||= []).push({ hit: d.phase === 'dive' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7, miss: !!d.miss, moving: Math.abs(t.speed || 0) > 2, evaded: !!t.evadeLog?.has(d), d: +at.distanceTo(t.pos).toFixed(1), phase: d.phase });
+    (g.supportLog ||= []).push(`${Math.round(g.time)} ${this.sq.side[0]} FPV ${d.phase} y${at.y.toFixed(1)} d${Math.round(at.distanceTo(t.type === 'vehicle' ? t.pos : t.center()))} ${t.type === 'vehicle' ? t.kind : 'inf'}${d.miss ? ' miss' : ''}${d.dodged ? ' dodged' : ''}${t.cage ? ' cage' : ''}${d.spec ? ' spec' : d.found ? ' found' : ''}`);
+    if (d.phase === 'dive' && !d.spec && t.type === 'vehicle' && !t.destroyed && !d.miss && at.distanceTo(t.pos) < t.def.length * 0.7) {
       const from = at.clone().addScaledVector(d.vel.clone().normalize(), -4);
       if (t.cage && Math.random() < t.cage) { // anti-drone cage: warhead goes off on the screen
         g.combat.hitVehicle(t, { ...this.W, pen: this.W.pen * 0.12, dmg: [20, 50] }, from, 'ce', d.pilot, false, at);

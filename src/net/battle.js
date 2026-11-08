@@ -3,13 +3,19 @@
 // the same seeded world, the same units (from a spawn manifest), positions/animation state from ~10 Hz snapshots,
 // and every visual/audio effect (muzzle flashes, tracers, explosions, building damage, craters, sounds) replayed from
 // an event stream. On the joiner the sides are swapped locally so its own units are 'player' (HUD, input, fog).
+// Fog of war over the wire: the host computes what the joiner's side knows (game.spotFor, u.tierBy.enemy) and sends only
+// that - nothing at all about a host unit the joiner has not found (tier 0: during the deployment phase every one of them,
+// so the joiner never sees where the host places its force; the manifest carries no positions for them either), a
+// contact's estimated position and age only (tier 1: no men, no type, no props), the full state once identified (tier 2) or
+// destroyed. The host draws the joiner's units by its own side's knowledge, exactly as in a single-player battle.
 import * as THREE from 'three';
 import { SQUAD_ROLES, ASSAULT_ROLES, CREW_ROLES, ATGM_ROLES, FPV_ROLES, TUNING } from '../config.js';
-import { ContactMarkers } from '../ui/contactMarkers.js';
+import { fogSquad } from '../game/game.js';
+import { DEPLOY_ZONES } from '../world/city.js';
 import { MEDIC_ROLES, MSTATES, medevacPuppet, clientMedevac } from '../game/medevac.js';
 import { attachKits } from '../game/vehicleKit.js';
 
-const DRONE_PHASE = ['launch', 'climb', 'cruise', 'dive', 'fall'];   // (= game/support.js FpvTeam drone phases)
+const DRONE_PHASE = ['launch', 'climb', 'cruise', 'dive', 'fall', 'search'];   // (= game/support.js FpvTeam drone phases)
 const STANCE = ['stand', 'crouch', 'prone'], STATE = ['ok', 'light', 'critical', 'stable', 'dead', 'evac'];
 const FX_EVENTS = ['light', 'muzzle', 'tracer', 'impact', 'blood', 'explosion', 'collapseDust', 'muzzleBlastTank', 'dustCloud', 'smokeScreen', 'emitter', 'vehicleDust'];
 const r2 = v => Math.round(v * 100) / 100;
@@ -33,7 +39,7 @@ export function hostBattle(game, peer) {
   for (const v of game.vehicles) if (v.fx) v.fx = nest(v.fx.bind(v));
   // the rest of Game.init (map smoke columns, burning flats) runs right after this, identically seeded on the joiner: not events
   Promise.resolve().then(() => { ev.length = 0; });
-  const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };
+  const sfx = game.sfx.bind(game); game.sfx = (n, p, o) => { if (p || !/^(ui_|radio)/.test(n)) ev.push(['sfx', n, enc(p), enc(o || null)]); return sfx(n, p, o); };   // (not the host's own interface sounds: order clicks while it deploys told the joiner it was busy)
   const C = game.city;
   C.buildings.forEach((b, bi) => {
     const ss = b.setState.bind(b), sg = b.setGone.bind(b);
@@ -80,26 +86,30 @@ const squadManifest = sq => ({ id: sq.id, side: sq.side, kind: sq.kind, name: sq
 export function manifest(game) {
   return {
     squads: game.squads.map(squadManifest),
-    vehicles: game.vehicles.map(v => ({ id: v.id, side: v.side, kind: v.kind, name: v.name, hp: v.hp, x: v.pos.x, z: v.pos.z, h: v.heading, kits: v.kits?.length ? v.kits : undefined })),   // kits: campaign tech-tree kits (meshes on the joiner's copy)
+    vehicles: game.vehicles.map(v => ({ id: v.id, side: v.side, kind: v.kind, name: v.name, hp: v.hp, x: v.side === 'player' ? null : v.pos.x, z: v.side === 'player' ? null : v.pos.z, h: v.heading, kits: v.kits?.length ? v.kits : undefined })),   // kits: campaign tech-tree kits (meshes on the joiner's copy); no positions for the host's own (fog)
     mortars: game.mortars,
   };
 }
 
+// what the joiner ('enemy' on the host) knows of unit u: 2 identified (or its own / a wreck), 1 contact, 0 nothing
+const know = u => (u.side === 'enemy' || (u.destroyed && u.type === 'vehicle') ? 2 : u.tierBy?.enemy || 0);   // (a wreck is there for all to see; a squad wiped out unseen stays unknown)
+// a unit the joiner has not identified: [id, tier, x, z, age] - the contact's estimated position (tier 1) or nothing
+const fogRow = (g, u, k) => { const c = k === 1 ? u.ctc?.enemy : null; return c ? [u.id, 1, r2(c.x), r2(c.z), r2(g.time - c.t)] : [u.id, 0]; };
 function snapshot(g) {
-  const seen = u => g.seen?.('enemy', u) ? 1 : 0;
-  const sq = g.squads.map(q => [q.id, Math.round(q.morale), q.mounted ? 1 : 0, q.side === 'player' ? seen(q) : 1, q.soldiers.map(s => {
+  const sq = g.squads.map(q => { const k = know(q); if (k < 2) { const f = fogRow(g, q, k); return [f[0], 0, 0, k, 0, f[2] ?? 0, f[3] ?? 0, f[4] ?? 0]; } return [q.id, Math.round(q.morale), q.mounted ? 1 : 0, 2, q.soldiers.map(s => {
     const f = (s.firingT > 0 ? 1 : 0) | (s.target ? 2 : 0) | (s.groundAim ? 4 : 0) | (s.ducking ? 8 : 0) | (s.reloadT > 0 ? 16 : 0) | (s.throwT > 0 ? 32 : 0) | (s.launcherT > 0 ? 64 : 0) | (s.legWound ? 128 : 0) | (s.peek ? 256 : 0) | (s.hitT > 0 ? 512 : 0) | (s.inCab ? 1024 : 0) | (s.onBed ? 2048 : 0) | (s.cellar ? 4096 : 0);
     const tp = s.target?.pos;
     return [r2(s.pos.x), r2(s.pos.y), r2(s.pos.z), r2(s.heading), r2(s.vel.x), r2(s.vel.z), STANCE.indexOf(s.stance), STATE.indexOf(s.state), f,
       s.inside === 'ride' ? 1 : s.inside === 'btr' ? 2 : s.inside && typeof s.inside === 'object' ? 3 : 0, s.weaponKey, tp ? [r2(tp.x), r2(tp.z)] : 0,
       s.state === 'dead' ? (s.deathClip || 0) : (s.hatchT > 0 ? ['h', s.hatchClip, r2(s.hatchT)] : s.jumpT > 0 ? ['j', s.jumpClip, r2(s.jumpT)] : 0), s.seatType || 0,
       s.state !== 'dead' && s.curName ? [s.curName, r2(s.cur?.time || 0), r2(s.cur?.timeScale || 1)] : 0, s.kitObjs?.length ? s.kitObjs.map(o => (o.visible ? 1 : 0)).join('') : 0];
-  })]);
-  const v = g.vehicles.map(x => [x.id, r2(x.pos.x), r2(x.pos.y || 0), r2(x.pos.z), r2(x.heading), r2(x.pitch || 0), r2(x.roll || 0), r2(x.turretYaw), r2(x.gunPitch), Math.round(x.hp), (x.destroyed ? 1 : 0) | (x.burning > 0 ? 2 : 0) | (x.abandoned ? 4 : 0), r2(x.doorK || 0), r2(x.speed), x.side === 'player' ? seen(x) : 1, x.lidAnim ? 1 : 0, x.spg ? [x.spg.k, x.spg.state] : 0, x._shots || 0, r2(x._shotK || 0), x.flyer ? 1 : 0]);
+  })]; });
+  const v = g.vehicles.map(x => know(x) < 2 ? fogRow(g, x, know(x)) : [x.id, r2(x.pos.x), r2(x.pos.y || 0), r2(x.pos.z), r2(x.heading), r2(x.pitch || 0), r2(x.roll || 0), r2(x.turretYaw), r2(x.gunPitch), Math.round(x.hp), (x.destroyed ? 1 : 0) | (x.burning > 0 ? 2 : 0) | (x.abandoned ? 4 : 0), r2(x.doorK || 0), r2(x.speed), 2, x.lidAnim ? 1 : 0, x.spg ? [x.spg.k, x.spg.state] : 0, x._shots || 0, r2(x._shotK || 0), x.flyer ? 1 : 0]);
   const pr = g.combat.projectiles.filter(p => p.mesh).map(p => [r2(p.pos.x), r2(p.pos.y), r2(p.pos.z), r2(p.target.x), r2(p.target.y), r2(p.target.z)]);
-  const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); const t = d.target, tp = d.aim && d.phase === 'dive' ? d.aim : t ? (t.type === 'vehicle' ? t.pos : t.center()) : W; dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2), q.id, r2(tp.x), r2(tp.y), r2(tp.z), Math.max(0, DRONE_PHASE.indexOf(d.phase)), d.jam && d.phase === 'dive' ? 1 : 0, r2(d.age), q.support.launched || 0]); } }   // [7..]: squad, target point, phase, jammed, age, drone no. (the joiner's drone view, ui/droneFeed.js)
+  // (not a host drone still in its launcher's hands: that is where the team is; d.look: a contact's reported spot, not the unit)
+  const dr = [], W = new THREE.Vector3(), Q = new THREE.Quaternion(); for (const q of g.squads) { const d = q.support?.drone; if (d?.mesh?.parent && d.mesh.visible && !(q.side === 'player' && d.phase === 'launch' && know(q) < 2)) { d.mesh.getWorldPosition(W); d.mesh.getWorldQuaternion(Q); const t = d.target, tp = d.aim && d.phase === 'dive' ? d.aim : d.look?.lengthSq() ? d.look : t ? (t.type === 'vehicle' ? t.pos : t.center()) : W; dr.push([r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(r2), q.id, r2(tp.x), r2(tp.y), r2(tp.z), Math.max(0, DRONE_PHASE.indexOf(d.phase)), d.jam && d.phase === 'dive' ? 1 : 0, r2(d.age), q.support.launched || 0]); } }   // [7..]: squad, target point, phase, jammed, age, drone no. (the joiner's drone view, ui/droneFeed.js)
   // support teams: status line + every launcher prop (tripod, tube, guidance unit, spent tubes...) in world space
-  const sp = g.squads.filter(q => q.support).map(q => { const S = q.support; return [q.id, S.status?.() || '', S.launcher ? 1 : 0, S.launcher ? Object.entries(S.nodes || {}).map(([k, n]) => { n.o.getWorldPosition(W); n.o.getWorldQuaternion(Q); return [k, n.o.visible && n.o.parent ? 1 : 0, r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(x => Math.round(x * 1000) / 1000)]; }) : 0]; });
+  const sp = g.squads.filter(q => q.support && know(q) === 2).map(q => { const S = q.support; return [q.id, S.status?.() || '', S.launcher ? 1 : 0, S.launcher ? Object.entries(S.nodes || {}).map(([k, n]) => { n.o.getWorldPosition(W); n.o.getWorldQuaternion(Q); return [k, n.o.visible && n.o.parent ? 1 : 0, r2(W.x), r2(W.y), r2(W.z), ...Q.toArray().map(x => Math.round(x * 1000) / 1000)]; }) : 0]; });
   // the medevac pickups (game/medevac.js): run state, casualties aboard, trip timer, saved, doors (an 'away' truck is not in
   // g.vehicles, so not in v: the joiner hides it)
   const md = (g.medevac?.trucks || []).map(t => [t.id, MSTATES.indexOf(t.mstate), t.load.length, Math.max(0, Math.ceil(t.tripT || 0)), t.saved || 0, Object.values(t.doors || {}).map(D => r2(D.k)), t.medicsOut() ? 1 : 0]);
@@ -114,7 +124,7 @@ function applyCommand(game, byId, c) {
   const a = dec(c.a || []);
   const ref = x => (x && x.unit != null ? byId(x.unit) : x && x.hse != null ? game.houses?.list[x.hse] : x && x.bld != null ? game.city.buildings[x.bld] : x && x.trench != null ? game.city.trenchSystems?.[x.trench] : x);
   switch (c.m) {
-    case 'set': if (['holdFire', 'run'].includes(c.k)) u[c.k] = c.v; else if (c.k === 'fireAt') u.fireAt = c.v ? { p: new THREE.Vector3(...c.v.p), until: game.time + 30 } : null; break;
+    case 'set': if (['holdFire', 'run'].includes(c.k)) u[c.k] = c.v; else if (c.k === 'focus') { const t = c.v?.unit != null ? byId(c.v.unit) : null; u.focus = t && t.side !== u.side ? t : null; } else if (c.k === 'fireAt') u.fireAt = c.v ? { p: new THREE.Vector3(...c.v.p), until: game.time + 30 } : null; break;
     case 'place': if (game.phase === 'deploy') game.deployPlace(u, a[0], a[1], a[2], 'enemy'); break;   // (no redeploying once the battle has started)
     default: if (CMDS.includes(c.m) && typeof u[c.m] === 'function') u[c.m](...a.map(ref));   // only the joiner's order methods, nothing else on the unit
   }
@@ -128,9 +138,11 @@ export function clientBattle(game, peer) {
   game.netMap = new Map();
   const M = game.opts.net.manifest;
   const trucks = [];
-  for (const vm of M.vehicles) {
+  for (let vm of M.vehicles) {
     // the medevac pickups are MedevacTrucks here too (model, doors, HUD panel, EVAC marker); their names follow the local sides
+    if (vm.x == null) { const Z = DEPLOY_ZONES[vm.side]; vm = { ...vm, x: (Z.x0 + Z.x1) / 2, z: (Z.z0 + Z.z1) / 2 }; }   // (the host's own: no position sent - fog)
     const v = vm.kind === 'medevac' ? medevacPuppet(game, flip(vm.side), vm) : game.makeVehicle(flip(vm.side), vm.kind, vm.x, vm.z, vm.h);
+    if (v.side !== 'player') { v.root.visible = false; v._hidden = true; }
     if (vm.kind === 'medevac') trucks.push(v); else v.name = vm.name;
     v.hp = vm.hp; v.netId = vm.id; game.netMap.set(vm.id, v);
     // the host's campaign kits (cope cages, ERA, the casevac pickup's net ...): the same meshes on the joiner's copy (the
@@ -149,7 +161,7 @@ export function clientBattle(game, peer) {
   const encArg = x => (x && (x.type === 'squad' || x.type === 'vehicle') ? { unit: x.netId } : x && x.house === true ? { hse: game.houses.list.indexOf(x) } : x && x.panels ? { bld: game.city.buildings.indexOf(x) } : x && x.slots && x.lines ? { trench: game.city.trenchSystems.indexOf(x) } : enc(x));
   const wire = u => {
     for (const m of CMDS) if (typeof u[m] === 'function') u[m] = (...a) => peer.send('cmd', { id: u.netId, m, a: a.map(encArg) });
-    for (const k of ['holdFire', 'run', 'fireAt']) { let val = u[k]; Object.defineProperty(u, k, { get: () => val, set: x => { val = x; peer.send('cmd', { id: u.netId, m: 'set', k, v: k === 'fireAt' ? (x ? { p: [x.p.x, x.p.y, x.p.z] } : null) : x }); }, configurable: true }); }
+    for (const k of ['holdFire', 'run', 'fireAt', 'focus']) { let val = u[k]; Object.defineProperty(u, k, { get: () => val, set: x => { val = x; peer.send('cmd', { id: u.netId, m: 'set', k, v: k === 'fireAt' ? (x ? { p: [x.p.x, x.p.y, x.p.z] } : null) : k === 'focus' ? (x?.netId != null ? { unit: x.netId } : null) : x }); }, configurable: true }); }
   };
   game.netWire = wire;   // (a medevac crew that bails out becomes an ordinary squad: wired then, clientFrame)
   for (const u of [...game.squads, ...game.vehicles]) if (u.side === 'player' && !(u.type === 'squad' && u.medevac)) wire(u);   // (the medics are driven by their truck)
@@ -204,8 +216,11 @@ export function clientFrame(g, dt) {
     if (sq.side === 'player') { g.netWire?.(sq); g.playerUnits?.push(sq); g.hud?.rebuildCards?.(); }
   }
   const live = g._netSq = [];
-  for (const [id, morale, mounted, vis, men] of s.sq) {
-    const sq = g.netMap.get(id); if (!sq) continue; sq.morale = morale; sq.mounted = !!mounted; sq.spotted = sq.side === 'player' || !!vis; live.push(sq);
+  for (const [id, morale, mounted, vis, men, cx, cz, age] of s.sq) {
+    const sq = g.netMap.get(id); if (!sq) continue;
+    if (sq.side !== 'player') g.viewSet(sq, vis | 0, vis === 1 ? { x: cx, z: cz, t: s.t - (age || 0) } : null);
+    if (vis < 2) { fogSquad(sq); continue; }   // not identified: nothing of it came (not animated, not drawn)
+    sq.morale = morale; sq.mounted = !!mounted; live.push(sq);
     for (let i = 0; i < men.length; i++) {
       const so = sq.soldiers[i], m = men[i]; if (!so) continue;
       const [x, y, z, h, vx, vz, st, stt, f, ins, wk, tp, clip, seat] = m;
@@ -223,15 +238,19 @@ export function clientFrame(g, dt) {
       const state = STATE[stt] || 'ok';
       if (state === 'dead' && so.state !== 'dead') so.die(null, {}); else if (state !== 'dead') so.state = state;
     }
-    // the host's units are drawn (unidentified ones, vis 0, carry a "?") unless holed up unseen in a building / heavy foliage
-    sq.concealed = ContactMarkers.concealed(sq, g);
-    for (const so of sq.soldiers) so.visible = so.state === 'dead' || !sq.concealed;
+    if (sq.side !== 'player') fogSquad(sq);   // (identified: drawn - its men in a cellar not)
   }
-  for (const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis, , , shots, shotK, toss] of s.v) {
-    const v = g.netMap.get(id); if (!v) continue;
+  for (const row of s.v) {
+    const v = g.netMap.get(row[0]); if (!v) continue;
+    if (row.length <= 5) {   // a host vehicle the joiner has not identified: a "?" at most, the model hidden, its engine silent
+      g.viewSet(v, row[1], row[1] === 1 ? { x: row[2], z: row[3], t: s.t - (row[4] || 0) } : null); v._hidden = true; v.root.visible = false;
+      if (v.engine) { v.engine.stop(); v.engineDrive?.stop(); v.tracks?.stop(); v.engine = v.engineDrive = v.tracks = null; }
+      continue;
+    }
+    const [id, x, y, z, h, p, r, ty, gp, hp, fl, dk, sp, vis, , , shots, shotK, toss] = row; v._hidden = false;
     v._np ||= new THREE.Vector3(x, y, z); v._np.set(x, y, z); if (v.pos.distanceTo(v._np) > 10) v.pos.copy(v._np);
     v._nh = h; v.pitch = p; v.roll = r; v.turretYaw = ty; v.gunPitch = gp; v.hp = hp; v.speed = sp;
-    v.spotted = v.side === 'player' || !!vis; v.concealed = ContactMarkers.concealed(v, g);
+    if (v.side !== 'player') g.viewSet(v, 2, null);
     // knocked out: the wreck model; the explosion and the fire come with the host's event stream (no second set here)
     if (shots > (v._shots ?? shots)) v.recoil = Math.max(v.recoil || 0, shotK || 1); v._shots = shots;   // a round fired since the last snapshot: the gun kicks
     if (fl & 1 && !v.destroyed) { v.destroyed = true; v.wreck = true; v.showWreck(); if (toss) v.tossTurret?.();
@@ -277,7 +296,7 @@ function clientSmooth(g, dt) {
     so.animate(dt, g.camDist(so.pos)); so.sync();
   }
   for (const v of g.vehicles) {
-    if (!v._np) continue;
+    if (!v._np || v._hidden) continue;
     v.pos.lerp(v._np, k); v.heading += Math.atan2(Math.sin(v._nh - v.heading), Math.cos(v._nh - v.heading)) * k; v.dist = (v.dist || 0) + (v.speed || 0) * dt;
     v.sync(); if (!v.destroyed) v.fx?.(dt);
     // fire damage / wreck (vehicle.update does it on the host): the paint burns from the fire point, a tossed turret falls

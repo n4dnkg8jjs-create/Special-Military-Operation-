@@ -79,7 +79,7 @@ export class Vehicle {
     this.hp = this.def.hp; this.pos = new THREE.Vector3(); this.heading = 0; this.speed = 0; this.path = null; this.pathI = 0;
     this.turretYaw = 0; this.gunPitch = 0; this.target = null; this.coaxTarget = null;
     this.destroyed = false; this.immobile = false; this.gunDisabled = false; this.burning = 0; this.crew = 3;
-    this.passengers = null; this.selected = false; this.spotted = side === 'player'; this.morale = 100;
+    this.passengers = null; this.selected = false; this.spotted = side === 'player'; this.tier = side === 'player' ? 2 : 0; this.morale = 100;
     this.holdFire = false; this.stats = { kills: 0 };
     this.weapons = kind === 'spg'
       ? [{ key: this.def.gun, ammo: this.def.ammo, cd: 0 }, { key: this.def.mg || 'pkt', ammo: this.def.mg ? 300 : 0, cd: 0, burst: 0, coax: true }]
@@ -486,8 +486,7 @@ export class Vehicle {
     if (this.fire && !(this.burning > 0)) { this.fire.kill = true; this.fire = null; }   // fire put out: the flames die down
     const g = this.game, ex = this.exhaustN ? this.exhaustN.getWorldPosition(tmp) : tmp.set(this.pos.x - Math.sin(this.heading) * this.def.length * 0.45, 1.6, this.pos.z - Math.cos(this.heading) * this.def.length * 0.45);
     const load = Math.min(1, Math.abs(this.speed) / this.def.speed + (this.speed > (this.lastSpeed2 || 0) ? 0.3 : 0)); this.lastSpeed2 = this.speed;
-    g.fx.exhaust(ex, load);
-    g.fx.vehicleDust(this.pos, Math.abs(this.speed));
+    if (this.side === 'player' || this.tier === 2) { g.fx.exhaust(ex, load); g.fx.vehicleDust(this.pos, Math.abs(this.speed)); }   // (an unidentified enemy's exhaust / dust would draw it where it is: its engine is still heard)
     // engine audio
     if (!this.engine && g.audio.ok && g.camDist(this.pos) < 260) { const k = this.def.wheeled ? 'btr_engine' : 'tank_engine'; this.engine = g.audio.loop(k + '_idle', this.pos, 0.7); this.engineDrive = g.audio.loop(k + '_drive', this.pos, 0); if (!this.def.wheeled) this.tracks = g.audio.loop('track_clank', this.pos, 0); }
     if (this.engine) {
@@ -510,7 +509,7 @@ export class Vehicle {
     for (const m of this.trackMats) { m.map.offset.x = -d / (this.vman.track_link_pitch_m || 0.1416); if (m.normalMap) m.normalMap.offset.x = m.map.offset.x; if (m.alphaMap) m.alphaMap.offset.x = m.map.offset.x; }
     // LOD
     if (this.lod1?.length) { const far = this.game.camDist(this.pos) > 110; if (far !== this.far) { this.far = far; for (const o of this.lod1) o.visible = far && !this.destroyed; for (const o of this.lod0) o.visible = !far; } }
-    r.visible = this.side === 'player' || this.destroyed || !this.concealed;   // enemy vehicles are drawn (unidentified: a "?", ui/contactMarkers.js) unless hidden unseen in heavy foliage
+    r.visible = this.side === 'player' || this.destroyed || this.tier === 2;   // an enemy vehicle is drawn only once identified (a contact: a "?" at its estimated position, ui/contactMarkers.js; game.spotFor)
   }
   // ------------------------------------------------------------ damage
   // surviving crew climb out of the hatches (hatch_exit) and fight on with pistols

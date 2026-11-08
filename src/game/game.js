@@ -7,7 +7,7 @@ import { RTSCamera } from '../engine/camera.js';
 import { Assets } from '../engine/assets.js';
 import { City, OBJECTIVES, SPAWNS, BOUNDS, DEPLOY_ZONES, MAP, setMap, mulberry } from '../world/city.js';
 import { Farmland } from '../world/farmland.js';
-import { updateLods, simplifierReady } from '../world/instancer.js';
+import { updateLods, simplifierReady, PLACED } from '../world/instancer.js';
 import { FX } from '../fx/particles.js';
 import { Audio } from '../audio/sfx.js';
 import { Squad } from './squad.js';
@@ -21,9 +21,22 @@ import { Commander, AutoDefender } from './ai.js';
 import { setupMedevac } from './medevac.js';
 import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
-import { ContactMarkers } from '../ui/contactMarkers.js';
 
 const Q = new URLSearchParams(location.search);
+const CONTACT_TTL = 25, ISR_R = 700;   // (spotFor) a contact not re-reported for 25 s is gone; the side's recon drones watch the open ground out to 700 m from its units (~ an FPV's reach)
+// an enemy squad as the local player knows it (fogSquad: also the versus joiner, net/battle.js): its men drawn only when
+// identified (the dead once seen stay drawn where they fell; a casualty on a medevac bed as the truck is); an ATGM team's launcher
+// (a separate object in the scene) hidden with them (layer mask 0: the team's own code keeps toggling .visible on its parts)
+export function fogSquad(u) {
+  const t = u.tier || 0;
+  for (const s of u.soldiers) {
+    if (s.state === 'dead') { if (t === 2) s.seenDead = true; s.visible = !!s.seenDead; }   // (the dead: once found they stay drawn where they lie)
+    else s.visible = !s.cellar && (s.onBed && typeof s.onBed === 'object' ? s.onBed.tier === 2 : t === 2);
+  }
+  const S = u.support; if (!S?.launcher) return;
+  const hide = t !== 2, L = S.launcher;
+  if (L.userData.fogHid !== hide) { L.userData.fogHid = hide; const m = hide ? 0 : 1; L.traverse(o => { o.layers.mask = m; }); for (const n of Object.values(S.nodes || {})) n.o?.traverse?.(o => { o.layers.mask = m; }); }
+}
 
 export class Game {
   constructor(opts) {
@@ -60,6 +73,7 @@ export class Game {
     try { this.city.build(); } finally { this.genRandom = Math.random; }
     this.nav = this.city.nav; this.nav.roadDist?.();   // road-centre distance field for vehicle routing, built once up front
     this.vegOcc = vegetationLOS(this.nav); this.trunkN = vegetationTrunks();   // tree trunks stop rounds (combat.js)
+    this.deadWoods = this.thinDeadWoods();   // woods / belts of bare trees: trunks only for sight (spotting v3)
     this.houses = buildHouses(this);   // private houses: garrisonable, with a cellar (world/houses.js)
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
@@ -315,14 +329,32 @@ export class Game {
     }
   }
   // ---------------------------------------------------------------- spotting
-  // Symmetric spotting: each side only sees (and the AI only engages) what its units have line of sight to.
+  // What each side knows about an enemy unit comes in three tiers (u.tierBy[side]; u.tier / u.spotted / u.qx,qz are the
+  // local player's view, what the renderer, the HUD and the input go by):
+  //   0  hidden      nothing: no model, no "?", not on the minimap. A unit holed up in a building, a cellar, a dugout or
+  //                  covered trench bay, or under heavy foliage, that nobody has identified and that gives nothing away
+  //   1  contact     something is there - the drone picture of the open ground (ISR: every unit not under cover within
+  //                  ISR_R of the side's own units), a burst of fire / an engine heard, a unit lost from sight a moment
+  //                  ago. No model and no type: a "?" at an estimated position (ctc.x/z: a grid ref with an error that
+  //                  grows with distance; heard contacts get a new rough fix every few seconds, between them the "?" sits
+  //                  still). Ages out CONTACT_TTL s after the last report
+  //   2  identified  the detection meter filled: line of sight in the open, or a drone camera over it (an FPV in the air
+  //                  is a spotter along its path; one sent to a "?" circles it and looks - game/support.js). Model + label
+  // The same rules for both sides: the AI's knowledge (ai_tactics Intel), its FPV teams and the versus joiner's picture
+  // (net/battle.js sends the joiner only what its side knows) all come from here. Throttled: twice a second.
   spotFor(side) {
-    const other = side === 'player' ? 'enemy' : 'player', spotters = [];
+    const other = side === 'player' ? 'enemy' : 'player', spotters = [], own = this._ownPos ||= [], eyes = this._eyes ||= [];
+    own.length = 0; eyes.length = 0;
     for (const u of this.unitsOf(side)) {
       const sm = 1 + (this.mods?.[side]?.spotRange || 0) + (this.mods?.[side]?.thermals || 0) * 0.5;   // optics / thermal sights ordered in the campaign
-      if (u.type === 'vehicle') spotters.push([u.pos.x, (u.pos.y || 0) + 2.6, u.pos.z, (u.kind === 'tank' ? 150 : 165) * (side === 'enemy' ? 0.85 : 1) * sm, u]); // buttoned-up crews see little
-      else for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, (s.inside === 'ride' ? 220 : 280) * sm, u.building]);
+      if (u.type === 'vehicle') { spotters.push([u.pos.x, (u.pos.y || 0) + 3.0, u.pos.z, (u.kind === 'tank' ? 210 : 220) * (side === 'enemy' ? 0.9 : 1) * sm, u]); own.push(u.pos.x, u.pos.z); } // buttoned-up crews see little
+      else { for (const s of u.effective) if (s.inside !== 'btr') spotters.push([s.pos.x, s.pos.y + s.headHeight(), s.pos.z, (s.inside === 'ride' ? 220 : 280) * sm, u.building]);
+        if (!u.mounted) { const l = u.leader?.effective && u.leader.inside !== 'btr' ? u.leader : u.effective.find(s => s.inside !== 'btr'); if (l) own.push(l.pos.x, l.pos.z); } }
+      // drone cameras: an FPV in the air sees what is under it (wider while it circles a contact looking for it)
+      const d = u.type === 'squad' && u.support?.drone;
+      if (d && !d.jam && d.phase !== 'launch' && d.phase !== 'fall') eyes.push([d.pos.x, d.pos.y, d.pos.z, d.phase === 'search' ? 70 : d.phase === 'dive' ? 35 : 45]);
     }
+    const isr = Math.max(ISR_R, (MAP.sizeM || 0) * 0.65) * (this.mods?.[side]?.reconDrone ? 1.5 : 1), now = this.time;   // (big maps: the drones reach most of it)
     for (const u of this.unitsOf(other)) {
       const ca = this.city.concealAt;
       // every man counts (it used to be the first 4 only: a squad whose first four were behind a wall vanished with
@@ -334,12 +366,12 @@ export class Game {
       let seen = false, best = 0;
       const fired = (u.firedT ?? 99) < 3;
       const moving = u.type === 'vehicle' ? Math.abs(u.speed || 0) > 0.5 : u.effective.some(s => s.vel.lengthSq() > 1);
-      const tracked = u.seenBy?.[side] != null && this.time - u.seenBy[side] < 4;
+      const tracked = u.seenBy?.[side] != null && now - u.seenBy[side] < 4;
       for (const [x, y, z, ign, cf] of pts) {
         for (const sp of spotters) {
           const d = Math.hypot(sp[0] - x, sp[2] - z);
           if (d < 25) { best = 9; break; }
-          const range = sp[3] * (u.type === 'vehicle' ? 1.25 : 1) * (u.type === 'squad' && u.building ? 0.75 : 1) * (fired ? 1.6 : 1) * cf;
+          const range = sp[3] * (u.type === 'vehicle' ? 1.5 : 1) * (u.type === 'squad' && u.building ? 0.75 : 1) * (fired ? 1.6 : 1) * cf;
           if (d > range) continue;
           const f = Math.pow(1 - d / range, 1.4) * (moving ? 1.6 : 1) * (fired ? 2.5 : 1) * (tracked ? 2 : 1) * (u.type === 'vehicle' ? 1.5 : 1);
           if (f * 3 <= best) continue;
@@ -347,30 +379,111 @@ export class Game {
           else if (fired && this.combat.los(sp[0], sp[1], sp[2], x, y, z, sp[4], ign || u, true)) best = Math.max(best, f * 1.5);   // muzzle flashes through the leaves: located roughly
         }
         if (best >= 9) break;
+        // a drone camera looking down: the open ground under it at once, into a tree belt only from nearly overhead
+        // (nav.occluded: the leaves along the steep line of sight), never into a building
+        if (!ign) for (const e of eyes) {
+          const R = e[3] * (cf < 0.45 ? 0.45 : 1), dh = Math.hypot(e[0] - x, e[2] - z);
+          if (dh > R || 6 * (1 - dh / R * 0.5) <= best) continue;
+          if (this.combat.los(e[0], e[1], e[2], x, y, z, null, u)) best = Math.max(best, 6 * (1 - dh / R * 0.5));
+        }
       }
+      // a vehicle standing / driving in the open within half the drone-watch range: the recon drone's camera makes out what
+      // it is within a couple of seconds (infantry in the open stays a "?" until someone has line of sight)
+      if (u.type === 'vehicle' && !u.hid && best < 0.5) { const p0 = u.pos; for (let i = 0; i < own.length; i += 2) if (Math.hypot(own[i] - p0.x, own[i + 1] - p0.z) < isr * 0.5) { best = 0.5; break; } }
       u.detect ||= {}; const dm = u.detect[side] || 0;
       // drain: slower for a target that was being tracked (the meter no longer bounces across the threshold)
       u.detect[side] = best > 0 ? Math.min(1.6, dm + best * 0.5 * (0.6 + Math.random() * 0.8)) : Math.max(0, dm - (tracked ? 0.2 : 0.35));
       seen = u.detect[side] >= 1;
       u.seenBy ||= {};
-      if (seen) u.seenBy[side] = this.time;
-      if (side === 'player') {
-        // hysteresis: once spotted a unit stays shown until the meter has really drained (or 3 s after the last sighting),
-        // then it leaves a fading last-known-position marker instead of just popping out of existence
-        const was = !!u.spotted;
-        u.spotted = (u.seenBy.player != null && this.time - u.seenBy.player < 3) || (was && u.detect.player > 0.25);
-        if (was && !u.spotted && !u.destroyed) this.lastKnown(u); else if (u.spotted && u.lkm) this.dropLastKnown(u);
-        // enemies are drawn (an unidentified one under a "?": ui/contactMarkers.js) unless they are holed up unseen in
-        // a building or heavy foliage (ContactMarkers.concealed: no model, no "?"); men down in a cellar are not
-        u.concealed = ContactMarkers.concealed(u, this);
-        if (u.type === 'squad') for (const s of u.soldiers) s.visible = s.state === 'dead' || !s.cellar && !u.concealed;
+      if (seen) u.seenBy[side] = now;
+      // identified: hysteresis - once identified a unit stays so until the meter has really drained (or 3 s after the last sighting)
+      const ids = u.idBy ||= {}, idf = ids[side] = (u.seenBy[side] != null && now - u.seenBy[side] < 3) || (!!ids[side] && u.detect[side] > 0.25);
+      // ---- contact: what reaches the side without anyone seeing the unit itself
+      const p = u.type === 'vehicle' ? u.pos : u.center(u._c ||= new THREE.Vector3());
+      let dmin = 1e9; for (let i = 0; i < own.length; i += 2) { const dd = Math.hypot(own[i] - p.x, own[i + 1] - p.z); if (dd < dmin) dmin = dd; }
+      const c = (u.ctc ||= {})[side] ||= { t: -1e9, x: p.x, z: p.z, ox: 0, oz: 0, src: 0, et: -1e9 };
+      let src = 0, err = 0;
+      if (idf) src = 3;
+      else if (!u.hid && dmin < isr) { src = 2; err = 4 + dmin * 0.025; }   // in the open: on someone's drone feed
+      else if (fired && dmin < (u.type === 'vehicle' || u.kind === 'atgm' ? 900 : u.kind === 'fpv' ? 0 : 350)) { src = 1; err = 6 + dmin * 0.05; }   // heard firing (guns / missiles carry far)
+      else if (dmin < (u.type === 'vehicle' ? (moving ? 220 : 50) : moving ? 45 : 25)) { src = 1; err = 5 + dmin * 0.08; }   // engines, movement close by
+      if (src === 3) { c.ox = c.oz = 0; c.x = p.x; c.z = p.z; c.t = now; c.src = 3; }
+      else if (src === 2) {   // a drone-fed grid ref: tracks the unit, the error wanders
+        c.ox += (Math.random() - 0.5) * err * 0.5; c.oz += (Math.random() - 0.5) * err * 0.5; const m = Math.hypot(c.ox, c.oz); if (m > err) { c.ox *= err / m; c.oz *= err / m; }
+        c.x = p.x + c.ox; c.z = p.z + c.oz; c.t = now; c.src = 2;
+      } else if (src === 1) {   // a rough fix by ear: a new one every few seconds, in between the "?" stays put
+        if (c.src !== 1 || now - c.et > 5 || now - c.t > 6) { const a = Math.random() * 6.283, r = err * (0.35 + Math.random() * 0.65); c.ox = Math.cos(a) * r; c.oz = Math.sin(a) * r; c.x = p.x + c.ox; c.z = p.z + c.oz; c.et = now; }
+        c.t = now; c.src = 1;
+      }
+      (u.tierBy ||= {})[side] = idf ? 2 : now - c.t < CONTACT_TTL ? 1 : 0;
+    }
+    // squads aboard a vehicle (and a medevac crew in its cab) are known as their vehicle is
+    for (const q of this.squads) {
+      if (q.side !== other || q.destroyed) continue;
+      const car = q.mounted ? q.carrier : q.medevac && q.effective.every(s => s.inCab || s.inside === 'btr') ? q.medevac : null;
+      if (!car || car.destroyed || !car.tierBy) continue;
+      q.tierBy[side] = car.tierBy[side]; const a = car.ctc?.[side], b = q.ctc?.[side]; if (a && b) { b.x = a.x; b.z = a.z; b.t = a.t; }
+    }
+    if (side === 'player') for (const u of this.unitsOf(other)) this.viewSet(u, u.tierBy?.player || 0, u.ctc?.player);
+  }
+  // the local player's view of an enemy unit (host / single player from spotFor, the versus joiner from the snapshots)
+  viewSet(u, tier, c) {
+    const was = u.tier || 0;
+    u.tier = tier; u.spotted = tier === 2;
+    if (c) { u.qx = c.x; u.qz = c.z; u.qt = c.t; }
+    // a contact gone cold leaves a fading last-known-position ring where its "?" (or the unit) was last
+    if (was >= 1 && tier === 0 && !u.destroyed) this.lastKnown(u, was === 2 ? null : u);
+    else if (tier >= 1 && u.lkm) this.dropLastKnown(u);
+  }
+  // Woods and tree belts of mostly bare trees (dead, shelled, stripped templates) hide nothing but trunks: under 25 % of
+  // their trees in leaf the belt's sight occluder goes (o.dead: see through as over open ground), under 60 % you see three
+  // times as deep into it; their concealment cells (rural maps) lighten to light cover, so men there are not 'hidden'.
+  // Shelling strips leafy belts during the battle (world/treeDamage.js) on top of this. Once at load.
+  thinDeadWoods() {
+    const nav = this.nav, C = nav.occCell, TREE = /^(tree_|leafy_summer_)/, LEAF = /^(tree_.*_leafy|leafy_summer_.*)$/, SKIP = /fallen|stump|_lod\d*$|_mid$|row$/;
+    const cnt = new Map(), v = new THREE.Vector3();
+    for (const P of PLACED) {
+      const n = P.template?.name || ''; if (!TREE.test(n) || SKIP.test(n)) continue; const leafy = LEAF.test(n);
+      for (const M of P.matrices) {
+        v.setFromMatrixPosition(M); const l = nav.occGrid.get(Math.floor(v.x / C) * 4096 + Math.floor(v.z / C)); if (!l) continue;
+        for (const o of l) { if (!o.foliage || o.veg) continue; const dx = v.x - o.cx, dz = v.z - o.cz, lx = dx * o.cos - dz * o.sin, lz = dx * o.sin + dz * o.cos; if (Math.abs(lx) > o.hx || Math.abs(lz) > o.hz) continue; const c = cnt.get(o) || cnt.set(o, [0, 0]).get(o); c[0]++; if (leafy) c[1]++; }
       }
     }
+    const Cy = this.city, cc = Cy.conceal, half = (MAP.sizeM || 0) / 2; let dead = 0, thin = 0;
+    for (const [o, [n, lf]] of cnt) {
+      if (n < 3) continue; const f = lf / n; if (f >= 0.6) continue;
+      if (f < 0.25) { o.dead = true; dead++; } else { o.depth = (o.depth || 9) * 3; thin++; }
+      if (!cc || !Cy.CS) continue;   // lighten the concealment under it: light cover (0.6) for a dead wood, medium (0.45+) for a thinned one
+      const R = Math.hypot(o.hx, o.hz), i0 = Math.max(0, Math.floor((o.cx - R + half) / Cy.CS)), i1 = Math.min(Cy.CN - 1, Math.floor((o.cx + R + half) / Cy.CS)), j0 = Math.max(0, Math.floor((o.cz - R + half) / Cy.CS)), j1 = Math.min(Cy.CN - 1, Math.floor((o.cz + R + half) / Cy.CS));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const x = (i + 0.5) * Cy.CS - half, z = (j + 0.5) * Cy.CS - half, dx = x - o.cx, dz = z - o.cz; if (Math.abs(dx * o.cos - dz * o.sin) > o.hx || Math.abs(dx * o.sin + dz * o.cos) > o.hz) continue; const k = j * Cy.CN + i; cc[k] = Math.max(cc[k], f < 0.25 ? 155 : 118); }
+    }
+    return { dead, thin };
+  }
+  // is the unit somewhere it can't be seen from the air (most of its men in buildings / cellars / dugouts / covered trench
+  // bays or under heavy foliage; a vehicle in a forest)? (side-independent: once per spotting tick, game.updateSpotting)
+  hiddenSpot(u) {
+    const C = this.city, ca = C.concealAt, heavy = (x, z) => !!ca && ca.call(C, x, z) < 0.45;
+    if (u.type === 'vehicle') return heavy(u.pos.x, u.pos.z);
+    let n = 0, hid = 0;
+    for (const s of u.soldiers) { if (!s.alive || s.state === 'dead' || s.inside === 'btr') continue; n++; if (s.inBuilding || s.cellar || heavy(s.pos.x, s.pos.z) || this.overheadCover(s.pos.x, s.pos.z)) hid++; }
+    return n === 0 ? !u.mounted : hid >= n * 0.75;   // (everyone down in the dugouts: hidden)
+  }
+  // a trench bay under a log roof (MG nest), a dugout passage, or a section under a camo net / branches / tarp
+  overheadCover(x, z) {
+    const C = this.city, T = C.terrain; if (!T || !C.trenchInfo) return false;
+    if (!this._cov) { this._cov = new Set(); for (const [cx, cz, , , w] of T.covers || []) { const r = Math.max(1.6, (w || 1) * 0.6); for (let dx = -r; dx <= r; dx += 0.8) for (let dz = -r; dz <= r; dz += 0.8) if (dx * dx + dz * dz <= r * r) this._cov.add(Math.floor((cx + dx) / 2) * 65536 + Math.floor((cz + dz) / 2)); } }
+    if (!C.trenchInfo(x, z)) return false;
+    const q = T._q; return !!(q && (q.covered || q.kind === 'pass')) || this._cov.has(Math.floor(x / 2) * 65536 + Math.floor(z / 2));
+  }
+  // draw what the local player knows: enemy men only when identified (the dead stay where they fell), an enemy ATGM
+  // team's launcher with them; vehicles do it in their own sync (vehicle.js: u.tier)
+  applyFog() {
+    for (const u of this.squads) if (u.side !== 'player') fogSquad(u);
   }
   // last-known-position marker: a red ring where an enemy unit was last seen, fading over ~12 s
-  lastKnown(u) {
+  lastKnown(u, at = null) {
     if (this.noRender && !this.renderer) return;
-    const p = u.type === 'vehicle' ? u.pos : u.center(), r = u.type === 'vehicle' ? 4 : 3.2;
+    const p = at ? { x: at.qx, z: at.qz } : u.type === 'vehicle' ? u.pos : u.center(), r = u.type === 'vehicle' ? 4 : 3.2;
     let m = u.lkm; if (!m) { m = new THREE.Mesh(this._lkG ||= new THREE.RingGeometry(0.82, 1, 40), new THREE.MeshBasicMaterial({ color: 0xc8483a, transparent: true, opacity: 0.55, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.renderOrder = 4; this.scene.add(m); u.lkm = m; (this.lkms ||= new Set()).add(u); }
     m.scale.setScalar(r); m.position.set(p.x, (this.city.groundHeight?.(p.x, p.z) || 0) + 0.25, p.z); m.userData.t0 = this.time; m.visible = true;
   }
@@ -378,8 +491,17 @@ export class Game {
   updateLastKnown() { if (this.lkms) for (const u of [...this.lkms]) { const a = (this.time - u.lkm.userData.t0) / 12; if (a >= 1 || u.destroyed) this.dropLastKnown(u); else u.lkm.material.opacity = 0.55 * (1 - a); } }
   updateSpotting() {
     this.updateLastKnown();
+    for (const u of this.squads) if (!u.destroyed) u.hid = this.hiddenSpot(u);
+    for (const v of this.vehicles) if (!v.destroyed) v.hid = this.hiddenSpot(v);
     this.spotFor('player'); this.spotFor('enemy');
+    this.applyFog();
     for (const sq of this.squads) if (sq.side === 'player') for (const s of sq.soldiers) s.visible = !s.cellar;   // (men down in a cellar: not drawn)
+    if (Q.has('fogstats')) this.fogStats();
+  }
+  // test hook (?fogstats): running counts of enemy unit-ticks per tier, both sides' view
+  fogStats() {
+    const S = this.fogS ||= { player: [0, 0, 0], enemy: [0, 0, 0], fpv: { contact: 0, found: 0, spec: 0 } };
+    for (const side of ['player', 'enemy']) for (const u of this.enemiesOf(side)) if (!(u.type === 'squad' && (u.mounted || u.medevac))) S[side][u.tierBy?.[side] || 0]++;
   }
   // can `side` currently engage unit u (spotted recently or very close)?
   seen(side, u, from) { if (u.seenBy?.[side] != null && this.time - u.seenBy[side] < 4) return true; if (!from) return false; const p = u.type === 'vehicle' ? u.pos : (u._c ||= new THREE.Vector3()) && u.center(u._c); return Math.hypot(from.x - p.x, from.z - p.z) < 35; }

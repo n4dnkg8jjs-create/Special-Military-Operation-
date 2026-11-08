@@ -390,7 +390,7 @@ export class MedevacTruck extends Vehicle {
     for (const c of this.load) {
       if (!c.onBed) continue;
       this.slotPos(c.bedSlot, c.pos); c.heading = this.heading + Math.PI; c.netClip = clipOf('cBed');
-      c.root.visible = this.mstate !== 'away';   // (enemy pickups are drawn like every enemy unit: ui/contactMarkers.js)
+      c.root.visible = this.mstate !== 'away' && (this.side === 'player' || this.tier === 2);   // (an enemy pickup is drawn once identified, like every enemy unit: game.spotFor)
       c.sync();
     }
   }
@@ -438,7 +438,7 @@ export class MedevacTruck extends Vehicle {
     this.scripted = null; this.mstate = 'away'; this.speed = 0; this.root.visible = false; for (const m of this.medics) m.s.inCab = false; this.tripT = TRIP[0] + Math.random() * (TRIP[1] - TRIP[0]);
     this.tripT *= 1 - Math.min(0.6, g.mods?.[this.side]?.medTrip || 0);   // campaign tech: stabilisation point forward, armoured ambulances take over at the casualty collection point
     this.awayPos = this.pos.clone(); this.backAt = g.time + this.tripT; this.leaving = true;   // Medevac.tick takes it out of game.vehicles (nobody can see / shoot it)
-    this.target = null; this.seenBy = {}; this.detect = {}; this.spotted = false;
+    this.target = null; this.seenBy = {}; this.detect = {}; this.spotted = false; this.idBy = {}; this.tierBy = {}; this.ctc = {}; if (this.side !== 'player') this.tier = 0;   // back in: unknown again
     const b = g.hud?.banners?.get(this); if (b) { b.el._sdisplay = 'none'; b.el.style.display = 'none'; }
     this.engine?.stop(); this.engineDrive?.stop(); this.engine = this.engineDrive = null;
     // the wounded reach the casualty collection point: saved

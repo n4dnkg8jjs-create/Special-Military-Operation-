@@ -71,20 +71,21 @@ const hostState = () => FH.evaluate(() => { const g = window.game, r = v => Math
     stats: JSON.stringify(g.stats), md: (g.medevac?.trucks || []).map(t => [t.id, t.side, t.mstate, t.load.length, t.saved]), dr: g.squads.filter(q => q.support?.drone).map(q => q.id),
     panels: g.city.buildings.map(b => b.panels.map(p => p.gone ? 'x' : p.state).join('')).join('|'), craters: g.city.craterMesh?.count ?? null, over: g.over }; });
 const joinState = () => FJ.evaluate(() => { const g = window.game, r = v => Math.round(v * 10) / 10, fl = s => (s === 'player' ? 'enemy' : 'player'), sq = {}, v = {};
-  for (const [id, u] of g.netMap) { if (u.type === 'squad') sq[id] = [fl(u.side), u.name, u.soldiers.map(s => [s.state, r(s.pos.x), r(s.pos.z), s.weaponKey || 0, s.state === 'evac' ? (s.onBed ? 1 : 0) : 0])]; else v[id] = [fl(u.side), r(u.pos.x), r(u.pos.z), Math.round(u.hp), u.destroyed ? 1 : 0, u.burning > 0 ? 1 : 0, u.abandoned ? 1 : 0, r(u.turretYaw || 0)]; }
+  // known: the joiner's own units, and the host's that its side has identified (fog: game.spotFor tiers - the rest never reach it)
+  for (const [id, u] of g.netMap) { const known = u.side === 'player' || u.tier === 2 || u.destroyed ? 1 : 0; if (u.type === 'squad') sq[id] = [fl(u.side), u.name, u.soldiers.map(s => [s.state, r(s.pos.x), r(s.pos.z), s.weaponKey || 0, s.state === 'evac' ? (s.onBed ? 1 : 0) : 0]), known]; else v[id] = [fl(u.side), r(u.pos.x), r(u.pos.z), Math.round(u.hp), u.destroyed ? 1 : 0, u.burning > 0 ? 1 : 0, u.abandoned ? 1 : 0, r(u.turretYaw || 0), known]; }
   return { t: g.time, sq, v, tk: g.tickets ? [Math.round(g.tickets.enemy), Math.round(g.tickets.player)] : null, o: g.objectives.map(o => o.owner === 'neutral' ? 'neutral' : fl(o.owner)), mo: g.mortars, arty: g.fires ? g.fires.count.player : null, stats: JSON.stringify({ player: g.stats.enemy, enemy: g.stats.player }),
     md: (g.medevac?.trucks || []).map(t => [t.netId, fl(t.side), t.mstate, t.load.length, t.saved]), dr: [...(g._netDrones?.keys() || [])], panels: g.city.buildings.map(b => b.panels.map(p => p.gone ? 'x' : p.state).join('')).join('|'), craters: g.city.craterMesh?.count ?? null, over: g.over, local: g.squads.length + g.vehicles.length, mapped: g.netMap.size }; });
 const report = { checks: 0, hard: 0 };
 const compare = async label => {
   const h = await hostState(); await page.waitForTimeout(150); const j = await joinState();
   const out = [], hard = m => { out.push('HARD ' + m); report.hard++; }, soft = m => out.push(m);
-  let pos = [], miss = 0, stateBad = 0, wk = 0, bed = 0;
+  let pos = [], miss = 0, stateBad = 0, wk = 0, bed = 0, fog = 0;
   for (const [id, side, name, men] of h.sq) {
     const J = j.sq[id]; if (!J) { miss++; if (men.some(m => m[0] !== 'dead')) hard(`squad ${id} ${name} (${side}) not on the joiner`); continue; }
-    if (J[0] !== side) hard(`squad ${id} side ${J[0]} vs ${side}`); if (J[1].replace(/^Enemy /, '').toLowerCase() !== name.replace(/^Enemy /, '').toLowerCase()) soft(`squad ${id} name '${J[1]}' vs '${name}'`);
+    if (J[0] !== side) hard(`squad ${id} side ${J[0]} vs ${side}`); if (!J[3]) { fog++; continue; }   // (a host squad the joiner has not identified: nothing of it is sent) if (J[1].replace(/^Enemy /, '').toLowerCase() !== name.replace(/^Enemy /, '').toLowerCase()) soft(`squad ${id} name '${J[1]}' vs '${name}'`);
     men.forEach((m, i) => { const q = J[2][i]; if (!q) { hard(`squad ${id} soldier ${i} missing`); return; } if ((m[0] === 'dead') !== (q[0] === 'dead')) stateBad++; else if (m[0] !== q[0]) stateBad += 0.001; if (m[0] !== 'dead' && m[0] !== 'evac') pos.push(Math.hypot(m[1] - q[1], m[2] - q[2])); if (m[3] !== q[3]) wk++; if (m[4] !== q[4]) bed++; });
   }
-  const vd = []; for (const [id, side, x, z, hp, d, b, ab, ty] of h.v) { const J = j.v[id]; if (!J) { hard(`vehicle ${id} not on the joiner`); continue; } vd.push(Math.hypot(x - J[1], z - J[2])); if (d !== J[4]) hard(`vehicle ${id} destroyed ${d} vs ${J[4]}`); if (Math.abs(hp - J[3]) > 2) soft(`vehicle ${id} hp ${hp} vs ${J[3]}`); if (b !== J[5]) soft(`vehicle ${id} burning ${b} vs ${J[5]}`); if (ab !== J[6]) soft(`vehicle ${id} abandoned ${ab} vs ${J[6]}`); }
+  const vd = []; for (const [id, side, x, z, hp, d, b, ab, ty] of h.v) { const J = j.v[id]; if (!J) { hard(`vehicle ${id} not on the joiner`); continue; } if (!J[8]) { fog++; continue; } vd.push(Math.hypot(x - J[1], z - J[2])); if (d !== J[4]) hard(`vehicle ${id} destroyed ${d} vs ${J[4]}`); if (Math.abs(hp - J[3]) > 2) soft(`vehicle ${id} hp ${hp} vs ${J[3]}`); if (b !== J[5]) soft(`vehicle ${id} burning ${b} vs ${J[5]}`); if (ab !== J[6]) soft(`vehicle ${id} abandoned ${ab} vs ${J[6]}`); }
   const s = a => a.length ? `max ${Math.max(...a).toFixed(1)} mean ${(a.reduce((x, y) => x + y, 0) / a.length).toFixed(2)}` : '-';
   if (Math.floor(stateBad) > 0) hard(`${Math.floor(stateBad)} soldiers dead on one side only`);
   if (stateBad % 1 > 0.0005) soft(`${Math.round((stateBad % 1) * 1000)} soldiers in another wound state`);
@@ -98,7 +99,7 @@ const compare = async label => {
   if (h.dr.join() !== j.dr.join()) soft(`drones in the air host [${h.dr}] joiner [${j.dr}]`);
   if (h.panels !== j.panels) { let n = 0; const A = h.panels.split(''), B = j.panels.split(''); for (let i = 0; i < Math.max(A.length, B.length); i++) if (A[i] !== B[i]) n++; hard(`building panels differ (${n})`); }
   if (h.craters !== j.craters) soft(`craters host ${h.craters} joiner ${j.craters}`);
-  console.log(`[${label}] t host ${h.t.toFixed(1)} joiner ${j.t.toFixed(1)} · squads ${h.sq.length} (missing ${miss}) · men pos ${s(pos)} · veh pos ${s(vd)} · joiner objects ${j.local}/${j.mapped}`);
+  console.log(`[${label}] t host ${h.t.toFixed(1)} joiner ${j.t.toFixed(1)} · squads ${h.sq.length} (missing ${miss}) · men pos ${s(pos)} · veh pos ${s(vd)} · joiner objects ${j.local}/${j.mapped} · not identified by the joiner (not compared) ${fog}`);
   for (const m of out) console.log('   ' + m); report.checks++;
 };
 await compare('start');

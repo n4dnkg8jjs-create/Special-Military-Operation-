@@ -37,7 +37,7 @@ async function start(opts) {
   if (Q.has('sim')) { // headless test mode: simulate N seconds, render one frame, report
     window.__done = false;
     const total = +Q.get('sim'); game.noRender = true; const cam = Q.get('cam');
-    if (cam) { if (!/^(fight|atgm|fpv|fpvtgt|burn)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
+    if (cam) { if (!/^(fight|atgm|fpv|fpvtgt|burn|contact|enemy)$/.test(cam)) { const [x, z, d, yaw, pitch] = cam.split(',').map(Number); game.cam.lookAt(x, z); game.cam.tDist = d || 80; if (yaw != null && !isNaN(yaw)) game.cam.tYaw = yaw; if (pitch) game.cam.tPitch = pitch; } }
     if (Q.get('sel')) hud.select([game.playerUnits[+Q.get('sel')]]);
     if (!Q.has('deploy')) game.startBattle();
     if (Q.has('fpvfeed')) {   // drone-view test (ui/droneFeed.js): from fpvat=<s> the player's FPV team launches at the nearest enemy in reach (vehicles first); the sim stops at fpvfeed=mid (cruise, fpvt=<s> airborne) | dive (fpvd=<m> from the aim point) | lost (SIGNAL LOST)
@@ -48,6 +48,17 @@ async function start(opts) {
         const foes = game.enemiesOf('player').filter(u => !u.destroyed && !(u.type === 'squad' && (u.mounted || u.building))).map(u => [u, (u.type === 'vehicle' ? u.pos : u.center()).distanceTo(p.pos)]).filter(([, d]) => d > 60 && d < 850).sort((a, b) => (b[0].type === 'vehicle') - (a[0].type === 'vehicle') || a[1] - b[1]);
         if (foes.length) { sent = true; const u = foes[0][0]; (u.detect ||= {}).player = 1.6; (u.seenBy ||= {}).player = 0; u.spotted = true; S.launch(u); S.drone.t = 0; window.__fpvT = u; window.__fpvTarget = `${foes[0][0].name || foes[0][0].kind} ${Math.round(foes[0][1])} m`; } };
       window.__simStop = () => { const d = S?.drone, F = game.droneFeed; return st === 'mid' ? d?.phase === 'cruise' && d.age > +(Q.get('fpvt') || 7) : st === 'dive' ? d?.phase === 'dive' && d.pos.distanceTo(d.aim) < +(Q.get('fpvd') || 14) : sent && F?.mode === 'lost' && F.lostT > 0.9; };
+    }
+    if (Q.has('fpvcontact')) {   // spotting v3 test (game.spotFor tiers, support.js 'search'): from fpvat=<s> the player's FPV team is tasked on the nearest unconfirmed contact ("?") in reach; the sim stops at fpvcontact=search (circling it, fpvt=<s>) | found (diving on what it found) | any (search or found)
+      const st = Q.get('fpvcontact') || 'search', at = +(Q.get('fpvat') || 20), q = game.squads.find(s => s.side === 'player' && s.kind === 'fpv'), S = q?.support; let sent = false;
+      if (S) { S.scanT = 1e9; S.reactions = () => {}; }
+      const step0 = window.__replayStep;
+      const L = window.__fpvLog = []; let lastPh = null;
+      window.__replayStep = t => { step0?.(t); const dd = S?.drone; if (sent && (dd ? `${dd.phase}${dd.contact ? 'C' : ''}${dd.found ? 'F' : ''}${dd.spec ? 'S' : ''}` : 'none') !== lastPh) { lastPh = dd ? `${dd.phase}${dd.contact ? 'C' : ''}${dd.found ? 'F' : ''}${dd.spec ? 'S' : ''}` : 'none'; L.push(`${t.toFixed(1)} ${lastPh}`); }
+        if (sent || !S || t < at || S.drone) return; const p = S.pilot(); if (!p) return;
+        const c = game.enemiesOf('player').filter(u => u.tier === 1 && !(u.type === 'squad' && u.mounted)).map(u => [u, Math.hypot(u.qx - p.pos.x, u.qz - p.pos.z)]).filter(([, d]) => d > 60 && d < 850).sort((a, b) => a[1] - b[1])[0];
+        if (c) { sent = true; q.focus = c[0]; S.launch(c[0], true); S.drone.t = 0; window.__fpvT = c[0]; window.__fpvTarget = `contact ${Math.round(c[1])} m (really ${c[0].type === 'vehicle' ? c[0].kind : 'infantry'})`; } };
+      window.__simStop = () => { const d = S?.drone; return !!d && ((st !== 'found' && d.phase === 'search' && d.searchT > +(Q.get('fpvt') || 3)) || (st !== 'search' && d.found && d.phase === 'dive')); };
     }
     if (Q.has('fire')) { const [fx, fz] = Q.get('fire').split(',').map(Number); game.fx.emitter(new THREE.Vector3(fx, 0, fz), 'fire', 1.3, 999); }
     if (Q.has('fireat')) { const [fx, fz] = Q.get('fireat').split(',').map(Number); for (const u of game.playerUnits) u.fireAt = { p: new THREE.Vector3(fx, 0, fz), until: 1e9 }; }
@@ -97,6 +108,13 @@ async function start(opts) {
       for (const e of game.squads) if (e.side === 'enemy' && !e.mounted && !e.destroyed) for (const p of game.squads) if (p.side === 'player' && !p.mounted && !p.destroyed) { const d = e.center().distanceTo(p.center()); if (d < bd) { bd = d; best = [e.center(), p.center()]; } }
       if (best) { const m = best[0].clone().lerp(best[1], 0.35); game.cam.lookAt(m.x, m.z); game.cam.tDist = +(Q.get('dist') || 38); game.cam.tYaw = Math.atan2(best[1].x - best[0].x, best[1].z - best[0].z) + 0.5; game.cam.tPitch = 0.45; }
     }
+    if (cam === 'enemy') { const e = game.unitsOf('enemy'), c = e.reduce((a, u) => { const p = u.type === 'vehicle' ? u.pos : u.center(); a.x += p.x / e.length; a.z += p.z / e.length; return a; }, { x: 0, z: 0 }); game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 160); game.cam.tPitch = +(Q.get('pitch') || 0.8); window.__fog = { enemyMenDrawn: game.squads.filter(q => q.side === 'enemy').reduce((n, q) => n + q.soldiers.filter(s => s.visible).length, 0), enemyVehDrawn: game.vehicles.filter(v => v.side === 'enemy' && v.root.visible).length, enemyUnits: e.length, phase: game.phase }; }   // (spotting v3: where the enemy really is - nothing of it should be drawn while it is unknown)
+    if (cam === 'contact') {   // spotting v3 test: the player's FPV drone if it is up, else the nearest unconfirmed contact ("?") to an identified enemy / the front
+      const d = game.squads.find(s => s.side === 'player' && s.kind === 'fpv')?.support?.drone, foes = game.enemiesOf('player').filter(u => !(u.type === 'squad' && u.mounted));
+      const c = d ? d.pos : (() => { const q = foes.filter(u => u.tier === 1), idf = foes.filter(u => u.tier === 2); let b = null, bd = 1e9; for (const u of q) { const ref = idf.length ? idf : game.unitsOf('player'); for (const r of ref) { const p = r.type === 'vehicle' ? r.pos : r.center(), dd = Math.hypot(p.x - u.qx, p.z - u.qz); if (dd < bd) { bd = dd; b = [u.qx * 0.75 + p.x * 0.25, u.qz * 0.75 + p.z * 0.25]; } } } return b ? { x: b[0], z: b[1] } : null; })();
+      if (c) { game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 90); game.cam.tPitch = +(Q.get('pitch') || 0.75); if (Q.get('yaw')) game.cam.tYaw = +Q.get('yaw'); }
+      window.__fog = { log: window.__fpvLog?.slice(-12), player: foes.reduce((a, u) => (a[u.tier || 0]++, a), [0, 0, 0]), drone: d ? { phase: d.phase, found: !!d.found, spec: !!d.spec, searchT: +(d.searchT || 0).toFixed(1), target: d.target?.tier } : null, target: window.__fpvTarget };
+    }
     if (cam === 'fpvtgt' && window.__fpvT) { const p = window.__fpvT.type === 'vehicle' ? window.__fpvT.pos : window.__fpvT.center(); game.cam.lookAt(p.x, p.z); game.cam.tDist = +(Q.get('dist') || 70); game.cam.tPitch = 0.6; }   // (drone-view test: the main view on its target)
     if (cam === 'burn' && Q.has('burn')) { const v = game.playerUnits.filter(u => u.type === 'vehicle')[+Q.get('burn')]; if (v) { game.cam.lookAt(v.pos.x, v.pos.z); game.cam.tDist = +(Q.get('dist') || 16); game.cam.tYaw = +(Q.get('yaw') || 2.4); game.cam.tPitch = 0.42; } }   // (burn look test)
     if (cam === 'atgm' || cam === 'fpv') { const q = game.squads.find(s => s.side === 'player' && s.kind === cam); if (q) { const c = (q.effective[0] || q.soldiers[0]).pos; game.cam.lookAt(c.x, c.z); game.cam.tDist = +(Q.get('dist') || 9); game.cam.tYaw = +(Q.get('yaw') || 2.8); game.cam.tPitch = 0.35; } }
@@ -124,6 +142,7 @@ async function start(opts) {
         game.paused = true; const st0 = { ...F.st }; const on = run(), feedCpu = +((F.st.ms - st0.ms) / Math.max(1, F.st.n - st0.n)).toFixed(2); F.visible = false; const off = run(); F.visible = true; const on2 = run();
         window.__info.feedBench = { frameMsWith: on, frameMsWithout: off, frameMsWith2: on2, feedCpuMs: feedCpu, scale: game.renderer.dyn?.scale ?? 1 }; F.visible = true; }
     }
+    if (window.__fog) window.__info.fog = window.__fog;
     window.__done = true; return;
   }
   let last = performance.now();

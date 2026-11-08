@@ -49,6 +49,7 @@ export class Squad {
     this.morale = 82; this.order = null; this.holdFire = false; this.run = false;
     this.carrier = null; this.mounted = false; this.building = null; this.routing = false;
     this.underFireT = 99; this.flankDirs = []; this.selected = false; this.spotted = side === 'player';
+    this.tier = side === 'player' ? 2 : 0; if (side !== 'player') for (const s of this.soldiers) s.visible = false;   // enemies start unknown (game.spotFor: tiers)
     this.facing = 0; this.lastPos = new THREE.Vector3(); this.thinkT = Math.random();
     this.stats = { kills: 0, kia: 0, wia: 0 };
     this.supplyRpg = 0;

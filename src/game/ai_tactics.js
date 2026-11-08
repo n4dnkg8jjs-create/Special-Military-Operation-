@@ -18,9 +18,17 @@ export class Intel {
       if (u.type === 'squad' && (u.mounted || u.noncombat)) continue;
       if (u.noncombat) continue;
       const sb = u.seenBy?.[this.side];
-      if (sb == null || now - sb > 1.5) continue;
+      if (sb == null || now - sb > 1.5) {
+        // not identified, but a contact (game.spotFor tier 1: drone picture, heard firing): its reported position. A unit
+        // identified before keeps what it was known to be; a new one is an unknown of modest weight (no type, not armour)
+        const c = u.ctc?.[this.side]; if (!c || now - c.t > 1.5 || (u.tierBy?.[this.side] || 0) < 1) continue;
+        let e = this.c.get(u);
+        if (!e) { e = { u, first: now, contact: true, veh: false, kind: 'unk', armour: false, dug: false, pow: 2.5 }; this.c.set(u, e); this.firstContactT ??= now; }
+        e.x = c.x; e.z = c.z; e.t = now;
+        continue;
+      }
       const p = u.type === 'vehicle' ? u.pos : u.center();
-      let e = this.c.get(u);
+      let e = this.c.get(u); if (e?.contact) e.contact = false;
       if (!e) { e = { u, first: now }; this.c.set(u, e); this.firstContactT ??= now; }
       e.x = p.x; e.z = p.z; e.t = now;
       e.veh = u.type === 'vehicle'; e.kind = e.veh ? u.kind : u.kind === 'atgm' || u.kind === 'fpv' ? u.kind : 'inf';
