@@ -72,12 +72,12 @@
    ],
    "markings": "none (plain field-worn 4BO-style green, dust)",
    "file": "assets/vehicles/btr82a.glb",
-   "file_mb": 4.54,
+   "file_mb": 4.66,
    "tris": {
-    "lod0": 80678,
-    "lod1": 24165,
-    "hull_wreck": 16828,
-    "turret_wreck": 2438
+    "lod0": 80377,
+    "lod1": 24064,
+    "hull_wreck": 16830,
+    "turret_wreck": 2538
    },
    "model_bbox_m": {
     "min": [
@@ -87,12 +87,12 @@
     ],
     "max": [
      1.544,
-     2.919,
+     3.025,
      3.613
     ],
     "size": [
      3.088,
-     2.961,
+     3.067,
      7.665
     ]
    },
@@ -217,24 +217,24 @@
     }
    ],
    "ride_clearance": {
-    "turret_sweep_radius_m": 1.101,
+    "turret_sweep_radius_m": 1.077,
     "turret_sweep_z_m": [
      1.93,
-     2.919
+     3.025
     ],
-    "min_rider_margin_m": 0.042,
+    "min_rider_margin_m": 0.066,
     "per_seat_margin_m": [
-     0.042,
-     0.042,
-     0.774,
-     0.774,
-     1.447,
-     1.447,
-     1.744,
-     1.744
+     0.066,
+     0.066,
+     0.798,
+     0.798,
+     1.471,
+     1.471,
+     1.769,
+     1.769
     ],
-    "gun_trunnion_height_m": 2.46,
-    "gun_min_elevation_to_clear_riders_deg": 26.3,
+    "gun_trunnion_height_m": 2.52,
+    "gun_min_elevation_to_clear_riders_deg": 23.3,
     "gun_max_elevation_deg": 70,
     "gun_can_clear_riders": true
    },
@@ -269,8 +269,8 @@
     },
     "hatch_lid_gunner": {
      "role": "gunner",
-     "axis": "x",
-     "open": 2.007,
+     "axis": "z",
+     "open": -1.745,
      "parent": "turret",
      "rim": "hatch_gunner"
     }
@@ -292,7 +292,7 @@
     "hatch_lid_driver": "driver hatch lid, hinge empty under hull; open = rotation.x POSITIVE (0 .. +1.606 rad)",
     "hatch_lid_cargo_R": "cargo_R hatch lid, hinge empty under hull; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
     "hatch_lid_cargo_L": "cargo_L hatch lid, hinge empty under hull; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
-    "hatch_lid_gunner": "gunner hatch lid, hinge empty under turret; open = rotation.x POSITIVE (0 .. +2.007 rad)",
+    "hatch_lid_gunner": "gunner hatch lid, hinge empty under turret; open = rotation.z NEGATIVE (0 .. -1.745 rad)",
     "turret": "yaw about local Y",
     "gun_pivot": "pitch about local X; elevate = rotation.x NEGATIVE",
     "wheel_*": "spin about local X (hub)"
@@ -518,7 +518,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 26224,
+        "tris": 25689,
         "pos": [
          0.0,
          0.0,
@@ -529,7 +529,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 7849,
+        "tris": 7675,
         "pos": [
          0.0,
          0.0,
@@ -622,7 +622,7 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.46,
+           2.52,
            0.68
           ],
           "children": [
@@ -631,7 +631,7 @@
             "type": "empty",
             "pos": [
              -0.1,
-             2.425,
+             2.485,
              1.26
             ]
            },
@@ -641,7 +641,7 @@
             "tris": 832,
             "pos": [
              0.0,
-             2.46,
+             2.52,
              0.68
             ]
            },
@@ -652,7 +652,7 @@
             "tris": 248,
             "pos": [
              0.0,
-             2.46,
+             2.52,
              0.68
             ]
            },
@@ -661,7 +661,7 @@
             "type": "empty",
             "pos": [
              0.02,
-             2.46,
+             2.52,
              2.88
             ]
            }
@@ -672,38 +672,38 @@
           "type": "empty",
           "pos": [
            0.3,
-           2.41,
-           1.17
+           2.61,
+           0.04
           ]
          },
          {
           "name": "hatch_lid_gunner",
           "type": "empty",
           "pos": [
-           0.3,
-           2.382,
-           1.394
+           0.49,
+           2.586,
+           0.04
           ],
           "children": [
            {
             "name": "hatch_lid_gunner_geo",
             "type": "mesh",
-            "tris": 610,
+            "tris": 524,
             "pos": [
-             0.3,
-             2.382,
-             1.394
+             0.49,
+             2.586,
+             0.04
             ]
            },
            {
             "name": "hatch_lid_gunner_geo_LOD1",
             "type": "mesh",
             "hidden": true,
-            "tris": 182,
+            "tris": 156,
             "pos": [
-             0.3,
-             2.382,
-             1.394
+             0.49,
+             2.586,
+             0.04
             ]
            }
           ]
@@ -720,7 +720,7 @@
          {
           "name": "turret_geo",
           "type": "mesh",
-          "tris": 4100,
+          "tris": 4420,
           "pos": [
            0.0,
            1.96,
@@ -731,7 +731,7 @@
           "name": "turret_geo_LOD1",
           "type": "mesh",
           "hidden": true,
-          "tris": 1222,
+          "tris": 1321,
           "pos": [
            0.0,
            1.96,
@@ -1002,7 +1002,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 16828,
+      "tris": 16830,
       "pos": [
        0.0,
        0.0,
@@ -1013,7 +1013,7 @@
       "name": "turret_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 2438,
+      "tris": 2538,
       "pos": [
        0.0,
        1.662,
@@ -1051,28 +1051,28 @@
    ],
    "markings": "white crosses on both hull sides, rear plate and roof; green base with brown + khaki disruptive patches",
    "file": "assets/vehicles/btr80_ua.glb",
-   "file_mb": 6.36,
+   "file_mb": 4.24,
    "tris": {
-    "lod0": 74889,
-    "lod1": 22438,
-    "hull_wreck": 16386,
+    "lod0": 75265,
+    "lod1": 22551,
+    "hull_wreck": 16533,
     "turret_wreck": 1960
    },
    "model_bbox_m": {
     "min": [
-     -1.531,
+     -1.544,
      -0.042,
-     -3.937
+     -4.052
     ],
     "max": [
-     1.531,
-     2.66,
-     3.893
+     1.544,
+     2.62,
+     3.613
     ],
     "size": [
-     3.062,
-     2.702,
-     7.83
+     3.088,
+     2.662,
+     7.665
     ]
    },
    "materials": [
@@ -1086,8 +1086,8 @@
      "name": "ride_seat_1",
      "seat_type": "edge",
      "pos": [
-      -0.56,
-      1.976,
+      -0.7,
+      1.936,
       -0.45
      ],
      "facing": [
@@ -1100,8 +1100,8 @@
      "name": "ride_seat_2",
      "seat_type": "edge",
      "pos": [
-      0.56,
-      1.976,
+      0.7,
+      1.936,
       -0.45
      ],
      "facing": [
@@ -1114,8 +1114,8 @@
      "name": "ride_seat_3",
      "seat_type": "edge",
      "pos": [
-      -0.56,
-      1.969,
+      -0.7,
+      1.929,
       -1.25
      ],
      "facing": [
@@ -1128,8 +1128,8 @@
      "name": "ride_seat_4",
      "seat_type": "edge",
      "pos": [
-      0.56,
-      1.969,
+      0.7,
+      1.929,
       -1.25
      ],
      "facing": [
@@ -1142,7 +1142,7 @@
      "name": "ride_seat_5",
      "seat_type": "edge",
      "pos": [
-      -0.56,
+      -0.7,
       2.003,
       -1.95
      ],
@@ -1156,7 +1156,7 @@
      "name": "ride_seat_6",
      "seat_type": "edge",
      "pos": [
-      0.56,
+      0.7,
       2.003,
       -1.95
      ],
@@ -1198,22 +1198,22 @@
    "ride_clearance": {
     "turret_sweep_radius_m": 0.801,
     "turret_sweep_z_m": [
-     2.0,
-     2.607
+     1.96,
+     2.567
     ],
-    "min_rider_margin_m": 0.36,
+    "min_rider_margin_m": 0.341,
     "per_seat_margin_m": [
-     0.36,
-     0.36,
-     1.121,
-     1.121,
-     1.805,
-     1.805,
-     2.134,
-     2.134
+     0.341,
+     0.341,
+     1.074,
+     1.074,
+     1.746,
+     1.746,
+     2.044,
+     2.044
     ],
-    "gun_trunnion_height_m": 2.22,
-    "gun_min_elevation_to_clear_riders_deg": 53.4,
+    "gun_trunnion_height_m": 2.18,
+    "gun_min_elevation_to_clear_riders_deg": 54.3,
     "gun_max_elevation_deg": 60,
     "gun_can_clear_riders": true
    },
@@ -1291,9 +1291,9 @@
         "name": "commander_hatch",
         "type": "empty",
         "pos": [
-         -0.45,
-         2.01,
-         1.98
+         -0.42,
+         1.97,
+         2.0
         ]
        },
        {
@@ -1302,7 +1302,7 @@
         "pos": [
          1.95,
          0.0,
-         -0.2
+         -0.28
         ]
        },
        {
@@ -1311,16 +1311,16 @@
         "pos": [
          -1.95,
          0.0,
-         -0.2
+         -0.28
         ]
        },
        {
         "name": "exhaust",
         "type": "empty",
         "pos": [
-         1.416,
-         1.505,
-         -3.4
+         1.435,
+         1.467,
+         -3.26
         ]
        },
        {
@@ -1328,26 +1328,26 @@
         "type": "empty",
         "pos": [
          0.45,
-         2.01,
-         -0.4
+         1.97,
+         -0.55
         ]
        },
        {
         "name": "hatch_commander",
         "type": "empty",
         "pos": [
-         -0.45,
-         2.01,
-         1.98
+         -0.42,
+         1.97,
+         2.0
         ]
        },
        {
         "name": "hatch_driver",
         "type": "empty",
         "pos": [
-         0.45,
-         2.01,
-         1.98
+         0.42,
+         1.97,
+         2.0
         ]
        },
        {
@@ -1355,8 +1355,8 @@
         "type": "empty",
         "pos": [
          -0.45,
-         2.01,
-         -0.4
+         1.97,
+         -0.55
         ]
        },
        {
@@ -1364,8 +1364,8 @@
         "type": "empty",
         "pos": [
          0.45,
-         1.986,
-         -0.73
+         1.946,
+         -0.88
         ],
         "children": [
          {
@@ -1374,8 +1374,8 @@
           "tris": 524,
           "pos": [
            0.45,
-           1.986,
-           -0.73
+           1.946,
+           -0.88
           ]
          },
          {
@@ -1385,8 +1385,8 @@
           "tris": 156,
           "pos": [
            0.45,
-           1.986,
-           -0.73
+           1.946,
+           -0.88
           ]
          }
         ]
@@ -1395,9 +1395,9 @@
         "name": "hatch_lid_commander",
         "type": "empty",
         "pos": [
-         -0.45,
-         1.986,
-         2.26
+         -0.42,
+         1.946,
+         2.28
         ],
         "children": [
          {
@@ -1405,9 +1405,9 @@
           "type": "mesh",
           "tris": 524,
           "pos": [
-           -0.45,
-           1.986,
-           2.26
+           -0.42,
+           1.946,
+           2.28
           ]
          },
          {
@@ -1416,9 +1416,9 @@
           "hidden": true,
           "tris": 156,
           "pos": [
-           -0.45,
-           1.986,
-           2.26
+           -0.42,
+           1.946,
+           2.28
           ]
          }
         ]
@@ -1427,9 +1427,9 @@
         "name": "hatch_lid_driver",
         "type": "empty",
         "pos": [
-         0.45,
-         1.986,
-         2.26
+         0.42,
+         1.946,
+         2.28
         ],
         "children": [
          {
@@ -1437,9 +1437,9 @@
           "type": "mesh",
           "tris": 524,
           "pos": [
-           0.45,
-           1.986,
-           2.26
+           0.42,
+           1.946,
+           2.28
           ]
          },
          {
@@ -1448,9 +1448,9 @@
           "hidden": true,
           "tris": 156,
           "pos": [
-           0.45,
-           1.986,
-           2.26
+           0.42,
+           1.946,
+           2.28
           ]
          }
         ]
@@ -1460,8 +1460,8 @@
         "type": "empty",
         "pos": [
          -0.45,
-         1.986,
-         -0.73
+         1.946,
+         -0.88
         ],
         "children": [
          {
@@ -1470,8 +1470,8 @@
           "tris": 524,
           "pos": [
            -0.45,
-           1.986,
-           -0.73
+           1.946,
+           -0.88
           ]
          },
          {
@@ -1481,8 +1481,8 @@
           "tris": 156,
           "pos": [
            -0.45,
-           1.986,
-           -0.73
+           1.946,
+           -0.88
           ]
          }
         ]
@@ -1490,7 +1490,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 21559,
+        "tris": 21935,
         "pos": [
          0.0,
          0.0,
@@ -1501,7 +1501,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 6457,
+        "tris": 6570,
         "pos": [
          0.0,
          0.0,
@@ -1512,8 +1512,8 @@
         "name": "ride_seat_1",
         "type": "empty",
         "pos": [
-         -0.56,
-         1.976,
+         -0.7,
+         1.936,
          -0.45
         ]
        },
@@ -1521,8 +1521,8 @@
         "name": "ride_seat_2",
         "type": "empty",
         "pos": [
-         0.56,
-         1.976,
+         0.7,
+         1.936,
          -0.45
         ]
        },
@@ -1530,8 +1530,8 @@
         "name": "ride_seat_3",
         "type": "empty",
         "pos": [
-         -0.56,
-         1.969,
+         -0.7,
+         1.929,
          -1.25
         ]
        },
@@ -1539,8 +1539,8 @@
         "name": "ride_seat_4",
         "type": "empty",
         "pos": [
-         0.56,
-         1.969,
+         0.7,
+         1.929,
          -1.25
         ]
        },
@@ -1548,7 +1548,7 @@
         "name": "ride_seat_5",
         "type": "empty",
         "pos": [
-         -0.56,
+         -0.7,
          2.003,
          -1.95
         ]
@@ -1557,7 +1557,7 @@
         "name": "ride_seat_6",
         "type": "empty",
         "pos": [
-         0.56,
+         0.7,
          2.003,
          -1.95
         ]
@@ -1585,8 +1585,8 @@
         "type": "empty",
         "pos": [
          0.0,
-         2.0,
-         0.95
+         1.96,
+         0.86
         ],
         "children": [
          {
@@ -1594,8 +1594,8 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.22,
-           1.55
+           2.18,
+           1.46
           ],
           "children": [
            {
@@ -1603,8 +1603,8 @@
             "type": "empty",
             "pos": [
              -0.13,
-             2.2,
-             2.24
+             2.16,
+             2.15
             ]
            },
            {
@@ -1613,8 +1613,8 @@
             "tris": 1020,
             "pos": [
              0.0,
-             2.22,
-             1.55
+             2.18,
+             1.46
             ]
            },
            {
@@ -1624,8 +1624,8 @@
             "tris": 306,
             "pos": [
              0.0,
-             2.22,
-             1.55
+             2.18,
+             1.46
             ]
            },
            {
@@ -1633,8 +1633,8 @@
             "type": "empty",
             "pos": [
              0.05,
-             2.22,
-             3.33
+             2.18,
+             3.24
             ]
            }
           ]
@@ -1644,8 +1644,8 @@
           "type": "empty",
           "pos": [
            0.0,
-           2.3,
-           0.35
+           2.26,
+           0.26
           ]
          },
          {
@@ -1654,8 +1654,8 @@
           "tris": 3398,
           "pos": [
            0.0,
-           2.0,
-           0.95
+           1.96,
+           0.86
           ]
          },
          {
@@ -1665,8 +1665,8 @@
           "tris": 1011,
           "pos": [
            0.0,
-           2.0,
-           0.95
+           1.96,
+           0.86
           ]
          }
         ]
@@ -1677,7 +1677,7 @@
         "pos": [
          1.205,
          0.548,
-         2.125
+         1.965
         ],
         "children": [
          {
@@ -1687,7 +1687,7 @@
           "pos": [
            1.205,
            0.548,
-           2.125
+           1.965
           ]
          },
          {
@@ -1698,7 +1698,7 @@
           "pos": [
            1.205,
            0.548,
-           2.125
+           1.965
           ]
          }
         ]
@@ -1709,7 +1709,7 @@
         "pos": [
          1.205,
          0.548,
-         0.775
+         0.595
         ],
         "children": [
          {
@@ -1719,7 +1719,7 @@
           "pos": [
            1.205,
            0.548,
-           0.775
+           0.595
           ]
          },
          {
@@ -1730,7 +1730,7 @@
           "pos": [
            1.205,
            0.548,
-           0.775
+           0.595
           ]
          }
         ]
@@ -1741,7 +1741,7 @@
         "pos": [
          1.205,
          0.548,
-         -1.175
+         -1.155
         ],
         "children": [
          {
@@ -1751,7 +1751,7 @@
           "pos": [
            1.205,
            0.548,
-           -1.175
+           -1.155
           ]
          },
          {
@@ -1762,7 +1762,7 @@
           "pos": [
            1.205,
            0.548,
-           -1.175
+           -1.155
           ]
          }
         ]
@@ -1805,7 +1805,7 @@
         "pos": [
          -1.205,
          0.548,
-         2.125
+         1.965
         ],
         "children": [
          {
@@ -1815,7 +1815,7 @@
           "pos": [
            -1.205,
            0.548,
-           2.125
+           1.965
           ]
          },
          {
@@ -1826,7 +1826,7 @@
           "pos": [
            -1.205,
            0.548,
-           2.125
+           1.965
           ]
          }
         ]
@@ -1837,7 +1837,7 @@
         "pos": [
          -1.205,
          0.548,
-         0.775
+         0.595
         ],
         "children": [
          {
@@ -1847,7 +1847,7 @@
           "pos": [
            -1.205,
            0.548,
-           0.775
+           0.595
           ]
          },
          {
@@ -1858,7 +1858,7 @@
           "pos": [
            -1.205,
            0.548,
-           0.775
+           0.595
           ]
          }
         ]
@@ -1869,7 +1869,7 @@
         "pos": [
          -1.205,
          0.548,
-         -1.175
+         -1.155
         ],
         "children": [
          {
@@ -1879,7 +1879,7 @@
           "pos": [
            -1.205,
            0.548,
-           -1.175
+           -1.155
           ]
          },
          {
@@ -1890,7 +1890,7 @@
           "pos": [
            -1.205,
            0.548,
-           -1.175
+           -1.155
           ]
          }
         ]
@@ -1933,7 +1933,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 16386,
+      "tris": 16533,
       "pos": [
        0.0,
        0.0,
@@ -1947,12 +1947,13 @@
       "tris": 1960,
       "pos": [
        0.0,
-       1.702,
-       0.95
+       1.662,
+       0.86
       ]
      }
     ]
-   }
+   },
+   "textures": "EXT_texture_webp (tools/optimize_assets.sh step applied)"
   },
   "t72b3": {
    "faction": "RU",

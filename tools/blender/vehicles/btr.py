@@ -79,7 +79,10 @@ def setup_variant(variant):
     """models_v12: both hulls share the re-measured profile (the BTR-82A hull is the BTR-80 hull); only the gunner hatch differs."""
     global GUNNER_HATCH
     if variant == 'btr82a':
-        GUNNER_HATCH = (-0.30, 0.31, DOME_Z, 0.21)    # models_v15: dome top front-left, ahead of the left launchers (v14 (-0.13,-0.33) r0.19)
+        # models_v16: the gunner's hatch is the rectangular lid on the turret's REAR deck, left of the receiver, hinged on its
+        # outboard (left) edge - opened it stands up like a fin (left-side photo (4)); the round thing at the dome front-left that
+        # v15 took for a hatch is a vision block, and the black lid in the front photos is the DRIVER's hull hatch lid.
+        GUNNER_HATCH = (-0.30, -0.82, DECK_Z, 0.34, 0.26)   # x, y, z (deck top), lid w (x), l (y)
 
 def x_upper(z):  # upper side plate x at height z
     return CH_X - (z - CH_Z) * (CH_X - RF_X) / (ROOF - CH_Z)
@@ -183,6 +186,14 @@ def hull_shell():
     b.mods([('BOOLEAN', dict(operation='DIFFERENCE', object=ob_cut, solver='EXACT'))])
     bpy.data.objects.remove(ob_cut)
     b.bevel(0.02, 2, 25)
+    # models_v16: the booleans + bevel leave near-duplicate vertices (<1 mm apart) and big CONCAVE n-gons (bow cheeks: roof corner ->
+    # crease -> nose -> WS_BOT break point); the exporter's triangulation folded the cheek polygon (a reversed coplanar triangle over
+    # the cheek - the grey patch on the UA camo).  Weld the near-duplicates and ear-clip the n-gons here.
+    bmesh.ops.remove_doubles(b.bm, verts=b.bm.verts[:], dist=0.0004)
+    bmesh.ops.triangulate(b.bm, faces=[f for f in b.bm.faces if len(f.verts) > 4], quad_method='BEAUTY', ngon_method='EAR_CLIP')
+    # (fresh bmesh: the welded one has holes in its element pools, and B.add() relies on new verts landing at the END of the table)
+    me_ = bpy.data.meshes.new('_shell'); b.bm.to_mesh(me_); b.bm.free()
+    b.bm = bmesh.new(); b.bm.from_mesh(me_); bpy.data.meshes.remove(me_)
     return b
 
 def glacis_frame():
@@ -588,7 +599,11 @@ def gun_bpu1():
 
 DOME_R = (0.86, 0.55)          # models_v14 BPPU: dome base radius at the ring / flat top radius
 DOME_Z = 0.40                   # dome flat-top height over the turret origin
-GUN_Y, GUN_Z = -0.18, 0.50     # models_v15: 2A72 trunnion (turret local), set back between the rear blocks (calibrated side photos)
+GUN_Y, GUN_Z = -0.18, 0.56     # models_v16: trunnion raised 0.50 -> 0.56 so the 2A72 depresses to -6 deg over the dome front
+                                # (BPPU -5 / +70 deg; game clamps -0.1 .. +0.35 rad); models_v15: set back between the rear blocks
+FRONT_PL = (0.80, 0.85)         # models_v16: sloped front face of the lower body: y at z = 0, and dy per dz (~40 deg from vertical)
+DECK_Z = 0.60                   # models_v16: top of the rear deck that joins the sight box, receiver and left housing
+DECK = [(-0.60, -0.60), (-0.60, -0.84), (-0.44, -0.97), (0.40, -0.97), (0.62, -0.82), (0.62, -0.60)]   # plan outline (r <= 1.07)
 
 def dome_z(r):
     """Height of the BPPU base dome surface at radius r (turret local)."""
@@ -598,30 +613,38 @@ def dome_z(r):
             return z0 + (z1 - z0) * (r - r0) / max(r1 - r0, 1e-6)
     return 0.0
 
+def front_y(z):
+    """models_v16: y of the BPPU lower body's sloped front face at height z (turret local)."""
+    return FRONT_PL[0] - z * FRONT_PL[1]
+
 def turret_bppu():
-    """BTR-82A BPPU (models_v14 rebuild from calibrated side photos + front / rear / 3/4 photos, see
-    previews/models_v14/PROGRESS.md).  The turret is NOT a flat box: a low rounded dome base on the ring (flat top 0.40 m
-    over the ring, falling to the ring all round) carries the external 2A72 + PKTM mount on its front centre; behind it the
-    turret rises toward the REAR:
-      - right rear: a pedestal whose front plate slopes up from the dome to the gunner's combined sight - a big armoured box
-        with a wedge (prow) front, a forward-looking round sight tube and a small box on top, its armoured rear cover open
-        (standing up behind it); top ~0.7 m over the ring (2.7 m over the ground),
-      - left rear: a narrow faceted housing whose front face slopes up toward the rear (top ~0.82 m), with its cover standing
-        up at the back (~0.95 m),
+    """BTR-82A BPPU (models_v14 rebuild, v15 gun set back, models_v16: rear joined into one structure, sloped front face, gun
+    raised, vision block instead of the v15 'hatch', gunner's hatch on the rear deck - see previews/models_v16/PROGRESS.md).
+    A low faceted lower body on the ring (flat top 0.40 m over the ring, falling to the ring all round) whose FRONT is a flat
+    plate sloping back ~40 deg; on it, the external 2A72 + PKTM mount between two tall blocks:
+      - right: the gunner's combined sight - a big armoured box with a wedge (prow) front, a forward-looking round sight tube and
+        a small box on top, on a pedestal whose front plate slopes up from the lower body,
+      - left: a narrow faceted housing whose front face slopes up toward the rear (top ~0.82 m),
       - 902V launchers: three per side on the front slopes of those two blocks, either side of the gun, firing forward-up,
-      - gunner's round hatch on the dome top behind the gun (left of centre), searchlight on the right outer side, DVE-BS
-        wind-sensor mast at the rear.
+      - REAR DECK (top 0.60 m) spanning from the left housing to the sight box behind the receiver, overhanging the ring at the back
+        (closed photos from the rear 3/4: one continuous box with a hand rail), carrying the gunner's rectangular hatch (left of
+        the receiver, side hinged; its lid is the 'fin' standing up in the open-hatch side photo) and the DVE-BS wind mast,
+      - vision block on the lower body's top front-left, periscope front-right.
     Origin = ring centre on the hull roof; turret local z up, y forward, x right."""
     t = B()
     RZ = DOME_Z
-    # ---- base dome (faceted lathe: 20 welded facets, flat roof)
-    prof = [(0.0, RZ), (DOME_R[1], RZ), (0.62, 0.35), (0.70, 0.23), (0.78, 0.11), (DOME_R[0], 0.0), (DOME_R[0] - 0.04, -0.02), (0.0, -0.02)]
-    t.add(lathe(prof, 20, 'z', phase=math.pi / 20))
+    # ---- lower body: 20-facet dome (flat roof) cut by the sloped front plate (convex hull of the clipped profile rings)
+    prof = [(DOME_R[1], RZ), (0.62, 0.35), (0.70, 0.23), (0.78, 0.11), (DOME_R[0], 0.0), (DOME_R[0] - 0.04, -0.02)]
+    pts = [(0, 0, -0.02)]
+    for k in range(20):
+        a = math.tau * k / 20 + math.pi / 20
+        for (r, z) in prof:
+            x, y = r * math.cos(a), r * math.sin(a)
+            pts.append((x, min(y, front_y(max(z, 0.0))), z))
+    t.add(hull(pts, bev=0.008, segs=1, angle=8))
     t.add(lathe([(0.88, -0.03), (0.90, -0.03), (0.90, 0.02), (0.86, 0.03)], 40, 'z', cap=False))     # ring guard lip
-    t.add(tube([(DOME_R[1] * math.cos(a), DOME_R[1] * math.sin(a), RZ - 0.002) for a in [math.tau * k / 20 + math.pi / 20 for k in range(21)]],
-               0.006, 4, 'rolled', caps=False))                                                       # roof weld seam
-    # ---- external gun mount (models_v15: SET BACK - trunnion GUN_Y near the ring centre, the mount sits between the sight
-    # pedestal and the left housing, receiver housing behind it to the dome's rear edge; photos: narrow, ~+-0.18)
+    t.add(weld_line([(-0.40, front_y(RZ) - 0.004, RZ - 0.003), (0.40, front_y(RZ) - 0.004, RZ - 0.003)], 0.006))   # front plate top seam
+    # ---- external gun mount (set back - trunnion GUN_Y near the ring centre, between the sight pedestal and the left housing)
     gm = B()
     ty_, tz_ = GUN_Y, GUN_Z
     for sx in (-1, 1):
@@ -634,30 +657,35 @@ def turret_bppu():
         gm.add(hull(pts, bev=0.010, segs=1))
         for yy in (ty_ - 0.05, ty_ - 0.25):
             gm.add(bolt(0.011, 0.01), Matrix.Translation((x1 + sx * 0.001, yy, tz_ + 0.02)) @ Matrix.Rotation(sx * math.pi / 2, 4, 'Y'))
-    # receiver housing behind the mantlet: base follows the dome down toward its rear edge, top level with the cheeks
+    # receiver housing behind the mantlet, running back into the rear deck
     rh = []
     for xx in (-0.17, 0.17):
-        for (yy, top) in ((ty_ - 0.10, tz_ + 0.10), (ty_ - 0.40, tz_ + 0.13), (-0.80, tz_ + 0.06)):
-            r_ = math.hypot(xx, yy)
-            rh += [(xx, yy, top), (xx, yy, dome_z(min(r_, DOME_R[0])) - 0.02)]
-    rh += [(-0.16, -0.86, 0.10), (0.16, -0.86, 0.10), (-0.16, -0.86, 0.0), (0.16, -0.86, 0.0)]
+        for (yy, top) in ((ty_ - 0.10, tz_ + 0.10), (ty_ - 0.40, tz_ + 0.12), (-0.66, DECK_Z + 0.03)):
+            rh += [(xx, yy, top), (xx, yy, dome_z(min(math.hypot(xx, yy), DOME_R[0])) - 0.02)]
     gm.add(hull(rh, bev=0.014, segs=2))
-    gm.add(box(0.26, 0.24, 0.025, c=(0, -0.57, tz_ + 0.11), bev=0.008, segs=1).rot('X', -6, (0, -0.57, tz_ + 0.10)))   # receiver access cover
+    gm.add(box(0.26, 0.22, 0.025, c=(0, -0.46, tz_ + 0.115), bev=0.008, segs=1).rot('X', -5, (0, -0.46, tz_ + 0.10)))   # receiver access cover
     for xx in (-0.09, 0.09):
-        gm.add(cyl(0.016, 0.05, 8, 'x', c=(xx, -0.70, tz_ + 0.10)))                          # cover hinges
-    gm.add(box(0.30, 0.10, 0.10, c=(0, ty_ + 0.10, RZ + 0.03), bev=0.01, segs=1))        # mantlet base under the drum
+        gm.add(cyl(0.016, 0.05, 8, 'x', c=(xx, -0.58, tz_ + 0.105)))                          # cover hinges
+    gm.add(box(0.30, 0.10, 0.06, c=(0, ty_ + 0.10, RZ + 0.02), bev=0.01, segs=1))        # mantlet base under the drum
     t.add(gm)
-    # ---- right rear: sight pedestal (front plate sloping up toward the rear) + gunner's combined sight box
+    # ---- rear deck: one box from the left housing to the sight box behind the receiver, overhanging the ring at the back
+    t.add(hull([(x, y, z) for (x, y) in DECK for z in (0.25, DECK_Z)], bev=0.014, segs=1, angle=20))
+    t.add(weld_line([(DECK[0][0] + 0.02, DECK[0][1], DECK_Z - 0.003), (DECK[-1][0] - 0.02, DECK[-1][1], DECK_Z - 0.003)], 0.006))
+    for (x, y) in ((-0.10, -0.95), (0.25, -0.95)):
+        t.add(bolt(0.012, 0.01), Matrix.Translation((x, y - 0.019, 0.40)) @ Matrix.Rotation(math.pi / 2, 4, 'X'))
+    t.add(rail([(0.02, -0.88, DECK_Z), (0.02, -0.88, DECK_Z + 0.09), (0.36, -0.88, DECK_Z + 0.09), (0.36, -0.88, DECK_Z)], r=0.012, rad=0.03))   # hand rail
+    # ---- right: sight pedestal (front plate sloping up toward the rear) + gunner's combined sight box, down onto the deck
     ped = [(0.16, 0.16, 0.08), (0.74, 0.10, 0.08), (0.16, 0.16, 0.15), (0.72, 0.10, 0.15),
            (0.18, -0.16, 0.45), (0.65, -0.16, 0.45), (0.18, -0.42, 0.45), (0.65, -0.42, 0.45),
-           (0.18, -0.54, 0.22), (0.68, -0.54, 0.22), (0.16, -0.56, 0.08), (0.74, -0.56, 0.08)]
+           (0.18, -0.62, 0.30), (0.68, -0.62, 0.30), (0.16, -0.62, 0.08), (0.74, -0.62, 0.08)]
     t.add(hull(ped, bev=0.016, segs=1, angle=20))
     sx_, sw = 0.48, 0.155                                                                # box centre x, half width
-    sb = hull([(sx_ - sw, -0.83, 0.26), (sx_ + sw, -0.83, 0.26), (sx_ - sw, -0.36, 0.26), (sx_ + sw, -0.36, 0.26),
+    sb = hull([(sx_ - sw, -0.84, DECK_Z - 0.04), (sx_ + sw, -0.84, DECK_Z - 0.04), (sx_ - sw, -0.36, 0.26), (sx_ + sw, -0.36, 0.26),
+               (sx_ - sw, -0.62, 0.26), (sx_ + sw, -0.62, 0.26),
                (sx_ - sw, -0.26, 0.47), (sx_ + sw, -0.26, 0.47),                           # prow edge
-               (sx_ - sw + 0.01, -0.34, 0.68), (sx_ + sw - 0.01, -0.34, 0.68), (sx_ - sw + 0.01, -0.82, 0.68), (sx_ + sw - 0.01, -0.82, 0.68),
-               (sx_ - sw, -0.85, 0.40), (sx_ + sw, -0.85, 0.40)], bev=0.014, segs=2)
-    sb.add(cyl(0.15, 0.06, 20, 'z', c=(sx_, -0.56, 0.24)))                                # traverse ring under the box
+               (sx_ - sw + 0.01, -0.34, 0.68), (sx_ + sw - 0.01, -0.34, 0.68), (sx_ - sw + 0.01, -0.82, 0.68), (sx_ + sw - 0.01, -0.82, 0.68)],
+              bev=0.014, segs=2)
+    sb.add(cyl(0.15, 0.06, 20, 'z', c=(sx_, -0.50, 0.24)))                                # traverse ring under the box
     n_w = V((0, 0.21, 0.08)).normalized()
     sb.add(box(0.22, 0.10, 0.012, mat='glass'), L.place(L.frame_from_normal(n_w, V((0, 0, 1))), V((sx_, -0.31, 0.375))))   # lower window
     sb.add(lathe([(0, -0.02), (0.062, -0.02), (0.062, 0.22), (0.066, 0.24), (0.066, 0.27), (0, 0.27)], 16, 'y', c=(sx_ - 0.06, -0.33, 0.60)))  # sight tube
@@ -666,27 +694,20 @@ def turret_bppu():
     sb.add(hull([(sx_ - 0.05, -0.26, 0.69), (sx_ + 0.09, -0.26, 0.69), (sx_ - 0.05, 0.03, 0.69), (sx_ + 0.09, 0.03, 0.69),
                  (sx_ - 0.05, -0.24, 0.755), (sx_ + 0.09, -0.24, 0.755), (sx_ - 0.05, 0.02, 0.755), (sx_ + 0.09, 0.02, 0.755)], bev=0.01, segs=1))  # top box
     sb.add(box(0.11, 0.008, 0.06, c=(sx_ + 0.02, 0.033, 0.722), mat='glass'))
-    # open armoured rear cover standing up behind the box (hinged on its lower rear edge)
-    sb.add(box(0.29, 0.025, 0.37, c=(0, 0, 0.185), bev=0.006, segs=1).rot('X', 6), Matrix.Translation((sx_, -0.86, 0.27)))   # leans back
-    sb.add(cyl(0.02, 0.26, 8, 'x', c=(sx_, -0.855, 0.28)))
+    sb.add(box(0.27, 0.02, 0.10, c=(sx_, -0.84, 0.64), bev=0.005, segs=1))              # closed rear cover (flush on the box back)
     for yy in (-0.70, -0.50):
         sb.add(bolt(0.012, 0.01), Matrix.Translation((sx_ + sw + 0.001, yy, 0.50)) @ Matrix.Rotation(math.pi / 2, 4, 'Y'))
     t.add(sb)
-    # ---- left rear: narrow faceted housing, front face sloping up to the rear, cover standing at its back
+    # ---- left: narrow faceted housing, front face sloping up to the rear, its back on the deck
     lh = hull([(-0.70, 0.00, 0.10), (-0.42, 0.00, 0.10), (-0.70, -0.02, 0.24), (-0.42, -0.04, 0.33),
-               (-0.64, -0.48, 0.82), (-0.44, -0.48, 0.82), (-0.64, -0.71, 0.82), (-0.44, -0.71, 0.82),
-               (-0.68, -0.76, 0.30), (-0.42, -0.76, 0.30), (-0.68, -0.70, 0.08), (-0.42, -0.70, 0.08)], bev=0.016, segs=1, angle=20)
+               (-0.64, -0.44, 0.82), (-0.44, -0.44, 0.82), (-0.64, -0.62, 0.82), (-0.44, -0.62, 0.82),
+               (-0.66, -0.68, 0.56), (-0.42, -0.68, 0.56), (-0.68, -0.66, 0.08), (-0.42, -0.66, 0.08)], bev=0.016, segs=1, angle=20)
     t.add(lh)
-    # its armoured cover stands open at the back like a fin (a plate in the vehicle's YZ plane: broad from the side, edge-on
-    # from the front / rear - calibrated left-side photo + straight front photo)
-    cv = [(-0.69, 0.54), (-0.69, 0.90), (-0.93, 0.96), (-0.95, 0.58)]
-    t.add(hull([(x, y, z) for (y, z) in cv for x in (-0.545, -0.525)], bev=0.005, segs=1))
-    t.add(cyl(0.018, 0.26, 8, 'z', c=(-0.535, -0.72, 0.70)))
+    t.add(cyl(0.035, 0.03, 10, 'x', c=(-0.54, -0.54, 0.835)))                               # lifting eye
     t.add(box(0.12, 0.012, 0.07, c=(-0.54, -0.235, 0.56), mat='glass').rot('X', -48, (-0.54, -0.235, 0.56)))   # front vision window
-    for (yy, zz) in ((-0.30, 0.55), (-0.55, 0.60)):
+    for (yy, zz) in ((-0.30, 0.55), (-0.50, 0.62)):
         t.add(bolt(0.012, 0.01), Matrix.Translation((-0.671, yy, zz)) @ Matrix.Rotation(-math.pi / 2, 4, 'Y'))
-    # (models_v15: the searchlight is NOT on the BPPU - front photos show it on the hull roof ahead of the commander, see build())
-    # ---- 902V Tucha: three tubes per side on the front slopes of the rear blocks, either side of the gun, forward-up
+    # ---- 902V Tucha: three tubes per side on the front slopes of the blocks, either side of the gun, forward-up
     for s_, base in ((1, V((0.31, -0.02, 0.30))), (-1, V((-0.32, -0.02, 0.36)))):
         grp = hull([(-0.10, -0.10, -0.06), (0.10, -0.10, -0.06), (-0.10, 0.08, -0.06), (0.10, 0.08, -0.06),
                     (-0.09, -0.09, 0.06), (0.09, -0.09, 0.06), (-0.09, 0.02, 0.09), (0.09, 0.02, 0.09)], bev=0.008, segs=1)
@@ -697,21 +718,26 @@ def turret_bppu():
             grp.add(box(0.03, 0.05, 0.08 + dz, c=(dx, -0.02, 0.05 + dz * 0.5)))
         grp.move(*base)
         t.add(grp)
-    # ---- gunner's hatch (models_v15: dome top FRONT-LEFT, lid hinged at its front edge and opening forward - front photos),
-    # periscopes, wind-sensor mast (left rear, clear of the receiver housing)
-    gx, gy, gz, gr = GUNNER_HATCH
-    t.add(L.round_coaming(gr, hinge=(0, 1), depth=0.09).move(gx, gy, gz))        # lid: hatch_lid_gunner (front hinge)
+    # ---- gunner's hatch coaming on the rear deck (lid = hatch_lid_gunner, see btr_lids)
+    gx, gy, gz, gw, gl = GUNNER_HATCH
+    t.add(L.rect_coaming(gw, gl, rad=0.04).move(gx, gy, gz))
+    # ---- vision block on the lower body's top front-left (models_v16: v15 had a round 'hatch' here), periscope front-right
+    vb = hull([(-0.12, -0.08, 0), (0.12, -0.08, 0), (-0.12, 0.08, 0), (0.12, 0.08, 0),
+               (-0.11, -0.07, 0.10), (0.11, -0.07, 0.10), (-0.11, 0.04, 0.10), (0.11, 0.04, 0.10)], bev=0.01, segs=1)
+    vb.add(box(0.15, 0.012, 0.045, c=(0, 0.075, 0.05), mat='glass').rot('X', -18, (0, 0.075, 0.05)))
+    vb.add(box(0.21, 0.05, 0.012, c=(0, 0.075, 0.098), bev=0.004, segs=1))                 # brow
+    t.add(vb.move(-0.30, 0.30, RZ - 0.005))
     for (px, py, ang) in ((0.66, 0.12, -45), (-0.36, -0.16, 70)):
         r_ = math.hypot(px, py)
         pb = periscope_block(0.15, 0.09, 0.06)
         t.add(L.snap(pb.xf(Matrix.Translation((px, py, dome_z(r_) + 0.04)) @ Matrix.Rotation(math.radians(ang), 4, 'Z')), t, d=(0, 0, -1), max_d=0.15, sink=0.01))
-    mx_, my_ = -0.28, -0.74
-    mz_ = dome_z(math.hypot(mx_, my_))
-    t.add(cyl(0.05, 0.03, 10, 'z', c=(mx_, my_, mz_ + 0.005)))
-    t.add(cyl(0.012, 0.42, 6, 'z', c=(mx_, my_, mz_ + 0.21), mat='gunmetal'))          # DVE-BS mast
-    t.add(cyl(0.035, 0.07, 10, 'z', c=(mx_, my_, mz_ + 0.43)))
+    # ---- DVE-BS wind-sensor mast on the deck, right rear
+    mx_, my_ = 0.20, -0.90
+    t.add(cyl(0.05, 0.03, 10, 'z', c=(mx_, my_, DECK_Z + 0.01)))
+    t.add(cyl(0.012, 0.42, 6, 'z', c=(mx_, my_, DECK_Z + 0.22), mat='gunmetal'))
+    t.add(cyl(0.035, 0.07, 10, 'z', c=(mx_, my_, DECK_Z + 0.43)))
     # roof bolts
-    for (x, y) in ((0.30, 0.30), (-0.05, 0.45)):
+    for (x, y) in ((0.30, 0.30), (-0.05, 0.40)):
         t.add(bolt(0.012, 0.01), Matrix.Translation((x, y, RZ)))
     return t
 
@@ -766,9 +792,9 @@ def btr_lids(variant, hullE, turE, tz):
                                  role_tag=role, note='right troop hatch (BPU-1 turret has no roof hatch)' if role == 'gunner' else ''))
         L.node_empty('hatch_' + role, hullE, (s * 0.45, TROOP_Y, ROOF + 0.05), 0.12)
     if is82:
-        gx, gy, gz, gr = GUNNER_HATCH
-        p, piv, ax = L.round_lid(gr, 0.05, hinge=(0, 1))          # models_v15: front hinge, opens forward onto the dome front
-        lids.append(VB.hatch_lid('gunner', p, piv, ax, turE, Matrix.Translation((gx, TY + gy, tz + gz)), open_deg=115))
+        gx, gy, gz, gw, gl = GUNNER_HATCH
+        p, piv, ax = L.rect_lid(gw, gl, t=0.03, hinge='x-', rad=0.04)   # models_v16: rear deck, hinged on its left (outboard) edge
+        lids.append(VB.hatch_lid('gunner', p, piv, ax, turE, Matrix.Translation((gx, TY + gy, tz + gz)), open_deg=100))
         L.node_empty('hatch_gunner', turE, (gx, TY + gy, tz + gz + 0.05), 0.12)
     return lids
 
@@ -1016,7 +1042,7 @@ def build(variant):
     # ---------------------------------------------------------------------------- turret + gun
     tz = ROOF + 0.04
     if is82:
-        TU = turret_bppu(); G, mz, cx = gun_2a72(); trun = (0, GUN_Y, GUN_Z); elev = 70   # models_v15: set back (was (0, 0.42, 0.56))
+        TU = turret_bppu(); G, mz, cx = gun_2a72(); trun = (0, GUN_Y, GUN_Z); elev = 70   # models_v16: z 0.50 -> 0.56 (depression); v15 set back (was (0, 0.42, 0.56))
     else:
         TU = turret_bpu1(); G, mz, cx = gun_bpu1(); trun = (0, 0.6, 0.22); elev = 60
     TU.move(0, TY, tz)
