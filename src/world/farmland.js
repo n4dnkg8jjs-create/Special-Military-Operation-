@@ -7,6 +7,7 @@ import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, ro
 import { groundMaterial } from './ground.js';
 import { ruinTpl } from './ruins.js';
 import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { buildWires } from './powerWires.js';
 import { battlefieldDetail, treeFate, treeTilt } from './battlefieldDetail.js';
 
 // Map 2 — Ukrainian steppe farmland: big open fields cut by acacia/poplar windbreaks ("lesopolosa"),
@@ -609,7 +610,7 @@ export class Farmland extends City {
     };
     run(-MAP_SIZE / 2 + 6, 56, MAP_SIZE / 2 - 6, 56, 0); run(111.5, -MAP_SIZE / 2 + 6, 111.5, MAP_SIZE / 2 - 6, Math.PI / 2);
     instance(this.scene, pole, mats);
-    if (lines.length) { const g = mergeGeometries(lines.map(p => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(p), 12, 0.012, 3))); this.scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: 0.6, metalness: 0.4 }))); }
+    if (lines.length) buildWires(this.scene, lines, (x, z) => this.terrain.heightAt(x, z));   // (streets v2: screen-space ribbons, powerWires.js)
   }
   // ---------------------------------------------------------------- props: wrecks along the roads, field debris
   props() {

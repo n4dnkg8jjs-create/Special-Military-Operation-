@@ -26,6 +26,7 @@ import { BLOCK } from './nav.js';
 import { trs } from './instancer.js';
 import { houseRuin, roofFrame } from './wear.js';
 import { PC, DG, lm, col, mcol, hash2, seedOf, shatteredTpl } from './battlefieldDetail.js';
+import { ROAD_Y } from './roadmesh.js';
 
 const TAU = Math.PI * 2;
 const pick = (r, a) => a[Math.floor(r() * a.length)];
@@ -235,9 +236,9 @@ function ruinPoles(w, mats, lines, att, pole) {
     const down = R() < 0.6, tilt = down ? (Math.PI / 2 - 0.05 - R() * 0.12) * (R() < 0.5 ? 1 : -1) : (0.3 + R() * 0.45) * (R() < 0.5 ? 1 : -1);
     const N = w.restOn ? w.restOn(pole, x, z, ry, tilt, (R() - 0.5) * 0.1, down ? 0.06 : 0.25) : trs(x, 0, z, ry, 1, tilt, 0);
     if (down) { // the lying pole must not cross a road or end in a wall
-      let ok = true; for (let t = 1; t < 9; t += 1.5) { e.set(0, t, 0).applyMatrix4(N); if (w.net?.hit(e.x, e.z, 0.6) || w.overlapsBuilding?.(e.x, e.z, 0.3, 0.3, 0.3) || w.terrain.cutSDF(e.x, e.z) < 0.6) { ok = false; break; } } if (!ok) continue;
+      let ok = true; for (let t = 1; t < 9; t += 1.5) { e.set(0, t, 0).applyMatrix4(N); if (w.net?.hit(e.x, e.z, 0.6) || (w.paved && w.paved.paved(e.x, e.z) < 0.3) || w.railNear?.(e.x, e.z, 2.2) || w.overlapsBuilding?.(e.x, e.z, 0.3, 0.3, 0.3) || w.terrain.cutSDF(e.x, e.z) < 0.6) { ok = false; break; } } if (!ok) continue;
     }
-    mats[i] = N; S.stats.poles++;
+    mats[i] = N; S.stats.poles++; if ((S.poleSpots ||= []).length < 40) S.poleSpots.push([Math.round(x), Math.round(z), down ? 1 : 0]);
     const now = att.map(a => a.clone().applyMatrix4(N));
     for (let j = 0; j < lines.length; j++) {
       const L = lines[j], a = L[0], b = L[L.length - 1];
@@ -381,7 +382,8 @@ function ruinDebris(w, api) {
   const put = (name, x, z, far = false, rr = 0.3, road = false) => {
     if (!(road ? Math.abs(x) < MAP_SIZE / 2 - 5 && Math.abs(z) < MAP_SIZE / 2 - 5 && w.terrain.cutSDF(x, z) > rr + 0.3 && !api.inBuilding(x, z, rr) && !(w.solidHit && w.solidHit(x, z, rr, rr, 0, 0.05)) : free(x, z, rr)) || taken(x, z, rr * 0.5)) return false;
     const ry = R() * TAU, gx = (H(x + 0.3, z) - H(x - 0.3, z)) / 0.6, gz = (H(x, z + 0.3) - H(x, z - 0.3)) / 0.6, c = Math.cos(ry), s = Math.sin(ry);
-    if (!api.guard(() => { D.begin(x, H(x, z) - 0.01, z, ry, -Math.atan(gx * s + gz * c), Math.atan(gx * c - gz * s), 1, far); lib(name)(D, R); })) return false;   // (never into / over a trench, never floating)
+    const y0 = w.paved && w.paved.paved(x, z) < 0.4 ? Math.max(H(x, z), ROAD_Y) : H(x, z);   // (on the paved surface: on top of it, not sunk 6 cm into it)
+    if (!api.guard(() => { D.begin(x, y0 - 0.01, z, ry, -Math.atan(gx * s + gz * c), Math.atan(gx * c - gz * s), 1, far); lib(name)(D, R); })) return false;   // (never into / over a trench, never floating)
     claim(x, z, rr * 0.5); n++; return true;
   };
   // a piece up on a slab (inside a block, no ground checks)
@@ -477,7 +479,9 @@ function ruinDebris(w, api) {
       if (R() > (w.urban ? 0.12 : 0.1) * Ld * (0.4 + near)) continue;
       const o = (R() - 0.5) * (r.w + 3), x = x0 - (bz - az) / L * o, z = z0 + (bx - ax) / L * o;
       const name = w.urban ? W8([['chunk', 4], ['glass', 2], ['branch', 2], ['slab', 1], ['brick', 2], ['sheet', 0.5], ['frag', 1], ['window', 0.5], ['plank', 0.6], ['tyre', 0.1]]) : W8([['branch', 4], ['brick', 2], ['sheet', 1.5], ['chunk', 1], ['frag', 1], ['plank', 1]]);
-      put(name, x, z, BIG.has(name), 0.35, true);
+      // streets v2: no flat plates (slabs, sheets, window frames) lying on the carriageway -- broken asphalt chunks there
+      const onCw = w.paved ? w.paved.asphalt(x, z) < 0.2 : !!w.net?.hit(x, z, 0);
+      put(onCw && /^(slab|sheet|window|plank)$/.test(name) ? (R() < 0.6 ? 'chunk' : 'brick') : name, x, z, BIG.has(name) && !onCw, 0.35, true);
     }
   }
   // scorch where things burnt (wrecks / cars, the burnt blocks' feet)

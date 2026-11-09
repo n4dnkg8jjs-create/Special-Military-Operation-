@@ -25,8 +25,9 @@ import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
-import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { roadSurfaces, pavedField, ROAD_Y } from './roadmesh.js';
 import { planStreets, buildStreetFurniture } from './streetFurniture.js';
+import { buildWires } from './powerWires.js';
 import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
@@ -345,8 +346,11 @@ const Real = {
     const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1 && !(r.sc === 'priv' && lane(r) !== 'asphalt')).map(r => { const priv = r.sc === 'priv';
       return { pts: r.pts, hw: priv ? Math.min(r.w / 2, 2.0 + hsh(r.pts[0][1], r.pts[0][0]) * 0.4) : r.w / 2, ext: 0.5, sw: urban && !priv && swOf(r) > 0.05 ? swOf(r) : 0,
         rad: r.type === 'paved' ? 9 : r.type === 'street' ? (priv ? 4 : 5.5) : 2, kerb: urban && r.type !== 'drive' && !priv && swOf(r) >= 1.5, rough: priv }; }), { key: 'real:' + MAP.real + ':' + D.roads.length });
-    this.streetPlan = planStreets(D.roads.map(r => ({ pts: r.pts, w: r.w, sw: urban && r.sc !== 'priv' ? swOf(r) : 0, sc: r.sc, name: r.name || '' })),
+    this.streetPlan = planStreets(D.roads.map(r => ({ pts: r.pts, w: r.w, sw: urban && r.sc !== 'priv' ? swOf(r) : 0, sc: r.sc, name: r.name || '', soft: !paved(r) || (r.sc === 'priv' && lane(r) !== 'asphalt') })),
       { pois: D.pois || [], areas: D.areas, rails: D.lines.filter(l => l.t === 'rail' || l.t === 'rail_old'), size: MAP_SIZE });
+    // streets v2: signed distance to the final merged surfaces (clearance tests, crater clamp, track-strip clipping)
+    { const t0 = performance.now(); this.paved = pavedField(S, MAP_SIZE); this.terrain.pavedGap = this.paved.paved;
+      if (U.tPaved) { U.tPaved.value = this.paved.texture(); U.pavedSize.value = MAP_SIZE; } this.pavedMs = Math.round(performance.now() - t0); }
     this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
     for (const g of S.walk) { const m = new THREE.Mesh(g, walkM); m.receiveShadow = true; this.scene.add(m); }
     for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); }
@@ -822,12 +826,16 @@ const Real = {
       let prev = null;
       walk(P, step, (x, z, ux, uz) => {
         const ry = Math.atan2(-uz, ux) + Math.PI / 2;
-        if (Math.abs(x) > half - 4 || Math.abs(z) > half - 4 || this.net.hit(x, z, 1.3) || this.solidHit(x, z, 0.6, 0.3, ry, 0.2) || this.terrain.cutSDF(x, z) < 1.5 || this.overlapsBuilding(x, z, 0.4, 0.4, 0.3)) { prev = null; return; }
+        if (Math.abs(x) > half - 4 || Math.abs(z) > half - 4 || this.net.hit(x, z, 1.3) || this.solidHit(x, z, 0.6, 0.3, ry, 0.2) || this.terrain.cutSDF(x, z) < 1.5 || this.overlapsBuilding(x, z, 0.4, 0.4, 0.3) || (this.paved && this.paved.asphalt(x, z) < 0.6) || this.railNear(x, z, 2.6)) { prev = null; return; }
         const broken = R() < 0.15, M = trs(x, this.baseY(x, z, 0.2, 0.2), z, ry, 1, broken ? (R() - 0.5) * 0.6 : (R() - 0.5) * 0.05, (R() - 0.5) * 0.06); mats.push(M);
         this.nav.circle(x, z, 0.4, BLOCK); this.solidAdd(x, z, 0.25, 0.25, 0, 'pole');
         const top = broken ? null : att.map(a => a.clone().applyMatrix4(M));
         if (prev && top) for (let q = 0; q < top.length; q++) { if (R() < 0.1) continue; const b = prev[q] && prev[q].distanceTo(top[q]) < 55 ? prev[q] : null; if (b) lines.push(catenary(b, top[q], 1.2 + R() * 0.7)); }
-        else if (prev && !top) for (const a of prev) if (R() < 0.6) { const e = a.clone().add(new THREE.Vector3(ux * step * 0.35, 0, uz * step * 0.35)); e.y = 0.05; lines.push(catenary(a, e, 0.8)); }
+        else if (prev && !top) for (const a of prev) if (R() < 0.6) {   // snapped pole: the span hangs from the last good pole down into the grass, the slack lying along the ground
+          const e = a.clone().add(new THREE.Vector3(ux * step * 0.3, 0, uz * step * 0.3)); e.y = this.terrain.heightAt(e.x, e.z);
+          const f = a.clone().add(new THREE.Vector3(ux * step * 0.62, 0, uz * step * 0.62)); f.x += (R() - 0.5) * 1.2; f.z += (R() - 0.5) * 1.2; f.y = this.terrain.heightAt(f.x, f.z);
+          lines.push([...catenary(a, e, 0.6), f]);
+        }
         prev = top;
       });
     };
@@ -841,7 +849,8 @@ const Real = {
     }
     this.ruinPoles?.(mats, lines, att, pole);   // (ruins.js: poles down / leaning, their spans on the ground)
     if (mats.length) instance(this.scene, pole, mats, { cell: 320, cullDist: 650 });
-    if (lines.length) { const g = mergeGeometries(lines.map(p => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(p), 10, 0.012, 3))); this.scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: 0.6, metalness: 0.4 }))); }
+    // streets v2: continuous screen-space ribbons (powerWires.js), downed spans lying on the ground / paved surface
+    if (lines.length) buildWires(this.scene, lines, (x, z) => { const h = this.terrain.heightAt(x, z); return this.paved && this.paved.paved(x, z) < 0.3 ? Math.max(h, ROAD_Y + 0.02) : h; });
   },
   // ---------------------------------------------------------------- balkas along the streams (rural)
   balkasReal() {
@@ -1203,7 +1212,24 @@ export class RealUrban extends City {
       else if (a.t === 'parking' && polyArea(a.pts) > 300) for (let i = 0; i < Math.min(8, polyArea(a.pts) / 120); i++) { const x = x0 + R() * (x1 - x0), z = z0 + R() * (z1 - z0); if (inPoly(x, z, a.pts)) this.put(['car_parked_lada', 'car_parked_lada_red', 'car_parked_moskvich', 'car_vaz2107_burnt', 'car_hatch_modern_burnt'][Math.floor(R() * 5)], x, z, R() < 0.5 ? 0 : Math.PI, { cost: BLOCK, roadPad: 0 }); }
     }
     // benches / bins / lamps on the block lawns, kiosks at the stops, bus stops
-    for (const p of D.pois) if (p[3] === 'bus_stop' || p[3] === 'tram_stop') { const n = this.net.near(p[1], p[2], 20); if (n) { const sd = Math.sign((p[1] - n.px) * -n.uz + (p[2] - n.pz) * n.ux) || 1, o = n.hw + swOf(n.r || {}) + 1.2; this.put(this.tpl('bus_stop_modern') ? 'bus_stop_modern' : 'bus_stop', n.px - n.uz * o * sd, n.pz + n.ux * o * sd, Math.atan2(-n.uz, n.ux) + (sd > 0 ? Math.PI : 0), { cost: BLOCK, roadPad: 0 }); } }
+    // streets v2: the stop beside a PAVED road, its whole footprint (~4.4 x 2.2 m) on the pavement / verge -- clear of the
+    // final carriageway surface (corner aprons included), dirt / gravel track strips and the railway / tram tracks;
+    // stepped back from the kerb up to 3 m, else no stop there
+    const pavedR = r => r.type === 'paved' || r.type === 'street', softR = r => !(r.type === 'paved' || r.type === 'street' || r.type === 'drive');
+    const stopClear = (cx, cz, ux, uz) => { for (const a of [-2.2, -1.1, 0, 1.1, 2.2]) for (const b of [-1.1, 0, 1.1]) {
+      const x = cx + ux * a - uz * b, z = cz + uz * a + ux * b;
+      if ((this.paved ? this.paved.asphalt(x, z) < 0.5 : this.net.hit(x, z, 0.5)) || this.railNear(x, z, 2.4)) return false;
+      const t = this.net.near(x, z, 8, softR); if (t && t.d < t.r.w / 2 + 0.7) return false;
+    } return !this.overlapsBuilding(cx, cz, 2.2, 1.1, 0.2); };
+    for (const p of D.pois) if (p[3] === 'bus_stop' || p[3] === 'tram_stop') {
+      const n = this.net.near(p[1], p[2], 25, pavedR); if (!n) continue;
+      const sd = Math.sign((p[1] - n.px) * -n.uz + (p[2] - n.pz) * n.ux) || 1;
+      for (let o = n.hw + swOf(n.r || {}) + 1.2, o1 = o + 3; o <= o1; o += 0.5) {
+        const x = n.px - n.uz * o * sd, z = n.pz + n.ux * o * sd;
+        if (!stopClear(x, z, n.ux, n.uz)) continue;
+        this.put(this.tpl('bus_stop_modern') ? 'bus_stop_modern' : 'bus_stop', x, z, Math.atan2(-n.uz, n.ux) + (sd > 0 ? Math.PI : 0), { cost: BLOCK, roadPad: 0 }); break;
+      }
+    }
     for (const b of this.buildings) for (const e of b.entrances) if (R() < 0.35) { const o = b.toWorld(0, 0, 0), dx = e.x - o.x, dz = e.z - o.z, d = Math.hypot(dx, dz) || 1; this.put(R() < 0.5 ? 'bench_concrete' : 'bin_a', e.x + dx / d * 3 + (R() - 0.5) * 4, e.z + dz / d * 3, b.rot, { cost: 4, low: true, roadPad: 0.9 }); }
     for (let i = 0; i < 40; i++) { const x = (R() - 0.5) * (MAP_SIZE - 60), z = (R() - 0.5) * (MAP_SIZE - 60), idx = this.nav.idx(x, z); if (idx >= 0 && this.nav.cost[idx] < 5 && T.tyre && !this.inPlot(x, z)) this.putProp('tyre', x, z, R() * 6, 0); }
   }

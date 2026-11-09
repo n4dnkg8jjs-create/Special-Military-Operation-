@@ -85,7 +85,7 @@ export function planStreets(roads, { pois = [], areas = [], rails = [], size = 1
     const p = e ? r.P[r.P.length - 1] : r.P[0]; if (Math.max(Math.abs(p[0]), Math.abs(p[1])) < half - 45 || r.len < 120) continue;
     E.push({ r, s: e ? r.len - 34 : 34, dir: e ? -1 : 1 });   // dir: inbound travel along s
   }
-  return { R, J, RX, Z, E };
+  return { R, J, RX, Z, E, rails };
 }
 
 // ---------------------------------------------------------------- sign-face atlas (canvas)
@@ -147,6 +147,14 @@ function atlas(town, names) {
   ATLAS = new THREE.MeshStandardMaterial({ map: tex, vertexColors: true, roughness: 0.78, metalness: 0.08 }); ATLAS.name = 'street_furniture'; ATLAS_KEY = key;
   return ATLAS;
 }
+// worn zebra paint: scuffed along the wheel tracks, flaking at the bar ends (alpha map, one for all bars)
+let ZW = null;
+function zebraWear() {
+  if (ZW) return ZW; const cv = document.createElement('canvas'); cv.width = 128; cv.height = 32; const x = cv.getContext('2d'), R = streetRng(91);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 128, 32);
+  for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(0,0,0,${0.3 + R() * 0.6})`; const ex = R() < 0.35 ? (R() < 0.5 ? R() * 10 : 118 + R() * 10) : R() * 128; x.beginPath(); x.arc(ex, R() * 32, 0.6 + R() * 2.2, 0, 7); x.fill(); }
+  ZW = new THREE.CanvasTexture(cv); return ZW;
+}
 const uvr = (k, fx, fy) => { const [X, Y, W, H] = RECT[k], p = 2; return [(X + p + fx * (W - 2 * p)) / AW, 1 - (Y + p + (1 - fy) * (H - 2 * p)) / AH]; };
 
 // ---------------------------------------------------------------- merged geometry per map third
@@ -190,7 +198,27 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
   const roads = plan.R, onRoad = (x, z, pad) => roads.some(r => r.sc !== 'track' || pad > 0.5 ? r.P.some((a, k) => k < r.P.length - 1 && segD(x, z, a[0], a[1], r.P[k + 1][0], r.P[k + 1][1]) < r.w / 2 + pad) : false);
   const kit = (w.buildings || []).filter(b => b.L && b.D);
   const inKit = (x, z, pad) => kit.some(b => { const dx = x - b.x, dz = z - b.z, lx = dx * b.cos - dz * b.sin, lz = dx * b.sin + dz * b.cos; return Math.abs(lx) < b.L / 2 + pad && Math.abs(lz) < b.D / 2 + pad; });
-  const free = (x, z, pad = 0.35) => Math.abs(x) < half - 2 && Math.abs(z) < half - 2 && !onRoad(x, z, 0.3) && !inKit(x, z, pad + 0.3) && !w.overlapsBuilding?.(x, z, pad, pad, 0.3) && !w.solidHit?.(x, z, pad * 0.5, pad * 0.5, 0, 0.05);
+  // streets v2: clearance against the FINAL merged road surface (w.paved: roadmesh pavedField, carriageway incl. the
+  // corner aprons), the dirt / gravel track strips and the railway / tram tracks (segment grid)
+  const PV = w.paved || null, SG = new Map(), SC = 16;
+  const segAdd = (P, hw) => { for (let k = 0; k < P.length - 1; k++) { const [ax, az] = P[k], [bx, bz] = P[k + 1], s = [ax, az, bx, bz, hw];
+    for (let i = Math.floor((Math.min(ax, bx) - hw - 2) / SC); i <= Math.floor((Math.max(ax, bx) + hw + 2) / SC); i++) for (let j = Math.floor((Math.min(az, bz) - hw - 2) / SC); j <= Math.floor((Math.max(az, bz) + hw + 2) / SC); j++) { const kk = i * 8192 + j; (SG.get(kk) || SG.set(kk, []).get(kk)).push(s); } } };
+  for (const r of roads) if (r.soft ?? (r.sc === 'track' || r.sc === 'gravel')) segAdd(r.P, r.w / 2 + 0.3);   // (strip core: the outer 0.3 m of the drawn strip is its frayed, faded fringe)
+  for (const l of plan.rails || []) segAdd(l.pts, 2.0);   // (ballast bed)
+  const segHit = (x, z, pad) => { const l = SG.get(Math.floor(x / SC) * 8192 + Math.floor(z / SC)); if (l) for (const s of l) if (segD(x, z, s[0], s[1], s[2], s[3]) < s[4] + pad) return true; return false; };
+  const surfHit = (x, z, pad) => (PV ? PV.asphalt(x, z) < pad + 0.25 : onRoad(x, z, 0.3)) || segHit(x, z, pad);
+  const free = (x, z, pad = 0.35) => Math.abs(x) < half - 2 && Math.abs(z) < half - 2 && !surfHit(x, z, pad) && !inKit(x, z, pad + 0.3) && !w.overlapsBuilding?.(x, z, pad, pad, 0.3) && !w.solidHit?.(x, z, pad * 0.5, pad * 0.5, 0, 0.05);
+  // nudge a spot out of the carriageway / corner apron (down the distance gradient) onto the pavement / verge behind
+  // the kerb line; null if that takes more than 4 m
+  const fix = (x, z, pad = 0.35) => {
+    if (!PV) return [x, z]; const x0 = x, z0 = z;
+    for (let it = 0; it < 6; it++) {
+      const d = PV.asphalt(x, z), need = pad + 0.45; if (d >= need) break;
+      let gx = PV.asphalt(x + 0.5, z) - PV.asphalt(x - 0.5, z), gz = PV.asphalt(x, z + 0.5) - PV.asphalt(x, z - 0.5); const L = Math.hypot(gx, gz); if (L < 1e-3) return null;
+      x += gx / L * (need - d + 0.05); z += gz / L * (need - d + 0.05);
+    }
+    return Math.hypot(x - x0, z - z0) > 4 || PV.asphalt(x, z) < pad + 0.25 ? null : [x, z];
+  };
   const chunks = new Map(), G = (x, z) => { const k = Math.floor((x + half) / CH) + ',' + Math.floor((z + half) / CH); return chunks.get(k) || chunks.set(k, new GB()).get(k); };
   const count = k => { stats[k] = (stats[k] || 0) + 1; };
   const faceYaw = (nx, nz) => Math.atan2(nx, nz);   // local +z -> (nx, nz)
@@ -204,6 +232,7 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
   };
   // a sign on a post: plates top-down [[shape, w, h, rect, opts]]
   const signPost = (x, z, nx, nz, plates, { wearP = 1, postH = 2.5, wood = false } = {}) => {
+    const fx = fix(x, z); if (!fx) return false; [x, z] = fx;
     if (!free(x, z)) return false;
     const st = wear(wearP), g = G(x, z), yaw = faceYaw(nx, nz);
     if (st === 4) { if (R() < 0.6) box(g, trs(x, gy(x, z), z, yaw, 1, (R() - 0.5) * 0.3, (R() - 0.5) * 0.3), 0, 0.2, 0, 0.06, 0.4, 0.06, C.postDark, 'rust'); count('gone'); return true; }
@@ -243,23 +272,27 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
     if (tlUsed.length >= lights || tlUsed.some(t => Math.hypot(t.x - j.x, t.z - j.z) < 150)) continue; tlUsed.push(j);
     let n = 0;
     for (const sd of [-1, 1]) {
-      const q = j.q, [x0, z0, tx, tz] = at(q, j.s - sd * (j.r.w / 2 + 10)), ux = tx * sd, uz = tz * sd, [rx, rz] = right(ux, uz), off = q.w / 2 + 0.9, x = x0 + rx * off, z = z0 + rz * off;
-      if (!free(x, z)) continue;
+      const q = j.q, [x0, z0, tx, tz] = at(q, j.s - sd * (j.r.w / 2 + 10)), ux = tx * sd, uz = tz * sd, [rx, rz] = right(ux, uz), off = q.w / 2 + Math.max(0.9, Math.min(1.4, (q.sw || 0) * 0.5));
+      const fx = fix(x0 + rx * off, z0 + rz * off, 0.4); if (!fx) continue; const [x, z] = fx;   // (behind the kerb line, clear of the corner apron)
+      if (!free(x, z, 0.4)) continue;
       const g = G(x, z), down = n === 0 && R() < 0.5, M = down ? trs(x, gy(x, z) + 0.12, z, faceYaw(-ux, -uz) + (R() - 0.5), 1, -1.52, 0) : frame(x, z, faceYaw(-ux, -uz), R() < 0.5 ? 0 : 1);
       box(g, M, 0, 1.7, 0, 0.12, 3.4, 0.12, C.postDark, 'metal');
       const hang = !down && R() < 0.35, HM = hang ? M.clone().multiply(trs(0, 3.35, 0.2, 0, 1, 0.6, 0.25)).multiply(new THREE.Matrix4().makeTranslation(0, -3.35, -0.2)) : M;
       box(g, HM, 0, 3.0, 0.2, 0.34, 0.98, 0.26, C.lightHead, 'metal');
       [[C.red, 3.3], [C.amber, 3.0], [C.green, 2.7]].forEach(([c, y]) => box(g, HM, 0, y, 0.34, 0.2, 0.2, 0.03, c, 'plain'));
-      count('lights'); n++;
+      count('lights'); n++; (stats.lightAt ||= []).push([Math.round(x), Math.round(z)]);
     }
   }
   // ---- zebra crossings: pedestrian-crossing squares both sides (double-sided), the faded paint as one instanced mesh
+  // streets v2: standard zebra -- 0.5 m bars, 0.5 m gaps, parallel to the road axis, centred over the full carriageway
+  // width (0.25 m clear of each edge); wear is in the paint texture / tint, never a missing bar
   const stripes = [], scol = [];
   for (const zc of plan.Z) {
-    const [rx, rz] = right(zc.ux, zc.uz), hw = zc.w / 2;
-    for (let o = -hw + 0.75; o <= hw - 0.5; o += 1.0) {
-      const hsh = Math.abs(Math.sin((zc.x + o) * 12.9898 + zc.z * 78.233) * 43758.5453) % 1; if (hsh < 0.18) continue;
-      const M = trs(zc.x + rx * o, 0.06, zc.z + rz * o, Math.atan2(-zc.uz, zc.ux)); M.multiply(new THREE.Matrix4().makeScale(3.6, 1, 0.5)); stripes.push(M); scol.push(0.45 + hsh * 0.55);
+    const [rx, rz] = right(zc.ux, zc.uz), hw = zc.w / 2, n = Math.max(1, Math.floor((2 * hw - 0.5 + 0.5) / 1.0)), o0 = -(n - 1) / 2;
+    const tone = 0.62 + (Math.abs(Math.sin(zc.x * 12.9898 + zc.z * 78.233) * 43758.5453) % 1) * 0.3;
+    for (let k = 0; k < n; k++) {
+      const o = o0 + k, hsh = Math.abs(Math.sin((zc.x + o) * 12.9898 + zc.z * 78.233) * 43758.5453) % 1;
+      const M = trs(zc.x + rx * o, 0.06, zc.z + rz * o, Math.atan2(-zc.uz, zc.ux), 1, 0, 0); M.multiply(new THREE.Matrix4().makeScale(3.0, 1, 0.5)); stripes.push(M); scol.push(tone * (0.9 + hsh * 0.2));
     }
     for (const sd of [-1, 1]) {
       const off = hw + (zc.sw > 1 ? 0.6 : 0.8), x = zc.x + rx * off * sd, z = zc.z + rz * off * sd;
@@ -270,7 +303,7 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
   let zebraMesh = null;
   if (stripes.length) {
     const pg = new THREE.PlaneGeometry(1, 1); pg.rotateX(-Math.PI / 2);
-    const im = new THREE.InstancedMesh(pg, new THREE.MeshStandardMaterial({ color: 0xd2cec2, roughness: 0.9, transparent: true, opacity: 0.6, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), stripes.length);
+    const im = new THREE.InstancedMesh(pg, new THREE.MeshStandardMaterial({ color: 0xd2cec2, roughness: 0.9, transparent: true, opacity: 0.75, alphaMap: zebraWear(), depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), stripes.length);
     stripes.forEach((M, i) => { im.setMatrixAt(i, M); im.setColorAt(i, new THREE.Color(scol[i], scol[i], scol[i])); });
     im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = true; im.matrixAutoUpdate = false; im.name = 'zebra'; w.scene.add(im); zebraMesh = im;
   }
@@ -294,8 +327,16 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
     for (const c of C2) {
       if (n >= shelters) break;
       if (stops.some(([a, b]) => Math.hypot(a - c.x, b - c.z) < 120) || plan.J.some(j => Math.hypot(j.x - c.x, j.z - c.z) < 30) || plan.Z.some(zc => Math.hypot(zc.x - c.x, zc.z - c.z) < 25)) continue;
-      const yaw = faceYaw(-c.rx, -c.rz), pts = [[0, 0], [1.9, 0], [-1.9, 0], [1.9, -1.0], [-1.9, -1.0], [0, -1.1]].map(([a, b]) => [c.x + c.ux * a + c.rx * -b, c.z + c.uz * a + c.rz * -b]);
-      if (!pts.every(([a, b]) => free(a, b, 0.4)) || w.solidHit?.(c.x + c.rx * 0.6, c.z + c.rz * 0.6, 2.1, 1.0, Math.atan2(-c.uz, c.ux), 0.2)) continue;
+      // the whole footprint (slab 4.2 x 2.0 m + the sign beside it) on the pavement / verge: clear of the carriageway and
+      // its aprons, track strips and railway / tram tracks; stepped back from the kerb up to 2 m if needed
+      let okS = false;
+      for (let back = 0; back <= 2.01 && !okS; back += 0.5) {
+        const bx = c.x + c.rx * back, bz = c.z + c.rz * back, pts = [];
+        for (const a of [-2.2, -1.1, 0, 1.1, 2.2]) for (const b of [0.2, -0.6, -1.4, -1.8]) pts.push([bx + c.ux * a + c.rx * -b, bz + c.uz * a + c.rz * -b]);
+        pts.push([bx + c.ux * 3.2 + c.rx * 0.9, bz + c.uz * 3.2 + c.rz * 0.9]);
+        if (pts.every(([a, b]) => free(a, b, 0.4)) && !w.solidHit?.(bx + c.rx * 0.6, bz + c.rz * 0.6, 2.1, 1.0, Math.atan2(-c.uz, c.ux), 0.2)) { c.x = bx; c.z = bz; okS = true; }
+      }
+      if (!okS) continue; const yaw = faceYaw(-c.rx, -c.rz);
       const cxs = c.x + c.rx * 0.6, czs = c.z + c.rz * 0.6, y = gy(cxs, czs), g = G(cxs, czs), M = trs(cxs, y, czs, yaw), tint = col([0xb9b4aa, 0xc2b79c, 0xa9aeb0][n % 3]);
       box(g, M, 0, 1.15, -0.85, 3.8, 2.3, 0.16, tint, 'concrete');                                 // back wall (slab)
       for (const sx of [-1, 1]) if (!(n === 1 && sx > 0)) box(g, M, sx * 1.84, 1.15, -0.25, 0.14, 2.3, 1.3, tint, 'concrete');
@@ -305,7 +346,7 @@ export function buildStreetFurniture(w, plan, { size = 1000, seed = 1, town = ''
       w.solidAdd?.(cxs, czs, 2.1, 1.0, Math.atan2(-c.uz, c.ux), 'shelter');
       const sx = cxs + c.ux * 3.2 + c.rx * 0.9, sz = czs + c.uz * 3.2 + c.rz * 0.9;
       signPost(sx, sz, -c.ux, -c.uz, [['rect', 0.55, 0.55, 'bus'], ['rect', 0.3, 0.42, 'timetable']], { wearP: 0.6 });
-      count('shelters'); n++; stops.push([c.x, c.z]);
+      count('shelters'); n++; stops.push([c.x, c.z]); (stats.shelterAt ||= []).push([Math.round(cxs), Math.round(czs)]);
     }
   }
   // ---- town entry / exit

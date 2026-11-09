@@ -251,3 +251,62 @@ function simplify(L) {
   if (out.length > 1 && Math.abs(out[0][0] - out[out.length - 1][0]) + Math.abs(out[0][1] - out[out.length - 1][1]) < 1e-6) out.pop();
   return out;
 }
+
+// ---------------------------------------------------------------- paved field (streets v2)
+// Signed distance (m, + outside) to the FINAL merged surfaces, rasterised from the roadSurfaces output at `res` m:
+// `asphalt` (carriageway incl. the fillet aprons) and `paved` (carriageway + pavements).  Used for clearance tests
+// (street furniture, bus stops), crater relief clamping, and (as a texture) to clip the dirt / gravel track strips
+// against the paved union in the track shader.  Int8 in 0.1 m steps (clamped +-12.7 m).
+export function pavedField(S, size, res = 0.5) {
+  const N = Math.ceil(size / res), o = size / 2, A = new Uint8Array(N * N), P = new Uint8Array(N * N), P1 = new Uint8Array(N * N), P2 = new Uint8Array(N * N);
+  const rast = (geos, M1, M2, split) => {
+    for (const g of geos) {
+      const p = g.attributes.position.array, ix = g.index.array, ex = g.attributes.aRoad?.array;
+      for (let t = 0; t < ix.length; t += 3) {
+        const a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3, ax = p[a], az = p[a + 2], bx = p[b], bz = p[b + 2], cx = p[c], cz = p[c + 2];
+        const d = (bx - ax) * (cz - az) - (bz - az) * (cx - ax); if (Math.abs(d) < 1e-9) continue;
+        const M3 = split ? (ex && ex[ix[t] * 3 + 2] >= 1.5 ? P2 : P1) : P1;   // (rough private lanes apart: their shoulder strip stays under the crumbling edge)
+        const i0 = Math.max(0, Math.floor((Math.min(ax, bx, cx) + o) / res)), i1 = Math.min(N - 1, Math.floor((Math.max(ax, bx, cx) + o) / res));
+        const j0 = Math.max(0, Math.floor((Math.min(az, bz, cz) + o) / res)), j1 = Math.min(N - 1, Math.floor((Math.max(az, bz, cz) + o) / res));
+        for (let j = j0; j <= j1; j++) { const z = (j + 0.5) * res - o; for (let i = i0; i <= i1; i++) {
+          const x = (i + 0.5) * res - o, u = ((bx - x) * (cz - z) - (bz - z) * (cx - x)) / d, v = ((cx - x) * (az - z) - (cz - z) * (ax - x)) / d;
+          if (u >= -1e-6 && v >= -1e-6 && u + v <= 1 + 1e-6) { const k = j * N + i; M1[k] = 1; if (M2) M2[k] = 1; M3[k] = 1; }
+        } }
+      }
+    }
+  };
+  rast(S.asphalt, A, P, true); rast(S.walk, P, null, false);
+  const sdf = M => {   // two-pass chamfer (1, sqrt2) for both signs -> Int8 decimetres
+    const big = 1e6, dO = new Float32Array(N * N), dI = new Float32Array(N * N), D2 = Math.SQRT2;
+    for (let k = 0; k < N * N; k++) { dO[k] = M[k] ? 0 : big; dI[k] = M[k] ? big : 0; }
+    for (const d of [dO, dI]) {   // (plain comparisons: Math.min in this loop costs ~3x)
+      let a, v;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const k = j * N + i; v = d[k]; if (v === 0) continue;
+        if (i > 0) { a = d[k - 1] + 1; if (a < v) v = a; }
+        if (j > 0) { a = d[k - N] + 1; if (a < v) v = a; if (i > 0) { a = d[k - N - 1] + D2; if (a < v) v = a; } if (i < N - 1) { a = d[k - N + 1] + D2; if (a < v) v = a; } }
+        d[k] = v; }
+      for (let j = N - 1; j >= 0; j--) for (let i = N - 1; i >= 0; i--) { const k = j * N + i; v = d[k]; if (v === 0) continue;
+        if (i < N - 1) { a = d[k + 1] + 1; if (a < v) v = a; }
+        if (j < N - 1) { a = d[k + N] + 1; if (a < v) v = a; if (i < N - 1) { a = d[k + N + 1] + D2; if (a < v) v = a; } if (i > 0) { a = d[k + N - 1] + D2; if (a < v) v = a; } }
+        d[k] = v; }
+    }
+    const out = new Int8Array(N * N);
+    for (let k = 0; k < N * N; k++) { const m = M[k] ? -(dI[k] - 0.5) * res : (dO[k] - 0.5) * res; out[k] = Math.max(-127, Math.min(127, Math.round(m * 10))); }
+    return out;
+  };
+  const FA = sdf(A), FP = sdf(P); let F1 = null, F2 = null;
+  const at = F => (x, z) => {
+    const fx = (x + o) / res - 0.5, fz = (z + o) / res - 0.5; if (fx < 0 || fz < 0 || fx >= N - 1 || fz >= N - 1) return 12.7;
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, k = j * N + i;
+    return ((F[k] * (1 - u) + F[k + 1] * u) * (1 - v) + (F[k + N] * (1 - u) + F[k + N + 1] * u) * v) / 10;
+  };
+  let tex = null;
+  const texture = () => {   // R8: paved signed distance clamped to +-4 m (track-strip clipping in the shader)
+    if (tex) return tex;
+    F1 ||= sdf(P1); F2 ||= sdf(P2);   // union with the rough lanes shrunk by 0.7 m
+    const d = new Uint8Array(N * N); for (let k = 0; k < N * N; k++) { const v = Math.min(F1[k], F2[k] + 7); d[k] = Math.max(0, Math.min(255, Math.round((Math.max(-40, Math.min(40, v)) + 40) / 80 * 255))); }
+    tex = new THREE.DataTexture(d, N, N, THREE.RedFormat, THREE.UnsignedByteType); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+    return tex;
+  };
+  return { asphalt: at(FA), paved: at(FP), texture, size, N, res };
+}

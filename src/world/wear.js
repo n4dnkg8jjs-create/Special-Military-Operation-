@@ -234,16 +234,21 @@ export function roadWear(mat, U, { rural = false, damage = 1 } = {}) {
 }
 
 // Dirt track strips (u across the strip 0..1, ruts at u ~0.36 / 0.64; v along): darker, muddier, water in the ruts.
+// streets v2: the paved field (roadmesh.js pavedField: signed distance to carriageway + pavements, R8 over the map,
+// +-4 m) clips the track strips where they run under / into the paved union: no overlap, nothing to fight or poke through
+let NOPAVE = null;
 export function trackWear(mat, U) {
-  mat.customProgramCacheKey = () => 'trackwear';
+  mat.customProgramCacheKey = () => 'trackwear_v2';
+  if (!NOPAVE) { NOPAVE = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType); NOPAVE.needsUpdate = true; }
+  U.tPaved ||= { value: NOPAVE }; U.pavedSize ||= { value: 1 };
   const base = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     base?.(sh, r);
-    sh.uniforms.tWar = U.tWar; sh.uniforms.splatSize = U.splatSize;
+    sh.uniforms.tWar = U.tWar; sh.uniforms.splatSize = U.splatSize; sh.uniforms.tPaved = U.tPaved; sh.uniforms.pavedSize = U.pavedSize;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vTW; varying vec2 vTUv;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvTW = (modelMatrix * vec4(transformed, 1.0)).xyz; vTUv = uv;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec3 vTW; varying vec2 vTUv; uniform sampler2D tWar; uniform float splatSize; float tPud = 0.0, tWet = 0.0;
+      varying vec3 vTW; varying vec2 vTUv; uniform sampler2D tWar; uniform float splatSize; uniform sampler2D tPaved; uniform float pavedSize; float tPud = 0.0, tWet = 0.0;
       ${WAR_NOISE}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
       {
@@ -271,6 +276,8 @@ export function trackWear(mat, U) {
         float e = min(vTUv.x, 1.0 - vTUv.x);
         float rag = wfbm(vTW.xz * 0.7) * 0.65 + wn1(vTW.xz * 3.7) * 0.35;
         diffuseColor.a = smoothstep(0.0, 1.0, clamp((e - 0.015 - rag * 0.15) / 0.07, 0.0, 1.0));
+        float pd = texture2D(tPaved, vTW.xz / pavedSize + 0.5).r * 8.0 - 4.0;   // (m, + outside the paved union)
+        if (pd < 0.02) discard;
       }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = mix(roughnessFactor, 0.65, tWet * 0.5); roughnessFactor = mix(roughnessFactor, 0.4, tPud);`)

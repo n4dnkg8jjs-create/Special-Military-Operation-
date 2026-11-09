@@ -11,6 +11,7 @@ import { battlefieldDetail } from './battlefieldDetail.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { buildWires } from './powerWires.js';
 import { planStreets, buildStreetFurniture } from './streetFurniture.js';
 
 // Active map: live bindings, set by setMap() before the world is built.
@@ -290,7 +291,7 @@ export class City {
       const n = sy.craters ?? Math.round(3 + sy.radius / 8);
       for (let i = 0, made = 0; i < n * 4 && made < n; i++) {
         const a = R() * Math.PI * 2, d = sy.radius * 0.3 + R() * (sy.radius + 28), x = sy.center[0] + Math.cos(a) * d, z = sy.center[1] + Math.sin(a) * d, r = 0.9 + R() * R() * 3.4;
-        if (Math.abs(x) > MAP_SIZE / 2 - 8 || Math.abs(z) > MAP_SIZE / 2 - 8 || T.cutSDF(x, z) < r * 1.9 + 1.2 || onRoad(x, z, r * 1.9 + 1) || T.keepOut(x, z) || teethNear(x, z, r * 2 + 1)) continue;
+        if (Math.abs(x) > MAP_SIZE / 2 - 8 || Math.abs(z) > MAP_SIZE / 2 - 8 || T.cutSDF(x, z) < r * 1.9 + 1.2 || onRoad(x, z, r * 1.9 + 1) || (T.pavedGap && T.pavedGap(x, z) < r * 1.9 + 1) || T.keepOut(x, z) || teethNear(x, z, r * 2 + 1)) continue;
         if (T.relief(x, z, false)) continue;
         T.crater(x, z, r); made++;
       }
@@ -956,9 +957,7 @@ export class City {
     // trolleybus contact wires spanning the avenue between the two pole rows
     for (let x = -E + 18; x < E - 5; x += 32) { if (this.rng() < 0.25) continue; lines.push(catenary(new THREE.Vector3(x, 6.6, -13.2), new THREE.Vector3(x, 6.6, 13.2), 0.35)); }
     for (const z of [-2.1, 2.1]) for (let x = -E + 18; x < E - 37; x += 32) { if (this.rng() < 0.3) continue; lines.push(catenary(new THREE.Vector3(x, 6.4, z), new THREE.Vector3(x + 32, 6.4, z), 0.25)); }
-    const wireMat = new THREE.MeshStandardMaterial({ color: 0x1c1b19, roughness: 0.6, metalness: 0.4 });
-    const tubes = lines.map(pts => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, 0.012, 3));
-    const merged = mergeGeometries(tubes); const wires = new THREE.Mesh(merged, wireMat); wires.castShadow = false; this.scene.add(wires);
+    buildWires(this.scene, lines, (x, z) => this.terrain ? this.terrain.heightAt(x, z) : 0);   // (streets v2: screen-space ribbons, powerWires.js)
     this.wireT = T;
   }
   // ---------------------------------------------------------------- props

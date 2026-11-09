@@ -75,6 +75,7 @@ export class Terrain {
     this.maxH = 0; this._tplH = new Map();
     this._touch = []; this._stamp = 0; this._pd = null;
     this.roadTest = null;     // (x, z, pad) => bool, set by the map so trenches leave gaps at roads
+    this.pavedGap = null;     // (x, z) => m outside the paved union (streets v2: crater relief eases out before it)
     this.keepOut = null;      // (x, z) => bool, e.g. buildings / village yards
     this.covers = [];         // [x, z, ux, uz, width, kind] requested overhead cover (nets / branches / tarps)
   }
@@ -259,7 +260,11 @@ export class Terrain {
         const dx = x - r.x, dz = z - r.z, d = Math.hypot(dx, dz); if (d > r.reach) continue;
         const a = Math.atan2(dz, dx), rr = r.r * (0.86 + 0.28 * vnoise(Math.cos(a) * 1.7 + r.x, Math.sin(a) * 1.7 + r.z)), t = d / rr;
         const h = (t < 1 ? -r.depth * Math.pow(1 - t * t, 1.25) : 0) + r.rim * Math.exp(-(((t - 1.0) / (t < 1 ? 0.22 : 0.45)) ** 2)) * (0.6 + 0.6 * vnoise(x * 1.3, z * 1.3));
-        hit = true; if (h < 0) { neg = Math.min(neg, h); hard = true; } else pos = Math.max(pos, h);
+        // streets v2: no crater relief over the carriageway / pavements / kerbs (pavedGap: m outside the paved union) --
+        // the ground eases back to level over the last 2.5 m before the paved edge (a shell hole there is a decal)
+        let hh = h; if (this.pavedGap) { const g = this.pavedGap(x, z); if (g < 2.6) { const t2 = Math.max(0, Math.min(1, (g - 0.35) / 2.2)); hh *= t2 * t2 * (3 - 2 * t2); } }
+        if (Math.abs(hh) < 1e-4) continue;
+        hit = true; if (hh < 0) { neg = Math.min(neg, hh); hard = true; } else pos = Math.max(pos, hh);
       } else { // mound: rounded box
         const c = Math.cos(r.rot), s = Math.sin(r.rot), dx = x - r.x, dz = z - r.z, lx = (dx * c - dz * s) / r.hx, lz = (dx * s + dz * c) / r.hz;
         const e = Math.pow(Math.abs(lx), 4) + Math.pow(Math.abs(lz), 4); if (e >= 1) continue; hit = true;
