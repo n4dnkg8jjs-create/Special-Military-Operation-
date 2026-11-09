@@ -716,7 +716,8 @@ export class City {
     const box = new THREE.BoxGeometry(1, 1, 1);
     const slab = new THREE.InstancedMesh(box, slabMat, cnt), dark = new THREE.InstancedMesh(box, darkMat, cnt);
     const counters = { slab: 0, dark: 0, roofs: [] };
-    for (const b of this.buildings) b.buildInterior(slab, dark, counters);
+    const zeroM = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const b of this.buildings) { b.buildInterior(slab, dark, counters); b.onRoomOpen = i => { dark.setMatrixAt(i, zeroM); dark.instanceMatrix.needsUpdate = true; }; }
     slab.count = counters.slab; dark.count = counters.dark; this.slabMesh = slab; this.darkMesh = dark; slab.castShadow = slab.receiveShadow = true; dark.receiveShadow = true;
     this.scene.add(slab, dark);
     const roofMat = new THREE.MeshStandardMaterial({ color: 0x3b3934, roughness: 0.9 });

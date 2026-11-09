@@ -472,7 +472,12 @@ export class Building {
       // fought the end wall through at distance, dark flicker down the gable ends)
       const e0 = c === 0 ? (this.kit.T || 0.3) + 0.04 : 0.01, e1 = c === this.modules - 1 ? (this.kit.T || 0.3) + 0.04 : 0.01;
       this.toWorld(-this.L / 2 + c * W + (e0 + W - e1) / 2, f * H + H / 2, 0, tmpV);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W - e0 - e1, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W - e0 - e1, H - 0.24, D - inset * 2));
+      // (v9: no room box where a long facade panel of the cell is gone -- with the wall open it read as a solid black
+      // block standing in the floor; the room is open to the street then, slabs and the far wall's inside showing)
+      const openCell = () => this.panels.some(p => p.col === c && p.floor === f && p.gone && (p.side === 'front' || p.side === 'back'));
+      if (openCell()) { tmpS.set(1, 1, 1); continue; }
+      this.intIdx[c].push(['dark', counters.dark]); (this.darkCell ||= {})[c + ':' + f] = counters.dark;
       if (this.ruined) darkMesh.setColorAt(counters.dark, _ic.setScalar(burnt ? 0.16 + this.rng() * 0.08 : 0.85 + this.rng() * 0.15));
       darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);
@@ -501,7 +506,9 @@ export class Building {
     if (p.gone) return false;
     if (p.slot >= 0) this.pool.remove(this.pieceName(p), p);
     if (p.acc && p.acc.slot >= 0) this.pool.remove(p.balcony ? (p.balPiece || 'balcony_slab') : 'entrance_canopy', p.acc);
-    p.gone = true; p.state = 3; return true;
+    p.gone = true; p.state = 3;
+    if (p.side === 'front' || p.side === 'back') { const k = p.col + ':' + p.floor, i = this.darkCell?.[k]; if (i !== undefined) { delete this.darkCell[k]; this.onRoomOpen?.(i); } }
+    return true;
   }
   setState(p, s) {
     if (p.gone || s <= p.state) return false;

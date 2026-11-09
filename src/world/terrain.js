@@ -244,7 +244,7 @@ export class Terrain {
   // height-only features
   relief(x, z, meshOnly) {
     const l = this.hRel.get(hkey(x, z)); if (!l) return null;
-    let neg = 0, pos = 0, hit = false, hard = false;
+    let neg = 0, pos = 0, hit = false, hard = false, negR = null, posR = null;
     for (const r of l) {
       if (meshOnly && r.mesh === false) continue;
       if (x < r.bb[0] || x > r.bb[2] || z < r.bb[1] || z > r.bb[3]) continue;
@@ -255,7 +255,7 @@ export class Terrain {
         best += (vnoise(x * 0.35 + 2.2, z * 0.35 + 6.1) - 0.5) * 0.7;
         if (best > r.reach) continue; hit = true;
         if (best < r.top) { neg = Math.min(neg, best < r.bot ? -r.depth : -r.depth * Math.pow(Math.max(0, 1 - (best - r.bot) / (r.top - r.bot)), r.soft ? 1.6 : 0.85)); if (!r.soft) hard = true; }
-        const bd = best - r.top - 0.4; if (side === r.bermSide && bd > 0 && bd < r.bermW) pos = Math.max(pos, r.bermH * Math.sin(Math.PI * bd / r.bermW) ** 0.8 * (0.75 + 0.5 * vnoise(x * 0.45 + 1.3, z * 0.45 + 8.8)));
+        const bd = best - r.top - 0.4; if (side === r.bermSide && bd > 0 && bd < r.bermW) { const hb = r.bermH * Math.sin(Math.PI * bd / r.bermW) ** 0.8 * (0.75 + 0.5 * vnoise(x * 0.45 + 1.3, z * 0.45 + 8.8)); if (hb > pos) { pos = hb; posR = r; } }
       } else if (r.type === 'crater') {
         const dx = x - r.x, dz = z - r.z, d = Math.hypot(dx, dz); if (d > r.reach) continue;
         const a = Math.atan2(dz, dx), rr = r.r * (0.86 + 0.28 * vnoise(Math.cos(a) * 1.7 + r.x, Math.sin(a) * 1.7 + r.z)), t = d / rr;
@@ -264,13 +264,16 @@ export class Terrain {
         // the ground eases back to level over the last 2.5 m before the paved edge (a shell hole there is a decal)
         let hh = h; if (this.pavedGap) { const g = this.pavedGap(x, z); if (g < 2.6) { const t2 = Math.max(0, Math.min(1, (g - 0.35) / 2.2)); hh *= t2 * t2 * (3 - 2 * t2); } }
         if (Math.abs(hh) < 1e-4) continue;
-        hit = true; if (hh < 0) { neg = Math.min(neg, hh); hard = true; } else pos = Math.max(pos, hh);
+        hit = true; if (hh < 0) { if (hh < neg) { neg = hh; negR = r; } hard = true; } else if (hh > pos) { pos = hh; posR = r; }
       } else { // mound: rounded box
         const c = Math.cos(r.rot), s = Math.sin(r.rot), dx = x - r.x, dz = z - r.z, lx = (dx * c - dz * s) / r.hx, lz = (dx * s + dz * c) / r.hz;
         const e = Math.pow(Math.abs(lx), 4) + Math.pow(Math.abs(lz), 4); if (e >= 1) continue; hit = true;
-        pos = Math.max(pos, r.h * Math.pow(1 - e, 0.6));
+        const hm = r.h * Math.pow(1 - e, 0.6); if (hm > pos) { pos = hm; posR = r; }
       }
     }
+    // (v9: a newer bowl cuts through an older rim -- the rim of one crater no longer stands up as a ridge across the bowl
+    // of the one overlapping it; it fades out over the first 0.3 m of depth)
+    if (neg < 0 && pos > 0 && negR && negR !== posR) pos *= Math.max(0, 1 + neg / 0.3);
     return hit ? [neg, pos, !hard] : null;   // [2]: only soft relief (balka: a gentle, drivable hollow) below ground here
   }
   // both top heights at once: [terrain-mesh version, heightfield version] (one parapet + one relief pass)
@@ -278,14 +281,14 @@ export class Terrain {
     const p = this.parapet(x, z), l = this.hRel.get(hkey(x, z));
     if (!l) return [p > 0.004 ? p : LOW, p > 0.004 ? p : 0];
     let heightOnly = false; for (const r of l) if (r.mesh === false && x >= r.bb[0] && x <= r.bb[2] && z >= r.bb[1] && z <= r.bb[3]) { heightOnly = true; break; }
-    const fin = (rel, mesh) => { const pos = Math.max(p, rel ? rel[1] : 0); if (rel && rel[0] < -0.001) return rel[0] + pos * 0.5; return pos > 0.004 ? pos : (mesh ? LOW : 0); };
+    const fin = (rel, mesh) => { const pos = Math.max(rel && rel[0] < 0 ? p * Math.max(0, 1 + rel[0] / 0.3) : p, rel ? rel[1] : 0);   /* (v9: a parapet cut by a crater bowl, too) */ if (rel && rel[0] < -0.001) return rel[0] + pos * 0.5; return pos > 0.004 ? pos : (mesh ? LOW : 0); };
     const ra = this.relief(x, z, false), rm = heightOnly ? this.relief(x, z, true) : ra;
     return [fin(rm, true), fin(ra, false)];
   }
   // top-surface height outside the cut (mesh = terrain mesh version: skips height-only mounds and keeps the LOW rim)
   topH(x, z, mesh) {
     const rel = this.relief(x, z, mesh);
-    let pos = Math.max(this.parapet(x, z), rel ? rel[1] : 0);
+    const pp = this.parapet(x, z); let pos = Math.max(rel && rel[0] < 0 ? pp * Math.max(0, 1 + rel[0] / 0.3) : pp, rel ? rel[1] : 0);
     if (rel && rel[0] < -0.001) return rel[0] + pos * 0.5;
     return pos > 0.004 ? pos : (mesh ? LOW : 0);
   }

@@ -63,10 +63,11 @@ export class HUD {
   rings() {
     const g = this.g;
     const ringGeo = new THREE.RingGeometry(0.55, 0.72, 24); ringGeo.rotateX(-Math.PI / 2);
-    this.ringMesh = new THREE.InstancedMesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.85, depthWrite: false }), 200);
+    // (v9: drawn over the ground cover -- at a fixed height the grass tufts and every terrain bump cut the rings to pieces)
+    this.ringMesh = new THREE.InstancedMesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false }), 200);
     this.ringMesh.frustumCulled = false; this.ringMesh.renderOrder = 5; g.scene.add(this.ringMesh);
     const vg = new THREE.RingGeometry(4.6, 5.0, 48); vg.rotateX(-Math.PI / 2);
-    this.vRing = new THREE.InstancedMesh(vg, this.ringMesh.material, 20); this.vRing.frustumCulled = false; g.scene.add(this.vRing);
+    this.vRing = new THREE.InstancedMesh(vg, this.ringMesh.material, 20); this.vRing.frustumCulled = false; this.vRing.renderOrder = 5; g.scene.add(this.vRing);
     const lineMat = new THREE.LineDashedMaterial({ color: 0xd8b25a, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.7 });
     this.orderLines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat); this.orderLines.frustumCulled = false; g.scene.add(this.orderLines);
     // v6: fire marks of men on individual fire tasks (trench clearing: the fire group's rounds ahead of the assault group)
@@ -83,7 +84,7 @@ export class HUD {
         const c = u.center(); for (const s of u.effective) if (s.goal && s.path) { pts.push(s.pos.x, 0.2, s.pos.z, s.goal[0], 0.2, s.goal[1]); }
         for (const s of u.effective) if (s.fireAt) fpts.push(s.pos.x, s.pos.y + 1.1, s.pos.z, s.fireAt.p.x, 0.5, s.fireAt.p.z);
       } else if (!u.destroyed && vn < 20) {
-        m.makeRotationY(u.heading).setPosition(u.pos.x, 0.1, u.pos.z); this.vRing.setMatrixAt(vn++, m);
+        m.makeRotationY(u.heading).setPosition(u.pos.x, (u.pos.y || 0) + 0.1, u.pos.z); this.vRing.setMatrixAt(vn++, m);
         if (u.path) { let px = u.pos.x, pz = u.pos.z; for (let i = u.pathI; i < u.path.length; i++) { pts.push(px, 0.25, pz, u.path[i][0], 0.25, u.path[i][1]); [px, pz] = u.path[i]; } }
       }
     }

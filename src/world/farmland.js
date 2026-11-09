@@ -788,8 +788,10 @@ export class Farmland extends City {
     const mats = [];
     for (let i = 0; i < 420; i++) {
       const a = this.rng() * Math.PI * 2, r = MAP_SIZE * 0.62 + this.rng() * 420;
-      const belt = Math.floor(a / 0.05), L = 6 + this.rng() * 5;
-      mats.push(new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng() * 3), new THREE.Vector3(L, 6 + this.rng() * 7, L)));
+      const belt = Math.floor(a / 0.05), L = 6 + this.rng() * 5, hy = 6 + this.rng() * 7, ry = this.rng() * 3;
+      // (v9: off the map only -- a 0.62 x MAP_SIZE ring cuts into the square's corners: blobs stood in the playable fields)
+      if (Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a))) * r < MAP_SIZE / 2 + L + 25) continue;
+      mats.push(new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(L, hy, L)));
     }
     const im = new THREE.InstancedMesh(geo, m, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M)); im.castShadow = false; this.scene.add(im);
   }
