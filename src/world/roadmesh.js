@@ -32,7 +32,7 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
   const t0 = performance.now();
   // cache keyed by the input itself (a rebuilt match on the same map reuses the surfaces)
   let hk = 2166136261; const mix = v => { hk = Math.imul(hk ^ (Math.round(v * 1000) | 0), 16777619); };
-  for (const r of roads) { mix(r.hw); mix(r.sw); mix(r.rad); mix(r.kerb ? 1 : 0); mix(r.ext || 0); mix(r.rough ? 1 : 0); for (const p of r.pts) { mix(p[0]); mix(p[1]); } }
+  for (const r of roads) { mix(r.hw); mix(r.sw); mix(r.rad); mix(r.kerb ? 1 : 0); mix(r.ext || 0); mix(r.rough ? 1 : 0); for (const p of r.pts) { mix(p[0]); mix(p[1]); } for (const q of r.pads || []) { mix(q.ax); mix(q.az); mix(q.hw); mix(q.L); } }
   for (const c of cuts) { mix(c.hw); for (const p of c.pts) { mix(p[0]); mix(p[1]); } }
   mix(y); mix(tile); mix(walkTile); key = (key || '') + ':' + (hk >>> 0) + ':' + roads.length;
   if (cache.has(key)) return finish(cache.get(key), t0, true);
@@ -65,6 +65,8 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
       prims.push({ box: true, ax, az, ux, uz, L: L0 + e0 + e1, hw: r.hw, sw, g, kerb: !!r.kerb, rough: !!r.rough });
     }
     P.forEach((p, k) => { if ((k > 0 && k < P.length - 1) || shared[i][k ? 1 : 0]) prims.push({ box: false, ax: p[0], az: p[1], hw: r.hw, sw, g, kerb: !!r.kerb }); });
+    // streets v5: dead-end turning pads (a rounded rectangle along the road at its end, same group: one surface)
+    for (const q of r.pads || []) { const cr = Math.min(q.cr || 0, q.hw - 0.5, q.L / 2 - 0.5); prims.push({ box: true, ax: q.ax + q.ux * cr, az: q.az + q.uz * cr, ux: q.ux, uz: q.uz, L: q.L - 2 * cr, hw: q.hw - cr, cr, sw, g, kerb: !!r.kerb, rough: !!r.rough }); }
   });
   const gr = gOrder.map(g => gRad.get(g)), grW = gOrder.map(g => Math.max(0.3, gRad.get(g) - gSw.get(g)));
   // ---- cell grid of candidate primitives
@@ -97,6 +99,7 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
         const ox = qx > 0 ? qx * qx : 0; let qy = s - p.hw, m = qx > qy ? qx : qy;
         da = Math.sqrt(ox + (qy > 0 ? qy * qy : 0)) + (m < 0 ? m : 0);
         if (p.sw) { qy -= p.sw; m = qx > qy ? qx : qy; dw = Math.sqrt(ox + (qy > 0 ? qy * qy : 0)) + (m < 0 ? m : 0); } else dw = 1e9;
+        if (p.cr) { da -= p.cr; if (p.sw) dw -= p.cr; }
       } else { const dx = x - p.ax, dz = z - p.az, d = Math.sqrt(dx * dx + dz * dz); da = d - p.hw; dw = p.sw ? d - p.hw - p.sw : 1e9; }
       if (da < dA[p.g]) dA[p.g] = da; if (dw < dW[p.g]) dW[p.g] = dw;
     }

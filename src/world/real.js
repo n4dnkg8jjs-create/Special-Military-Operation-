@@ -343,8 +343,27 @@ const Real = {
     // the mapped width, no kerb / pavement; about a third of them only gravel (or dirt)
     streetClasses(D);
     const lane = r => { const h = hsh(r.pts[0][0] + 0.37, r.pts[0][1] - 0.61); return h < 0.22 ? 'gravel' : h < 0.34 ? 'dirt' : 'asphalt'; };
+    // streets v5: dead ends of the microdistrict streets / courtyard drives get a turning pad (Soviet SNiP 2.07.01-89:
+    // dead-end drives end in a turning area of at least 12 x 12 m) where there is room for one -- clear of buildings,
+    // yards (plots), track beds and other roads; private-sector lanes just end (they run on as field tracks)
+    const padsOf = r => {
+      if (!urban || r.sc === 'priv' || r.type === 'paved') return null; const P = r.pts; let len = 0; for (let i = 1; i < P.length; i++) len += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
+      if (len < 40) return null; const out = [], hm = MAP_SIZE / 2 - 20;
+      for (const e of [0, 1]) {
+        const E = e ? P[P.length - 1] : P[0], Q = e ? P[P.length - 2] : P[1], L = Math.hypot(E[0] - Q[0], E[1] - Q[1]); if (L < 6 || Math.abs(E[0]) > hm || Math.abs(E[1]) > hm) continue;
+        const ux = (E[0] - Q[0]) / L, uz = (E[1] - Q[1]) / L;
+        if (D.roads.some(o => o !== r && o.pts.some((p, k) => k && segD(E[0], E[1], o.pts[k - 1][0], o.pts[k - 1][1], p[0], p[1]) < (o.w || 4) / 2 + 3))) continue;   // joins another road: not a dead end
+        const hw = 6, Lp = 12, ax = E[0] - ux * (Lp - 1), az = E[1] - uz * (Lp - 1); let ok = true;
+        for (let t = -1; t <= Lp + 1 && ok; t += 1.5) for (let s = -hw - 1; s <= hw + 1 && ok; s += 1.5) {
+          const x = ax + ux * t - uz * s, z = az + uz * t + ux * s;
+          if (D.buildings.some(b => (b.parts || [[b.x, b.z, b.L, b.D]]).some(([bx, bz, bL, bD]) => { const dx = x - bx, dz = z - bz, c = Math.cos(b.rot), sn = Math.sin(b.rot); return Math.abs(dx * c - dz * sn) < bL / 2 + 1 && Math.abs(dx * sn + dz * c) < bD / 2 + 1; }))
+            || (D.plots || []).some(pl => inPoly(x, z, pl.pts)) || this.railNear(x, z, 3)) ok = false;
+        }
+        if (ok) out.push({ ax, az, ux, uz, L: Lp, hw, cr: 2.5 });
+      }
+      if (out.length) this.padCount = (this.padCount || 0) + out.length; return out.length ? out : null; };
     const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1 && !(r.sc === 'priv' && lane(r) !== 'asphalt')).map(r => { const priv = r.sc === 'priv';
-      return { pts: r.pts, hw: priv ? Math.min(r.w / 2, 2.0 + hsh(r.pts[0][1], r.pts[0][0]) * 0.4) : r.w / 2, ext: 0.5, sw: urban && !priv && swOf(r) > 0.05 ? swOf(r) : 0,
+      return { pads: padsOf(r), pts: r.pts, hw: priv ? Math.min(r.w / 2, 2.0 + hsh(r.pts[0][1], r.pts[0][0]) * 0.4) : r.w / 2, ext: 0.5, sw: urban && !priv && swOf(r) > 0.05 ? swOf(r) : 0,
         rad: r.type === 'paved' ? 9 : r.type === 'street' ? (priv ? 4 : 5.5) : 2, kerb: urban && r.type !== 'drive' && !priv && swOf(r) >= 1.5, rough: priv }; }), { key: 'real:' + MAP.real + ':' + D.roads.length,
       // streets v2: the railway / tram beds (ballast 2.1 m each side) keep their mapped place -- no pavement over them (OSM
       // has the old tram line along Vorobyova / Tsentralnyi right beside the carriageway, inside a symmetric pavement)
