@@ -436,11 +436,16 @@ def grain_silo(name='grain_silo', seed=40):
         lathe_bands(mb, Rb, 0.3, Hb, 20, 'silo_steel', around=6, band=1.0, M=T(cx, 0, 0))
         lathe(mb, [(Rb + 0.08, Hb - 0.07), (Rb * 0.18, Hb + 2.1), (0.0, Hb + 2.2)], 20, 'tin_galv', M=T(cx, 0, 0), around=6)   # eave on the wall head
         lathe(mb, [(0.35, Hb + 2.1), (0.35, Hb + 2.55), (0.5, Hb + 2.6), (0.0, Hb + 2.75)], 8, 'tin_galv', M=T(cx, 0, 0))
-        # ladder up the side
+        # ladder up the side: stiles 0.18 m off the wall on standoff brackets every 1.5 m (was free-standing 0.25 m out,
+        # read as a loose pole), rungs at 0.3 m, over the eave onto the roof
+        lx = cx + sx * (Rb + 0.18)
         for dz in (-0.22, 0.22):
-            cyl(mb, (cx + sx * (Rb + 0.25), 0.3, dz), (cx + sx * (Rb + 0.25), Hb + 0.4, dz), 0.025, 4, 'steel_rust', seg=3)
-        for y in np.arange(0.6, Hb, 0.3 * 3):
-            cyl(mb, (cx + sx * (Rb + 0.25), y, -0.22), (cx + sx * (Rb + 0.25), y, 0.22), 0.015, 3, 'steel_rust')
+            cyl(mb, (lx, 0.3, dz), (lx, Hb + 0.5, dz), 0.025, 4, 'steel_rust', seg=3)
+            for y in np.arange(0.9, Hb, 1.5):
+                cyl(mb, (cx + sx * (Rb - 0.03), y, dz), (lx, y, dz), 0.018, 4, 'steel_rust')
+            cyl(mb, (lx, Hb + 0.5, dz), (cx + sx * (Rb - 0.35), Hb + 0.75, dz), 0.025, 4, 'steel_rust')
+        for y in np.arange(0.6, Hb + 0.3, 0.3):
+            cyl(mb, (lx, y, -0.22), (lx, y, 0.22), 0.015, 3, 'steel_rust')
         # rust streak tint
     # elevator leg (box tower 1.0 x 0.7) to 17 m + head house
     tbox(mb, (-0.5, 0, -0.35), (0.5, 15.5, 0.35), 'tin_galv', (1.0, 2.0), faces='+x-x+z-z')

@@ -111,7 +111,7 @@ function planBlock(w, b) {
     pile(mx + (R() - 0.5) * 2, b.D / 2 + (big ? 3.6 : 2.6) * s, 0, big, s);
     pile(mx + (R() - 0.5) * 2, -b.D / 2 - (big ? 3.6 : 2.6) * s, Math.PI, big && R() < 0.5, s * 0.85);
     // furniture tipped over on the floor of the crater (the top of the stub), seen from above
-    for (let col2 = a; col2 <= c; col2++) if (furn.length && R() < 0.7) { const f = b.cut[col2]; ex.push({ piece: pick(R, furn), M: at(-b.L / 2 + col2 * W + 0.4 + R() * 1.6, f * H + 0.01, (R() - 0.5) * (b.D - 4), R() * TAU) }); }
+    for (let col2 = a; col2 <= c; col2++) if (furn.length && R() < 0.7) { const f = b.cut[col2]; if (b.hang && (b.hang.has(col2 + ':' + (f - 1) + ':front') || b.hang.has(col2 + ':' + (f - 1) + ':back'))) continue;   /* (v9: no floor there -- the slab hangs at the rim) */ ex.push({ piece: pick(R, furn), M: at(-b.L / 2 + col2 * W + 0.4 + R() * 1.6, f * H + 0.01, (R() - 0.5) * (b.D - 4), R() * TAU) }); }
     S.blocks.push({ b, kind: 'fab', a, c });
   }
   for (const [a, c] of plan.roof) {
@@ -413,6 +413,7 @@ function ruinDebris(w, api) {
     // exposed floors: the stub top of a bomb crater, the burnt-out top storey under the open sky
     for (let c2 = 0; c2 < b.modules; c2++) {
       const f = b.cut?.[c2] < b.floors ? b.cut[c2] : b.roofGone?.has(c2) ? b.floors - 1 : -1; if (f < 1) continue;
+      if (b.hang && (b.hang.has(c2 + ':' + (f - 1) + ':front') || b.hang.has(c2 + ':' + (f - 1) + ':back'))) continue;   // (v9: the stub-top slab hangs at the rim there: debris floated / stuck in it)
       const m = 1 + (R() * 3 | 0);
       for (let k = 0; k < m; k++) { const lx = -b.L / 2 + (c2 + 0.1 + R() * 0.8) * W, lz = (R() - 0.5) * (b.D - 3), p = b.toWorld(lx, 0, lz); up(W8([['slab', 3], ['chunk', 3], ['rebar', 1], ['brick', 1], ['insul', 1], ['plank', 1]]), p.x, f * Hk + 0.12, p.z); }
     }

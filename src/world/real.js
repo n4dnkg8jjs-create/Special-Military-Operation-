@@ -1096,6 +1096,9 @@ export class RealRural extends Farmland {
         if (R() > keep) continue;
         const x = (f.rowsX ? a : b) + (R() - 0.5) * (f.type === 2 ? 3 : 0.5), z = (f.rowsX ? b : a) + (R() - 0.5) * (f.type === 2 ? 3 : 0.5);
         if (!inPoly(x, z, f.pts) || edgeDist(x, z, f.pts) < 5) continue;
+        // (v9: not in the woods / scrub / orchards mapped inside a field polygon (OSM inner rings) -- crop rows grew among the trees)
+        if (this.areaIs(x, z, ['wood', 'forest', 'scrub', 'orchard', 'heath'])) continue;
+        if (this.forestMask) { const MN = this.forestMN, o = MAP_SIZE / 2, fi = Math.floor((x + o) / 4), fj = Math.floor((z + o) / 4); let near = false; for (let j = fj - 2; j <= fj + 2 && !near; j++) for (let i = fi - 2; i <= fi + 2; i++) if (i >= 0 && j >= 0 && i < MN && j < MN && this.forestMask[j * MN + i]) { near = true; break; } if (near) continue; }
         const pn = this.noise2(x / 26, z / 26, 11); if (pn < (f.type === 2 ? 0.45 : 0.22) || (pn < 0.35 && R() < 0.5)) continue;
         if (onRoad(x, z, 2.5) || this.nearCrater(x, z, 0.9) || this.onTrail(x, z) || (this.inBurn(x, z) && R() < 0.8) || this.terrain.cutSDF(x, z) < 1.4 || this.uneven(x, z, 0.8) > 0.25) continue;
         const ci = this.nav.idx(x, z); if (ci < 0 || this.nav.cost[ci] !== 1) continue;
