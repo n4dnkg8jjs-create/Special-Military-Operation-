@@ -11,6 +11,7 @@ import { battlefieldDetail } from './battlefieldDetail.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, warAt, roadFrame, roadWear, weatherEnv, craterMesh, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { planStreets, buildStreetFurniture } from './streetFurniture.js';
 
 // Active map: live bindings, set by setMap() before the world is built.
 export let MAP, MAP_SIZE, BOUNDS, ROADS, OBJECTIVES, DEPLOY_ZONES, SPAWNS;
@@ -158,6 +159,7 @@ export class City {
     this.fortifications();
     this.rubbleAndDebris();
     this.trees(); this.poles(); this.props(); this.dressing(); this.modernDressing(); this.flushTrees(); this.defences(); this.cityWrecks();
+    this.streetFurniture();
     this.craters(); this.paintGround(); battlefieldDetail(this); this.skyline();
     this.nav.finalize();
   }
@@ -652,7 +654,7 @@ export class City {
     const swOf = r => r.type === 'drive' ? 1.3 : SIDEWALK;
     const above = r => ROADS.filter(o => o !== r && (prio(o) > prio(r) || (prio(o) === prio(r) && ROADS.indexOf(o) > ROADS.indexOf(r))));
     const S = roadSurfaces(ROADS.map(r => { const w = r.x1 - r.x0, d = r.z1 - r.z0, cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
-      return { pts: w > d ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], hw: Math.min(w, d) / 2, sw: swOf(r), rad: r.w === 'avenue' ? 4 : r.type === 'drive' ? 1.5 : 3, kerb: true, ext: 0 }; }), { key: 'city:' + MAP.id + ':' + ROADS.length });
+      return { pts: w > d ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], hw: Math.min(w, d) / 2, sw: swOf(r), rad: r.w === 'avenue' || Math.min(w, d) >= 12 ? 9 : r.type === 'drive' ? 2 : 5.5, kerb: true, ext: 0 }; }), { key: 'city:' + MAP.id + ':' + ROADS.length });
     this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
     for (const g of S.walk) { const m = new THREE.Mesh(g, walk); m.receiveShadow = true; this.scene.add(m); }
     for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); }
@@ -672,6 +674,15 @@ export class City {
     for (const [x, z, yaw] of S.kerbs) { let h = Math.imul(Math.round(x * 10) | 0, 73856093) ^ Math.imul(Math.round(z * 10) | 0, 19349663); h = Math.imul(h ^ (h >>> 13), 0x5bd1e995); h = ((h ^ (h >>> 15)) >>> 0) / 4294967296; if (h < 0.04) continue; curbs.push(trs(x, 0.08, z, yaw, 1, 0, (h * 7 % 1 - 0.5) * 0.04)); }
     const cg = new THREE.BoxGeometry(0.98, 0.2, 0.22);
     instanceRuns(this.scene, Object.assign(new THREE.Mesh(cg, curbMat), { name: 'curb' }), curbs, { cell: 90, lodDist: 100 });   // (far: merged straight runs)
+  }
+  // streets v1 (streetFurniture.js, own RNG, light here): junction signs, zebras, a dead traffic light, entry plates
+  streetFurniture() {
+    const roads = ROADS.map(r => { const w = r.x1 - r.x0, d = r.z1 - r.z0, cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2, hw = Math.min(w, d) / 2;
+      return { pts: w > d ? [[r.x0, cz], [r.x1, cz]] : [[cx, r.z0], [cx, r.z1]], w: hw * 2, sw: r.type === 'drive' ? 1.3 : SIDEWALK, sc: r.w === 'avenue' || hw >= 6 ? 'main' : r.type === 'drive' ? 'drive' : 'micro', name: '' }; });
+    const cands = this.buildings.filter(b => b.kind === 'school' || b.shops).map(b => [b.x, b.z, b.kind === 'school' ? 0 : 2]);
+    const plan = planStreets(roads, { extraCands: cands, size: MAP_SIZE });
+    const res = buildStreetFurniture(this, plan, { size: MAP_SIZE, seed: 4242 + (MAP.id || '').length, town: MAP.id === 'city' ? 'Новозаводськ' : '', urban: true, lights: 1, shelters: 0, plates: false });
+    this.streetStats = res?.stats;
   }
   // ---------------------------------------------------------------- buildings
   placeBuildings() {

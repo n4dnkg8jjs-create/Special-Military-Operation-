@@ -22,14 +22,15 @@ function roundUnion(a, b, r) {
   return (m > r ? m : r) - Math.sqrt(ux * ux + uy * uy);
 }
 
-// roads: [{ pts, hw, sw (pavement width, 0 none), rad (fillet radius), kerb, ext (end extension) }]
+// roads: [{ pts, hw, sw (pavement width, 0 none), rad (fillet radius), kerb, ext (end extension), rough (private-sector
+// lane: aRoad.z += 2, the wear shader crumbles its edge into the shoulder) }]
 // opts: { y, tile, walkTile, key (cache key) }
 // returns { asphalt: [BufferGeometry], walk: [BufferGeometry], kerbs: [[x, z, yaw]], ms, tris }
 export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = null } = {}) {
   const t0 = performance.now();
   // cache keyed by the input itself (a rebuilt match on the same map reuses the surfaces)
   let hk = 2166136261; const mix = v => { hk = Math.imul(hk ^ (Math.round(v * 1000) | 0), 16777619); };
-  for (const r of roads) { mix(r.hw); mix(r.sw); mix(r.rad); mix(r.kerb ? 1 : 0); mix(r.ext || 0); for (const p of r.pts) { mix(p[0]); mix(p[1]); } }
+  for (const r of roads) { mix(r.hw); mix(r.sw); mix(r.rad); mix(r.kerb ? 1 : 0); mix(r.ext || 0); mix(r.rough ? 1 : 0); for (const p of r.pts) { mix(p[0]); mix(p[1]); } }
   mix(y); mix(tile); mix(walkTile); key = (key || '') + ':' + (hk >>> 0) + ':' + roads.length;
   if (cache.has(key)) return finish(cache.get(key), t0, true);
   // ---- groups: ways whose ends meet at a node of exactly two ends, nearly straight on (< 35 deg)
@@ -58,7 +59,7 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
       let [ax, az] = P[k]; const [bx, bz] = P[k + 1], L0 = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / L0, uz = (bz - az) / L0;
       const e0 = k === 0 && !shared[i][0] ? r.ext || 0 : 0, e1 = k === P.length - 2 && !shared[i][1] ? r.ext || 0 : 0;
       ax -= ux * e0; az -= uz * e0;
-      prims.push({ box: true, ax, az, ux, uz, L: L0 + e0 + e1, hw: r.hw, sw, g, kerb: !!r.kerb });
+      prims.push({ box: true, ax, az, ux, uz, L: L0 + e0 + e1, hw: r.hw, sw, g, kerb: !!r.kerb, rough: !!r.rough });
     }
     P.forEach((p, k) => { if ((k > 0 && k < P.length - 1) || shared[i][k ? 1 : 0]) prims.push({ box: false, ax: p[0], az: p[1], hw: r.hw, sw, g, kerb: !!r.kerb }); });
   });
@@ -143,7 +144,7 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
       for (const [x, z] of verts) {
         field(x, z); const [p, sg] = nearest(x, z);
         const hw = p ? (which === 'walk' ? p.hw + p.sw : p.hw) : 3, edge = Math.max(0, -(which === 'walk' ? F.wr : F.a));
-        B.pos.push(x, y, z); B.uv.push(x / T, z / T); B.ex.push(sg * Math.max(0, hw - edge), hw, p && Math.abs(p.ux) > Math.abs(p.uz) ? 1 : 0);
+        B.pos.push(x, y, z); B.uv.push(x / T, z / T); B.ex.push(sg * Math.max(0, hw - edge), hw, (p && Math.abs(p.ux) > Math.abs(p.uz) ? 1 : 0) + (p?.rough ? 2 : 0));
       }
       for (const [a, b, c] of faces) {
         const A = verts[a], Bv = verts[b], Cv = verts[c], cr = (Bv[0] - A[0]) * (Cv[1] - A[1]) - (Bv[1] - A[1]) * (Cv[0] - A[0]);

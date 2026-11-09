@@ -159,7 +159,8 @@ export function roadWear(mat, U, { rural = false, damage = 1 } = {}) {
       .replace('#include <map_fragment>', `#include <map_fragment>
       {
         vec2 wp = vRW.xz; float hw = vRoad.y, edge = hw - abs(vRoad.x);
-        vec2 al = vRoad.z > 0.5 ? wp : wp.yx;   // x = along the road, y = across
+        float rough = step(1.5, vRoad.z);       // private-sector lane (roadmesh rough): crumbling edge, no kerb
+        vec2 al = vRoad.z - 2.0 * rough > 0.5 ? wp : wp.yx;   // x = along the road, y = across
         vec4 war = texture2D(tWar, clamp(wp / splatSize + 0.5, 0.001, 0.999));
         float D = ${damage.toFixed(2)};
         float n1 = wfbm(wp * 0.6), n2 = wn1(wp * 2.7), n3 = wn1(wp * 11.0);
@@ -188,6 +189,13 @@ export function roadWear(mat, U, { rural = false, damage = 1 } = {}) {
         float crumble = 0.55 * wfbm(al * vec2(0.35, 1.0)) + 0.35 * n3;
         if (edge < crumble * D - 0.05) discard;
         c = mix(c, c * 0.72, smoothstep(0.35, 0.0, edge - crumble * D) * 0.6);` : ''}
+        ${rural ? '' : `
+        if (rough > 0.5) {   // ragged asphalt edge breaking up into the gravel / dirt shoulder
+          float crumble = 0.6 * wfbm(al * vec2(0.3, 1.0)) + 0.4 * n3;
+          if (edge < crumble * 1.2 - 0.1) discard;
+          c = mix(c, c * 0.7, smoothstep(0.45, 0.0, edge - crumble * 1.2) * 0.7);
+          c = mix(c, dustC, (1.0 - smoothstep(0.0, 1.3, edge + (n2 - 0.5) * 0.9)) * 0.55);
+        }`}
         // potholes (rarer in the town), each with a broken rim and muddy water
         float ph = wn1(wp * 0.38 + 11.0) * 0.6 + wn1(wp * 1.3) * 0.28 + n3 * 0.12;
         float thr = ${rural ? '0.79' : '0.84'} - 0.06 * D;

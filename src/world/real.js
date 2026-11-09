@@ -26,6 +26,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
 import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { planStreets, buildStreetFurniture } from './streetFurniture.js';
 import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
@@ -89,6 +90,22 @@ export const OSM_CREDIT = 'Map data © OpenStreetMap contributors (ODbL)';
 const SIDEWALK = 3.2;
 // pavement width per street (osm2map / refine.py r.sw: narrower where the blocks come close, a verge in the private sector)
 const swOf = r => r.sw ?? (r.type === 'drive' ? 1.1 : SIDEWALK);
+
+// street classes (streets v1): main = the OSM primary / secondary / tertiary through roads, micro = residential /
+// unclassified streets between the blocks (kerbs, pavements), priv = private-sector lanes (single houses along them, no
+// panel blocks: narrow asphalt with a crumbling edge, gravel shoulder, no kerb / pavement; some only gravel or dirt)
+const TOWN = { avdiivka: 'Авдіївка', robotyne: 'Роботине' };
+function streetClasses(D) {
+  if (D.scDone) return; D.scDone = true;
+  const houses = D.buildings.filter(b => b.cls === 'house'), blocks = D.buildings.filter(b => b.cls === 'block' || b.cls === 'school' || b.cls === 'civic');
+  for (const r of D.roads) {
+    if (r.type === 'paved') { r.sc = 'main'; continue; }
+    if (r.type !== 'street') { r.sc = r.type; continue; }
+    let h = 0, b = 0;
+    for (const p of densify(r.pts, 20)) { for (const q of houses) if (Math.hypot(q.x - p[0], q.z - p[1]) < 32) h++; for (const q of blocks) if (Math.hypot(q.x - p[0], q.z - p[1]) < 45) b++; }
+    r.sc = swOf(r) < 1.5 || (h >= 6 && b === 0) ? 'priv' : 'micro';
+  }
+}
 
 // ================================================================ geometry helpers
 export function inPoly(x, z, P) {
@@ -320,8 +337,16 @@ const Real = {
     // the same level, under the asphalt / pavements by polygonOffset (transparent, no depth write: no fighting)
     const hsh = (x, z) => { let h = Math.imul(Math.round(x * 10) | 0, 73856093) ^ Math.imul(Math.round(z * 10) | 0, 19349663); h = Math.imul(h ^ (h >>> 13), 0x5bd1e995); return ((h ^ (h >>> 15)) >>> 0) / 4294967296; };
     const paved = r => r.type === 'paved' || r.type === 'street' || r.type === 'drive';
-    const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1).map(r => ({ pts: r.pts, hw: r.w / 2, ext: 0.5, sw: urban && swOf(r) > 0.05 ? swOf(r) : 0,
-      rad: r.type === 'paved' ? 3.5 : r.type === 'street' ? 2.5 : 1.2, kerb: urban && r.type !== 'drive' && swOf(r) >= 1.5 })), { key: 'real:' + MAP.real + ':' + D.roads.length });
+    // streets v1: fillet radii by class (main 9 m, microdistrict streets 5.5 m, private-sector lanes 4 m, drives 2 m);
+    // private-sector lanes: narrow asphalt (4-4.8 m) with a crumbling edge (wear shader `rough`), a gravel shoulder out to
+    // the mapped width, no kerb / pavement; about a third of them only gravel (or dirt)
+    streetClasses(D);
+    const lane = r => { const h = hsh(r.pts[0][0] + 0.37, r.pts[0][1] - 0.61); return h < 0.22 ? 'gravel' : h < 0.34 ? 'dirt' : 'asphalt'; };
+    const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1 && !(r.sc === 'priv' && lane(r) !== 'asphalt')).map(r => { const priv = r.sc === 'priv';
+      return { pts: r.pts, hw: priv ? Math.min(r.w / 2, 2.0 + hsh(r.pts[0][1], r.pts[0][0]) * 0.4) : r.w / 2, ext: 0.5, sw: urban && !priv && swOf(r) > 0.05 ? swOf(r) : 0,
+        rad: r.type === 'paved' ? 9 : r.type === 'street' ? (priv ? 4 : 5.5) : 2, kerb: urban && r.type !== 'drive' && !priv && swOf(r) >= 1.5, rough: priv }; }), { key: 'real:' + MAP.real + ':' + D.roads.length });
+    this.streetPlan = planStreets(D.roads.map(r => ({ pts: r.pts, w: r.w, sw: urban && r.sc !== 'priv' ? swOf(r) : 0, sc: r.sc, name: r.name || '' })),
+      { pois: D.pois || [], areas: D.areas, rails: D.lines.filter(l => l.t === 'rail' || l.t === 'rail_old'), size: MAP_SIZE });
     this.roadStats = { ms: S.ms, tris: S.tris, cached: S.cached };
     for (const g of S.walk) { const m = new THREE.Mesh(g, walkM); m.receiveShadow = true; this.scene.add(m); }
     for (const g of S.asphalt) { const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; this.scene.add(m); }
@@ -332,7 +357,8 @@ const Real = {
       if (paved(r)) {
         // lane dashes: flush on the surface (polygonOffset), stopping well short of junctions (the dash ends clear of
         // any other carriageway and its fillet)
-        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 4, r)) dashes.push(trs(x, ROAD_Y, z, Math.atan2(-uz, ux))); });
+        if (r.type === 'paved') walk(P, urban ? 9 : 12, (x, z, ux, uz) => { if (this.rng() < (urban ? 0.75 : 0.45) && !this.net.hit(x, z, 4, r) && !this.streetPlan.Z.some(c => Math.hypot(c.x - x, c.z - z) < 7)) dashes.push(trs(x, ROAD_Y, z, Math.atan2(-uz, ux))); });
+        if (r.sc === 'priv') { const ln = lane(r); ribbon(ln === 'dirt' ? B.track : B.gravel, P, hw + (ln === 'asphalt' ? 0.45 : 0.6), ROAD_Y, { uvMode: 'strip', tile: 4.5, ext: 0.3 }); }   // (shoulder / the whole lane)
       } else ribbon(r.type === 'gravel' ? B.gravel : B.track, P, hw + 0.6, ROAD_Y, { uvMode: 'strip', tile: 4.5, ext: 0.3 });
       // nav: vehicles prefer roads (2 paved, 1 dirt)
       const v = RW[r.type] || 1, pad = v === 1 ? 0.6 : 0;
@@ -347,6 +373,14 @@ const Real = {
     add(B.gravel, gravelMat, 1); add(B.track, this.trackMat, 1);
     if (dashes.length) { const dg = new THREE.PlaneGeometry(3, 0.14); dg.rotateX(-Math.PI / 2); instance(this.scene, new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: urban ? 0xc9c5b8 : 0xa9a598, roughness: 0.9, transparent: true, opacity: urban ? 0.5 : 0.32, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })), dashes, { shadows: false, cell: 400 }); }
     if (curbs.length) { const curbMat = T.curb ? this.mat('curb', 1, { color: 0xffffff }) : new THREE.MeshStandardMaterial({ color: 0x9d988c, roughness: 0.9 }); instanceRuns(this.scene, Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.2, 0.22), curbMat), { name: 'curb' }), curbs, { cell: 160, lodDist: 100, cullDist: 520 }); }   // (far: merged straight runs)
+  },
+  // streets v1 (streetFurniture.js, own RNG): signs, zebras, stops, level crossings, name plates, entry plates
+  streetFurnitureReal() {
+    const D = this.osm;
+    const res = buildStreetFurniture(this, this.streetPlan, { size: MAP_SIZE, seed: (MAP.seed || 9157) * 31 + 7, town: TOWN[MAP.real] || '', urban: this.urban,
+      lights: this.urban ? 2 : 0, shelters: this.urban ? 3 : 1, plates: this.urban,
+      busPois: (D.pois || []).filter(p => /bus_stop|tram_stop/.test(p[3] || '')).map(p => [p[1], p[2]]) });
+    this.streetStats = res?.stats;
   },
   // ---------------------------------------------------------------- buildings from footprints
   // kit rows (panel blocks, schools, civic) for City.placeBuildings, the rest queued for templates / halls / garages
@@ -904,7 +938,7 @@ export class RealRural extends Farmland {
     step('houses', () => { this.smallBuildings(); this.plotsReal(); ruinsHeat(this); });
     step('vegetation', () => this.vegetationReal());
     step('rubble', () => this.rubbleAndDebris());
-    step('props', () => { this.polesReal(); this.linesReal(); this.propsLight(); this.warReal(); });
+    step('props', () => { this.polesReal(); this.linesReal(); this.propsLight(); this.warReal(); this.streetFurnitureReal(); });
     step('trails', () => this.trailsReal());
     step('crops', () => this.cropsReal());
     step('flush', () => { this.flush(); this.moundsFlush(); });
@@ -1148,7 +1182,7 @@ export class RealUrban extends City {
     step('rubble', () => this.rubbleAndDebris());
     step('rail', () => this.railReal());
     step('vegetation', () => { this.linesReal(); this.vegetationReal(); });   // walls / fences / gas pipes first: trees keep clear
-    step('props', () => { this.polesReal(); this.propsUrban(); this.warReal(); this.cityWrecksReal(); });
+    step('props', () => { this.polesReal(); this.propsUrban(); this.warReal(); this.cityWrecksReal(); this.streetFurnitureReal(); });
     step('flush', () => { this.flush(); this.moundsFlush(); });
     step('craters', () => this.craters());
     step('paint', () => this.paintGround());
