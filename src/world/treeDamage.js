@@ -62,7 +62,7 @@ function tplInfo(tpl) {
     if (mats.some(isLeafMat)) { leaf.union(b); leafMat ||= mats.find(isLeafMat); } else barkMat ||= mats[0];
   });
   const crown = leaf.isEmpty() ? all : leaf, c = crown.getCenter(new THREE.Vector3()), sz = crown.getSize(new THREE.Vector3());
-  return { leafy: !!leafMat, bush: /^bush_/.test(tpl.name || ''), c, r: Math.max(0.6, Math.max(sz.x, sz.z) * 0.5), ry: Math.max(0.6, sz.y * 0.5), h: Math.max(1, all.max.y),
+  return { leafy: !!leafMat, bush: /^bush_/.test(tpl.name || ''), down: /_snapped$|_broken$/.test(tpl.name || ''), c, r: Math.max(0.6, Math.max(sz.x, sz.z) * 0.5), ry: Math.max(0.6, sz.y * 0.5), h: Math.max(1, all.max.y),
     leafCol: leafMat ? albedo(leafMat, true, 0x56602f) : null, barkCol: albedo(barkMat, false, 0x4d4339) };
 }
 
@@ -325,7 +325,9 @@ export class TreeDamage {
         if (q > 0) {
           this.D[t] += q;
           const thr = 0.8 * Math.min(1.5, Math.max(0.7, s));
-          if (q >= thr || this.D[t] >= 2.6 * thr / 0.8) { const w = woodBudget > 0 ? Math.min(woodBudget, 18) : 0; woodBudget -= w; this.snap(t, bx, bz, q, w); }
+          // (streets v2: an already snapped tree -- its top lying in the template -- is not snapped again: the whole
+          // template would fall over and its lying top end up standing / floating in the air; splinters only)
+          if (!I.down && (q >= thr || this.D[t] >= 2.6 * thr / 0.8)) { const w = woodBudget > 0 ? Math.min(woodBudget, 18) : 0; woodBudget -= w; this.snap(t, bx, bz, q, w); }
           else if (q > 0.22 && woodBudget > 0) { const w = Math.min(woodBudget, Math.round(2 + q * 6)); woodBudget -= w; this.splinters(t, w, bx, by, bz, q, false); }
         }
       }

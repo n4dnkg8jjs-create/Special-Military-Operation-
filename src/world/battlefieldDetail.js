@@ -944,7 +944,7 @@ function build(w, opt) {
   }
   // tops of the snapped belt trees (treeFate), lying from their stumps the way the blast threw them
   for (const [x, z] of w._bfTops || []) mark('stump', x, z);
-  for (const [x, z, a, k] of w._bfTops || []) { const px = x + Math.cos(a) * 0.4, pz = z + Math.sin(a) * 0.4; if (T.cutSDF(px, pz) < 1) continue; if (guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, k > 0.8); PC.log(D, R, k); })) stats.pieces++; }   // (far copy: the big trunks only)
+  for (const [x, z, a, k] of w._bfTops || []) { const px = x + Math.cos(a) * 0.4, pz = z + Math.sin(a) * 0.4; if (T.cutSDF(px, pz) < 1) continue; if (w.paved) { let bad = false; for (let t = 0; t <= 7.5 * k + 0.6 && !bad; t += 0.8) bad = w.paved.paved(px + Math.cos(a) * t, pz - Math.sin(a) * t) < 0.3 || w.paved.paved(px + Math.cos(a) * t, pz + Math.sin(a) * t) < 0.3; if (bad) continue; }   /* (streets v2: never across a pavement / kerb) */ if (guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, k > 0.8); PC.log(D, R, k); })) stats.pieces++; }   // (far copy: the big trunks only)
   // root plates of the uprooted belt trees (treeFate): at the trunk's root end (template z -4.4, its plate normal along the
   // trunk), the hole beside it on the far side
   const RP0 = new THREE.Matrix4().makeTranslation(0.08, 1.13, -4.38), HV = new THREE.Vector3();

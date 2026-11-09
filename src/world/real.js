@@ -345,7 +345,10 @@ const Real = {
     const lane = r => { const h = hsh(r.pts[0][0] + 0.37, r.pts[0][1] - 0.61); return h < 0.22 ? 'gravel' : h < 0.34 ? 'dirt' : 'asphalt'; };
     const S = roadSurfaces(D.roads.filter(r => paved(r) && r.pts.length > 1 && !(r.sc === 'priv' && lane(r) !== 'asphalt')).map(r => { const priv = r.sc === 'priv';
       return { pts: r.pts, hw: priv ? Math.min(r.w / 2, 2.0 + hsh(r.pts[0][1], r.pts[0][0]) * 0.4) : r.w / 2, ext: 0.5, sw: urban && !priv && swOf(r) > 0.05 ? swOf(r) : 0,
-        rad: r.type === 'paved' ? 9 : r.type === 'street' ? (priv ? 4 : 5.5) : 2, kerb: urban && r.type !== 'drive' && !priv && swOf(r) >= 1.5, rough: priv }; }), { key: 'real:' + MAP.real + ':' + D.roads.length });
+        rad: r.type === 'paved' ? 9 : r.type === 'street' ? (priv ? 4 : 5.5) : 2, kerb: urban && r.type !== 'drive' && !priv && swOf(r) >= 1.5, rough: priv }; }), { key: 'real:' + MAP.real + ':' + D.roads.length,
+      // streets v2: the railway / tram beds (ballast 2.1 m each side) keep their mapped place -- no pavement over them (OSM
+      // has the old tram line along Vorobyova / Tsentralnyi right beside the carriageway, inside a symmetric pavement)
+      cuts: D.lines.filter(l => l.t === 'rail' || l.t === 'rail_old' || l.t === 'rail_siding').map(l => ({ pts: l.pts, hw: 2.3 })) });
     this.streetPlan = planStreets(D.roads.map(r => ({ pts: r.pts, w: r.w, sw: urban && r.sc !== 'priv' ? swOf(r) : 0, sc: r.sc, name: r.name || '', soft: !paved(r) || (r.sc === 'priv' && lane(r) !== 'asphalt') })),
       { pois: D.pois || [], areas: D.areas, rails: D.lines.filter(l => l.t === 'rail' || l.t === 'rail_old'), size: MAP_SIZE });
     // streets v2: signed distance to the final merged surfaces (clearance tests, crater clamp, track-strip clipping)
@@ -673,7 +676,9 @@ const Real = {
     const kinds = rural.length ? rural : cityT;
     const lodOf = n => this.hasTpl(n + '_lod1') ? n + '_lod1' : null;
     const items = [];
-    const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false;
+    // streets v2: no trunk on a carriageway, kerb or pavement (the final merged surfaces: corner aprons, other roads' pavements)
+    const offPaved = (x, z, pad) => !this.paved || this.paved.paved(x, z) >= pad;
+    const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || !offPaved(x, z, 1.0) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false;
       const t = this.tpl(n); if (this.crownHit(x, z, t ? this.canopyR(t, s) * 0.75 : 2)) return false;   // crown clear of roofs
       const ry = R() * 6.28;
       if (this.ruinTree) { const f = this.ruinTree(n, x, z, s); if (f === null) { this.nav.circle(x, z, 0.4, BLOCK); this.solidAdd(x, z, 0.3, 0.3, 0, 'tree'); return true; } n = f; }   // (ruins.js: stripped / snapped / felled; a stump is debris)
@@ -688,9 +693,9 @@ const Real = {
         const px = x + (R() - 0.5) * sp * 0.8, pz = z + (R() - 0.5) * sp * 0.8;
         if (Math.abs(px) > half - 2 || Math.abs(pz) > half - 2 || !inPoly(px, pz, a.pts)) continue;
         const edge = edgeDist(px, pz, a.pts) < 7;
-        if (a.t === 'scrub' || a.t === 'heath' || (a.t === 'allotments' && R() < 0.4)) { if (R() < 0.7 && this.terrain.cutSDF(px, pz) > 1.4 && !this.net.hit(px, pz, 1)) { items.push([R() < 0.5 ? 'bush_a' : 'bush_b', trs(px, 0, pz, R() * 6.28, 0.7 + R() * 0.6)]); this.nav.circle(px, pz, 0.9, 4); } continue; }
+        if (a.t === 'scrub' || a.t === 'heath' || (a.t === 'allotments' && R() < 0.4)) { if (R() < 0.7 && this.terrain.cutSDF(px, pz) > 1.4 && !this.net.hit(px, pz, 1) && offPaved(px, pz, 1.2)) { items.push([R() < 0.5 ? 'bush_a' : 'bush_b', trs(px, 0, pz, R() * 6.28, 0.7 + R() * 0.6)]); this.nav.circle(px, pz, 0.9, 4); } continue; }
         tree(a.t === 'orchard' || a.t === 'allotments' ? (R() < 0.6 ? 'tree_walnut_leafy' : 'tree_acacia_leafy') : pick(edge ? 0.3 : 0.08), px, pz, edge ? 0.7 + R() * 0.35 : 0.8 + R() * 0.45);
-        if (dense && R() < (edge ? 0.6 : 0.25)) { const bx = px + (R() - 0.5) * 4, bz = pz + (R() - 0.5) * 4; if (!this.net.hit(bx, bz, 2) && this.terrain.cutSDF(bx, bz) > 1.6) { items.push([R() < 0.55 ? 'bush_a' : 'bush_b', trs(bx, 0, bz, R() * 6.28, 0.8 + R() * 0.6)]); this.nav.circle(bx, bz, 1.0, 4); } }
+        if (dense && R() < (edge ? 0.6 : 0.25)) { const bx = px + (R() - 0.5) * 4, bz = pz + (R() - 0.5) * 4; if (!this.net.hit(bx, bz, 2) && offPaved(bx, bz, 1.2) && this.terrain.cutSDF(bx, bz) > 1.6) { items.push([R() < 0.55 ? 'bush_a' : 'bush_b', trs(bx, 0, bz, R() * 6.28, 0.8 + R() * 0.6)]); this.nav.circle(bx, bz, 1.0, 4); } }
       }
       if (dense) {
         for (let z = z0; z < z1; z += 2) for (let x = x0; x < x1; x += 2) if (inPoly(x, z, a.pts)) {
@@ -713,7 +718,7 @@ const Real = {
         const offs = bl.hedge ? [0] : bl.rows === 1 ? [0] : [-3.2, 0.2, 3.5];
         for (const off of offs) {
           const o2 = off + (R() - 0.5) * 1.2, px = cx + nx * o2 + ux * (R() - 0.5) * 1.6, pz = cz + nz * o2 + uz * (R() - 0.5) * 1.6;
-          if (bl.hedge || off === 0.2 || R() < 0.1) { if (R() < 0.75 && this.terrain.cutSDF(px, pz) > 1.4 && !this.solidHit(px, pz, 0.6, 0.6, 0, 0.2)) { const n = R() < 0.5 ? 'bush_a' : 'bush_b'; items.push([n, trs(px, 0, pz, R() * 6.28, 0.8 + R() * 0.6)]); this.nav.circle(px, pz, 1.0, 4); } continue; }
+          if (bl.hedge || off === 0.2 || R() < 0.1) { if (R() < 0.75 && this.terrain.cutSDF(px, pz) > 1.4 && offPaved(px, pz, 1.2) && !this.solidHit(px, pz, 0.6, 0.6, 0, 0.2)) { const n = R() < 0.5 ? 'bush_a' : 'bush_b'; items.push([n, trs(px, 0, pz, R() * 6.28, 0.8 + R() * 0.6)]); this.nav.circle(px, pz, 1.0, 4); } continue; }
           if (R() < 0.12) continue;
           tree(pick(urban ? 0.25 : 0.3), px, pz, 0.8 + R() * 0.4, true);
         }
@@ -754,7 +759,21 @@ const Real = {
     }
     // instance per species: near full model, mid / far lod1, coarse far blocks
     const by = new Map(), v = new THREE.Vector3();
-    for (const [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; M.elements[13] = this.baseY(v.x, v.z, 0.35, 0.35); (by.get(n) || by.set(n, []).get(n)).push(M); }
+    // streets v2: snapped / broken trees whose top lies on the ground (tree_birch_snapped: ~8.5 m along -x) -- the lying
+    // part must rest on the ground (no floating over a dip / crater bowl, not through a kerb / pavement / wall): try yaws
+    // until the template's ground-contact footprint fits, else the tree stays standing (stripped)
+    const foot = new Map(), fv = new THREE.Vector3(), inv = new THREE.Matrix4(), Mq = new THREE.Matrix4();
+    const footOf = n => { if (foot.has(n)) return foot.get(n); const t = this.tpl(n), F = []; if (t) { t.updateMatrixWorld(true); inv.copy(t.matrixWorld).invert();
+      t.traverse(o => { if (!o.isMesh) return; const pa = o.geometry.attributes.position; for (let i = 0; i < pa.count; i += Math.max(1, pa.count / 400 | 0)) { fv.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv); if (fv.y < 0.6 && Math.hypot(fv.x, fv.z) > 1.2) F.push([fv.x, fv.z]); } }); }
+      const out = F.length ? F.filter((_, i) => i % Math.max(1, F.length / 24 | 0) === 0) : null; foot.set(n, out); return out; };
+    const fits = (F, x, z, ry, s, y0) => { const c = Math.cos(ry), sn = Math.sin(ry); for (const [a, b] of F) { const px = x + (a * c + b * sn) * s, pz = z + (-a * sn + b * c) * s, g = this.terrain.heightAt(px, pz);
+      if (y0 - g > 0.1 || g - y0 > 0.3 || !offPaved(px, pz, 0.3) || this.terrain.cutSDF(px, pz) < 0.5 || this.overlapsBuilding(px, pz, 0.2, 0.2, 0.1)) return false; } return true; };
+    const sc = new THREE.Vector3(), qq = new THREE.Quaternion(), eu = new THREE.Euler();
+    for (let [n, M] of items) { v.setFromMatrixPosition(M); if (this.terrain.cutSDF(v.x, v.z) < (/bush/.test(n) ? 1.2 : 1.6)) continue; M.elements[13] = this.baseY(v.x, v.z, 0.35, 0.35);
+      if (/_snapped$|_broken$/.test(n)) { const F = footOf(n); if (F) { M.decompose(fv, qq, sc); eu.setFromQuaternion(qq, 'YXZ'); let ok = false;
+        for (let k = 0; k < 8 && !ok; k++) { const ry = eu.y + k * Math.PI / 4; if (fits(F, v.x, v.z, ry, sc.x, M.elements[13])) { ok = true; if (k) { Mq.copy(M); M.copy(trs(v.x, Mq.elements[13], v.z, ry, sc.x)); } } }
+        if (!ok) { const alt = n.replace(/_snapped$|_broken$/, '_stripped'); if (alt !== n && this.tpl(alt)) n = alt; else continue; } } }
+      (by.get(n) || by.set(n, []).get(n)).push(M); }
     for (const [n, mats] of by) {
       const t = this.tpl(n); if (!t) continue;
       const lod = lodOf(n) ? this.tpl(lodOf(n)) : null, mid = this.hasTpl(n + '_mid') ? this.tpl(n + '_mid') : null;

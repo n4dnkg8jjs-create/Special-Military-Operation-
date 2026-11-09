@@ -254,6 +254,8 @@ function ruinPoles(w, mats, lines, att, pole) {
     }
   }
 }
+// streets v2: a fallen trunk (log of up to 7.5 m * k from its butt along angle a) never lies on a carriageway / kerb / pavement
+export function logClear(w, x, z, a, k) { if (!w.paved) return true; const L = 7.5 * k + 0.6; for (let t = 0; t <= L; t += 0.8) if (w.paved.paved(x + Math.cos(a) * t, z - Math.sin(a) * t) < 0.3 || w.paved.paved(x + Math.cos(a) * t, z + Math.sin(a) * t) < 0.3) return false; return true; }
 function catenaryTo(a, b, sag, w) {
   const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); const g = w.terrain.heightAt(p.x, p.z) + 0.03; if (p.y < g) p.y = g; pts.push(p); } return pts;
 }
@@ -468,7 +470,7 @@ function ruinDebris(w, api) {
   // ---- stumps (treeFate: the trunk lies beside it)
   for (const [x, z, s, a] of S.stumps) {
     if (api.guard(() => { D.begin(x, H(x, z) - 0.04, z, R() * TAU, (R() - 0.5) * 0.08, (R() - 0.5) * 0.08, 1, false); RP.stump(D, R, s); }, true)) { n++; claim(x, z, 0.4); }
-    const px = x + Math.cos(a) * 0.6, pz = z + Math.sin(a) * 0.6; if (w.terrain.cutSDF(px, pz) > 1 && !w.net?.hit(px, pz, 1) && api.guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, s > 1.05); PC.log(D, R, 0.8 * s); })) n++;
+    const px = x + Math.cos(a) * 0.6, pz = z + Math.sin(a) * 0.6; if (w.terrain.cutSDF(px, pz) > 1 && !w.net?.hit(px, pz, 1) && logClear(w, px, pz, a, 0.8 * s) && api.guard(() => { D.begin(px, H(px, pz) - 0.03, pz, -a, 0, (R() - 0.5) * 0.06, 1, s > 1.05); PC.log(D, R, 0.8 * s); })) n++;
   }
   // ---- streets: litter on the carriageways and verges, densest by the ruins (glass, chunks, branches, slabs, wire)
   const roads = w.osm.roads.filter(r => r.type !== 'track');

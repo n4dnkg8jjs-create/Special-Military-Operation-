@@ -665,7 +665,7 @@ export function houseRuin(tpl, mode, seed = 1) {
   const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_' + mode;
   const shell = new THREE.Mesh(g2, ruinMat(mat, mode === 'holed' ? 0.18 : 0.55, 'ruin_' + (mode === 'holed' ? 'holed' : 'stub'))); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
   if (mode === 'holed') {   // fallen ceiling and slate on the floor (only seen through the holes)
-    const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.45, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.2, cz);
+    const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.45, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.245, cz);   // (top 5 cm above the shell's floor plane: 1.7 cm apart they flickered)
     const floor = new THREE.Mesh(fl, ruinFloorMat()); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);
   }
   grp.userData.frame = frame; grp.userData.holes = holes.map(([x, z, r]) => [x, z, r]);

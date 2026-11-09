@@ -5,6 +5,7 @@ import { CAPS, markStatic } from '../engine/renderer.js';
 // Soviet large-panel apartment blocks assembled from kit panels drawn with InstancedMesh.
 // Each panel has a damage state (0 intact, 1 damaged, 2 holed, 3 destroyed) that shells can raise at runtime.
 export const STATES = ['intact', 'damaged', 'holed', 'destroyed'];
+const _gm = new THREE.Matrix4(), _gs = new THREE.Matrix4();
 
 // Pool of InstancedMeshes keyed by (piece, spatial cell), kept compact with swap-remove.
 // Cells give each InstancedMesh a tight bounding sphere so off-screen / out-of-shadow-range
@@ -393,10 +394,18 @@ export class Building {
     pool.request('roof_parapet', 2 * this.modules + 2 * this.depthModules, c);
   }
   panelMatrix(p, out) {
-    const { H } = this.kit;
+    const { H, W, T } = this.kit;
     this.toWorld(p.px, p.floor * H, p.pz, tmpV);
     tmpQ.setFromAxisAngle(Y, this.rot + p.rot);
-    return out.compose(tmpV, tmpQ, tmpS);
+    out.compose(tmpV, tmpQ, tmpS);
+    // (streets v2) gable panels at the corners stop at the long walls' inner faces: run out to the corner they overlapped
+    // the front / back panels' end prism (T x T) and shared two faces with them -- the end wall's outer face with the
+    // long panel's end face, its own end face with the long wall's outer face -- a flickering strip down every corner
+    if ((p.side === 'left' || p.side === 'right') && T > 0.01 && T < W * 0.4) {
+      const last = (this.depthModules || 1) - 1, s0 = p.col === 0 ? T : 0, s1 = p.col === last ? T : 0;
+      if (s0 || s1) out.multiply(_gm.makeTranslation(s0, 0, 0)).multiply(_gs.makeScale((W - s0 - s1) / W, 1, 1));
+    }
+    return out;
   }
   place(pool) {
     this.pool = pool;
@@ -459,8 +468,11 @@ export class Building {
       this.toWorld(cx, f * H + H - 0.11, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
       tmpM.compose(tmpV, tmpQ, tmpS.set(x1 - x0, 0.22, D - 0.2)); (this.intIdx ||= {})[c] ||= [];
       if (!hang) { if (this.ruined) slabMesh.setColorAt(counters.slab, _ic.setScalar(open ? 0.62 + this.rng() * 0.12 : burnt ? 0.42 : 1)); this.intIdx[c].push(['slab', counters.slab]); slabMesh.setMatrixAt(counters.slab++, tmpM); }
-      this.toWorld(-this.L / 2 + (c + 0.5) * W, f * H + H / 2, 0, tmpV);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(W - 0.02, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]);
+      // (streets v2: the end columns' dark room box stops behind the gable's inner face -- 1 cm under the outer face it
+      // fought the end wall through at distance, dark flicker down the gable ends)
+      const e0 = c === 0 ? (this.kit.T || 0.3) + 0.04 : 0.01, e1 = c === this.modules - 1 ? (this.kit.T || 0.3) + 0.04 : 0.01;
+      this.toWorld(-this.L / 2 + c * W + (e0 + W - e1) / 2, f * H + H / 2, 0, tmpV);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(W - e0 - e1, H - 0.24, D - inset * 2)); this.intIdx[c].push(['dark', counters.dark]);
       if (this.ruined) darkMesh.setColorAt(counters.dark, _ic.setScalar(burnt ? 0.16 + this.rng() * 0.08 : 0.85 + this.rng() * 0.15));
       darkMesh.setMatrixAt(counters.dark++, tmpM);
       tmpS.set(1, 1, 1);

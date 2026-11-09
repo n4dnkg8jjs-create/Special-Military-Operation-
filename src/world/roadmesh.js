@@ -26,11 +26,14 @@ function roundUnion(a, b, r) {
 // lane: aRoad.z += 2, the wear shader crumbles its edge into the shoulder) }]
 // opts: { y, tile, walkTile, key (cache key) }
 // returns { asphalt: [BufferGeometry], walk: [BufferGeometry], kerbs: [[x, z, yaw]], ms, tris }
-export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = null } = {}) {
+// cuts: [{ pts, hw }] corridors kept free of PAVEMENT (railway / tram beds beside a road, streets v2: OSM puts the
+// tram reservation right beside the carriageway -- a symmetric pavement would swallow it); the carriageway is not cut
+export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = null, cuts = [] } = {}) {
   const t0 = performance.now();
   // cache keyed by the input itself (a rebuilt match on the same map reuses the surfaces)
   let hk = 2166136261; const mix = v => { hk = Math.imul(hk ^ (Math.round(v * 1000) | 0), 16777619); };
   for (const r of roads) { mix(r.hw); mix(r.sw); mix(r.rad); mix(r.kerb ? 1 : 0); mix(r.ext || 0); mix(r.rough ? 1 : 0); for (const p of r.pts) { mix(p[0]); mix(p[1]); } }
+  for (const c of cuts) { mix(c.hw); for (const p of c.pts) { mix(p[0]); mix(p[1]); } }
   mix(y); mix(tile); mix(walkTile); key = (key || '') + ':' + (hk >>> 0) + ':' + roads.length;
   if (cache.has(key)) return finish(cache.get(key), t0, true);
   // ---- groups: ways whose ends meet at a node of exactly two ends, nearly straight on (< 35 deg)
@@ -73,6 +76,14 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
         const k = (ci + 32768) * 65536 + cj + 32768; (cells.get(k) || cells.set(k, []).get(k)).push(p);
       }
   }
+  // ---- pavement cuts (capsule chains), own cell grid
+  const cutCells = new Map();
+  for (const c of cuts) for (let k = 0; k < c.pts.length - 1; k++) {
+    const [ax, az] = c.pts[k], [bx, bz] = c.pts[k + 1], e = c.hw + 1, sg = { ax, az, bx, bz, hw: c.hw };
+    for (let ci = Math.floor((Math.min(ax, bx) - e) / CELL); ci <= Math.floor((Math.max(ax, bx) + e) / CELL); ci++)
+      for (let cj = Math.floor((Math.min(az, bz) - e) / CELL); cj <= Math.floor((Math.max(az, bz) + e) / CELL); cj++) { const kk = (ci + 32768) * 65536 + cj + 32768; (cutCells.get(kk) || cutCells.set(kk, []).get(kk)).push(sg); }
+  }
+  let CC = null;
   // ---- field evaluation
   const ng = gOrder.length, dA = new Float64Array(ng), dW = new Float64Array(ng), used = [];
   let C = null;   // current candidate list (sorted by group rank)
@@ -91,6 +102,11 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
     }
     let a = 1e9, w = 1e9, first = true;
     for (const g of used) { if (first) { a = dA[g]; w = dW[g]; first = false; } else { a = roundUnion(a, dA[g], gr[g]); w = w > 1e8 ? dW[g] : dW[g] > 1e8 ? w : roundUnion(w, dW[g], grW[g]); } }
+    if (CC) { let cin = -1e9;
+      for (const c of CC) { const dx = c.bx - c.ax, dz = c.bz - c.az, L2 = dx * dx + dz * dz || 1e-9; let t = ((x - c.ax) * dx + (z - c.az) * dz) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t; const d = c.hw - Math.hypot(c.ax + dx * t - x, c.az + dz * t - z); if (d > w) w = d; if (d > cin) cin = d; }
+      // in the bed: no corner fillet either (the apron would swallow a track running past the junction corner) --
+      // the carriageways themselves still cross it at the mapped level crossings
+      if (cin > 0) { let a0 = 1e9; for (const g of used) if (dA[g] < a0) a0 = dA[g]; if (a0 > a) a = a0; } }
     F.a = a; F.wr = w; F.w = w > -a ? w : -a;
   }
   function nearest(x, z) {
@@ -109,7 +125,7 @@ export function roadSurfaces(roads, { y = ROAD_Y, tile = 7, walkTile = 4, key = 
   const keys = [...cells.keys()].sort((a, b) => a - b), hd = CELL * 0.7072;
   for (const k of keys) {
     const ci = Math.floor(k / 65536) - 32768, cj = k % 65536 - 32768, x0 = ci * CELL, z0 = cj * CELL;
-    C = cells.get(k).slice().sort((a, b) => a.g - b.g); used.length = 0; for (const p of C) if (used[used.length - 1] !== p.g) used.push(p.g);
+    C = cells.get(k).slice().sort((a, b) => a.g - b.g); CC = cutCells.get(k) || null; used.length = 0; for (const p of C) if (used[used.length - 1] !== p.g) used.push(p.g);
     field(x0 + CELL / 2, z0 + CELL / 2);
     const aFar = Math.abs(F.a) > hd * 2.2, wFar = !anyWalk || F.wr > hd * 2.2 || F.a < -hd * 2.2;
     if (aFar && F.a > 0 && wFar) continue;
