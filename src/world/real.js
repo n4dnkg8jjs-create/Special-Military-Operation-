@@ -677,7 +677,16 @@ const Real = {
     const lodOf = n => this.hasTpl(n + '_lod1') ? n + '_lod1' : null;
     const items = [];
     // streets v2: no trunk on a carriageway, kerb or pavement (the final merged surfaces: corner aprons, other roads' pavements)
-    const offPaved = (x, z, pad) => !this.paved || this.paved.paved(x, z) >= pad;
+    // streets v4: nor on a railway / tram bed (ballast 2.1 m each side of the mapped line): distance to the nearest rail
+    // centre-line from a 16 m bucket grid of its segments
+    const RG = new Map(), RC = 16, rk = (i, j) => i * 4096 + j;
+    for (const l of D.lines) if ((l.t === 'rail' || l.t === 'rail_old' || l.t === 'rail_siding') && l.pts.length > 1) for (let i = 0; i < l.pts.length - 1; i++) {
+      const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1], s = [ax, az, bx, bz];
+      for (let j = Math.floor((Math.min(ax, bx) - 8) / RC); j <= Math.floor((Math.max(ax, bx) + 8) / RC); j++) for (let k = Math.floor((Math.min(az, bz) - 8) / RC); k <= Math.floor((Math.max(az, bz) + 8) / RC); k++) { const q = rk(j, k); (RG.get(q) || RG.set(q, []).get(q)).push(s); } }
+    const railGap = (x, z) => { const L = RG.get(rk(Math.floor(x / RC), Math.floor(z / RC))); if (!L) return 99; let d = 99;
+      for (const [ax, az, bx, bz] of L) { const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1))); d = Math.min(d, Math.hypot(x - ax - dx * t, z - az - dz * t)); } return d; };
+    this.railGap = railGap;
+    const offPaved = (x, z, pad) => (!this.paved || this.paved.paved(x, z) >= pad) && railGap(x, z) >= 2.4 + pad;
     const tree = (n, x, z, s, belt = false) => { if (this.terrain.cutSDF(x, z) < 1.8 || this.solidHit(x, z, 0.45, 0.45, 0, 0.3) || this.net.hit(x, z, 1.5) || !offPaved(x, z, 1.0) || this.overlapsBuilding(x, z, 0.5, 0.5, 1.5)) return false;
       const t = this.tpl(n); if (this.crownHit(x, z, t ? this.canopyR(t, s) * 0.75 : 2)) return false;   // crown clear of roofs
       const ry = R() * 6.28;

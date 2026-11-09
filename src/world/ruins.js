@@ -215,6 +215,9 @@ function treeFate(w, n, x, z, s = 1) {
   if (u < pStump) { S.stumps.push([x, z, s, fall]); st.stump = (st.stump || 0) + 1; return null; }
   const urban = URBAN_T[n];
   if (urban) {
+    // streets v4: the birch snapped low -- a stump, its top lying beside it (the stump pass) (tree_birch_snapped's own top hangs ~2-6 m
+    // up in the air, never touching the ground: not used)
+    if (u < pStump + pBroken && urban[1] === 'tree_birch_snapped') { S.stumps.push([x, z, s, fall]); st.broken = (st.broken || 0) + 1; return null; }
     if (u < pStump + pBroken && urban[1]) { if (hash2(x, z, 50) < 0.5) (w._bfTops ||= []).push([x, z, fall, 0.7 * s]); st.broken = (st.broken || 0) + 1; return urban[1]; }
     if (u < pStump + pBroken + pStrip && urban[0]) { st.stripped = (st.stripped || 0) + 1; return urban[0]; }
     return n;
@@ -255,7 +258,7 @@ function ruinPoles(w, mats, lines, att, pole) {
   }
 }
 // streets v2: a fallen trunk (log of up to 7.5 m * k from its butt along angle a) never lies on a carriageway / kerb / pavement
-export function logClear(w, x, z, a, k) { if (!w.paved) return true; const L = 7.5 * k + 0.6; for (let t = 0; t <= L; t += 0.8) if (w.paved.paved(x + Math.cos(a) * t, z - Math.sin(a) * t) < 0.3 || w.paved.paved(x + Math.cos(a) * t, z + Math.sin(a) * t) < 0.3) return false; return true; }
+export function logClear(w, x, z, a, k) { if (!w.paved) return true; const L = 7.5 * k + 0.6; for (let t = 0; t <= L; t += 0.8) if ((w.railGap && (w.railGap(x + Math.cos(a) * t, z - Math.sin(a) * t) < 2.6 || w.railGap(x + Math.cos(a) * t, z + Math.sin(a) * t) < 2.6)) || w.paved.paved(x + Math.cos(a) * t, z - Math.sin(a) * t) < 0.3 || w.paved.paved(x + Math.cos(a) * t, z + Math.sin(a) * t) < 0.3) return false; return true; }
 function catenaryTo(a, b, sag, w) {
   const pts = []; for (let i = 0; i <= 12; i++) { const t = i / 12, p = a.clone().lerp(b, t); p.y -= sag * 4 * t * (1 - t); const g = w.terrain.heightAt(p.x, p.z) + 0.03; if (p.y < g) p.y = g; pts.push(p); } return pts;
 }
