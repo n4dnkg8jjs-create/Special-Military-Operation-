@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { City, MAP, MAP_SIZE, REAL_WORLDS, setRoadTest, onRoad, mulberry, catenary, craterTexture } from './city.js';
 import { Farmland, fieldRuts } from './farmland.js';
 import { BLOCK } from './nav.js';
-import { instance, instanceRuns, trs, LODS, treeLod, simplified } from './instancer.js';
+import { instance, instanceRuns, trs, LODS, treeLod, simplified, farLod } from './instancer.js';
 import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
@@ -293,8 +293,9 @@ const Real = {
     const S = new THREE.Matrix4().makeScale(r, h, r * 0.85); for (const M of mats) (this._moundM ||= []).push(M.clone().multiply(S));
     // (v2) 60-240 m: the scan simplified to ~1/4 of its triangles (meshopt, ~2 cm error at the heap's scale: sub-pixel
     // there); the full scan only near the camera
-    const mid = simplified(t, 0.25, 0.012);
-    return mid ? { mid, nearDist: 60, lodDist: 240, cullDist: 240, cell: 180, midShadows: true } : { cullDist: 240, cell: 180 };
+    // (perf v1: ~1/7 of the scan from 40 m, the mound from 200 m -- the heaps were ~1/6 of the triangles in a city view)
+    const mid = simplified(t, 0.15, 0.03);
+    return mid ? { mid, nearDist: 40, lodDist: 200, cullDist: 200, cell: 180, midShadows: true } : { cullDist: 200, cell: 180 };
   },
   moundsFlush() {
     const list = this._moundM; if (!list?.length) return;
@@ -305,7 +306,7 @@ const Real = {
     for (const M of list) { v.setFromMatrixPosition(M); const k = Math.floor(v.x / C) + ',' + Math.floor(v.z / C); (cells.get(k) || cells.set(k, []).get(k)).push(M); }
     for (const [k, mats] of cells) {
       const im = new THREE.InstancedMesh(g, tpl.material, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M)); im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = true; im.visible = false; im.name = 'rubble_far'; this.scene.add(im);
-      const [cx, cz] = k.split(',').map(Number); LODS.push({ near: [], mid: null, far: [im], cx: (cx + 0.5) * C, cz: (cz + 0.5) * C, dm: 240, d1: 240, d2: 1600, state: -1, hr: C / 2 });
+      const [cx, cz] = k.split(',').map(Number); LODS.push({ near: [], mid: null, far: [im], cx: (cx + 0.5) * C, cz: (cz + 0.5) * C, dm: 200, d1: 200, d2: 1600, state: -1, hr: C / 2 });
     }
     this._moundM = null;
   },
@@ -533,7 +534,7 @@ const Real = {
           for (let i = 0; i < n; i++) {
             const lx = -L / 2 + (i + 0.5) * (L / n), px = x + lx * c + off * s, pz = z - lx * s + off * c;
             const dmg = R() < (this.dmg.burnt ?? 0.25) + 0.1;
-            this.put(dmg ? 'garage_unit_damaged' : 'garage_unit', px, pz, ry, { s: sc, check: false, cost: BLOCK, inst: { cell: 260, cullDist: 900 } });
+            this.put(dmg ? 'garage_unit_damaged' : 'garage_unit', px, pz, ry, { s: sc, check: false, cost: BLOCK, inst: { cullDist: 900, ...farLod(this.tpl(dmg ? 'garage_unit_damaged' : 'garage_unit'), 170, 260) } });   // (perf v1: hundreds of boxes per cooperative: simplified beyond ~110 m)
           }
         }
         this.nav.rect(x, z, L / 2, Dd / 2, rot, BLOCK, 0.1);
@@ -583,6 +584,7 @@ const Real = {
           const name = state === 1 ? (this.burntTpl(best.t.n) || best.t.n) : rv || best.t.n, ryh = ry + (R() - 0.5) * 0.06;
           // wall stubs: slow going and good cover for infantry, no way through for wheeled vehicles
           const low = (state === 4 || state === 2) && rv, o = low ? { s: best.s, cost: 7, low: true, occ: state === 2 ? 0.9 : 1.3, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } } : { s: best.s, occ: state === 1 ? 2.4 : 3.2, roadPad: 0.5, inst: { cell: 300, cullDist: 1300 } };
+          { const tt = this.tpl(name); if (tt) Object.assign(o.inst, farLod(tt, 200, 300)); }   // (perf v1: the private sector's hundreds of houses simplified beyond ~150 m)
           if (!this.put(name, x, z, ryh, o)) { this.houseState.delete(b.src || b); continue D; }
           if (low) this.nav.setVeh(x, z, b.L / 2 * 0.8, b.D / 2 * 0.8, b.rot, 1);
           if (state === 1 || state === 4) this.burntSpots.push([x, z, state === 1 ? 8 : 6]);
@@ -812,16 +814,37 @@ const Real = {
   railReal() {
     const D = this.osm, lines = D.lines.filter(l => l.t === 'rail' || l.t === 'rail_old' || l.t === 'rail_siding');
     if (!lines.length) return;
-    const ballast = new GeoBuf(), sleepers = [], railG = [];
+    const ballast = new GeoBuf(), sleepers = [], railG = [], flushG = [];
+    // streets v6: on the carriageway (level crossings, the tram line where it runs in the street) the track is set into the
+    // road: no ballast or sleepers, the rail heads flush with the asphalt (they stood through it); everywhere else each rail
+    // is one continuous mitred strip (per-segment boxes left wedge gaps on the outside of every curve)
+    const onRoad = (x, z) => this.paved && this.paved.asphalt(x, z) < 0.4;
+    const railStrip = (P, sd, flush) => {   // P: [[x,z],..] one run; sd: lateral offset of the rail centre
+      const n = P.length; if (n < 2) return;
+      const Nn = []; for (let i = 0; i < n - 1; i++) { const dx = P[i + 1][0] - P[i][0], dz = P[i + 1][1] - P[i][1], L = Math.hypot(dx, dz) || 1; Nn.push([-dz / L, dx / L]); }
+      const C = P.map((p, i) => { let mx, mz, k = 1; if (i === 0) [mx, mz] = Nn[0]; else if (i === n - 1) [mx, mz] = Nn[n - 2];
+        else { mx = Nn[i - 1][0] + Nn[i][0]; mz = Nn[i - 1][1] + Nn[i][1]; const L = Math.hypot(mx, mz) || 1; mx /= L; mz /= L; k = Math.min(2, 1 / Math.max(0.5, mx * Nn[i][0] + mz * Nn[i][1])); }
+        return [p[0] + mx * sd * k, p[1] + mz * sd * k, mx * k, mz * k]; });
+      const hw = flush ? 0.05 : 0.036, y0 = flush ? ROAD_Y + 0.01 : 0.09, y1 = flush ? ROAD_Y + 0.022 : 0.16, pos = [], idx = [];
+      for (const [cx, cz, mx, mz] of C) for (const [o, y] of [[-hw, y0], [-hw, y1], [hw, y1], [hw, y0]]) pos.push(cx + mx * o, y, cz + mz * o);
+      for (let i = 0; i < n - 1; i++) for (let f = 0; f < 3; f++) { if (flush && f !== 1) continue; const a = i * 4 + f, b = a + 1, c = a + 4, d = a + 5; idx.push(a, c, b, b, c, d); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); (flush ? flushG : railG).push(g);
+    };
+    // rails can't turn on a point: the mapped polylines are rounded off (Chaikin, 3 passes: corners become ~10-30 m arcs)
+    const smooth = Q => { let A = Q; for (let k = 0; k < 3; k++) { if (A.length < 3) break; const B = [A[0]]; for (let i = 0; i < A.length - 1; i++) { const [ax, az] = A[i], [bx, bz] = A[i + 1]; B.push([ax * 0.75 + bx * 0.25, az * 0.75 + bz * 0.25], [ax * 0.25 + bx * 0.75, az * 0.25 + bz * 0.75]); } B.push(A[A.length - 1]); A = B; } return A; };
     for (const l of lines) {
-      const P = densify(l.pts, 6);
-      ribbon(ballast, P, 2.1, 0.025, { uvMode: 'strip', tile: 3 });
-      walk(P, 0.75, (x, z, ux, uz) => { if (!this.net.hit(x, z, 0.3)) sleepers.push(trs(x, 0.06, z, Math.atan2(-uz, ux) + Math.PI / 2, 1, 0, (this.rng() - 0.5) * 0.06)); });
+      const P = densify(smooth(l.pts), 3);
+      ribbon(ballast, P, 2.1, 0.025, { uvMode: 'strip', tile: 3 });   // (under the asphalt, ROAD_Y, where they overlap)
+      walk(P, 0.75, (x, z, ux, uz) => { if (!onRoad(x, z) && !this.net.hit(x, z, 0.3)) sleepers.push(trs(x, 0.06, z, Math.atan2(-uz, ux) + Math.PI / 2, 1, 0, (this.rng() - 0.5) * 0.06)); });
+      // runs: split where the line goes on / off the carriageway
+      let run = [P[0]], fl = onRoad(P[0][0], P[0][1]);
+      const flushRun = () => { if (run.length > 1) for (const sd of [-0.76, 0.76]) railStrip(run, sd, fl); };
+      for (let i = 1; i < P.length; i++) { const f = onRoad(P[i][0], P[i][1]); run.push(P[i]); if (f !== fl) { flushRun(); run = [P[i]]; fl = f; } }
+      flushRun();
       for (let i = 0; i < P.length - 1; i++) {
-        const [ax, az] = P[i], [bx, bz] = P[i + 1], L = Math.hypot(bx - ax, bz - az), ry = Math.atan2(-(bz - az), bx - ax), nx = -(bz - az) / L, nz = (bx - ax) / L;
-        for (const sd of [-0.76, 0.76]) railG.push(boxGeo(L, 0.14, 0.07, trs((ax + bx) / 2 + nx * sd, 0.09, (az + bz) / 2 + nz * sd, ry), 1));
+        const [ax, az] = P[i], [bx, bz] = P[i + 1], L = Math.hypot(bx - ax, bz - az), nx = -(bz - az) / L, nz = (bx - ax) / L;
         // rail cells: rough going for infantry (ballast), wheeled vehicles cross slowly
-        for (let t = 0; t < L; t += 0.7) for (let o = -2; o <= 2; o += 0.8) { const k = this.nav.idx(ax + (bx - ax) * t / L + nx * o, az + (bz - az) * t / L + nz * o); if (k >= 0 && this.nav.cost[k] < 2) this.nav.cost[k] = 2; }
+        for (let t = 0; t < L; t += 0.7) for (let o = -2; o <= 2; o += 0.8) { const x = ax + (bx - ax) * t / L + nx * o, z = az + (bz - az) * t / L + nz * o; if (onRoad(x, z)) continue; const k = this.nav.idx(x, z); if (k >= 0 && this.nav.cost[k] < 2) this.nav.cost[k] = 2; }
       }
     }
     const bm = new THREE.MeshStandardMaterial({ map: canvasTex(64, 64, (x, w, h) => { for (let i = 0; i < 900; i++) { const v = 80 + Math.random() * 70; x.fillStyle = `rgb(${v + 8},${v + 2},${v - 6})`; x.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 2 + Math.random() * 3); } }), roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
@@ -832,7 +855,8 @@ const Real = {
     const sf = sg.clone(); sf.setIndex(Array.from(sg.index.array).filter((_, i) => (i >= 12 && i < 18) || i >= 24)); sf.clearGroups();
     const st = new THREE.Mesh(sg, sm), stf = new THREE.Mesh(sf, sm); st.name = stf.name = 'sleeper';
     instance(this.scene, st, sleepers, { cell: 160, lod: stf, lodDist: 60, cullDist: 420, shadows: false });
-    if (railG.length) { const m = new THREE.Mesh(mergeGeometries(railG), new THREE.MeshStandardMaterial({ color: 0x5a4c40, roughness: 0.55, metalness: 0.6 })); m.castShadow = true; this.scene.add(m); }
+    if (railG.length) { const m = new THREE.Mesh(mergeGeometries(railG), new THREE.MeshStandardMaterial({ color: 0x5a4c40, roughness: 0.55, metalness: 0.6, side: THREE.DoubleSide })); m.castShadow = true; this.scene.add(m); }
+    if (flushG.length) { const m = new THREE.Mesh(mergeGeometries(flushG), new THREE.MeshStandardMaterial({ color: 0x8c867e, roughness: 0.35, metalness: 0.75, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 })); m.receiveShadow = true; this.scene.add(m); }
     // platforms (concrete slabs, 0.9 m high: low cover, vehicles go round)
     const pl = []; for (const a of D.areas) if (a.t === 'platform') { const [x0, z0, x1, z1] = polyBB(a.pts); const L = Math.hypot(a.pts[1][0] - a.pts[0][0], a.pts[1][1] - a.pts[0][1]); void L; const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2; const sh = new THREE.Shape(a.pts.map(p => new THREE.Vector2(p[0] - cx, -(p[1] - cz)))); const eg = new THREE.ExtrudeGeometry(sh, { depth: 0.9, bevelEnabled: false }); eg.rotateX(-Math.PI / 2); eg.translate(cx, 0, cz); pl.push(eg); for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) if (inPoly(x + 0.5, z + 0.5, a.pts)) { const k = this.nav.idx(x + 0.5, z + 0.5); if (k >= 0) { this.nav.cost[k] = Math.max(this.nav.cost[k], 6); this.nav.low[k] = 1; } } }
     for (const l of D.lines) if (l.t === 'platform') for (let i = 0; i < l.pts.length - 1; i++) { const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1], L = Math.hypot(bx - ax, bz - az); pl.push(boxGeo(L, 0.9, 3.2, trs((ax + bx) / 2, 0, (az + bz) / 2, Math.atan2(-(bz - az), bx - ax)), 3)); this.nav.rect((ax + bx) / 2, (az + bz) / 2, L / 2, 1.6, Math.atan2(-(bz - az), bx - ax), 6, 0); }
@@ -859,7 +883,7 @@ const Real = {
         walk(l.pts, len, (x, z, ux, uz) => { if (R() < (wall ? 0.18 : 0.3) || [-0.5, -0.25, 0, 0.25, 0.5].some(f => this.net.hit(x + ux * len * f, z + uz * len * f, 0.4) || this.solidHit(x + ux * len * f, z + uz * len * f, 0.3, 0.1, 0, 0, k => k === 'fence')) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len) || this.solidHit(x, z, len / 2, 0.2, Math.atan2(-uz, ux), 0.05, k => k === 'fence')) return; if (this.put(wall && R() < 0.15 ? 'fence_po2_broken' : !wall && R() < 0.2 ? 'fence_house_broken' : n, x, z, Math.atan2(-uz, ux), { crush: wall ? 'tank' : 'any', check: false, sx: len / tl })) this.solidAdd(x, z, len / 2, 0.12, Math.atan2(-uz, ux), 'fence'); });
       } else if (l.t === 'pipe') {
         const t = this.tpl('pipe_straight_a'); if (!t) continue; const bb = t.userData.bb, len = Math.max(2, Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z)), alongX = (bb.max.x - bb.min.x) >= (bb.max.z - bb.min.z);
-        walk(l.pts, len, (x, z, ux, uz) => { if (this.net.hit(x, z, 1) || this.net.hit(x + ux * len * 0.6, z + uz * len * 0.6, 0.8) || this.net.hit(x - ux * len * 0.6, z - uz * len * 0.6, 0.8) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len * 1.3) || this.solidHit(x, z, len / 2, 0.3, Math.atan2(-uz, ux), 0.05)) return; const ry = Math.atan2(-uz, ux) + (alongX ? 0 : Math.PI / 2); this.put(R() < 0.12 ? 'pipe_straight_torn' : 'pipe_straight_a', x, z, ry, { cost: 5, low: true, check: false, inst: { cell: 300 } }); });
+        walk(l.pts, len, (x, z, ux, uz) => { if (this.net.hit(x, z, 1) || this.net.hit(x + ux * len * 0.6, z + uz * len * 0.6, 0.8) || this.net.hit(x - ux * len * 0.6, z - uz * len * 0.6, 0.8) || this.terrain.cutSDF(x, z) < 2 || this.segBlocked(x, z, ux, uz, len * 1.3) || this.solidHit(x, z, len / 2, 0.3, Math.atan2(-uz, ux), 0.05)) return; const ry = Math.atan2(-uz, ux) + (alongX ? 0 : Math.PI / 2); { const pn = R() < 0.12 ? 'pipe_straight_torn' : 'pipe_straight_a'; this.put(pn, x, z, ry, { cost: 5, low: true, check: false, inst: { cullDist: 700, ...farLod(this.tpl(pn), 120, 200) } }); }   /* (perf v1: 1.6k triangles a section, ~270 of them: simplified beyond 80 m) */ });
       }
     }
   },

@@ -409,10 +409,10 @@ export const MAPS = {
     // storeys, no glass; the private sector roofless / flattened; trees stumps; the field to the south cratered
     ruin: {
       houses: { intact: 0.06, grad: [0, 1], mix: { rubble: 0.2, stub: 0.17, shell: 0.36, holed: 0.27 } },
-      blocks: { glass: 0.95, burn: 0.75, fab: 0.6, fabTall: 0.9, roof: 0.6, roofTall: 0.7, roofHoles: 0.12, shear: 0.35, pancakeD: 0.78, scale: 1 },
+      blocks: { glass: 0.98, burn: 0.95, fab: 0.8, fabTall: 0.95, roof: 0.85, roofTall: 0.85, roofHoles: 0.22, shear: 0.55, pancakeD: 0.7, scale: 1.25 },   // (siege v2: by Feb 2024 hardly a block in the district without burnt storeys or a caved roof)
       trees: { level: 0.7, stump: 0.16, broken: 0.24, stripped: 0.5 },
       poles: 0.45, cars: 24, litter: 1.2,
-      craters: { cap: 1700, field: 0.55, yard: 0.16, garden: 0.22, street: 0.035, fab: 2 },
+      craters: { cap: 2600, field: 0.75, yard: 0.3, garden: 0.32, street: 0.05, fab: 3, open: true },   // (siege v2: the stadium, parks and yards churned like the fields)
       // the assault that reached vul. Vorobyova (Russian armour in the field edge), UA vehicles hit in the district
       wrecks: [[-150, 405, 3.1, 'bmp3', 2], [90, 395, 2.7, 't72b3', 2], [-380, 395, 3.5, 'btr82a', 0], [230, 410, 3.0, 'bmp3', 0],
         [-250, 250, 0.4, 'btr80_ua', 0], [120, 60, 1.6, 'btr80_ua', 1], [-60, -200, 0.2, 't72av_ua', 0], [-420, 120, 1.0, 'bmp3', 0]],

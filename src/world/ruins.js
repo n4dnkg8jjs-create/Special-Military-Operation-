@@ -332,7 +332,7 @@ function ruinCraters(w) {
     const area = (MAP_SIZE - 20) ** 2, tries = Math.round(area / 90);
     for (let i = 0; i < tries; i++) {
       const x = (R() - 0.5) * (MAP_SIZE - 20), z = (R() - 0.5) * (MAP_SIZE - 20), u = R(), sz = R();
-      const road = w.net.hit(x, z, 0), plot = !road && w.inPlot(x, z), field = !road && !plot && w.areaIs(x, z, ['farmland', 'meadow', 'grassland', 'grass', 'scrub']) && !w.areaIs(x, z, ['residential']);
+      const road = w.net.hit(x, z, 0), plot = !road && w.inPlot(x, z), field = !road && !plot && (w.areaIs(x, z, ['farmland', 'meadow', 'grassland', 'grass', 'scrub']) || (C.open && w.areaIs(x, z, ['pitch', 'park', 'stadium', 'recreation_ground', 'playground']))) && !w.areaIs(x, z, ['residential']);
       const dens = road ? C.street ?? 0.02 : plot ? C.garden ?? 0.25 : field ? C.field ?? 0.5 : C.yard ?? 0.2, patch = 0.4 + vnoise(x, z, 90, 51) * 1.2;
       if (u > dens * patch) continue;
       if (road) put(x, z, 1.4 + sz * 1.8, 2);

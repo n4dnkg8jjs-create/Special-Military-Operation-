@@ -1160,13 +1160,15 @@ export class City {
   // Crushable street furniture: own InstancedMeshes (index per item kept) + a spatial grid
   buildCrushables() {
     const items = this.crushables || []; this.crushGrid = new Map();
-    const byTpl = new Map(); for (const it of items) if (it.t) (byTpl.get(it.t) || byTpl.set(it.t, []).get(it.t)).push(it);   // (t null: drawn elsewhere -- wire coils, it.wire)
-    for (const [t, list] of byTpl) {
+    // (perf v1: per template AND per 120 m cell -- one map-wide InstancedMesh per template was never frustum-culled: the
+    // private sector's fences alone were ~0.7 M triangles in every frame)
+    const byTpl = new Map(); for (const it of items) if (it.t) { const k = it.t.uuid + '|' + Math.floor(it.x / 120) + ',' + Math.floor(it.z / 120); (byTpl.get(k) || byTpl.set(k, []).get(k)).push(it); }   // (t null: drawn elsewhere -- wire coils, it.wire)
+    for (const [, list] of byTpl) { const t = list[0].t;
       t.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(t.matrixWorld).invert();
       const meshes = [];
       t.traverse(o => { if (!o.isMesh) return; const rel = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); const im = new THREE.InstancedMesh(o.geometry, o.material, list.length); im.castShadow = im.receiveShadow = true; meshes.push({ im, rel }); this.scene.add(im); });
       list.forEach((it, i) => { it.i = i; it.meshes = meshes; this.setCrushMatrix(it, it.M); });
-      for (const { im } of meshes) im.computeBoundingSphere();
+      for (const { im } of meshes) { im.computeBoundingSphere(); im.boundingSphere.radius += 4; }   // (knocked-over items lie a little outside)
     }
     for (const it of items) { const k = Math.floor(it.x / 10) + ',' + Math.floor(it.z / 10); (this.crushGrid.get(k) || this.crushGrid.set(k, []).get(k)).push(it); }
   }
