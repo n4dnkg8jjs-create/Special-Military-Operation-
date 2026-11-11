@@ -1025,7 +1025,9 @@ def legs_keyed(rig, gq, root, t, legkeys, viol):
             if j >= len(kt) - 1:
                 ank[f] = keys[-1]['pc']; fq[f] = keys[-1]['q']; planted[f] = bool(keys[-1].get('plant'))
                 continue
-            w = smooth((t[f] - kt[j]) / max(kt[j + 1] - kt[j], 1e-6))
+            u_ = (t[f] - kt[j]) / max(kt[j + 1] - kt[j], 1e-6)
+            # v4 varied timing: a boot leaving its hold pushes off fast and settles slowly onto the next key (peak speed early)
+            w = smooth(u_ ** (1 - (1 - ORG['push']) * (1 - _PMASK[0][f]))) if (ORG['on'] and not keys[j].get('plant') and _PMASK[0] is not None and f < len(_PMASK[0])) else smooth(u_)
             ank[f] = keys[j]['pc'] * (1 - w) + keys[j + 1]['pc'] * w
             fq[f] = qslerp(keys[j]['q'], keys[j + 1]['q'], w)
             if keys[j].get('plant'):
@@ -1147,7 +1149,257 @@ def make_warp(segs, dur):
     return lambda x: float(np.interp(x, kn, nw))
 
 
-def ksolve(rig, name, dur, rkeys, bk, legkeys, contacts, warp=True, post=None):
+# ====================================================================================== v4 organic layer
+# Layered on the keyed hips / trunk BEFORE the limbs are solved (feet / hands stay IK-pinned on their holds, so contacts and seat
+# poses are untouched): weight shift over the support boot (+ pelvis hike / counter-roll), a load dip before every step-up and a
+# damped settle after every landing, the spine / chest / neck / head trailing the hips (overlap), the head looking at the next
+# foothold / handhold, then the seat, then out, breathing + a slight sway so no hold freezes.  Generic: driven by the clip's own
+# key / contact timeline; per-clip phase seeds from the clip name (asymmetry between hulls).
+ORG = dict(on=True, push=0.80, lag=(('LowerBack', 2, 0.55), ('Spine', 3, 0.55), ('Spine1', 4, 0.6), ('Neck', 6, 0.6), ('Head', 7, 0.6)),
+           lag_cap=10.0, shift=0.045, kshift=0.40, ant=0.15, hike=4.0, dip=0.035, settle=0.018, arm_lag=(('Right', 3, 0.6), ('Left', 5, 0.6)), arm_cap=12.0, look=0.6, look_cap=18.0, breathe=0.9,
+           sway=0.005, ext0=0.66, ext1=0.84)
+
+
+def _qpow(q, w):
+    """rotation q scaled by w (slerp from identity)"""
+    return qslerp(np.broadcast_to([0, 0, 0, 1.0], np.shape(q)), q, w)
+
+
+def _cap_dev(qa, qb, cap):
+    """qb pulled back toward qa so the two differ by <= cap deg"""
+    from qmath import qinv
+    d = qmul(qinv(qa), qb); d = d * np.where(d[..., 3:4] < 0, -1, 1)
+    a = np.degrees(2 * np.arccos(np.clip(d[..., 3], -1, 1)))
+    k = np.clip(cap / np.maximum(a, 1e-6), 0, 1)
+    return qmul(qa, _qpow(d, k))
+
+
+def _bumps(t, events):
+    """sum of (centre, amplitude, width) gaussians"""
+    out = np.zeros(len(t))
+    for c, a, w in events:
+        out += a * np.exp(-0.5 * ((t - c) / w) ** 2)
+    return out
+
+
+def organic(rig, name, t, root, lq, legkeys, contacts, look=None):
+    import zlib
+    from qmath import qinv, qbetween
+    I = rig.I; F = len(t); O = org_of(name)
+    rng = np.random.default_rng(zlib.crc32(name.encode()))
+    ph = rng.uniform(0, 2 * np.pi, 4)
+    root = root.copy()
+    G = rig.global_from_local(lq)
+    lq_ref = lq.copy()
+    gp = fk_global(rig.sk, G, root)
+    # -- support per side (keys: planted from a plant key to the next key), read ahead by O['ant'] (the weight goes over first)
+    def sup(keys, tt):
+        kt = np.array([k['t'] for k in keys]); j = np.clip(np.searchsorted(kt, tt, side='right') - 1, 0, len(kt) - 1)
+        return np.array([bool(keys[i].get('plant')) for i in j]), np.array([keys[i]['p'] for i in j], float)
+    plL, pL = sup(legkeys['Left'], t + O['ant']); plR, pR = sup(legkeys['Right'], t + O['ant'])
+    left = qrot(G[:, I['Hips']], np.broadcast_to([1.0, 0, 0], (F, 3))); left[:, 1] = 0
+    left /= np.maximum(np.linalg.norm(left, axis=1, keepdims=True), 1e-9)
+    fwd = np.cross(left, Y)
+    tgt = np.zeros(F)
+    for f in range(F):
+        if plL[f] != plR[f]:
+            p = pL[f] if plL[f] else pR[f]
+            tgt[f] = np.clip(O['kshift'] * float(np.dot(p - root[f], left[f])), -O['shift'], O['shift'])
+    # reach-aware: the root layers fade out wherever a planted leg is already deeply bent (high step / kneel: v3 sits at the knee,
+    # ankle limits there) and act fully while the support leg is fairly straight
+    pl0L, p0L = sup(legkeys['Left'], t); pl0R, p0R = sup(legkeys['Right'], t)
+    Lleg = chain_len(rig, 'LeftUpLeg', 'LeftLeg', 'LeftFoot')
+    ext = np.ones(F)
+    for pl0, p0, sd in ((pl0L, p0L, 'Left'), (pl0R, p0R, 'Right')):
+        e = np.linalg.norm(gp[:, I[sd + 'UpLeg']] - p0, axis=1) / Lleg
+        ext = np.where(pl0, np.minimum(ext, e), ext)
+    kr = _gs(np.clip((ext - O['ext0']) / (O['ext1'] - O['ext0']), 0, 1), 3.0)
+    if O.get('hold_shift'):          # (per clip: no sideways shift while a hand is braced on a hold)
+        hm = np.zeros(F)
+        for cl in contacts.values():
+            for c in cl:
+                hm = np.maximum(hm, ((t >= c['t0'] - 0.2) & (t <= c['t1'] + 0.2)).astype(float))
+        kr = kr * (1 - O['hold_shift'] * np.clip(_gs(hm, 4.0), 0, 1))
+    sh = _gs(tgt, 4.0) * kr
+    root[:, [0, 2]] += (sh[:, None] * left)[:, [0, 2]]
+    # pelvis: the swing side hikes (roll about the pelvis forward axis), the trunk keeps 40 % of it (counter-roll)
+    roll = np.radians(-O['hike'] * sh / max(O['shift'], 1e-6))
+    qr = qaxis(fwd, roll)
+    # -- anticipation (load dip before a step-up) + settle after each landing (damped, small rebound)
+    ev = []
+    for side, keys in legkeys.items():
+        for i in range(1, len(keys)):
+            if keys[i - 1].get('plant') and not keys[i].get('plant'):
+                nxt = next((k for k in keys[i + 1:] if k.get('plant')), None)
+                if nxt is not None and nxt['p'][1] - keys[i - 1]['p'][1] > 0.15:
+                    ev.append((keys[i]['t'] - 0.12, -O['dip'], 0.09))
+            if keys[i].get('plant') and not keys[i - 1].get('plant') and i < len(keys) - 1:
+                ev += [(keys[i]['t'] + 0.12, -O['settle'], 0.08), (keys[i]['t'] + 0.42, 0.3 * O['settle'], 0.10)]
+    root[:, 1] += _bumps(t, ev) * kr
+    # -- micro: sway + breathing
+    root[:, [0, 2]] += (O['sway'] * np.sin(2 * np.pi * 0.37 * t + ph[0]))[:, None] * left[:, [0, 2]]
+    G2 = G.copy()
+    G2[:, I['Hips']] = qmul(qr, G[:, I['Hips']])
+    G2[:, I['LowerBack']] = qmul(_qpow(qr, 0.4), G[:, I['LowerBack']])
+    G2 = rig.recompute_desc(rig.local(G), G2, {'Hips', 'LowerBack'})
+    # -- overlap: each trunk bone's world rotation trails toward where it was a few frames ago (capped vs the keyed local)
+    G3 = G2.copy()
+    for b, lag, w in O['lag']:
+        i = I[b]; pi = rig.sk.parent[i]
+        src = np.clip(np.arange(F) - lag, 0, F - 1)
+        g = qslerp(G2[:, i], G2[src, i], w)
+        loc = qmul(qinv(G3[:, pi]), g)
+        loc = _cap_dev(qmul(qinv(G2[:, pi]), G2[:, i]), loc, O['lag_cap'])
+        G3[:, i] = qmul(G3[:, pi], loc)
+        G3 = rig.recompute_desc(rig.local(G2), G3, {rig.sk.names[k] for k in range(rig.n) if k <= i or k in rig.sk.chain(b)})
+    # -- breathing on the chest
+    br = np.radians(O['breathe']) * np.sin(2 * np.pi * 0.27 * t + ph[1])
+    G3[:, I['Spine1']] = qmul(qaxis(left, br), G3[:, I['Spine1']])
+    G3 = rig.recompute_desc(rig.local(G2), G3, {'Hips', 'LowerBack', 'Spine', 'Spine1'})
+    # -- head look-at: the next foothold / handhold within 1.2 s, then the clip's own look targets (seat, out)
+    tg = []
+    for keys in legkeys.values():
+        for i in range(1, len(keys)):
+            if keys[i].get('plant') and not keys[i - 1].get('plant'):
+                tg.append((keys[i]['t'], np.asarray(keys[i]['p'], float)))
+    for cl in contacts.values():
+        for c in cl:
+            tg.append((c['t0'] + 0.15, np.asarray(c['P'], float)))
+    tg += [(a, np.asarray(p, float)) for a, p in (look or [])]
+    tg.sort(key=lambda x: x[0])
+    gp3 = fk_global(rig.sk, G3, root)
+    hp = gp3[:, I['Head']]
+    D = np.zeros((F, 3)); W = np.zeros(F)
+    for f in range(F):
+        nx = [(a, p) for a, p in tg if t[f] + 0.05 < a < t[f] + 1.2]
+        if nx:
+            D[f] = nx[0][1] - hp[f]; W[f] = 1.0
+        elif look and t[f] >= look[-1][0] - 0.05:
+            D[f] = np.asarray(look[-1][1]) - hp[f]; W[f] = 1.0
+    D = _gs(D / np.maximum(np.linalg.norm(D, axis=1, keepdims=True), 1e-9), 5.0); W = _gs(W, 5.0) * O['look']
+    hf = qrot(G3[:, I['Head']], np.broadcast_to([0, 0, 1.0], (F, 3)))
+    qd = qbetween(hf, np.where(np.linalg.norm(D, axis=1, keepdims=True) > 1e-6, D, hf))
+    ang = np.degrees(2 * np.arccos(np.clip(np.abs(qd[:, 3]), 0, 1)))
+    k = W * np.clip(O['look_cap'] / np.maximum(ang, 1e-6), 0, 1)
+    qd = _qpow(qd, k)
+    G4 = G3.copy()
+    G4[:, I['Neck']] = qmul(_qpow(qd, 0.45), G3[:, I['Neck']])
+    G4[:, I['Head']] = qmul(qd, G3[:, I['Head']])
+    G4 = rig.recompute_desc(rig.local(G3), G4, {'Hips', 'LowerBack', 'Spine', 'Spine1', 'Neck', 'Head'})
+    return root, rig.local(G4)
+
+
+def org_of(name):
+    """ORG with the clip's TUNE[name]['org'] overrides (+ env ORG_OVR json for experiments)"""
+    import os, json
+    O = dict(ORG, **TUNE.get(name, {}).get('org', {}))
+    O.update(json.loads(os.environ.get('ORG_OVR', '{}')))
+    return O
+
+
+def arm_overlap(rig, gq, planted, name=''):
+    """free arms (not on a hold) trail the chest: upper arm / forearm locals lag a few frames (left later than right), capped"""
+    lq = rig.local(gq); F = len(gq); O = org_of(name)
+    for side, lag, w in O['arm_lag']:
+        free = 1 - np.clip(_gs(np.asarray(planted[side], float), 4.0) * 1.5, 0, 1)
+        src = np.clip(np.arange(F) - lag, 0, F - 1)
+        for b in ('Arm', 'ForeArm'):
+            i = rig.I[side + b]
+            d = qslerp(lq[:, i], lq[src, i], w * free)
+            lq[:, i] = _cap_dev(lq[:, i], d, O['arm_cap'])
+    return rig.global_from_local(lq)
+
+
+def hand_clear(rig, name, gq, root, planted, tol=0.022):
+    """v4: a free hand whose path brushes the hull (the organic layer moves the chest a few cm) is lifted out along the face
+    (clip +Z, up) by its depth: two-bone arm IK on the moved palm, faded in / out"""
+    I = rig.I; F = len(gq)
+    for _ in range(2):
+        gp = fk_global(rig.sk, gq, root)
+        for side in ('Left', 'Right'):
+            d = np.zeros(F)
+            for veh in LAYOUT[name]['veh']:
+                for b in (side + 'Hand', side + 'FingerBase'):
+                    d = np.maximum(d, CV.vehicle_depth(name, veh, gp[:, I[b]], 0.0))
+            d = np.where(np.asarray(planted[side], bool), 0.0, d)
+            if d.max() <= tol:
+                continue
+            off = _gs(np.maximum(d - tol + 0.012, 0) * 1.3, 2.5)
+            dirn = np.array([0, 0.45, 1.0]); dirn /= np.linalg.norm(dirn)
+            HL = rig.hand[side]
+            hq = gq[:, I[side + 'Hand']]
+            palm = gp[:, I[side + 'Hand']] + qrot(hq, np.broadcast_to(HL['palm'] - HL['wrist'], (F, 3)))
+            E = gp[:, I[side + 'ForeArm']]; S_ = gp[:, I[side + 'Arm']]
+            pole = E + (E - 0.5 * (S_ + gp[:, I[side + 'Hand']])) * 0.8
+            sol = CV.arm_ik(rig, gq.copy(), root, side, palm + off[:, None] * dirn, hq, pole, share=0.5)
+            w = np.clip(_gs((off > 1e-4).astype(float), 5.0) * 2.0, 0, 1)
+            gq = CV.blend_arms(rig, gq, sol, w, sides=(side,))
+    return gq
+
+
+_PMASK = [None]      # per-frame guard mask (1 = v3 easing) for legs_keyed
+
+
+def _leg_bad(rig, gq, root, knee=150.0, ankle=54.0, name=None, pen=0.034):
+    """frames where a leg passes the mount_check limits less a margin (knee flex, boot local angle, knee bending backward)"""
+    I = rig.I; F = len(gq)
+    gp = fk_global(rig.sk, gq, root); lq = rig.local(gq)
+    fwd = qrot(gq[:, I['Hips']], np.broadcast_to([0, 0, 1.0], (F, 3)))
+    bad = np.zeros(F, bool)
+    for side in ('Left', 'Right'):
+        H, K, An = gp[:, I[side + 'UpLeg']], gp[:, I[side + 'Leg']], gp[:, I[side + 'Foot']]
+        a = _unit(K - H); c = _unit(An - K)
+        flex = np.degrees(np.arccos(np.clip(np.sum(a * c, 1), -1, 1)))
+        ln = _unit(An - H)
+        bn = _unit(K - (H + ln * np.sum((K - H) * ln, 1, keepdims=True)))
+        an = np.degrees(2 * np.arccos(np.clip(np.abs(lq[:, I[side + 'Foot'], 3]), 0, 1)))
+        bad |= (flex > knee) | ((flex > 20) & (np.sum(bn * fwd, 1) < -0.15)) | (an > ankle)
+        if name and LAYOUT.get(name, {}).get('veh'):          # (legs / hips into the hull)
+            for veh in LAYOUT[name]['veh']:
+                for b in (side + 'UpLeg', side + 'Leg'):
+                    bad |= CV.vehicle_depth(name, veh, gp[:, I[b]], VR.get(b, 0.05)) > pen
+    return bad
+
+
+def foot_clear(rig, name, gq, root, planted, tol=0.022):
+    """v4: a swinging boot (toe / ankle) brushing the hull is lifted up and out by its depth (two-bone leg IK, faded)"""
+    I = rig.I; F = len(gq)
+    for _ in range(2):
+        gp = fk_global(rig.sk, gq, root)
+        for side in ('Left', 'Right'):
+            d = np.zeros(F)
+            for veh in LAYOUT[name]['veh']:
+                for b in (side + 'Foot', side + 'ToeBase'):
+                    d = np.maximum(d, CV.vehicle_depth(name, veh, gp[:, I[b]], 0.0))
+            d = np.where(np.asarray(planted[side], bool), 0.0, d)
+            if d.max() <= tol:
+                continue
+            off = _gs(np.maximum(d - tol + 0.012, 0) * 1.3, 2.5)
+            dirn = np.array([0, 1.0, 0.5]); dirn /= np.linalg.norm(dirn)
+            H, K, An = gp[:, I[side + 'UpLeg']], gp[:, I[side + 'Leg']], gp[:, I[side + 'Foot']]
+            pole = K + (K - 0.5 * (H + An)) * 0.8
+            lq_ref = rig.sk.local_from_global(gq)
+            sol = CV.two_bone_ex(rig, gq.copy(), gp, side + 'UpLeg', side + 'Leg', side + 'Foot', An + off[:, None] * dirn, pole,
+                                 gq[:, I[side + 'Foot']].copy(), np.zeros(F))
+            sol = rig.recompute_desc(lq_ref, sol, {side + 'UpLeg', side + 'Leg', side + 'Foot'})
+            w = np.clip(_gs((off > 1e-4).astype(float), 3.0) * 2.0, 0, 1)
+            lq = rig.local(gq); ls = rig.local(sol)
+            for b in ('UpLeg', 'Leg', 'Foot'):
+                i = I[side + b]
+                lq[:, i] = qslerp(lq[:, i], ls[:, i], w)
+            gq = rig.global_from_local(lq)
+    return gq
+
+
+def _gs(x, s):
+    n = int(3 * s) + 1
+    k = np.exp(-0.5 * (np.arange(-n, n + 1) / s) ** 2); k /= k.sum()
+    x = np.asarray(x, float)
+    xp = np.pad(x, [(n, n)] + [(0, 0)] * (x.ndim - 1), mode='edge')
+    return np.apply_along_axis(lambda v: np.convolve(v, k, 'valid'), 0, xp)
+
+
+def ksolve(rig, name, dur, rkeys, bk, legkeys, contacts, warp=True, post=None, look=None):
     from clips_extra import keyed
     if warp:          # first pass at the authored times: stretch the intervals whose leg moves would turn faster than ~8.5 deg/frame
         F0 = int(round(dur * FPS)) + 1; t0_ = np.arange(F0) / FPS
@@ -1171,29 +1423,73 @@ def ksolve(rig, name, dur, rkeys, bk, legkeys, contacts, warp=True, post=None):
         for cl in contacts.values():
             for c in cl:
                 c['t0'] = W_(c['t0']); c['t1'] = W_(c['t1'])
+        look = [(W_(a), p) for a, p in look] if look else look
         print('warp', [(round(x, 2), round(W_(x), 2)) for x in np.arange(0, dur + 0.01, 0.5)]) if WARP_DEBUG else None
         dur = round(W_(dur) * FPS) / FPS
         ksolve.warp = W_
     F = int(round(dur * FPS)) + 1; t = np.arange(F) / FPS
     root = root_ss(rkeys, dur)
     lq, _ = keyed(rig, [(k, dict(p, root=np.zeros(3))) for k, p in bk], dur)
-    gq = rig.global_from_local(lq)
-    viol = []
-    # hips brought down where a planted boot would be out of reach (3 % slack), before any leg is solved
+    root_b, lq_b = root.copy(), lq.copy()
+    if ORG['on']:
+        root_o, lq_o = organic(rig, name, t, root, lq, legkeys, contacts, look)
+    m = np.zeros(F)
+    hl = org_of(name).get('hold_lock', 0.0)          # (per clip: hips / trunk layers held back while a hand is on a hold)
+    if ORG['on'] and hl > 0:
+        hm = np.zeros(F)
+        for cl in contacts.values():
+            for c in cl:
+                hm = np.maximum(hm, ((t >= c['t0']) & (t <= c['t1'])).astype(float))
+        m = np.clip(_gs(hm, 4.0) * 1.5, 0, 1) * hl
     I = rig.I
-    tgt = {}
-    gp = fk_global(rig.sk, gq, root)
-    for side, keys in legkeys.items():
-        kt = np.array([k['t'] for k in keys]); a_ = gp[:, I[side + 'UpLeg']].copy()
-        for f in range(F):
-            j = int(np.clip(np.searchsorted(kt, t[f], side='right') - 1, 0, len(kt) - 1))
-            if keys[j].get('plant'):
-                a_[f] = keys[j]['p']
-        tgt[side] = a_
     Lleg = chain_len(rig, 'LeftUpLeg', 'LeftLeg', 'LeftFoot')
-    root, drop = A.fit_root_to_feet(rig, gq, root, tgt, slack=(1 - REACH) * Lleg + 0.004)
-    gq, legs = legs_keyed(rig, gq, root, t, legkeys, viol)
+    import copy as _cpy
+    lk0 = _cpy.deepcopy(legkeys)
+    lift = np.zeros(F)
+    for g_ in range(5 if ORG['on'] else 1):
+        lk = _cpy.deepcopy(lk0)          # (legs_keyed writes the ankle-limited boot back into the keys)
+        # v4 guard: wherever the organic layer would take a leg past the limits (knee 152 / boot 57 deg / knee backward), the
+        # hips + trunk fall back toward the v3 keyed values there (m), re-solved
+        if ORG['on']:
+            root = root_o * (1 - m[:, None]) + root_b * m[:, None] + lift[:, None] * Y
+            lq = np.stack([qslerp(lq_o[:, i], lq_b[:, i], m) for i in range(lq_o.shape[1])], 1)
+        gq = rig.global_from_local(lq)
+        viol = []
+        # hips brought down where a planted boot would be out of reach (3 % slack), before any leg is solved
+        tgt = {}
+        gp = fk_global(rig.sk, gq, root)
+        for side, keys in legkeys.items():
+            kt = np.array([k['t'] for k in keys]); a_ = gp[:, I[side + 'UpLeg']].copy()
+            for f in range(F):
+                j = int(np.clip(np.searchsorted(kt, t[f], side='right') - 1, 0, len(kt) - 1))
+                if keys[j].get('plant'):
+                    a_[f] = keys[j]['p']
+            tgt[side] = a_
+        root, drop = A.fit_root_to_feet(rig, gq, root, tgt, slack=(1 - REACH) * Lleg + 0.004)
+        _PMASK[0] = m
+        gq, legs = legs_keyed(rig, gq, root, t, lk, viol)
+        if not ORG['on']:
+            break
+        bad = _leg_bad(rig, gq, root, name=name, pen=org_of(name).get('gpen', 0.034))
+        if LAYOUT.get(name, {}).get('veh') and g_ >= 2 and org_of(name).get('lift', True):          # (still a knee / thigh in the hull where m is already 1: lift)
+            gpx = fk_global(rig.sk, gq, root); ex = np.zeros(F)
+            for veh in LAYOUT[name]['veh']:
+                for b in ('LeftUpLeg', 'LeftLeg', 'RightUpLeg', 'RightLeg'):
+                    ex = np.maximum(ex, CV.vehicle_depth(name, veh, gpx[:, I[b]], VR.get(b, 0.05)) - 0.028)
+            lift += np.clip(_gs(np.maximum(ex, 0), 2.0) * 2.5, 0, 0.06)
+        if not bad.any():
+            break
+        m = np.maximum(m, np.clip(_gs(bad.astype(float), 4.0) * 3.0, 0, 1))
+    for sd in legkeys:
+        legkeys[sd][:] = lk[sd]
     gq, hpl, palms = arms_pass(rig, gq, root, t, contacts, viol, name)
+    if ORG['on']:
+        gq = arm_overlap(rig, gq, hpl, name)
+    if ORG['on'] and LAYOUT.get(name, {}).get('veh'):
+        if org_of(name).get('hclear', True):
+            gq = hand_clear(rig, name, gq, root, hpl)
+        if org_of(name).get('fclear', True):
+            gq = foot_clear(rig, name, gq, root, {sd: legs[sd]['planted'] for sd in ('Left', 'Right')})
     info = dict(legs=legs, hands={sd: dict(palm=palms[sd], q=arms_pass.last[0].get(sd, np.zeros((F, 4))), pole=arms_pass.last[1].get(sd, np.zeros((F, 3))),
                                           planted=hpl[sd]) for sd in hpl}, viol=viol)
     return gq, root, info
@@ -1375,7 +1671,8 @@ def mount_deck_k(rig, lm, name):
     rk = sorted(rk, key=lambda k: k[0]); bk = sorted(bk, key=lambda k: k[0])
     import copy as _cp
     keys0 = _cp.deepcopy((rk, bk, fL, fR, con))
-    gq, root, info = ksolve(rig, name, dur, rk, bk, {'Left': fL, 'Right': fR}, con)
+    look = [(t_deck + 0.25, Sv + np.array([0, 0.05, 0])), (T1 + 0.45, hip_end + np.array([0, 0.55, 4.0]))]        # v4: seat, then out
+    gq, root, info = ksolve(rig, name, dur, rk, bk, {'Left': fL, 'Right': fR}, con, look=look)
     post = None
     for _ in range(3):                             # further passes: re-time wherever the solved pose still turns too fast
         p2 = speed_warp(rig, gq, info)
@@ -1383,7 +1680,7 @@ def mount_deck_k(rig, lm, name):
             break
         post = p2 if post is None else (lambda x, a_=post, b_=p2: b_(a_(x)))
         rk, bk, fL, fR, con = _cp.deepcopy(keys0)
-        gq, root, info = ksolve(rig, name, dur, rk, bk, {'Left': fL, 'Right': fR}, con, post=post)
+        gq, root, info = ksolve(rig, name, dur, rk, bk, {'Left': fL, 'Right': fR}, con, post=post, look=look)
     W_ = ksolve.warp
     T_FIN, T_S1, T1, t_deck = W_(T_FIN), W_(T_S1), W_(T1), W_(t_deck)
     dur = (len(gq) - 1) / FPS
@@ -1473,13 +1770,13 @@ def mount_in_k(rig, lm, name):
     return gq, root, info, ev, dur
 
 
-TUNE = {'mount_deck_btr': dict(front=0.35, scale=0.68), 'mount_deck_rear_btr': dict(koff_up=0.10, tg_l=1.90, surf_all=True, cr_dz=-0.35, sw_up=0.22, deck_dz=-0.30, front=0.35, scale=0.70, step_lift=0.06, rout=0.60, hip_back=0.10, kn_pitch=94, step_out=12, step_hy=0.08, crl_yaw=188, piv_r=235, route=True, ramp=1.0),
+TUNE = {'mount_deck_btr': dict(front=0.35, scale=0.68), 'mount_deck_rear_btr': dict(org=dict(arm_lag=[('Right', 3, 0.6)]), koff_up=0.10, tg_l=1.90, surf_all=True, cr_dz=-0.35, sw_up=0.22, deck_dz=-0.30, front=0.35, scale=0.70, step_lift=0.06, rout=0.60, hip_back=0.10, kn_pitch=94, step_out=12, step_hy=0.08, crl_yaw=188, piv_r=235, route=True, ramp=1.0),
         'mount_deck_rear_bmp3': dict(front_up=0.08, step_dz=0.05, scale=0.75, step_lift=0.06, rout=0.60, hip_back=0.14, kn_pitch=100, step_out=12, step_hy=0.08, crl_yaw=188, piv_r=235, route=True, ramp=1.0),
-        'mount_deck_rear_tank': dict(scale=0.75, step_lift=0.06, rout=0.60, hip_back=0.10, kn_pitch=100, step_out=12, step_hy=0.08, crl_yaw=188, piv_r=235, route=True, ramp=1.0),
+        'mount_deck_rear_tank': dict(org=dict(lift=False, gpen=0.044), scale=0.75, step_lift=0.06, rout=0.60, hip_back=0.10, kn_pitch=100, step_out=12, step_hy=0.08, crl_yaw=188, piv_r=235, route=True, ramp=1.0),
         'mount_deck_rear_t72b3': dict(hip_back=0.0, step_lift=0.06, crl_yaw=188, piv_r=235, trail_fwd=True, trail_z=0.12, trail_yaw=150, step_out=12, step_hy=0.08, pitch2=8, deck_hy=0.07, hip_in2=0.07),
         'mount_deck_bradley': dict(front=0.25, piv_r=235, crl_yaw=188, tg_l=2.20, rout=0.60, grip_w=0.30, hold_dy=0.28, scale=0.68, hip_back=0.14, step_lift=0.06, route=True, ramp=1.0),
-        'mount_deck_bmp3': dict(scale=0.70, grip_out=0.12, hip_back=0.10, knee_up=0.14, tuck=True, route=True, ramp=1.00, knee_x=-0.03), 'mount_deck_t72b3': dict(scale=0.75, step_lift=0.06, grip_out=0.12, hip_back=0.14, piv_r=235),
-        'mount_deck_tank': dict(scale=0.75, step_lift=0.06, grip_out=0.0, hip_back=0.14, piv_r=235, route=True, ramp=1.0, grip_w=0.31, crl_yaw=188)}
+        'mount_deck_bmp3': dict(org=dict(settle=0.010), scale=0.70, grip_out=0.12, hip_back=0.10, knee_up=0.14, tuck=True, route=True, ramp=1.00, knee_x=-0.03), 'mount_deck_t72b3': dict(scale=0.75, step_lift=0.06, grip_out=0.12, hip_back=0.14, piv_r=235),
+        'mount_deck_tank': dict(org=dict(arm_lag=[], shift=0.0, hike=0.0), scale=0.75, step_lift=0.06, grip_out=0.0, hip_back=0.14, piv_r=235, route=True, ramp=1.0, grip_w=0.31, crl_yaw=188)}
 
 
 def build(rig, lm, name):

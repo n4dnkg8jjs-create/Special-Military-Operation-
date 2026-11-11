@@ -57,9 +57,7 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
 ## State at handoff (Nov 2026)
 - Pushed recently: streets v1–v6 (merged roads, junction radii, signs, turning pads, rails), Avdiivka perf v1 (~½ triangles),
   siege v2 destruction, models v18 (T-72B3/AV rebuilt, BTR-82A detail), mount-up v3 (hand-keyed climbs, all 11 clips pass).
-- IN PROGRESS: mount v4 — owner said v3 "looks un-organic"; wants the same keyframed clips with more detail (weight shift,
-  anticipation/follow-through, overlapping action, varied timing, head look-at, micro-motion) + per-soldier playback-rate
-  variation (0.92–1.08). See the "Mount v4 status" line at the end of this file.
+- Mount v4 (organic keyframe detail) pushed — see "Mount v4 status" at the end of this file.
 - Owner Q&A already answered: BTR riders sit on top (8 deck seats); only overflow men go inside (door) — BMP-3 has 7 deck
   seats so the 8th uses the rear doors. Avdiivka tram line ran beside the road (OSM: 5–9 m from road centre), service
   stopped 2015, partly resumed 2016, closed Jan 2017; rails mostly left in place (OSM "disused").
@@ -67,4 +65,14 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   the owner's machine (measure again after changes), docs/TODO.md backlog.
 
 ## Mount v4 status
-(updated by the previous session at handoff — see below)
+- PUSHED (mount v4): organic layer in clips_mount.py on top of the v3 keys (weight shift, anticipation + settle, spine/head/arm
+  overlap, varied timing, head look-at, breathing/sway; `ORG['on']=False` = exact v3) + per-man playback rate 0.92–1.08
+  (squad.js sets it when the climb starts and stretches the clip timer to match; soldier.js plays the clip at that rate).
+- All 11 mount_* clips pass mount_check; check_anims 10/11: mount_deck_rear_t72b3's last frame is 3.6° off ride_sit_edge
+  (left hand; pre-existing, hidden by the 0.12 s blend in game).
+- Softened layers on mount_deck_tank (T-72AV: no weight shift / arm lag — least lively), BMP-3 (smaller settle), rear BTR
+  (right-arm lag only), rear T-72AV (no knee lift).
+- Not yet judged by the owner in game. If they still call it un-organic, the next step is changing the choreography
+  (v3 key poses), not more layers. Motion capture (CMU) was tried and dropped at the owner's request.
+- Scripted UA-city mount test is flaky (one BTR-80 squad sometimes never starts climbing) — cause not found; look at
+  squad.js mount entry/arrival logic if the owner reports men not boarding.

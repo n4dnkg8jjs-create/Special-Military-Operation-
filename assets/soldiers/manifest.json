@@ -12679,16 +12679,16 @@
     "root_motion": true,
     "notes": "BTR-80/82 side: right boot on the 3rd-axle tyre bulge (virtual step 0.68 m), left boot on the chine (1.28 m), hands on the 49 deg upper side plate then the roof edge, onto the roof (1.93 m), turns, sits on edge seat ride_seat_3. Starts at the root (on the ground, beside the hull) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [-0.09, 1.969, -1.5] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 4.775,
+     "on_deck": 4.788,
      "turn": [
-      4.775,
-      5.575
+      4.788,
+      5.588
      ],
-     "sit": 6.725,
-     "unsling": 7.009,
+     "sit": 6.757,
+     "unsling": 7.034,
      "fix": [
-      4.675,
-      6.725
+      4.688,
+      6.757
      ],
      "seat_offset_from_root": [
       -0.09,
@@ -12752,8 +12752,8 @@
     }
    },
    "mount_deck_bmp3": {
-    "duration_s": 7.9,
-    "frames": 238,
+    "duration_s": 7.667,
+    "frames": 231,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -12761,16 +12761,16 @@
     "root_motion": true,
     "notes": "BMP-3 side: right boot on the bottom lip of the side skirt (virtual step 0.78 m), hands on the deck edge, high knee onto the deck (1.70 m), turns, sits on edge seat ride_seat_1. Starts at the root (on the ground, beside the hull) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.697, -0.82] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 5.527,
+     "on_deck": 5.274,
      "turn": [
-      5.527,
-      6.327
+      5.274,
+      6.074
      ],
-     "sit": 7.292,
-     "unsling": 7.545,
+     "sit": 7.037,
+     "unsling": 7.288,
      "fix": [
-      5.427,
-      7.292
+      5.174,
+      7.037
      ],
      "seat_offset_from_root": [
       0.0,
@@ -12828,8 +12828,8 @@
     }
    },
    "mount_deck_bradley": {
-    "duration_s": 7.533,
-    "frames": 227,
+    "duration_s": 7.7,
+    "frames": 232,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -12837,16 +12837,16 @@
     "root_motion": true,
     "notes": "Bradley side: right boot on the skirt bottom lip (virtual step 0.72 m), left boot on the skirt ledge (1.45 m), hands on the ledge then the roof edge, onto the roof (2.0 m), turns, sits on edge seat ride_seat_1. Starts at the root (on the ground, beside the hull) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.979, -0.97] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 5.256,
+     "on_deck": 5.323,
      "turn": [
-      5.256,
-      6.056
+      5.323,
+      6.123
      ],
-     "sit": 6.906,
-     "unsling": 7.163,
+     "sit": 7.065,
+     "unsling": 7.325,
      "fix": [
-      5.156,
-      6.906
+      5.223,
+      7.065
      ],
      "seat_offset_from_root": [
       0.0,
@@ -12904,8 +12904,8 @@
     }
    },
    "mount_deck_tank": {
-    "duration_s": 7.8,
-    "frames": 235,
+    "duration_s": 7.767,
+    "frames": 234,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -12913,16 +12913,16 @@
     "root_motion": true,
     "notes": "T-72AV side: right boot on the track top under the ERA skirt (virtual step 0.62 m), hands on the fender stowage boxes, high knee onto them (1.55 m), turns, sits on edge seat ride_seat_1. Starts at the root (on the ground, beside the hull) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.545, -0.86] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 5.027,
+     "on_deck": 5.017,
      "turn": [
-      5.027,
-      5.827
+      5.017,
+      5.817
      ],
-     "sit": 7.192,
-     "unsling": 7.432,
+     "sit": 7.181,
+     "unsling": 7.418,
      "fix": [
-      4.927,
-      7.192
+      4.917,
+      7.181
      ],
      "seat_offset_from_root": [
       0.0,
@@ -12980,8 +12980,8 @@
     }
    },
    "mount_deck_t72b3": {
-    "duration_s": 6.933,
-    "frames": 209,
+    "duration_s": 6.867,
+    "frames": 207,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -12989,16 +12989,16 @@
     "root_motion": true,
     "notes": "T-72B3 side: right boot on the track top under the skirt (virtual step 0.62 m), hands on the fender, onto it (1.55 m), in onto the engine deck, turns, sits on deck seat ride_seat_1 (ride_sit_deck). Starts at the root (on the ground, beside the hull) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_deck frame 0 with the seat point at [0.0, 1.517, -1.43] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 4.561,
+     "on_deck": 4.494,
      "turn": [
-      4.561,
-      5.361
+      4.494,
+      5.294
      ],
-     "sit": 6.224,
-     "unsling": 6.601,
+     "sit": 6.155,
+     "unsling": 6.531,
      "fix": [
-      4.461,
-      6.224
+      4.394,
+      6.155
      ],
      "seat_offset_from_root": [
       0.0,
@@ -13056,8 +13056,8 @@
     }
    },
    "mount_deck_rear_btr": {
-    "duration_s": 7.967,
-    "frames": 240,
+    "duration_s": 8.267,
+    "frames": 249,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -13065,16 +13065,16 @@
     "root_motion": true,
     "notes": "BTR stern: right boot on the sloped lower stern plate (virtual step 0.78 m), left boot on the tow hitch (1.10 m), hands on the engine deck edge, onto it (1.93 m), turns, sits on the stern edge seat facing back. Starts at the root (on the ground, behind the stern) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [-0.4, 1.95, -0.83] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 5.316,
+     "on_deck": 5.589,
      "turn": [
-      5.316,
-      6.116
+      5.589,
+      6.389
      ],
-     "sit": 7.351,
-     "unsling": 7.607,
+     "sit": 7.642,
+     "unsling": 7.899,
      "fix": [
-      5.216,
-      7.351
+      5.489,
+      7.642
      ],
      "seat_offset_from_root": [
       -0.4,
@@ -13133,8 +13133,8 @@
     }
    },
    "mount_deck_rear_bmp3": {
-    "duration_s": 7.333,
-    "frames": 221,
+    "duration_s": 7.467,
+    "frames": 225,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -13142,16 +13142,16 @@
     "root_motion": true,
     "notes": "BMP-3 stern: right boot on the rear door sill lip (virtual step 0.80 m), hands on the deck edge, onto the deck (1.75 m), turns, sits on the stern edge seat facing back. Starts at the root (on the ground, behind the stern) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.75, -0.71] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 5.242,
+     "on_deck": 5.248,
      "turn": [
-      5.242,
-      6.042
+      5.248,
+      6.048
      ],
-     "sit": 6.728,
-     "unsling": 6.968,
+     "sit": 6.85,
+     "unsling": 7.091,
      "fix": [
-      5.142,
-      6.728
+      5.148,
+      6.85
      ],
      "seat_offset_from_root": [
       0.0,
@@ -13209,8 +13209,8 @@
     }
    },
    "mount_deck_rear_tank": {
-    "duration_s": 7.333,
-    "frames": 221,
+    "duration_s": 7.4,
+    "frames": 223,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -13218,16 +13218,16 @@
     "root_motion": true,
     "notes": "T-72AV stern: right boot on the fuel drum bracket (virtual step 0.85 m), hands on the drums, onto them (1.75 m), down onto the engine deck, turns, sits on the drums facing back. Starts at the root (on the ground, behind the stern) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.745, -0.86] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 4.958,
+     "on_deck": 5.044,
      "turn": [
-      4.958,
-      5.758
+      5.044,
+      5.844
      ],
-     "sit": 6.74,
-     "unsling": 6.978,
+     "sit": 6.798,
+     "unsling": 7.04,
      "fix": [
-      4.858,
-      6.74
+      4.944,
+      6.798
      ],
      "seat_offset_from_root": [
       0.0,
@@ -13285,8 +13285,8 @@
     }
    },
    "mount_deck_rear_t72b3": {
-    "duration_s": 7.433,
-    "frames": 224,
+    "duration_s": 7.5,
+    "frames": 226,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -13294,16 +13294,16 @@
     "root_motion": true,
     "notes": "T-72B3 stern: right boot on the thin rail of the unditching beam mount (0.88 m), hands on the deck edge, onto the engine deck (1.48 m), turns, sits on the stern edge seat facing back. Starts at the root (on the ground, behind the stern) facing the hull (idle_rifle frame 0 turned 180 deg; root heading = away from the hull, the seat heading), ends exactly in ride_sit_edge frame 0 with the seat point at [0.0, 1.48, -0.9] relative to the root (= the first frame of the matching dismount_jump). Root fixed, whole path in the Hips track. Rifle slung while climbing, back in the right hand from events.unsling. events.fix = window (on the deck) over which the game slides the root to the real seat of this hull / seat row.",
     "events": {
-     "on_deck": 4.359,
+     "on_deck": 4.376,
      "turn": [
-      5.159,
-      5.959
+      5.2,
+      6.0
      ],
-     "sit": 6.943,
-     "unsling": 7.143,
+     "sit": 7.004,
+     "unsling": 7.204,
      "fix": [
-      4.259,
-      6.943
+      4.276,
+      7.004
      ],
      "seat_offset_from_root": [
       0.0,
@@ -13413,8 +13413,8 @@
     }
    },
    "mount_rear": {
-    "duration_s": 2.667,
-    "frames": 81,
+    "duration_s": 2.7,
+    "frames": 82,
     "fps": 30,
     "loop": false,
     "ground_speed_mps": 0.0,
@@ -13422,7 +13422,7 @@
     "root_motion": true,
     "notes": "IFV rear door: threshold 0.50 m, 0.55 m in front of the start root; steps up, ducks in, crouched inside. Starts at the root facing the opening (idle_rifle frame 0 turned 180 deg), ends crouched inside: hide him from events.inside. Root fixed, whole path in the Hips track.",
     "events": {
-     "inside": 2.061,
+     "inside": 2.096,
      "threshold_h": 0.5,
      "threshold_z": -0.55
     },

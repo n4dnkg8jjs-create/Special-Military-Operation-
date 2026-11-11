@@ -542,7 +542,7 @@ export class Squad {
         const d = Math.min(E.len, t * 0.95), x = E.x + E.fx * d, z = E.z + E.fz * d, along = (x - E.bx) * E.fx + (z - E.bz) * E.fz;
         s.pos.set(x + M.x * k0, Math.max(E.y, 0.62 * THREE.MathUtils.clamp(along / 1.9, 0, 1)), z + M.z * k0); s.heading = E.h;
       } else {
-        const F = E.fix, k1 = F ? smooth01((t - F.t0) / Math.max(0.1, F.t1 - F.t0)) : 0;
+        const F = E.fix, k1 = F ? smooth01((t * (s.jumpTs || 1) - F.t0) / Math.max(0.1, F.t1 - F.t0)) : 0;   /* (fix window in clip time: the clip plays at s.jumpTs) */
         s.pos.set(E.x + M.x * k0 + (F ? F.x * k1 : 0), E.y + M.y * k0 + (F ? F.y * k1 : 0), E.z + M.z * k0 + (F ? F.z * k1 : 0)); s.heading = E.h;
       }
       if (s.jumpT <= 0) this.boardOne(s, v);
@@ -572,15 +572,16 @@ export class Squad {
     if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }   // (as the old boarding did for a dragger reaching the hull)
     s.mounting = true; s.mountT0 = g.time; s.path = null; s.goal = null; s.pathReq = null; s.target = null; s.vel.set(0, 0, 0); s.stance = 'stand';
     s.mountFix = { x: s.pos.x - E.x, y: s.pos.y - E.y, z: s.pos.z - E.z, T: Math.max(0.3, Math.hypot(s.pos.x - E.x, s.pos.z - E.z) / 1.4) };   // (the rest of the way to the entry: slid at a walk while the clip starts)
-    s.jumpClip = E.clip; s.jumpT = E.dur; s.jumpFix = null; s.heading = E.h;
+    const rate = E.kind === 'ramp' ? 1 : 0.92 + Math.random() * 0.16;   // mount v4: every man climbs at his own pace (0.92-1.08x)
+    s.jumpClip = E.clip; s.jumpTs = rate; s.jumpT = E.dur / rate; s.jumpFix = null; s.heading = E.h;
     if (E.kind === 'rear' || E.kind === 'ramp') v.doorT = Math.max(v.doorT || 0, g.time + E.dur + 1.5);
-    if (s.mixer && E.kind !== 'ramp') { s.play(E.clip, 0, 1, ['crouch_idle']); }
+    if (s.mixer && E.kind !== 'ramp') { s.play(E.clip, 0, rate, ['crouch_idle']); }
     s.sync();
   }
   // off the hull again (vehicle moved / knocked out, hit, order changed): back on the ground beside it, where he was
   mountAbort(s, v) {
     const g = this.game, onHull = s.mounting && s.mountE && g.time - s.mountT0 > 0.5;
-    s.mounting = false; s.jumpT = 0; s.mountFix = null;
+    s.mounting = false; s.jumpT = 0; s.jumpTs = 1; s.mountFix = null;
     if (onHull && v) { const [fx, fz] = outsideHull(v, s.pos.x, s.pos.z, 0.4); s.pos.set(fx, g.city?.groundHeight ? g.city.groundHeight(fx, fz) : 0, fz); }
     if (s.mountE && v && !v.destroyed) s.mountE.stale = true;   // (re-planned when the vehicle has stopped)
   }
@@ -588,7 +589,7 @@ export class Squad {
   boardOne(s, v, instant = true) {
     const P = s.mountSeat || { inside: 'btr' };
     if (P.inside === 'ride') { s.inside = 'ride'; s.seat = { i: P.i }; s.seatType = v.seatType(P.i); } else s.inside = 'btr';
-    s.path = null; s.goal = null; s.target = null; s.mounting = false; s.mountFix = null; s.mountE = null; s.mountSeat = null; s.jumpT = 0;
+    s.path = null; s.goal = null; s.target = null; s.mounting = false; s.mountFix = null; s.mountE = null; s.mountSeat = null; s.jumpT = 0; s.jumpTs = 1;
     if (s.dragging) this.releaseCare(s);
     if (instant) { const w = v.seatWorld(s.seat ? s.seat.i : 0); s.pos.copy(w.pos); s.heading = w.heading; }
   }

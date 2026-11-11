@@ -385,7 +385,7 @@ export class Soldier {
       else { clip = this.dmWait != null ? 'ride_sit_edge' : this.target ? 'ride_aim' : (this.seatType === 'deck' ? 'ride_sit_deck' : 'ride_sit_edge'); alt = ['ride_sit_edge', 'crouch_idle']; }   // about to jump: the jump clip's frame 0
     }
     else if (this.hatchT > 0) { clip = this.hatchClip || 'hatch_exit'; alt = ['hatch_exit', 'dismount_jump', 'crouch_idle']; if (this.weaponObj) this.weaponObj.visible = this.hatchT < 0.5; }
-    else if (this.jumpT > 0) { clip = this.jumpClip || 'dismount_jump'; alt = ['dismount_jump', 'crouch_idle']; }
+    else if (this.jumpT > 0) { clip = this.jumpClip || 'dismount_jump'; alt = ['dismount_jump', 'crouch_idle']; ts = this.jumpTs || 1; }
     else if (this.launcherT > 0) {
       const k = this.stance === 'stand' ? '' : '_kneel', aim = 'aim_launcher' + k;
       if (this.launchFired) { clip = 'fire_launcher' + k; alt = ['fire_launcher', aim]; }
