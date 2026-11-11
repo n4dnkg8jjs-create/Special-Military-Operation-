@@ -670,12 +670,23 @@ def vehicle_checks(name, r, pose, model, B, soles):
     gp, lq = pose['gp'], pose['lq']
     # -- body inside the vehicle(s)
     pen = {}
+    # mounting clips end in their ride pose on the seat: those settled frames are the ride clip's own business (checked as
+    # ride_*; a seat layout shared by two hulls may leave a boot in one of them) and are reported apart, not flagged here
+    ride = np.zeros(F, bool)
+    if VCHECK(name).get('mount'):
+        lg = [model.idx[b] for b in BONES if b.startswith(('Left', 'Right')) and any(k in b for k in ('UpLeg', 'Leg', 'Foot', 'Toe'))] + [model.idx['Hips']]
+        ride = np.linalg.norm(gp[:, lg] - gp[-1:, lg], axis=2).max(1) < 0.10      # (legs settling onto the seat as in the last frame)
+        ride[:np.where(~ride)[0].max(initial=-1) + 1] = False
+        r['end_pose_pen'] = {veh: round(float(max(CVH.vehicle_depth(base, veh, gp[-1:, model.idx[b]], VRAD.get(b, 0.05))[0] for b in BONES
+                                                   if not b.endswith(('Thumb', 'FingerBase', 'Finger1')))), 3) for veh in L.get('veh', ())}
     for veh in L.get('veh', ()):
         worst = (0.0, '')
         for b in BONES:
             if b.endswith(('Thumb', 'FingerBase', 'Finger1')) or b in ('LHipJoint', 'RHipJoint', 'Neck1'):
                 continue
             d = CVH.vehicle_depth(base, veh, gp[:, model.idx[b]], VRAD.get(b, 0.05))
+            if ride.any():          # settling into the ride pose: only what goes deeper than that pose's own depth counts
+                d = np.where(ride, np.maximum(0, d - float(CVH.vehicle_depth(base, veh, gp[-1:, model.idx[b]], VRAD.get(b, 0.05))[0]) - 0.005), d)
             if d.max() > worst[0]:
                 worst = (float(d.max()), f'{b}@{t[int(np.argmax(d))]:.2f}s')
         pen[veh] = (round(worst[0], 3), worst[1])
@@ -690,7 +701,7 @@ def vehicle_checks(name, r, pose, model, B, soles):
         st = v < 0.03
         idx = np.where(st)[0]
         for seg in (np.split(idx, np.where(np.diff(idx) > 1)[0] + 1) if len(idx) else []):
-            if len(seg) < 4:
+            if len(seg) < 4 or ride[seg].all():
                 continue
             # clearance = min over the sole outline of (sole point height - support under that point): sloped plates
             dy = np.array([min(p_[1] - CVH.support_y(base, p_[0], p_[2], p_[1]) for p_ in S[f, ::4]) for f in seg[::3]])
@@ -710,10 +721,11 @@ def vehicle_checks(name, r, pose, model, B, soles):
     if 'draw' in ev and abs(ev['draw'] - (r['dur'] - 0.5)) > 0.02:
         r['flags'].append(f'draw event {ev["draw"]} != dur - 0.5 (the game shows the PM for the last 0.5 s)')
     # -- ends on its root (crew) / start + end continuity (rifle dismounts)
-    end = gp[-1, model.idx['Hips']]
+    mount = bool(VCHECK(name).get('mount'))           # mounting up (clips_mount.py): starts over its root, ends on the seat / inside
+    end = gp[0 if mount else -1, model.idx['Hips']]
     r['veh_end_hips'] = [round(float(x), 3) for x in end]
     if np.hypot(end[0], end[2]) > 0.03:
-        r['flags'].append(f'does not end over the root ({end[0]:.3f}, {end[2]:.3f})')
+        r['flags'].append(f'does not {"start" if mount else "end"} over the root ({end[0]:.3f}, {end[2]:.3f})')
     J = [model.idx[b] for b in BONES if not b.endswith(('Thumb', 'FingerBase', 'Finger1'))]
     for key, fa, fb in (('start', 0, 0), ('end', -1, 0)):
         other = VCHECK(name).get(key)
@@ -721,7 +733,7 @@ def vehicle_checks(name, r, pose, model, B, soles):
             continue
         po = model.pose(other)
         ang = max(float(qang(lq[fa, j], po['lq'][fb, j])) for j in J)
-        off = np.array(CVH.v2c(base, L['seat'])) if key == 'start' else np.zeros(3)
+        off = np.array(CVH.v2c(base, L['seat'])) if key == 'start' or (mount and 'seat' in L) else np.zeros(3)
         dr = float(np.linalg.norm(gp[fa, model.idx['Hips']] - (po['gp'][fb, model.idx['Hips']] + off)))
         r[f'veh_{key}'] = (other, round(ang, 2), round(dr, 4))
         if ang > 2.0 or dr > 0.005:

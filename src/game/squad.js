@@ -19,6 +19,14 @@ function jumpClip(v, rear) {
   for (const c of [L[rear ? 1 : 0], L[0], v.kind === 'tank' ? 'dismount_jump_tank' : 'dismount_jump']) if (hasClip(c)) return c;
   return 'dismount_jump';
 }
+// mounting up (tools/blender/soldiers/clips_mount.py mount_deck_*): [side edge seats, stern edge seats] per vehicle model, each authored
+// against that hull (footholds, deck edge); the Bradley stern borrows the BTR's (2.0 m deck, rarely used: the squad rides inside)
+const MOUNT_CLIPS = {
+  btr82a: ['mount_deck_btr', 'mount_deck_rear_btr'], btr80_ua: ['mount_deck_btr', 'mount_deck_rear_btr'],
+  bmp3: ['mount_deck_bmp3', 'mount_deck_rear_bmp3'], bradley_ua: ['mount_deck_bradley', 'mount_deck_rear_btr'],
+  t72b3: ['mount_deck_t72b3', 'mount_deck_rear_t72b3'], t72av_ua: ['mount_deck_tank', 'mount_deck_rear_tank'],
+};
+const MOUNT_FALLBACK_S = 10;   // a man who has not started climbing on this long after the order boards the old way (instantly, at the hull)
 // hull footprint in the vehicle's own frame (x = left, z = forward; hull meshes only, no gun barrel), cached on the vehicle
 export function hullBox(v) {
   if (v._dmBox) return v._dmBox;
@@ -447,8 +455,142 @@ export class Squad {
   orderMount(v) {
     if (this.routing || !v || v.destroyed) return;
     this.leaveBuilding();
-    this.order = { type: 'mount', vehicle: v }; this.carrier = v;
-    if (v.def.asset === 'bradley_ua') v.doorT = Math.max(v.doorT || 0, this.game.time + 6); for (const s of this.alive) { if (s.state === 'dead') continue; const d = v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45); }
+    this.order = { type: 'mount', vehicle: v, t0: this.game.time }; this.carrier = v;
+    if (v.def.asset === 'bradley_ua') v.doorT = Math.max(v.doorT || 0, this.game.time + 6);
+    // v10: seats handed out now (same rules as board), each man walks to his own entry point (beside his seat / at the door) and
+    // climbs on there (mountTick); the squad is mounted once every effective man is aboard
+    for (const s of this.soldiers) { if (s.mounting) this.mountAbort(s, v); s.mountSeat = null; s.mountE = null; }
+    this.seatPlan(v);
+    for (const s of this.alive) {
+      if (s.state === 'dead' || s.aboard) continue;
+      const E = s.mountSeat && (s.mountE = this.mountEntry(s, v)), d = E || v.doorPos(s.idx); s.goal = [d.x, d.z]; this.game.requestPath(s, s.pos.x, s.pos.z, d.x, d.z, 0.45);
+    }
+  }
+  // seats for the men not yet aboard (board's rules: Bradley crews ride inside first, then the deck seats in order, overflow inside;
+  // casualties get none - board loads those lying at the hull), leaving seats / room taken by men aboard or already given a place
+  seatPlan(v) {
+    const seats = v.seatCount(), taken = new Set();
+    let room = v.def.asset === 'bradley_ua' ? v.def.passengers : 0;
+    for (const s of this.soldiers) {
+      if (s.state === 'evac') continue;
+      const P = s.aboard ? (s.inside === 'ride' && s.seat ? { inside: 'ride', i: s.seat.i } : { inside: 'btr' }) : s.mountSeat;
+      if (!P) continue;
+      if (P.inside === 'ride') taken.add(P.i); else if (room > 0) room--;
+    }
+    let k = 0;
+    for (const s of this.soldiers) {
+      if (s.state === 'dead' || s.state === 'evac' || s.aboard || s.mountSeat) continue;
+      if (s.state === 'critical' || s.state === 'stable') continue;
+      if (room > 0) { room--; s.mountSeat = { inside: 'btr' }; continue; }
+      while (k < seats && taken.has(k)) k++;
+      if (k < seats) { s.mountSeat = { inside: 'ride', i: k }; taken.add(k); k++; } else s.mountSeat = { inside: 'btr' };
+    }
+  }
+  // where he gets on (root of his mount clip, on the ground, hull-relative): deck riders beside their seat (BTR: at the nearest wheel,
+  // stern: behind it), the men inside at their door (BTR side doors, BMP-3 rear doors) or the foot of the Bradley ramp.
+  // fix = the real seat minus the clip's seat point: slid in while he is up on the deck (events.fix), so other seat rows / hulls fit
+  mountEntry(s, v) {
+    const P = s.mountSeat, g = this.game; if (!P) return null;
+    const gH = (x, z) => (g.city?.groundHeight ? g.city.groundHeight(x, z) : 0);
+    const sh = Math.sin(v.heading), ch = Math.cos(v.heading), toW = (lx, lz) => [v.pos.x + lz * sh + lx * ch, v.pos.z + lz * ch - lx * sh];
+    v.root.updateMatrixWorld(true);
+    const base = { vx: v.pos.x, vz: v.pos.z, vh: v.heading };
+    if (P.inside === 'ride') {
+      const W = v.seatWorld(P.i), dx = W.pos.x - v.pos.x, dz = W.pos.z - v.pos.z, lx0 = dx * ch - dz * sh, lz0 = dx * sh + dz * ch;
+      const rear = Math.cos(W.heading - v.heading) < -0.7, L = MOUNT_CLIPS[v.assetKey], clip = L && L[rear ? 1 : 0];
+      if (!clip || !hasClip(clip)) return null;
+      const ev = clipEvents(clip), E = ev.end_root_vehicle_xz, SV = ev.seat_vehicle, so = ev.seat_offset_from_root; if (!E || !SV || !so) return null;
+      let lx, lz, h;
+      if (rear) { lx = ev.fixed_x ? E[0] : lx0 + (E[0] - SV[0]); lz = E[1]; h = v.heading + Math.PI; }
+      else {
+        const sg = lx0 >= 0 ? 1 : -1; lx = sg * Math.abs(E[0]); h = v.heading + sg * Math.PI / 2;
+        lz = ev.stations?.length ? ev.stations.reduce((a, b) => (Math.abs(b - lz0) < Math.abs(a - lz0) ? b : a)) : lz0 + (E[1] - SV[2]);
+      }
+      const [x, z] = toW(lx, lz), y = gH(x, z), fx = Math.sin(h), fz = Math.cos(h);
+      const cx = x + fz * so[0] + fx * so[2], cz = z - fx * so[0] + fz * so[2];   // clip seat point (left = (cos h, -sin h), out = (sin h, cos h))
+      const f = ev.fix || [2, 3];
+      return { ...base, kind: 'deck', clip, dur: clipDuration(clip, 4), x, z, y, h, seat: P.i, fix: { x: W.pos.x - cx, y: W.pos.y - (y + so[1]), z: W.pos.z - cz, t0: f[0], t1: f[1] } };
+    }
+    const i = this.soldiers.indexOf(s);
+    if (v.def.asset === 'bradley_ua') {   // walks up the lowered ramp into the troop compartment
+      const ex = v.model.getObjectByName('exit_rear'); if (!ex) return null;
+      const p = ex.getWorldPosition(new THREE.Vector3()), lat = ((i % 3) - 1) * 0.35, h = v.heading;
+      const x = p.x + Math.cos(h) * lat - sh * 0.5, z = p.z - Math.sin(h) * lat - ch * 0.5;
+      return { ...base, kind: 'ramp', clip: 'crouch_walk', dur: 4.2 / 0.95, x, z, y: gH(x, z), h, fx: sh, fz: ch, bx: p.x, bz: p.z, len: 4.2 };
+    }
+    if (v.kind === 'btr') {   // side doors: the clip root is the dismount_L / dismount_R empty (as dismount_door's end)
+      const de = v.model.getObjectByName(i % 2 ? 'dismount_R' : 'dismount_L'); if (!de || !hasClip('mount_door')) return null;
+      const p = de.getWorldPosition(new THREE.Vector3());
+      return { ...base, kind: 'door', clip: 'mount_door', dur: clipDuration('mount_door', 2.1), x: p.x, z: p.z, y: gH(p.x, p.z), h: Math.atan2(p.x - v.pos.x, p.z - v.pos.z) };
+    }
+    const dn = v.model.getObjectByName(i % 2 ? 'door_rear_R' : 'door_rear_L'); if (!dn || !hasClip('mount_rear')) return null;   // IFV rear doors
+    const q = dn.getWorldPosition(new THREE.Vector3()), dl = (q.x - v.pos.x) * ch - (q.z - v.pos.z) * sh, dzl = (q.x - v.pos.x) * sh + (q.z - v.pos.z) * ch;
+    const thz = clipEvents('mount_rear').threshold_z ?? -0.55, [x, z] = toW(dl * 0.6, dzl + thz);
+    return { ...base, kind: 'rear', clip: 'mount_rear', dur: clipDuration('mount_rear', 1.7), x, z, y: gH(x, z), h: v.heading + Math.PI };
+  }
+  // per frame while the squad's mount order runs, for a man not aboard yet: walk to his entry, play his clip there (root fixed to the
+  // vehicle), aboard at its end. The vehicle moving / dying mid-clip: he drops off (mountAbort). Returns true when the frame is done
+  mountTick(s, dt) {
+    const v = this.order.vehicle, g = this.game;
+    if (!s.effective) { if (s.mounting) this.mountAbort(s, v); s.mountE = null; return false; }
+    let E = s.mountE;
+    if (s.mounting) {
+      const moved = v.destroyed || Math.hypot(v.pos.x - E.vx, v.pos.z - E.vz) > 0.25 || Math.abs(angDiff(v.heading, E.vh)) > 0.05;
+      if (moved) { this.mountAbort(s, v); return false; }
+      const t = g.time - s.mountT0, M = s.mountFix, k0 = 1 - smooth01(t / M.T);
+      if (E.kind === 'ramp') {   // crouched, up the ramp (0.62 m at its hinge, 1.9 m in) and on into the hull
+        const d = Math.min(E.len, t * 0.95), x = E.x + E.fx * d, z = E.z + E.fz * d, along = (x - E.bx) * E.fx + (z - E.bz) * E.fz;
+        s.pos.set(x + M.x * k0, Math.max(E.y, 0.62 * THREE.MathUtils.clamp(along / 1.9, 0, 1)), z + M.z * k0); s.heading = E.h;
+      } else {
+        const F = E.fix, k1 = F ? smooth01((t - F.t0) / Math.max(0.1, F.t1 - F.t0)) : 0;
+        s.pos.set(E.x + M.x * k0 + (F ? F.x * k1 : 0), E.y + M.y * k0 + (F ? F.y * k1 : 0), E.z + M.z * k0 + (F ? F.z * k1 : 0)); s.heading = E.h;
+      }
+      if (s.jumpT <= 0) this.boardOne(s, v);
+      return false;   // (jumpT > 0: moveStep stands still, no turning / combat, the clip plays)
+    }
+    // walking to his entry: the vehicle has moved since it was planned -> a new entry (and route)
+    if (E && (E.stale || Math.hypot(v.pos.x - E.vx, v.pos.z - E.vz) > 1 || Math.abs(angDiff(v.heading, E.vh)) > 0.1) && Math.abs(v.speed) < 0.3 && g.time > (s.mountReT ?? 0)) {
+      s.mountReT = g.time + 1; E = s.mountE = this.mountEntry(s, v);
+      if (E) { s.goal = [E.x, E.z]; g.requestPath(s, s.pos.x, s.pos.z, E.x, E.z, 0.45); }
+    }
+    const late = g.time - (this.order.t0 ?? g.time) > MOUNT_FALLBACK_S, near = s.pos.distanceTo(v.pos) < v.def.radius + 3;
+    if (!E) { if (near && (late || !s.mountSeat || !(s.path && s.pathI < s.path.length))) this.boardOne(s, v); return false; }   // no clip for this seat / hull: as before
+    if (Math.abs(v.speed) > 0.3) return false;
+    const d = Math.hypot(s.pos.x - E.x, s.pos.z - E.z), walking = (s.path && s.pathI < s.path.length) || s.pathReq;
+    // (the entry is often in a cell the parked hull blocks: the route ends short of it - the rest is slid while the clip starts)
+    if (d < 0.3 || (d < 3 && !walking)) {
+      // one at a time per entry (BTR: two seats share a wheel; doors)
+      if (this.soldiers.some(o => o !== s && o.mounting && o.mountE && Math.hypot(o.mountE.x - E.x, o.mountE.z - E.z) < 0.6)) { if (late) this.boardOne(s, v); return false; }
+      this.mountStart(s, v, E); return false;
+    }
+    if (late && (near || d < 3)) { this.boardOne(s, v); return false; }
+    if (!walking && g.time > (s.mountPathT ?? 0)) { s.mountPathT = g.time + 1.5; s.goal = [E.x, E.z]; g.requestPath(s, s.pos.x, s.pos.z, E.x, E.z, 0.45); }   // (route lost / given up: asks again)
+    return false;
+  }
+  mountStart(s, v, E) {
+    const g = this.game;
+    if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }   // (as the old boarding did for a dragger reaching the hull)
+    s.mounting = true; s.mountT0 = g.time; s.path = null; s.goal = null; s.pathReq = null; s.target = null; s.vel.set(0, 0, 0); s.stance = 'stand';
+    s.mountFix = { x: s.pos.x - E.x, y: s.pos.y - E.y, z: s.pos.z - E.z, T: Math.max(0.3, Math.hypot(s.pos.x - E.x, s.pos.z - E.z) / 1.4) };   // (the rest of the way to the entry: slid at a walk while the clip starts)
+    s.jumpClip = E.clip; s.jumpT = E.dur; s.jumpFix = null; s.heading = E.h;
+    if (E.kind === 'rear' || E.kind === 'ramp') v.doorT = Math.max(v.doorT || 0, g.time + E.dur + 1.5);
+    if (s.mixer && E.kind !== 'ramp') { s.play(E.clip, 0, 1, ['crouch_idle']); }
+    s.sync();
+  }
+  // off the hull again (vehicle moved / knocked out, hit, order changed): back on the ground beside it, where he was
+  mountAbort(s, v) {
+    const g = this.game, onHull = s.mounting && s.mountE && g.time - s.mountT0 > 0.5;
+    s.mounting = false; s.jumpT = 0; s.mountFix = null;
+    if (onHull && v) { const [fx, fz] = outsideHull(v, s.pos.x, s.pos.z, 0.4); s.pos.set(fx, g.city?.groundHeight ? g.city.groundHeight(fx, fz) : 0, fz); }
+    if (s.mountE && v && !v.destroyed) s.mountE.stale = true;   // (re-planned when the vehicle has stopped)
+  }
+  // one man aboard (his planned seat / inside): the end of his mount clip, the fallback, or board() for everyone at once
+  boardOne(s, v, instant = true) {
+    const P = s.mountSeat || { inside: 'btr' };
+    if (P.inside === 'ride') { s.inside = 'ride'; s.seat = { i: P.i }; s.seatType = v.seatType(P.i); } else s.inside = 'btr';
+    s.path = null; s.goal = null; s.target = null; s.mounting = false; s.mountFix = null; s.mountE = null; s.mountSeat = null; s.jumpT = 0;
+    if (s.dragging) this.releaseCare(s);
+    if (instant) { const w = v.seatWorld(s.seat ? s.seat.i : 0); s.pos.copy(w.pos); s.heading = w.heading; }
   }
   dismount(facing) {
     const v = this.carrier; if (!v || !this.mounted) return;
@@ -580,21 +722,17 @@ export class Squad {
   }
   // ride on top of the vehicle (tank/BTR desant). Overflow rides inside.
   board(v, instant = false) {
-    const seats = v.seatCount(); let k = 0;
-    // Bradley crews ride inside (overflow on the deck); BMP-3 / BTR desant sits on top, as Russian crews do for mines
-    let room = v.def.asset === 'bradley_ua' ? v.def.passengers : 0;
+    // Bradley crews ride inside (overflow on the deck); BMP-3 / BTR desant sits on top, as Russian crews do for mines (seatPlan)
+    for (const s of this.soldiers) if (s.mounting) this.mountAbort(s, v);
+    this.seatPlan(v);
     for (const s of this.soldiers) {
       if (s.state === 'dead' || s.state === 'evac' || s.aboard) continue;
       // casualties: only those lying at the hull are loaded; one further off stays for a mate's drag or the medevac
       // (mounting used to lift every wounded man on the map into the carrier at once)
       if (s.state === 'critical' || s.state === 'stable') { if (s.pos.distanceTo(v.pos) < v.def.radius + 3) this.evacuate(s); continue; }
-      if (s.dragging) this.releaseCare(s);   // (v9: no drag flag carried aboard - he resumed the drag on dismount)
-      if (room > 0) { room--; s.inside = 'btr'; }
-      else if (k < seats) { s.inside = 'ride'; s.seat = { i: k }; s.seatType = v.seatType(k); k++; }
-      else { s.inside = 'btr'; }
-      s.path = null; s.goal = null; s.target = null;
-      if (instant) { const w = v.seatWorld(s.seat ? s.seat.i : 0); s.pos.copy(w.pos); s.heading = w.heading; }
+      this.boardOne(s, v, instant);   // (v9: no drag flag carried aboard - he resumed the drag on dismount)
     }
+    for (const s of this.soldiers) { s.mountSeat = null; s.mountE = null; }
     this.mounted = true; this.carrier = v; v.passengers = this; this.order = null;
   }
   orderAttack(target) {
@@ -765,6 +903,21 @@ export class Squad {
     if (!frozen && v && v.destroyed) this.dismount(v.heading + Math.PI);
     this.underFireT += dt;
   }
+  // a man aboard while his squad is still mounting up (updateRiders' per-man part): on his seat, carried along, fights from the deck
+  rideTick(s, dt) {
+    const v = this.carrier, g = this.game;
+    s.suppression = Math.max(0, s.suppression - TUNING.suppressionDecay * dt);
+    if (s.inside === 'btr') { if (v) s.pos.copy(v.pos); s.sync(); return; }
+    if (!s.effective) {   // hit while sitting there: falls off the vehicle
+      const w = v.seatWorld(s.seat.i); s.inside = null; s.seat = null;
+      const [fx, fz] = outsideHull(v, w.pos.x + (Math.random() - .5) * 3, w.pos.z + (Math.random() - .5) * 3, 0.3 + Math.random() * 0.5);
+      s.pos.set(fx, g.city?.groundHeight ? g.city.groundHeight(fx, fz) : 0, fz); s.sync(); return;
+    }
+    const w = v.seatWorld(s.seat.i); s.pos.copy(w.pos); s.heading = s.target ? Math.atan2(s.target.pos.x - s.pos.x, s.target.pos.z - s.pos.z) : w.heading;
+    s.vel.set(Math.sin(v.heading) * v.speed, 0, Math.cos(v.heading) * v.speed); s.stance = 'crouch';
+    if (!this.routing && !this.holdFire) g.combat.soldierCombat(s, dt); else s.target = null;
+    s.animate(dt, g.camDist(s.pos)); s.sync();
+  }
   // v7: a man with somewhere to go but no route (no path found - pathFail -, or the path dropped by an interruption and never
   // asked again) stood still for good: the v6 watchdog only watches men who are walking a path. After 1.5 s idle he asks
   // again; then from a cell 1 m clear to the nearest free cell at his goal; then the goal is dropped (he rejoins his squad's
@@ -799,15 +952,15 @@ export class Squad {
     // mounting completion
     if (this.order?.type === 'mount') {
       const v = this.order.vehicle;
-      if (!v || v.destroyed) { this.order = null; for (const s of this.soldiers) if (s.inside === 'btr') s.inside = null; return; }
-      const need = this.alive.filter(s => s.state !== 'dead' && !s.inside);
-      for (const s of need) if (s.pos.distanceTo(v.pos) < v.def.radius + 3) {
-        if (s.state === 'critical' || s.state === 'stable') { this.evacuate(s); continue; }
+      // knocked out while they were getting on: the order ends; anyone already aboard gets off again (updateSoldier: exitCarrier)
+      if (!v || v.destroyed) { this.order = null; for (const s of this.soldiers) { if (s.mounting) this.mountAbort(s, v); s.mountE = null; s.mountSeat = null; } return; }
+      for (const s of this.alive) if (s.state !== 'dead' && !s.aboard && !s.mounting && s.pos.distanceTo(v.pos) < v.def.radius + 3) {
         if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }
-        s.arrived = true; s.path = null;
       }
-      if (this.effective.every(s => s.arrived || s.inside)) {
-        for (const s of this.soldiers) s.arrived = false;
+      // (a man without a place yet - back on his feet after the order: a seat now)
+      if (this.effective.some(s => !s.aboard && !s.mountSeat)) { this.seatPlan(v); for (const s of this.effective) if (!s.aboard && s.mountSeat && !s.mountE && !s.mounting) { s.mountE = this.mountEntry(s, v); if (s.mountE) { s.goal = [s.mountE.x, s.mountE.z]; this.game.requestPath(s, s.pos.x, s.pos.z, s.goal[0], s.goal[1], 0.45); } } }
+      // mounted once every effective man is aboard (board: casualties lying at the hull loaded, the squad rides)
+      if (this.effective.every(s => s.aboard)) {
         this.board(v, true);
         if (this.side === 'player') this.game.sfx('hatch', v.pos);
       }
@@ -924,6 +1077,14 @@ export class Squad {
   updateSoldier(s, dt) {
     const g = this.game;
     if (s.hatchWait != null) { s.hatchWait -= dt; if (s.hatchWait <= 0) { s.hatchWait = null; s.inside = null; s.hatchOpen?.(); s.hatchOpen = null; s.hatchT = clipDuration(s.hatchClip || 'hatch_exit', 2.7); g.sfx('hatch', s.pos); } else { s.sync(); return; } }
+    // mounting up (v10): aboard already while the rest are still getting on -> rides like a mounted squad's rider; on the way to / climbing
+    // on at his entry -> mountTick. Order changed meanwhile: off the hull again (aboard: exitCarrier below)
+    const mountOn = this.order?.type === 'mount' && this.order.vehicle === this.carrier && !this.mounted;
+    if (s.mounting && !mountOn) this.mountAbort(s, this.carrier);
+    if (mountOn) {
+      if (!s.aboard && (s.mountSeat || s.mountE || s.mounting)) this.mountTick(s, dt);
+      if (s.aboard && s.state !== 'evac') { this.rideTick(s, dt); return; }
+    }
     // waiting for his turn to get off the carrier: stays on his seat (riders, carried along) or inside
     if (s.dmWait != null) {
       const v = s.dmVeh || (s.dmVeh = this.carrier);

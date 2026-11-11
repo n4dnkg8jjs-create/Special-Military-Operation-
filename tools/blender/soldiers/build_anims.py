@@ -898,6 +898,9 @@ def write(rig, clips, path, sockets=True, armfix=True):
         lq = c['lq']
         if armfix:
             lq, _ = AF.apply_clip(sk, lq, c['root'], torso=torso, loop=c['loop'], name=c['name'])
+            if c['name'].startswith('mount_'):      # mount_v3: the export arm re-solve stays within the clips' angular-velocity limit
+                import clips_mount as CMT
+                lq = CMT.limit_lq(lq)
         elif lq.shape[1] < sk.n:
             import twist
             lq = twist.drive(sk, np.concatenate([lq, np.tile([0, 0, 0, 1.0], (F, sk.n - lq.shape[1], 1))], 1))

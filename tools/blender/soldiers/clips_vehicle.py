@@ -1175,6 +1175,8 @@ def _dismount_step(rig, lm, name, threshold=None):
 
 # ====================================================================================== build entry
 def _notes(name, ev, dur):
+    if name in _CM.CLIPS:
+        return _CM.notes(name, ev, dur)
     L = LAYOUT[name]
     pt = preview_transform(name) if L.get('veh') else None
     s = L.get('side', -1)
@@ -1229,6 +1231,7 @@ def vehicle_clips(rig, lm, want, built=None):
     src = {'hatch_exit': ('hatch_exit_tank', hatch_exit_tank), 'hatch_exit_tank': ('hatch_exit_tank', hatch_exit_tank), 'hatch_exit_btr': ('hatch_exit_btr', hatch_exit_btr),
            'dismount_jump': ('dismount_jump_btr', _jump_fn('dismount_jump_btr')), 'dismount_door': ('dismount_door', dismount_door), 'dismount_rear': ('dismount_rear', dismount_rear)}
     src.update({n: (n, _jump_fn(n)) for n in JUMPS})
+    src.update({n: (n, (lambda nm: (lambda rig, lm: _CM.build(rig, lm, nm)))(n)) for n in _CM.CLIPS})      # mounting up (clips_mount.py)
     cache = {}
     for name in CLIPS:
         if not want(name):
@@ -1263,6 +1266,10 @@ def support_y(name, x, z, y):
     clip's own floor / step / seat inside the vehicle)"""
     name = ALIAS.get(name, name)
     L = LAYOUT[name]
+    if name in _CM.LAYOUT:
+        sup = _CM.support(name, x, z, y)
+        if sup is not None:
+            return sup
     if name == 'dismount_rear':
         return L['threshold'] if z <= L['threshold_z'] else 0.0
     if name == 'dismount_door':
@@ -1275,3 +1282,10 @@ def support_y(name, x, z, y):
     for veh in L['veh'][:1]:
         best = max(best, surface_y(name, veh, x, z, below=y + 0.12))
     return best
+
+
+# ====================================================================================== mounting up (clips_mount.py): mount_deck_*, mount_door, mount_rear
+import clips_mount as _CM
+LAYOUT.update(_CM.LAYOUT)
+CLIPS = CLIPS + _CM.CLIPS
+CHECK.update(_CM.CHECK)

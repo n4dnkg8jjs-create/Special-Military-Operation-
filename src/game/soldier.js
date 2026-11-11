@@ -248,7 +248,7 @@ export class Soldier {
     if (this.actions[name]) return this.actions[name];
     const c = SHARED.clips[name]; if (!c) return null;
     const a = this.mixer.clipAction(c);
-    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive|prone_down|prone_up|medevac_cab|medevac_lift|medevac_load|wounded_lifted|wounded_load)/.test(name);
+    const once = /^(death|fire_launcher|launcher_raise|reload|throw|hit|dismount|mount_|hatch_exit|atgm_setup|atgm_fire|atgm_reload|atgm_pack|fpv_launch|dodge_dive|prone_down|prone_up|medevac_cab|medevac_lift|medevac_load|wounded_lifted|wounded_load)/.test(name);
     if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     return this.actions[name] = a;
   }
@@ -267,7 +267,7 @@ export class Soldier {
     if (this.cur && fade > 0) a.crossFadeFrom(this.cur, fade, true); else if (this.cur) this.cur.stop();
     if (!/^(death)/.test(name)) a.time = loop ? Math.random() * (a.getClip().duration || 1) : 0;
     a.play(); this.cur = a; this.curName = name;
-    if (!fade && /^hatch_exit/.test(name)) this.mixer?.update(0);   // pose him in the hatch at once (no frame of the old pose, even when the anim LOD skips)
+    if (!fade && /^(hatch_exit|mount_)/.test(name)) this.mixer?.update(0);   // pose him in the hatch at once (no frame of the old pose, even when the anim LOD skips)
     // weapon follows the clip: off-hand while throwing, slung while dragging / wounded, dropped on death
     if (this.weaponObj && !this.dropped) {
       if (/^death/.test(name)) setTimeout(() => this.dropWeapon(), ((SHARED_EVENTS[name]?.drop_weapon ?? 0.2) * 1000 / (this.deathTs || 1)));
@@ -275,7 +275,7 @@ export class Soldier {
         const rg = SHARED_EVENTS.fpv_pilot.rifle_ground; this.model.add(this.weaponObj); this.weaponObj.position.fromArray(rg.t); this.weaponObj.quaternion.fromArray(rg.q); this.wSock = 'ground'; this.slingUpdate();
         if (name !== 'fpv_pilot') this.weaponObj.position.set(-0.5, rg.t[1], -0.3);   // (beside and behind him: clear of the launcher in front)
       }
-      else this.weaponTo(this.launcherObj ? 'back' : /^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');
+      else this.weaponTo(this.launcherObj ? 'back' : /^throw_grenade/.test(name) ? 'L' : /^(drag_wounded|wounded_|being_dragged|treat_wounded|medevac_|mount_)/.test(name) || /^(atgm_|fpv_launch|fpv_pilot)/.test(asked) ? 'back' : 'R');   // (mount_*: slung while he climbs on, back in his hands at events.unsling - animate)
     }
   }
   // v7: the grenade in the right hand (weapon_socket) from the throw clip's pin pull to its release (events); combat.startThrow /
@@ -440,9 +440,15 @@ export class Soldier {
       // v8 blend times: snappy into / out of the aim, reload and hit clips, softer between gaits and stances
       // (the hatch climb-out cuts straight in: blended from the idle he had inside, the first 0.3 s showed that idle pose
       // standing off the hull side - the hatch warp puts the root low and outboard - before he climbed out)
-      const fade = /^hatch_exit/.test(clip) ? 0 : this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
+      // mounting up (squad.js mountTick): the clip starts facing the hull with the root already turned to the seat heading (a cross-fade
+      // would swing him round) and ends in ride_sit_edge / ride_sit_deck frame 0 at the seat, same root: a cut in, a 0.12 s blend out
+      // (the export's wrist clamp leaves the left hand up to ~14 deg off on the BTR / Bradley climbs)
+      const fromMount = /^mount_deck/.test(this.curName || '') && /^ride_sit/.test(clip);
+      const fade = /^(hatch_exit|mount_)/.test(clip) ? 0 : fromMount ? 0.12 : this.state === 'dead' ? 0.12 : /^(aim_|peek_|reload|pistol_aim|hit_)/.test(clip) && /^(aim_|peek_|reload|idle_rifle|crouch_idle|prone_idle|pistol_|hit_)/.test(this.curName || '') ? 0.2 : 0.3;
       if (this.state === 'dead') ts = this.deathTs || 1;
       this.play(clip, fade, ts, alt);
+      if (fromMount && this.curName === clip && this.cur) this.cur.time = 0;
+      if (/^mount_deck/.test(this.curName || '') && this.wSock === 'back' && this.weaponObj && !this.dropped && !this.launcherObj && this.cur && this.cur.time >= (SHARED_EVENTS[this.curName]?.unsling ?? 1e9)) this.weaponTo('R');   // unslung on the deck
       if (this.netClip && this.state !== 'dead' && this.cur && this.netClipT != null && Math.abs(this.cur.time - this.netClipT) > 0.35) this.cur.time = this.netClipT;   // (not the death clip: a medic / casualty killed in a medevac clip stayed on its frame 0, standing)
       // animation LOD: update distant soldiers less often
       this.animAcc = (this.animAcc || 0) + dt;
