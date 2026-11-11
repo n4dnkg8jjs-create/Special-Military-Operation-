@@ -21,7 +21,7 @@ function tankZones(model) {
   const b3 = model === 't72b3';
   const eraT = b3 ? { ke: 250, ce: 500 } : { ke: 0, ce: 350 }, eraG = b3 ? { ke: 220, ce: 450 } : { ke: 0, ce: 330 };
   return [
-    Z(-1.15, 1.15, 1.55, 2.3, -1.5, 1.25, { front: F(b3 ? 520 : 410, b3 ? 900 : 500, eraT), side: F(b3 ? 330 : 280, b3 ? 420 : 350, b3 ? { ke: 60, ce: 300 } : { ke: 0, ce: 200 }), rear: F(80, 90), top: F(55, 60, b3 ? { ke: 0, ce: 150 } : null) }, 'turret'),
+    Z(-1.15, 1.15, 1.55, 2.3, -2.0, 1.3, { front: F(b3 ? 520 : 410, b3 ? 900 : 500, eraT), side: F(b3 ? 330 : 280, b3 ? 420 : 350, b3 ? { ke: 60, ce: 300 } : { ke: 0, ce: 200 }), rear: F(80, 90), top: F(55, 60, b3 ? { ke: 0, ce: 150 } : null) }, 'turret'),
     Z(-1.75, 1.75, 0.95, 1.55, 2.35, 3.45, { front: F(b3 ? 520 : 335, b3 ? 600 : 450, eraG), side: F(80, 80), top: F(40, 40) }, 'glacis'),
     Z(-1.75, 1.75, 0.3, 0.95, 2.5, 3.45, { front: F(220, 230), side: F(80, 80) }, 'lower_front'),
     Z(-1.75, 1.75, 0.3, 1.55, -3.45, 2.5, { side: F(80, 80, { ke: 0, ce: b3 ? 250 : 200, front: true }), rear: F(45, 45), top: F(40, 40) }, 'hull'),
@@ -29,15 +29,15 @@ function tankZones(model) {
     Z(1.4, 1.82, 0.0, 0.85, -3.4, 3.2, { side: F(25, 25), front: F(25, 25), rear: F(25, 25) }, 'tracks_r'),
   ];
 }
-const TANK_PARTS = [
+const TANK_PARTS = [   // (models v18: the turret-borne parts 0.52 m aft with the turret)
   { name: 'driver', crew: 'driver', min: [-0.5, 0.4, 1.9], max: [0.5, 1.3, 2.9] },
-  { name: 'carousel', ammo: 0.75, min: [-1.1, 0.35, -0.6], max: [1.1, 0.75, 1.0] },
+  { name: 'carousel', ammo: 0.75, min: [-1.1, 0.35, -1.12], max: [1.1, 0.75, 0.48] },
   { name: 'hull_rack', ammo: 0.45, fuel: 0.4, min: [0.6, 0.4, 1.6], max: [1.6, 1.4, 2.6] },
-  { name: 'gunner', crew: 'gunner', min: [-1.0, 1.0, -0.2], max: [-0.2, 2.0, 0.8] },
-  { name: 'commander', crew: 'commander', min: [0.2, 1.0, -0.4], max: [1.0, 2.0, 0.6] },
-  { name: 'breech', gun: true, min: [-0.3, 1.5, -0.6], max: [0.3, 2.1, 0.9] },
-  { name: 'optics', optics: true, min: [-1.1, 2.0, 0.6], max: [1.1, 2.35, 1.15] },
-  { name: 'turret_ring', ring: true, min: [-1.0, 1.42, -0.9], max: [1.0, 1.6, 1.0] },
+  { name: 'gunner', crew: 'gunner', min: [-1, 1, -0.72], max: [-0.2, 2, 0.28] },
+  { name: 'commander', crew: 'commander', min: [0.2, 1, -0.92], max: [1, 2, 0.08] },
+  { name: 'breech', gun: true, min: [-0.3, 1.5, -1.12], max: [0.3, 2.1, 0.38] },
+  { name: 'optics', optics: true, min: [-1.1, 2, 0.08], max: [1.1, 2.35, 0.63] },
+  { name: 'turret_ring', ring: true, min: [-1, 1.42, -1.42], max: [1, 1.6, 0.48] },
   { name: 'fuel_r', fuel: 0.45, min: [1.2, 0.4, -2.5], max: [1.7, 1.4, 1.6] },
   { name: 'fuel_l', fuel: 0.45, min: [-1.7, 0.4, -0.5], max: [-1.2, 1.4, 2.4] },
   { name: 'engine', engine: true, fuel: 0.25, min: [-1.4, 0.4, -3.4], max: [1.4, 1.5, -1.6] },

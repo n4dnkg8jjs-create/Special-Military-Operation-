@@ -24,6 +24,7 @@ SOURCES = {
     't72': [
         'https://www.globalsecurity.org/military/world/russia/t-72-specs.htm (hull 6.86-6.91 m, 9.53 m gun forward, width 3.58-3.77 m, turret roof 2.226 m, clearance 0.49 m)',
         'https://en.wikipedia.org/wiki/T-72 (hull 6.67-6.86 m, width 3.40-3.59 m, height 2.23 m, 0.58 m tracks, T-72B3 Sosna-U, Relikt/Kontakt-5 ERA, T-72A skirts)',
+        'https://commons.wikimedia.org/wiki/Category:T-72B3_mod._2016 (V. Kuzmin walkaround T-72B3mod2016-02..36: side photo fitted on the road wheels -> fender/skirt top 1.34 m, turret ring ~0.5 m behind the hull centre line of wheels 3/4, Sosna-U right of the gun, 8 x 902G left, ERA packs on the skirts, slat screens rear; models_v18)',
     ],
 }
 

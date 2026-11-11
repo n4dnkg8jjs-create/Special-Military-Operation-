@@ -642,6 +642,19 @@ def tyre_wheel():
     for a in range(5):
         ang = a * math.tau / 5 + 0.3
         rim.add(box(0.03, 0.03, 0.05).rot('X', math.degrees(ang)), Matrix.Translation((0.145, 0.12 * math.cos(ang), 0.12 * math.sin(ang))))
+    if not IS80:
+        # models_v18 (BTR-82A, L11 / R60): wheel-reduction hub cap reads as a big ribbed dome - 8 radial ribs on the dome,
+        # a raised ring round the bolt circle and drain plugs on the rim disc (BTR-80 UA wheel unchanged)
+        bv = L.bvh_of(rim)
+        for i in range(8):
+            a = math.tau * (i + 0.5) / 8
+            rb = box(0.022, 0.012, 0.075)
+            rb.rot('X', math.degrees(a) - 90)
+            rim.add(L.snap(rb.move(0.25, 0.10 * math.cos(a), 0.10 * math.sin(a)), None, d=(-1, 0, 0), max_d=0.2, sink=0.008, bvh=bv))
+        rim.add(lathe([(0.205, 0.05, 'rim'), (0.215, 0.062, 'rim'), (0.215, 0.075, 'rim'), (0.2, 0.08, 'rim')], 32, 'x', mat='rim', cap=False))
+        for i in range(3):
+            a = math.tau * i / 3 + 0.5
+            rim.add(L.snap(cyl(0.018, 0.02, 8, 'x', mat='gunmetal').move(0.2, 0.21 * math.cos(a), 0.21 * math.sin(a)), None, d=(-1, 0, 0), max_d=0.2, sink=0.005, bvh=bv))
     tyre.add(rim)
     return tyre
 
@@ -951,7 +964,7 @@ SEAT_SPECS = (     # models_v17: BTR-80 (UA) - its own narrow roof again (pre-v1
 
 # models_v11: BTR-82A roof is 2.08 m wide -> side riders sit 14 cm further out (legs over the edge as before)
 SEAT_SPECS_82 = (
-    [dict(x=s * 0.70, y=y, face=(s, 0), type='edge') for y in (-0.45, -1.25, -1.95) for s in (1, -1)] +
+    [dict(x=s * 0.70, y=y, face=(s, 0), type='edge') for y in (-0.53, -1.25, -1.95) for s in (1, -1)] +   # models_v18: front pair -0.45 -> -0.53 (rear box sweep margin was -0.004)
     [dict(x=s * 0.30, y=-2.85, face=(0, 1), type='deck') for s in (1, -1)])
 
 def btr_lids(variant, hullE, turE, tz):
@@ -1099,6 +1112,8 @@ def hull_btr82a(is82=True):
         for yy in (-0.85, -1.6):
             H.add(box(0.06, 0.05, 0.06), L.place(MU, on_upper(yy, 1.84, 0.02, s)))
         H.add(rail([on_upper(-0.62, 1.79, 0.0, s), on_upper(-0.62, 1.79, 0.06, s), on_upper(0.04, 1.79, 0.06, s), on_upper(0.04, 1.79, 0.0, s)], r=0.012, rad=0.03))
+        # models_v18 (L11): second long grab rail along the roof edge over the forward firing ports, footholds under it
+        H.add(rail([on_upper(0.30, 1.80, 0.0, s), on_upper(0.30, 1.80, 0.06, s), on_upper(1.10, 1.80, 0.06, s), on_upper(1.10, 1.80, 0.0, s)], r=0.012, rad=0.03))
         # side marker light at the front corner
         loc, nrm = hit((s * 2.5, 2.30, 1.42), (-s, 0, 0))
         if loc is not None:
