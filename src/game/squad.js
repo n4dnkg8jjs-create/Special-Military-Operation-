@@ -572,7 +572,9 @@ export class Squad {
     if (s.dragging) { this.evacuate(s.dragging); s.dragging = null; }   // (as the old boarding did for a dragger reaching the hull)
     s.mounting = true; s.mountT0 = g.time; s.path = null; s.goal = null; s.pathReq = null; s.target = null; s.vel.set(0, 0, 0); s.stance = 'stand';
     s.mountFix = { x: s.pos.x - E.x, y: s.pos.y - E.y, z: s.pos.z - E.z, T: Math.max(0.3, Math.hypot(s.pos.x - E.x, s.pos.z - E.z) / 1.4) };   // (the rest of the way to the entry: slid at a walk while the clip starts)
-    const rate = E.kind === 'ramp' ? 1 : 0.92 + Math.random() * 0.16;   // mount v4: every man climbs at his own pace (0.92-1.08x)
+    // mount v6: the deck climbs are authored at 7-8 s, a careful man in full kit; under fire they dragged (owner: 'overly slow') -
+    // played at ~1.6x (4.5-5 s, each man still at his own pace), the door / stern entries at 1.25x
+    const rate = E.kind === 'ramp' ? 1 : (/^mount_deck/.test(E.clip || '') ? 1.6 : 1.25) * (0.94 + Math.random() * 0.12);
     s.jumpClip = E.clip; s.jumpTs = rate; s.jumpT = E.dur / rate; s.jumpFix = null; s.heading = E.h;
     if (E.kind === 'rear' || E.kind === 'ramp') v.doorT = Math.max(v.doorT || 0, g.time + E.dur + 1.5);
     if (s.mixer && E.kind !== 'ramp') { s.play(E.clip, 0, rate, ['crouch_idle']); }
