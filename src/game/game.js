@@ -22,6 +22,7 @@ import { setupMedevac } from './medevac.js';
 import { setupAtgmTrucks } from './atgmTruck.js';
 import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
+import { BloodDecals } from '../fx/blood.js';
 
 const Q = new URLSearchParams(location.search);
 const CONTACT_TTL = 25, ISR_R = 700;   // (spotFor) a contact not re-reported for 25 s is gone; the side's recon drones watch the open ground out to 700 m from its units (~ an FPV's reach)
@@ -78,6 +79,7 @@ export class Game {
     this.houses = buildHouses(this);   // private houses: garrisonable, with a cellar (world/houses.js)
     progress(0.92, 'Deploying forces');
     this.fx = new FX(this.scene, this.renderer.sunDir, this.opts.quality);
+    this.blood = this.noRender ? null : new BloodDecals(this.scene);   // pools under the bleeding, smears where casualties are dragged (fx/blood.js)
     this.treeDamage = setupTreeDamage(this);   // shelled trees lose leaves, splinter, snap (world/treeDamage.js; driven by fx.explosion)
     this.combat = new Combat(this); this.cqb = new CQB(this);   // building clearing (game/cqb.js)
     this.cam = new RTSCamera(this.renderer.camera, canvas, BOUNDS);
@@ -688,6 +690,7 @@ export class Game {
     this.renderer.followShadow(this.cam.focus); this.renderer.tick(dt); if (this.city.windUniform) this.city.windUniform.value += dt; this.city.updateFalling(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale)); this.city.pool.finish();
     const cp = this.renderer.camera.position; updateLods(cp);
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
+    this.blood?.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), this);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }
     this.netTick?.(dt);
