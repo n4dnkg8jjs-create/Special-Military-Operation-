@@ -9,6 +9,7 @@ export function menuAudioEnabled() { try { return localStorage.getItem(KEY) !== 
 export function setMenuAudio(on) { try { localStorage.setItem(KEY, on ? '1' : '0'); } catch { } if (!on) stopMenuAudio(0.4); }
 
 export function startMenuAudio() {
+  if (out && ctx?.state === 'suspended') { try { ctx.resume(); } catch { } }   // (started at page load, held by the browser until a gesture: this is the gesture)
   if (out || !menuAudioEnabled()) return;
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   try { ctx ||= new AC(); if (ctx.state === 'suspended') ctx.resume(); } catch { return; }

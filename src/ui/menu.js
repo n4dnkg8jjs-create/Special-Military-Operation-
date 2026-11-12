@@ -56,7 +56,10 @@ if (ma) { ma.checked = menuAudioEnabled(); ma.addEventListener('change', () => {
 if (menu) {
   const menuUp = () => !menu.classList.contains('hidden');
   const kick = () => { if (menuUp()) startMenuAudio(); };
-  addEventListener('pointerdown', kick, true); addEventListener('keydown', kick, true);
+  addEventListener('pointerdown', kick, true); addEventListener('keydown', kick, true); addEventListener('touchend', kick, true);
+  // try at once as well: browsers that allow sound without a gesture (a returning visitor in Chrome, Firefox / Safari with
+  // autoplay allowed for the site) play from the first frame; the others hold it until the first click / key / tap
+  kick();
   new MutationObserver(() => { if (!menuUp()) stopMenuAudio(); }).observe(menu, { attributes: true, attributeFilter: ['class'] });
 }
 
