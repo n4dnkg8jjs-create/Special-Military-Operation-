@@ -867,6 +867,9 @@ def seat(xc, yh, zh, width=0.5, rear=False):
     return S
 
 
+STEER = {}                       # steering wheel part / hub centre / axis (towards the driver), filled by interior()
+
+
 def interior():
     I = B()
     # floor (carpet), transmission tunnel, rubber mats, kick panels
@@ -906,12 +909,15 @@ def interior():
     n = V((0, -0.92, 0.39)).normalized()
     u = V((1, 0, 0)); v_ = n.cross(u).normalized()
     ring = [C + (u * math.cos(a) + v_ * math.sin(a)) * 0.185 for a in np.linspace(0, math.tau, 24, endpoint=False)]
-    I.add(tube(ring, 0.017, 8, 'skirt', closed=True))
-    I.add(lathe([(0, 0.0), (0.065, 0.0), (0.06, 0.035), (0, 0.045)], 16, 'z', mat='skirt').xf(L.place(L.frame_from_normal(n), C - n * 0.02)))
+    # (v6: rim, hub and spokes are a part of their own - node steer_wheel at the hub, turned about STEER_AXIS by the game)
+    SW = B()
+    SW.add(tube(ring, 0.017, 8, 'skirt', closed=True))
+    SW.add(lathe([(0, 0.0), (0.065, 0.0), (0.06, 0.035), (0, 0.045)], 16, 'z', mat='skirt').xf(L.place(L.frame_from_normal(n), C - n * 0.02)))
     for a in (0, 180, 270):
         r_ = math.radians(a)
         p = C + (u * math.cos(r_) + v_ * math.sin(r_)) * 0.18
-        I.add(beam(C, p, 0.05 if a == 270 else 0.035, 0.018, mat='skirt', up=n))
+        SW.add(beam(C, p, 0.05 if a == 270 else 0.035, 0.018, mat='skirt', up=n))
+    STEER['part'], STEER['c'], STEER['n'] = SW, tuple(C), tuple(n)
     I.add(beam(C - n * 0.03, C - n * 0.30 + V((0, 0, -0.06)), 0.07, 0.07, mat='skirt', up=(0, 0, 1), bev=0.02))
     I.add(beam(C - n * 0.08 + V((0.07, 0, 0.02)), C - n * 0.08 + V((0.2, 0, 0.0)), 0.012, 0.02, mat='skirt'))     # stalks
     I.add(beam(C - n * 0.08 + V((-0.07, 0, 0.02)), C - n * 0.08 + V((-0.2, 0, 0.0)), 0.012, 0.02, mat='skirt'))
@@ -1244,6 +1250,8 @@ def build():
     tgE = L.node_empty('tailgate', hullE, th, 0.1)
     tg_obj = L.node_mesh('tailgate_geo', tp, tgE, th)
     doors_man['tailgate'] = dict(axis='x', open=round(-math.radians(90), 3), parent='hull', note='hinge on the bottom edge, opens down to a flat loading shelf at bed-floor height')
+    swE = L.node_empty('steer_wheel', hullE, STEER['c'], 0.06)
+    sw_obj = L.node_mesh('steer_wheel_geo', STEER['part'], swE, STEER['c'])
     cd_obj = None
     if not ATGM:
         cdE = L.node_empty('canopy_door', hullE, chinge, 0.1)
@@ -1306,10 +1314,10 @@ def build():
             stretchers.append(e)
         lp = L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
     print('  geometry done %.1fs' % (time.time() - t0))
-    tail = [tg_obj] + ([cd_obj] if cd_obj else [])
+    tail = [tg_obj, sw_obj] + ([cd_obj] if cd_obj else [])
     lod0 = [hull_mesh] + door_objs + tail + wheel_objs + glass_objs
     return dict(root=root, hull=hullE, lod0=lod0, atlas=[hull_mesh] + door_objs + tail + [wheel_objs[0], wheel_objs[2]],
-                doors=door_objs, tg=tg_obj, cd=cd_obj, wheels=wheel_objs, doors_man=doors_man, stretchers=stretchers, load_point=lp,
+                doors=door_objs, tg=tg_obj, sw=sw_obj, cd=cd_obj, wheels=wheel_objs, doors_man=doors_man, stretchers=stretchers, load_point=lp,
                 bake_hide=glass_objs + idm, glass=glass_objs, nolod=glass_objs, idm=idm)
 
 
@@ -1331,7 +1339,7 @@ def wreck(d):
         ent = d['doors_man'][e.name]
         e.rotation_euler = (0, 0, ent['open'] * 0.25)
     bpy.context.view_layer.update()
-    hw = VB.join_copies('hull_wreck', [d['lod0'][0]] + d['doors'] + [d['tg']] + ([d['cd']] if d['cd'] else []) + d['wheels'], root, (0, 0, 0),
+    hw = VB.join_copies('hull_wreck', [d['lod0'][0]] + d['doors'] + [d['tg'], d['sw']] + ([d['cd']] if d['cd'] else []) + d['wheels'], root, (0, 0, 0),
                         drop_slots=('tyre', 'glass', 'light', 'decal', 'wood'), drop_z=drop)
     for o in d['doors']:
         o.parent.rotation_euler = (0, 0, 0)
@@ -1481,6 +1489,9 @@ def write_manifest(info):
     v['ride_seats'] = {'count': 3, 'seat_type': 'cab', 'note': 'ride_seat_1 driver (front left, LHD), 2 front passenger, 3 rear right; origin = H-point on the cushion, +Z forward'}
     if ATGM:
         v['atgm_mount'] = {'node': 'atgm_mount', 'note': 'on the plywood deck in the bed, +Z = the truck front: parent the Kornet / Stugna-P launcher (assets/soldiers/kornet.glb / stugna.glb, tripod deployed) here; tlc_1 / tlc_2 = spare missile containers on the deck along the bed walls'}
+    nb = STEER['n']
+    v['steering_wheel'] = {'node': 'steer_wheel', 'axis': [round(-nb[0], 4), round(nb[2], 4), round(nb[1], 4)], 'radius_m': 0.185,
+                           'note': 'origin at the hub; node-local axis points at the driver: rotate about it by +angle for a left turn (anticlockwise as he sees it)'}
     v['casualty_slots'] = {} if ATGM else {'nodes': ['stretcher_1', 'stretcher_2', 'stretcher_3'], 'note': 'origin on the bed floor; local +Z points to the tailgate, so a casualty lying on his back with the head along -Z lies head towards the cab',
                            'load_point': 'ground behind the open tailgate, +Z faces the truck (medic loading position)'}
     v['hierarchy'] = info['hierarchy']

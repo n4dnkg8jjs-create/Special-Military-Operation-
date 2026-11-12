@@ -9412,7 +9412,7 @@
     "note": "unarmoured: rifle fire disables it, any AT round destroys it"
    },
    "file": "assets/vehicles/pickup.glb",
-   "file_mb": 8.25,
+   "file_mb": 8.24,
    "tris": {
     "lod0": 89430,
     "lod1": 26566,
@@ -9501,6 +9501,16 @@
     "count": 3,
     "seat_type": "cab",
     "note": "ride_seat_1 driver (front left, LHD), 2 front passenger, 3 rear right; origin = H-point on the cushion, +Z forward"
+   },
+   "steering_wheel": {
+    "node": "steer_wheel",
+    "axis": [
+     -0.0,
+     0.3903,
+     -0.9207
+    ],
+    "radius_m": 0.185,
+    "note": "origin at the hub; node-local axis points at the driver: rotate about it by +angle for a left turn (anticlockwise as he sees it)"
    },
    "hierarchy": {
     "name": "root",
@@ -9806,7 +9816,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 47478,
+        "tris": 46996,
         "pos": [
          0.0,
          0.0,
@@ -9817,7 +9827,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 14238,
+        "tris": 14094,
         "pos": [
          0.0,
          0.0,
@@ -9962,6 +9972,38 @@
              1.64
             ]
            }
+          ]
+         }
+        ]
+       },
+       {
+        "name": "steer_wheel",
+        "type": "empty",
+        "pos": [
+         0.4,
+         1.06,
+         0.8
+        ],
+        "children": [
+         {
+          "name": "steer_wheel_geo",
+          "type": "mesh",
+          "tris": 482,
+          "pos": [
+           0.4,
+           1.06,
+           0.8
+          ]
+         },
+         {
+          "name": "steer_wheel_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 144,
+          "pos": [
+           0.4,
+           1.06,
+           0.8
           ]
          }
         ]
@@ -10143,7 +10185,7 @@
     "note": "unarmoured; fires its ATGM halted only"
    },
    "file": "assets/vehicles/pickup_atgm.glb",
-   "file_mb": 5.05,
+   "file_mb": 5.1,
    "tris": {
     "lod0": 73336,
     "lod1": 21830,
@@ -10230,6 +10272,16 @@
    "atgm_mount": {
     "node": "atgm_mount",
     "note": "on the plywood deck in the bed, +Z = the truck front: parent the Kornet / Stugna-P launcher (assets/soldiers/kornet.glb / stugna.glb, tripod deployed) here; tlc_1 / tlc_2 = spare missile containers on the deck along the bed walls"
+   },
+   "steering_wheel": {
+    "node": "steer_wheel",
+    "axis": [
+     -0.0,
+     0.3903,
+     -0.9207
+    ],
+    "radius_m": 0.185,
+    "note": "origin at the hub; node-local axis points at the driver: rotate about it by +angle for a left turn (anticlockwise as he sees it)"
    },
    "hierarchy": {
     "name": "root",
@@ -10502,7 +10554,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 32932,
+        "tris": 32450,
         "pos": [
          0.0,
          0.0,
@@ -10513,7 +10565,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 9874,
+        "tris": 9730,
         "pos": [
          0.0,
          0.0,
@@ -10658,6 +10710,38 @@
              1.64
             ]
            }
+          ]
+         }
+        ]
+       },
+       {
+        "name": "steer_wheel",
+        "type": "empty",
+        "pos": [
+         0.4,
+         1.06,
+         0.8
+        ],
+        "children": [
+         {
+          "name": "steer_wheel_geo",
+          "type": "mesh",
+          "tris": 482,
+          "pos": [
+           0.4,
+           1.06,
+           0.8
+          ]
+         },
+         {
+          "name": "steer_wheel_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 144,
+          "pos": [
+           0.4,
+           1.06,
+           0.8
           ]
          }
         ]

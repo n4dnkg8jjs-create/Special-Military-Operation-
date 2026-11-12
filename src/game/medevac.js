@@ -3,7 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { Vehicle } from './vehicle.js';
 import { Squad, angDiff } from './squad.js';
 import { clipDuration, hasClip } from './soldier.js';
-import { twoBone, driveTwist } from './soldierPose.js';
+import { cabPose, turnWheel } from './cabPose.js';
 import { SPAWNS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
 const SEAT_DROP = [0.13, 0.13, 0.08];   // seated men (driver, front medic, rear medic): below the clip's seated frame (cab roof clearance; measured head bone -> roof lining 0.01 m before)
@@ -154,6 +154,7 @@ export class MedevacTruck extends Vehicle {
     const sp = Math.abs(this.speed), want = sp > 0.5 ? THREE.MathUtils.clamp(Math.atan((this.angVel || 0) * 3.08 / sp), -0.6, 0.6) * Math.sign(this.speed) : (this.steerA || 0) * 0.9;
     this.steerA = THREE.MathUtils.lerp(this.steerA || 0, want, 0.25);
     for (const s of this.steerN) s.rotation.y = this.steerA;
+    turnWheel(this);
     if (this.mstate === 'away') this.root.visible = false;
     // v9: deployment (game.update only syncs vehicles then): the crew sit in the cab from the start, moved with the truck
     // (they stood at the truck's centre, inside the hull, until the battle began)
@@ -210,19 +211,7 @@ export class MedevacTruck extends Vehicle {
     s.netClip = clipOf('exit'); s.netTs = 1e-4; s.netClipT = 0;
     if (s.inCab && s.animate) s.animate(dt, this.game.camDist(s.pos));
     s.sync();
-    if (m.i === 0 && s.inCab) this.driverPose(s);
-  }
-  // v9: the driver's hands on the wheel (two-bone IK on the seated frame), turning it with the front wheels; rifle slung
-  driverPose(s) {
-    if (!s.model || this.game.noRender || this.game.camDist(s.pos) > 70) return;
-    if (s.weaponObj && s.wSock !== 'back' && s.weaponTo) s.weaponTo('back');
-    const b = s._drvB !== undefined ? s._drvB : (s._drvB = (() => { const N = n => s.model.getObjectByName(n), r = [N('LeftArm'), N('LeftForeArm'), N('LeftHand'), N('RightArm'), N('RightForeArm'), N('RightHand')]; return r.every(Boolean) ? r : null; })());
-    if (!b) return;
-    const f = this.fwd(V3()), l = this.left(V3()), tilt = 0.45, up = V3(0, Math.cos(tilt), 0).addScaledVector(f, -Math.sin(tilt));
-    const C = this.wpos('ride_seat_1', V3()).addScaledVector(f, 0.46); C.y += 0.40;   // wheel centre from the driver's H-point
-    const w = -(this.steerA || 0) * 2.6, r = 0.19;
-    for (const [k, a] of [[0, 0.4 + w], [3, Math.PI - 0.4 + w]]) twoBone(b[k], b[k + 1], b[k + 2], C.clone().addScaledVector(l, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r), null);
-    driveTwist(s);
+    if (s.inCab) { if (m.i === 0 && s.weaponObj && s.wSock !== 'back' && s.weaponTo) s.weaponTo('back'); cabPose(s, this, m.i === 0); }   /* (cabPose.js: hands on the wheel / on the thighs, heads to the front) */
   }
   slump(s) {
     s.cabSlump = true; const N = n => s.model?.getObjectByName(n);

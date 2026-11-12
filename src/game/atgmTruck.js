@@ -3,18 +3,20 @@ import * as Fallback from '../engine/fallback.js';
 import { Vehicle } from './vehicle.js';
 import { Squad, angDiff } from './squad.js';
 import { hasClip } from './soldier.js';
-import { twoBone, driveTwist } from './soldierPose.js';
+import { cabPose, turnWheel } from './cabPose.js';
 import { WEAPONS } from '../config.js';
 import { SPAWNS } from '../world/city.js';
 
 // ATGM pickup ('technical'): the white double-cab truck (assets/vehicles/pickup_atgm.glb, tools/blender/vehicles/pickup.py --atgm)
 // with the side's anti-tank missile launcher standing on its tripod on a plywood deck in the bed - 9M133 Kornet (RU) /
 // Stugna-P (UA), the same launcher models and missile data the dismounted ATGM teams use - and a three-man crew drawn aboard:
-// driver and second man in the cab, the gunner behind the launcher in the bed. Fast, unarmoured (a rifle burst stops it, any
-// AT round destroys it), six missiles.
-//   * fires only halted, at spotted enemy VEHICLES inside the launcher's arc (ARC either side of the truck's nose: the tripod
-//     is lashed down, the gunner has to stay in the rear half of the bed), one missile in flight at a time, RELOAD s between
-//     shots (the reloads are handed out of the cab; +8 s when the second man is down)
+// driver and second man in the cab; the Kornet's gunner kneels behind the launcher in the bed (tailgate shut, his rifle laid on
+// the deck under the tripod), the Stugna-P is laid from its remote panel by the third man on the cab's rear seat. Two spare
+// missile containers lie in the bed. Fast, unarmoured (a rifle burst stops it, any AT round destroys it), six missiles.
+//   * fires only halted, at spotted enemy VEHICLES inside the launcher's arc (this.arc either side of the truck's nose: the
+//     tripod's legs are lashed down and only its head turns - the Kornet's gunner has to stay between the rear legs and the
+//     spare containers, the Stugna's powered head turns freely), one missile in flight at a time, RELOAD s between shots
+//     (+8 s when the second man is down)
 //   * the crew squad is driven from here (squad.medevac hook, as the casualty-evacuation pickup's crew): aboard for the game
 //     logic, visible in their seats; crew hits from the armour model land on the men; when the truck burns they get out and
 //     fight on as an ordinary squad
@@ -22,7 +24,7 @@ import { SPAWNS } from '../world/city.js';
 //     player armour from 550-1100 m, halts and shoots, and shifts after each shot
 // v1: skirmish battles only (one per side); not in campaign task groups or versus yet.
 
-export const MSL = 6, RELOAD = 16, ARC = 1.75, SLEW = 0.8;
+export const MSL = 6, RELOAD = 16, ARC = { kornet: 0.6, stugna: 1.75 }, SLEW = 0.8;
 export const ATGM_TRUCK_ROLES = [
   { role: 'Driver', weapon: 'ak74m', mags: 4, grenades: 0, leader: true, armor: 'light' },
   { role: 'ATGM loader', weapon: 'ak74m', mags: 4, grenades: 0, armor: 'light', second: true },
@@ -32,12 +34,30 @@ const V3 = () => new THREE.Vector3();
 const _w = V3(), _a = V3();
 const CAB_CLIP = ['medevac_cab_exit', 'dismount_door', 'crouch_idle'], AIM_CLIP = ['atgm_aim', 'crouch_idle'];
 const clipOf = L => L.find(hasClip) || L[0];
-const SEAT_DROP = [0.13, 0.13];
+const SEAT_DROP = [0.13, 0.13, 0.13];
+/* tripod meshes: the triangles above the hub (traverse head, sight, cradle) go to a second mesh that turns; the legs stay put */
+const HEAD_Y = { kornet: 0.625, stugna: 0.505 };
+function splitHead(tripod, head, yCut) {
+  const list = []; tripod?.traverse(o => { if (o.isMesh && !/_LOD1$/i.test(o.name) && !/_LOD1$/i.test(o.parent?.name || '')) list.push(o); });
+  for (const m of list) {
+    const g = m.geometry, P = g.attributes.position; if (!g.index || !P) continue;
+    const sp = g.userData.atgmSplit || (g.userData.atgmSplit = (() => {
+      const I = g.index.array, lo = [], hi = [];
+      for (let i = 0; i < I.length; i += 3) (Math.min(P.getY(I[i]), P.getY(I[i + 1]), P.getY(I[i + 2])) >= yCut ? hi : lo).push(I[i], I[i + 1], I[i + 2]);
+      const mk = idx => { const n = new THREE.BufferGeometry(); for (const k in g.attributes) n.setAttribute(k, g.attributes[k]); n.setIndex(idx); n.computeBoundingSphere(); n.computeBoundingBox(); return n; };
+      return { legs: mk(lo), head: mk(hi) };
+    })());
+    const h = new THREE.Mesh(sp.head, m.material); h.name = m.name + '_head'; h.castShadow = m.castShadow; h.receiveShadow = m.receiveShadow;
+    m.updateWorldMatrix(true, false); head.updateWorldMatrix(true, false);
+    head.add(h); h.matrix.copy(head.matrixWorld).invert().multiply(m.matrixWorld); h.matrix.decompose(h.position, h.quaternion, h.scale);
+    m.geometry = sp.legs;
+  }
+}
 
 export class AtgmTruck extends Vehicle {
   constructor(game, side, faction) {
     super(game, side, faction, 'atgmtruck');
-    this.rus = faction.id === 'RU'; this.sys = this.rus ? 'kornet' : 'stugna';
+    this.rus = faction.id === 'RU'; this.sys = this.rus ? 'kornet' : 'stugna'; this.arc = ARC[this.sys];
     this.name = `${side === 'player' ? '' : 'Enemy '}${this.rus ? 'Kornet' : 'Stugna-P'} pickup`;
     this.atgm = { key: this.sys, ammo: MSL, cd: 4, fired: 0 };
     this.weapons = [{ key: this.sys, ammo: MSL, cd: 0 }, { key: 'pkt', ammo: 0, cd: 0, burst: 0, coax: true }];
@@ -64,26 +84,39 @@ export class AtgmTruck extends Vehicle {
     const tape = N('id_tape'), ru = N('id_ru');
     if (tape?.material) { tape.material = tape.material.clone(); tape.material.color.setHex(this.faction?.tape ?? 0xf2c81a); }
     if (ru) ru.visible = this.faction?.id === 'RU';
-    // the launcher on its tripod on the deck (the dismounted teams' model), spare missile containers beside it
-    const rus = this.faction?.id === 'RU', mount = this.mount = N('atgm_mount'), src = A.gltf[rus ? 'kornet' : 'stugna'];
-    this.kit = [];
+    // the launcher on its tripod on the deck (the dismounted teams' model), two spare missile containers in the bed
+    const rus = this.faction?.id === 'RU', sys = rus ? 'kornet' : 'stugna', mount = this.mount = N('atgm_mount'), src = A.gltf[sys];
+    this.kit = []; this.spares = []; this.cabGunner = !rus;
     if (mount && src) {
       const L = this.launcher = src.scene.clone(true); this.kit.push(L);
       L.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; if (/_LOD1$/i.test(o.name)) o.visible = false; } });
-      const folded = L.getObjectByName('folded'); if (folded) folded.visible = false;
-      const cable = L.getObjectByName('stugna_cable'); if (cable) cable.visible = false;
-      const ctl = L.getObjectByName('stugna_control');   // the Stugna's remote panel: beside the gunner, it does not turn with the launcher
+      for (const n of ['folded', 'stugna_cable', 'stugna_control']) { const o = L.getObjectByName(n); if (o) o.visible = false; }   /* (the Stugna's remote panel is on its operator's knees in the cab) */
       mount.add(L);
-      // (v2: the panel stands on the deck behind the tripod as it does on the ground - 0.52 m in front of its operator, who sits
-      // on the lowered tailgate; beside the gunner his hands held nothing and he sat against the tailgate)
-      if (ctl) { mount.add(ctl); ctl.position.set(0.03, 0, -0.53); ctl.rotation.set(0, 0, 0); this.kit.push(ctl); }
+      /* mount-local: +Z = the truck's front, bulkhead at +0.62, shut tailgate at -0.84, bed walls at +-0.77. The Stugna tripod's
+         front foot reaches 0.68, so it stands 7 cm further back */
+      L.position.set(0, 0, rus ? 0 : -0.07);
+      /* only the head turns (v2 turned the whole tripod: its feet swept a 0.6 m circle through anything lying in the bed) */
+      const head = this.head = new THREE.Group(); head.name = 'traverse'; L.add(head);
+      const tube = L.getObjectByName(`${sys}_tube`);
+      mount.updateWorldMatrix(true, true);
+      splitHead(L.getObjectByName(`${sys}_tripod`), head, HEAD_Y[sys]);
+      if (tube) head.add(tube);
       this.muzzle = L.getObjectByName('muzzle') || null;
-      const seat = L.getObjectByName('seat'); this.seatLocal = ctl || !seat ? V3().set(0.03, -0.04, -1.05) : seat.position.clone(); this.seatFixed = !!ctl;
+      const seat = L.getObjectByName('seat'); this.seatLocal = (seat ? seat.position.clone() : V3().set(0.03, 0, -0.6)).add(L.position);
+      /* spare containers (clean clones of the launcher's own tube). Kornet: one along each bed wall, clear of the rear feet (0.54)
+         and the wall (0.77), front caps at the bulkhead - the gunner's feet pass behind them; Stugna: nobody rides in the bed,
+         so both lie across the deck behind the tripod */
+      const tm = tube && L.getObjectByName(`${sys}_tube_mesh`);
+      if (tm) for (const k of [0, 1]) {
+        const c = tm.clone(true); c.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        const bb = new THREE.Box3(); tm.traverse(o => { if (o.isMesh && !/_LOD1$/i.test(o.name)) { o.geometry.boundingBox || o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox); } });   /* the tube about its own node */
+        mount.add(c);
+        if (rus) c.position.set((k ? -1 : 1) * 0.67, -bb.min.y + 0.004, 0.612 - bb.max.z);
+        else { c.rotation.y = Math.PI / 2; c.position.set(0, -bb.min.y + 0.004, -0.37 - 0.035 - bb.max.x - k * (bb.max.x - bb.min.x + 0.02)); }
+        this.spares.push(c); this.kit.push(c);
+      }
     }
-    // the tailgate is down for good: a firing platform behind the tripod (shut, the gunner's back and slung rifle went through it)
-    const tg = N('tailgate'); if (tg) tg.rotation.x = this.vman.doors?.tailgate?.open ?? -1.571;
-    // (v2: no spare containers on the deck - they lay on the tips of the tripod's legs; the reloads ride on the cab's rear seat)
-    this.spares = [];
+    // (v3: the tailgate stays shut - v2 lowered it as a firing step)
     this.baseTurretRot = 0; this.baseGunRot = 0;
     this.game.scene.add(root);
   }
@@ -108,7 +141,7 @@ export class AtgmTruck extends Vehicle {
       + meter('Crew', crew / 3, `${crew}/3`, crew < 3 ? 'warn' : 'ok');
     let rows = row('Status', this.moraleState().toLowerCase());
     rows += row('Weapon', `${WEAPONS[this.sys].name} · ${Math.round(WEAPONS[this.sys].range / 100) / 10} km · vehicles only`);
-    rows += row('Fires', `halted, within ${Math.round(ARC * 57.3)}° of the nose`);
+    rows += row('Fires', `halted, within ${Math.round(this.arc * 57.3)}° of the nose`);
     rows += row('Armour', 'none: keep it out of sight of guns');
     return { meters, rows };
   }
@@ -133,7 +166,8 @@ export class AtgmTruck extends Vehicle {
     const sp = Math.abs(this.speed), want = sp > 0.5 ? THREE.MathUtils.clamp(Math.atan((this.angVel || 0) * 3.08 / sp), -0.6, 0.6) * Math.sign(this.speed) : (this.steerA || 0) * 0.9;
     this.steerA = THREE.MathUtils.lerp(this.steerA || 0, want, 0.25);
     for (const s of this.steerN || []) s.rotation.y = this.steerA;
-    if (this.launcher) this.launcher.rotation.y = this.turretYaw;
+    if (this.head) this.head.rotation.y = this.turretYaw;
+    turnWheel(this);
     if (this.game.phase === 'deploy' && this.crewSq && !this.destroyed) this.seatCrew(1 / 60);
   }
   // the launcher follows the target inside its arc; a missile goes when the truck stands still, the tube is on, the last one
@@ -146,7 +180,7 @@ export class AtgmTruck extends Vehicle {
     const A = this.atgm, W = WEAPONS[A.key]; A.cd -= dt;
     let t = this.target; if (t && (t.type !== 'vehicle' || t.destroyed)) t = null;
     const bear = t ? angDiff(Math.atan2(t.pos.x - this.pos.x, t.pos.z - this.pos.z), this.heading) : 0;
-    const want = t ? THREE.MathUtils.clamp(bear, -ARC, ARC) : 0, d = angDiff(want, this.turretYaw);
+    const ARC = this.arc, want = t ? THREE.MathUtils.clamp(bear, -ARC, ARC) : 0, d = angDiff(want, this.turretYaw);
     this.turretYaw += THREE.MathUtils.clamp(d, -SLEW * dt, SLEW * dt);
     if (!t || this.holdFire || !this.gunnerOk() || A.ammo <= 0 || A.cd > 0 || this.missileOut) return;
     const dist = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
@@ -172,14 +206,15 @@ export class AtgmTruck extends Vehicle {
     for (const m of this.men) {
       const s = m.s; if (!s || s.inside !== 'btr') continue;
       s.inCab = true; s.vel.set(0, 0, 0);
-      if (m.i < 2) {   // cab seats (the medevac crew's seated frame: root beside the seat, facing right)
+      if (m.i < 2 || this.cabGunner) {   // cab seats (the medevac crew's seated frame: root beside the seat, facing right)
         const seat = this.wpos(`ride_seat_${m.i + 1}`, _w);
         s.pos.copy(seat).addScaledVector(out, 0.62).addScaledVector(f, 0.06); s.pos.y = seat.y - 0.84 - SEAT_DROP[m.i];
         s.heading = Math.atan2(out.x, out.z);
         if (!s.alive) { if (!s.cabSlump) this.slump(s); s.sync(); continue; }
         s.netClip = clipOf(CAB_CLIP); s.netTs = 1e-4; s.netClipT = 0;
-      } else {         // the gunner behind the launcher on the deck
-        const yaw = this.seatFixed ? 0 : this.turretYaw, c = Math.cos(yaw), sn = Math.sin(yaw), L = this.seatLocal || _a.set(0, 0, -0.62);
+        if (s.weaponObj && s.weaponObj.visible && !s.dropped) { s.weaponObj.visible = false; s.slingUpdate?.(); }   /* rifles in the footwell: slung on his back it stood in the seat back */
+      } else {         // the Kornet's gunner behind the launcher on the deck
+        const yaw = this.turretYaw, c = Math.cos(yaw), sn = Math.sin(yaw), L = this.seatLocal || _a.set(0, 0, -0.62);
         const deck = this.wpos('atgm_mount', _w);
         s.pos.copy(deck).addScaledVector(this.left(), L.x * c + L.z * sn).addScaledVector(f, -L.x * sn + L.z * c); s.pos.y += L.y || 0;
         s.heading = this.heading + yaw;
@@ -188,25 +223,15 @@ export class AtgmTruck extends Vehicle {
       }
       if (s.animate) s.animate(dt, cam(s.pos));
       s.sync();
-      if (m.i < 2) this.cabHands(s, m.i);
+      if (m.i < 2 || this.cabGunner) cabPose(s, this, m.i === 0); else this.stowRifle(s);
     }
   }
-  // the cab men's hands: the driver's on the wheel (as the medevac driver's), the other man's on his thighs - in the seated frame
-  // of the exit clip the door-side hand is already at the handle and came out through the door skin
-  cabHands(s, i) {
-    if (!s.model || this.game.noRender || this.game.camDist(s.pos) > 70) return;
-    if (s.weaponObj && s.wSock !== 'back' && s.weaponTo) s.weaponTo('back');
-    const b = s._cabB !== undefined ? s._cabB : (s._cabB = (() => { const N = n => s.model.getObjectByName(n), r = [N('LeftArm'), N('LeftForeArm'), N('LeftHand'), N('RightArm'), N('RightForeArm'), N('RightHand')]; return r.every(Boolean) ? r : null; })());
-    if (!b) return;
-    const f = this.fwd(V3()), l = this.left(V3()), seat = this.wpos(`ride_seat_${i + 1}`, V3());
-    if (i === 0) {
-      const tilt = 0.45, up = V3().set(0, Math.cos(tilt), 0).addScaledVector(f, -Math.sin(tilt)), C = seat.addScaledVector(f, 0.46); C.y += 0.40;
-      const w = -(this.steerA || 0) * 2.6, r = 0.19;
-      for (const [k, a] of [[0, 0.4 + w], [3, Math.PI - 0.4 + w]]) twoBone(b[k], b[k + 1], b[k + 2], C.clone().addScaledVector(l, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r), null);
-    } else {
-      for (const [k, sd] of [[0, 1], [3, -1]]) { const t = seat.clone().addScaledVector(f, 0.30).addScaledVector(l, sd * 0.13); t.y += 0.13; twoBone(b[k], b[k + 1], b[k + 2], t, null); }
-    }
-    driveTwist(s);
+  // the bed gunner's rifle lies on the deck across the front of the bed, under the tripod's front leg (on his back its muzzle
+  // stood over the tailgate)
+  stowRifle(s) {
+    const w = s.weaponObj; if (!w || s.dropped || s.wSock === 'truck' || !this.mount) return;
+    this.mount.add(w); w.matrix.makeBasis(_a.set(0, -1, 0), V3().set(0, 0, -1), V3().set(1, 0, 0)); w.matrix.decompose(w.position, w.quaternion, w.scale);
+    w.position.set(-0.14, 0.044, 0.40); w.visible = true; s.wSock = 'truck'; s.slingUpdate?.();
   }
   slump(s) { s.cabSlump = true; const N = n => s.model?.getObjectByName(n); N('Spine1')?.rotateX(0.35); N('Neck')?.rotateX(0.3); N('Head')?.rotateZ(0.35); }
   // the armour model's crew hits (armor.js parts driver / commander / gunner) land on the men aboard
@@ -228,7 +253,7 @@ export class AtgmTruck extends Vehicle {
       const s = m.s; s.netClip = null; s.inCab = false; if (!s.alive) continue;
       if (Math.random() < 0.25) { s.die(null, { blast: true }); s.lostInVeh = true; g.onDeath(s, null, false); continue; }
       s.inside = null; s.pos.copy(this.pos).addScaledVector(left, m.i === 0 ? 2.2 : -2.2).addScaledVector(f, m.i === 2 ? -2.6 : 0.4); s.pos.y = this.groundY(s.pos.x, s.pos.z);
-      if (s.wSock === 'back' && s.weaponTo) s.weaponTo('R');
+      if (s.weaponObj && !s.dropped) { s.weaponObj.visible = true; if (s.wSock !== 'R') s.weaponTo?.('R'); }
       s.sync();
     }
     sq.medevac = null; sq.noncombat = false; sq.name = `${this.name} crew`; sq.run = false; this.crewSq = null;
@@ -243,6 +268,7 @@ export class AtgmTruck extends Vehicle {
     for (const m of this.men) { const s = m.s; if (s.inside !== 'btr') continue; s.inCab = false; if (s.alive) { s.die(null, { blast: true }); s.lostInVeh = true; g.onDeath(s, null, false); } }
     sq.medevac = null;
     for (const k of this.kit || []) k.visible = false;
+    for (const m of this.men) if (m.s.wSock === 'truck' && m.s.weaponObj) m.s.weaponObj.visible = false;
   }
   // ------------------------------------------------------------------ the enemy's truck: a small routine of its own
   think(dt) {
@@ -260,7 +286,7 @@ export class AtgmTruck extends Vehicle {
     if (this.atgm.cd <= 2) this.shifted = false;
     if (this.target?.type === 'vehicle' && this.atgm.ammo > 0) {   // has a target: turn the nose to it if it is outside the arc, else stay
       const bear = angDiff(Math.atan2(this.target.pos.x - this.pos.x, this.target.pos.z - this.pos.z), this.heading);
-      if (Math.abs(bear) > ARC * 0.8) { const dx = this.target.pos.x - this.pos.x, dz = this.target.pos.z - this.pos.z, L = Math.hypot(dx, dz) || 1; go(this.pos.x + dx / L * 14, this.pos.z + dz / L * 14); }
+      if (Math.abs(bear) > this.arc * 0.8) { const dx = this.target.pos.x - this.pos.x, dz = this.target.pos.z - this.pos.z, L = Math.hypot(dx, dz) || 1; go(this.pos.x + dx / L * 14, this.pos.z + dz / L * 14); }
       return;
     }
     if (this.atgm.ammo <= 0 || !this.gunnerOk()) { if (Math.hypot(this.pos.x - home[0], this.pos.z - home[1]) > 120) go(home[0], home[1] + 60); return; }

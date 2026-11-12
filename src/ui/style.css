@@ -585,7 +585,7 @@ select option{background:#1b1e1d;color:var(--t-1)}
 .uc.warn .st{color:var(--w-am)}
 .uc.rout .st{color:var(--w-ho)}
 .uc.rout{border-color:rgba(191,90,79,.6)}
-.uc.mounted .uc-pt .pt{opacity:.45;filter:grayscale(1)}
+/* (mounted squads keep their colour portrait: greyed out they read as cards with missing art; the status line says MOUNTED) */
 .uc.dead{opacity:.35;cursor:default}
 .uc.dead .uc-nm{text-decoration:line-through;text-decoration-color:var(--w-t3)}
 .uc.nest::before{content:"";position:absolute;left:-4px;top:.55rem;width:3px;height:1px;background:var(--w-line3)}   /* carried squad: joined to its carrier */
