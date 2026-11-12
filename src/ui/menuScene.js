@@ -38,8 +38,8 @@ const crestD = x => { const t = (x - TURN[0]) / (TURN[1] - TURN[0]); return t <=
 const crestN = x => { const f = crestD(x), l = Math.hypot(f, 1); return [-f / l, 1 / l, l]; };
 const crestH = x => 0.86 + (x > 8.2 || x < -12 ? 0.05 * Math.sin(x * 1.3 + 0.4) : 0);
 // steep to the men, easy to the enemy; between REV[0] and REV[1] the inner face is cut vertical and revetted with logs
-const REV = [-11.5, 7.8], WALL = 0.2;
-const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.42 - (0.42 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)); };
+const REV = [0.95, 7.8], WALL = 0.2;   /* (v9: the bend and the stretch beyond it are bare earth - kit pieces are straight and crossed each other there) */
+const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.95 - (0.95 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)); };
 
 export class MenuScene {
   constructor(backdrop) {
@@ -80,19 +80,19 @@ export class MenuScene {
     get('assets/soldiers/rpg22.glb').then(g => { if (this.running && this.scene) this.launcher(this.scene, g); }).catch(() => { });
     if (!this.running) return;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
-    r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.92;
+    r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.87;
     const scene = this.scene = new THREE.Scene();
     // v7: day, but a heavy overcast one - a low grey deck, flat light from the front (the men are seen against it), haze
-    const HZ = 0x8b8d8a;
-    scene.fog = new THREE.FogExp2(HZ, 0.0028);
+    const HZ = 0x777b7b;   /* (v9: the gloom back - darker haze, less light, dark wet ground) */
+    scene.fog = new THREE.FogExp2(HZ, 0.0036);
     { // the sky is painted once and shown as the scene's background: horizon at 60 % of the height, as the camera has it
       const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const x = c.getContext('2d'), R = rng(9), g = x.createLinearGradient(0, 0, 0, 512);
-      g.addColorStop(0, '#50565b'); g.addColorStop(0.36, '#6e7376'); g.addColorStop(0.57, '#8a8c89'); g.addColorStop(1, '#8b8d8a'); x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
+      g.addColorStop(0, '#41474c'); g.addColorStop(0.36, '#5c6165'); g.addColorStop(0.57, '#767a7a'); g.addColorStop(1, '#777b7b'); x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
       for (let i = 0; i < 46; i++) { const px = R() * 1024, py = R() * 290, w = 110 + R() * 230, d = R() < 0.55; x.save(); x.translate(px, py); x.scale(1, 0.4 + py / 900); const q = x.createRadialGradient(0, 0, 0, 0, 0, w); q.addColorStop(0, d ? 'rgba(56,60,64,.24)' : 'rgba(152,154,152,.15)'); q.addColorStop(1, 'rgba(100,104,106,0)'); x.fillStyle = q; x.fillRect(-w, -w, w * 2, w * 2); x.restore(); }
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; scene.background = t; }
-    scene.add(new THREE.HemisphereLight(0xaab2ba, 0x4a453b, 2.1));
-    const sun = new THREE.DirectionalLight(0xd9d6cc, 1.25); sun.position.set(60, 120, -260); scene.add(sun);          // what gets through the cloud: high, from the town's side
-    const fill = new THREE.DirectionalLight(0x7f8a96, 0.35); fill.position.set(-40, 60, 60); scene.add(fill);
+    scene.add(new THREE.HemisphereLight(0x9aa3ac, 0x3b3832, 1.45));
+    const sun = new THREE.DirectionalLight(0xcfcdc6, 0.75); sun.position.set(60, 120, -260); scene.add(sun);          // what gets through the cloud: high, from the town's side
+    const fill = new THREE.DirectionalLight(0x7f8a96, 0.25); fill.position.set(-40, 60, 60); scene.add(fill);
     // the two men: in the trench's shade from our side; a little warmth from the fires ahead
     const rim = new THREE.SpotLight(0xffa868, 26, 20, 0.27, 0.95, 1.4); rim.position.set(8.5, 0.2, -14.2); rim.target.position.set(2.2, -1.25, -8.1); scene.add(rim, rim.target);
     this.rim = rim;
@@ -142,33 +142,36 @@ export class MenuScene {
     })();
     const sb = soil.clone(); sb.colorSpace = THREE.NoColorSpace; sb.needsUpdate = true;
     const far = soil.clone(); far.repeat.set(260, 220); far.needsUpdate = true;
-    const earth = new THREE.MeshStandardMaterial({ color: new THREE.Color(1.5, 1.45, 1.25), roughness: 1, map: far }), berm = new THREE.MeshStandardMaterial({ color: new THREE.Color(1.35, 1.2, 1.0), roughness: 1, map: soil, bumpMap: sb, bumpScale: 1.6 });
+    const earth = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.86, 0.84, 0.72), roughness: 1, map: far }), berm = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.92, 0.82, 0.7), roughness: 1, map: soil, bumpMap: sb, bumpScale: 1.6 });
     this.soilMat = berm;
     // terrain (coarse) + the hilltop patch with the berm (fine); the patch's rim is sunk under the terrain
     const tg = new THREE.PlaneGeometry(1500, 1300, 100, 130); tg.rotateX(-Math.PI / 2); tg.translate(0, 0, -560);
     let P = tg.attributes.position;
-    for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setY(i, hill(z) - (Math.abs(x) < 182 && z < -32 && z > -150 ? 4 : 0)); }   /* (sunk under the cratered sheet: its bowls go below this plane) */
+    for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setY(i, hill(z) - ((Math.abs(x) < 196 && z < -11.6 && z > -164) || (x > -38 && x < 22 && z >= -11.6 && z < -0.6) ? 4 : 0)); }   /* (v9: sunk under the whole of both fine sheets - it lay over their shell holes near the trench and hid every bowl) */
     tg.computeVertexNormals(); scene.add(new THREE.Mesh(tg, earth));
     // the open ground down to the road: its own finer sheet over the coarse one, cratered (bowl, thrown-up lip, darker fresh earth)
     { const R = rng(31), CR = this.craters = []; for (let i = 0; i < 46; i++) { const z = -20 - R() ** 0.8 * 140, r = 1.6 + R() * R() * 4.2; CR.push([(R() - 0.5) * (120 + -z * 1.1), z, r, 0.25 + r * 0.22]); }
-      for (const [x, z, r] of [[-12, -22, 2.6], [-24, -30, 3.4], [-6, -34, 2.2], [-38, -26, 2.8], [-18, -46, 4.2], [-46, -44, 3.0], [-4, -58, 3.6], [-30, -66, 4.6], [-62, -34, 3.2], [-14, -84, 5.0], [-52, -78, 3.8], [14, -31, 2.4], [31, -47, 3.0]]) CR.push([x, z, r, r * 0.34]);
+      for (const [x, z, r] of [[-12, -22, 2.6], [-24, -30, 3.4], [-6, -34, 2.2], [-38, -26, 2.8], [-18, -46, 4.2], [-46, -44, 3.0], [-4, -58, 3.6], [-30, -66, 4.6], [-62, -34, 3.2], [-14, -84, 5.0], [-52, -78, 3.8], [14, -31, 2.4], [31, -47, 3.0], [3, -38, 3.0], [-8, -47, 3.6], [10, -53, 4.2], [-2, -66, 4.8], [19, -71, 3.6], [-21, -73, 4.0], [6, -90, 5.2], [-13, -106, 5.6], [25, -101, 4.4], [-35, -97, 5.0], [1, -124, 5.4], [33, -62, 3.2], [-9, -17, 2.0], [-17, -19, 2.6], [8, -22, 1.8]]) CR.push([x, z, r, r * 0.34]);
       const fg = new THREE.PlaneGeometry(420, 158, 420, 158); fg.rotateX(-Math.PI / 2); fg.translate(0, 0, -93); const F = fg.attributes.position, col = new Float32Array(F.count * 3), uv = fg.attributes.uv;
       for (let i = 0; i < F.count; i++) {
         const x = F.getX(i), z = F.getZ(i); let h = 0, dk = 0, lt = 0;
-        for (const [cx, cz, r, dp] of CR) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) { h += d < 1 ? -dp * (1 - d * d) + 0.18 * dp * d * d : 0.18 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; dk = Math.max(dk, 1 - Math.min(1, d / 1.05)); if (d > 0.95 && d < 1.7) lt = Math.max(lt, 1 - Math.abs(d - 1.25) / 0.45); } }
-        const e = Math.min(sstep(-210, -200, x), 1 - sstep(200, 210, x), sstep(-172, -168, z), 1 - sstep(-17, -14.5, z));
-        F.setY(i, hill(z) + (0.06 + h + Math.sin(x * 0.31 + z * 0.17) * Math.sin(z * 0.23) * 0.12) * e - 0.3 * (1 - e)); const k = (1 - dk * 0.78) * (1 + Math.max(0, lt) * 0.28); col[i * 3] = k;   /* dark wet bowl, pale thrown-out spoil round it */ col[i * 3 + 1] = k * 0.97; col[i * 3 + 2] = k * 0.93; uv.setXY(i, x / 3.1, z / 3.1);
+        for (const [cx, cz, r, dp] of CR) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) { h += d < 1 ? -dp * (1 - d * d) + 0.3 * dp * d * d : 0.3 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; dk = Math.max(dk, 1 - Math.min(1, d / 1.05)); if (d > 0.95 && d < 1.7) lt = Math.max(lt, 1 - Math.abs(d - 1.25) / 0.45); } }
+        const e = Math.min(sstep(-210, -200, x), 1 - sstep(200, 210, x), sstep(-172, -168, z), 1 - sstep(-11.4, -10, z));
+        F.setY(i, hill(z) + (0.06 * sstep(-13, -16, z) + h + Math.sin(x * 0.31 + z * 0.17) * Math.sin(z * 0.23) * 0.12 * sstep(-13, -20, z)) * e - 0.3 * (1 - e));
+        /* dark wet bowl, pale thrown-out spoil round it; between the holes last year's grass, flattened and yellow-grey, in patches on the mud */
+        const gr = sstep(0.05, 0.5, Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.4) + 0.5 * Math.sin(x * 0.37 - z * 0.23) + 0.25 * Math.sin(x * 1.1 + z * 0.9)) * (1 - Math.min(1, dk * 3 + Math.max(0, lt) * 2));
+        const k = (1 - dk * 0.8) * (1 + Math.max(0, lt) * 0.45); col[i * 3] = k * (1 + 0.42 * gr); col[i * 3 + 1] = k * (0.97 + 0.5 * gr); col[i * 3 + 2] = k * (0.93 + 0.1 * gr); uv.setXY(i, x / 3.1, z / 3.1);
       }
       fg.setAttribute('color', new THREE.BufferAttribute(col, 3)); fg.computeVertexNormals();
       // standing water in the bigger shell holes (dark, a little of the sky in it)
-      { const big = CR.filter(c => c[2] > 2.3), wm = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.15, metalness: 0.0 }), big.length), M = new THREE.Matrix4();
+      { const big = CR.filter(c => c[2] > 2.3), wm = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5d6466 }), big.length), M = new THREE.Matrix4();
         big.forEach(([cx, cz, r, dp], i) => wm.setMatrixAt(i, M.compose(new THREE.Vector3(cx, hill(cz) + 0.06 - dp * 0.62, cz), new THREE.Quaternion(), new THREE.Vector3(r * 0.6, 1, r * 0.6)))); wm.frustumCulled = false; scene.add(wm); }
-      const fm = new THREE.MeshStandardMaterial({ color: new THREE.Color(2.1, 2.0, 1.72), roughness: 1, map: soil, vertexColors: true });   /* (wet clay under an overcast: pale) */ scene.add(new THREE.Mesh(fg, fm)); }
-    const NEAR = [[-6.4, -11.2, 1.7, 0.7], [-10.5, -7.6, 2.1, 0.85], [-7.4, -5.6, 1.2, 0.5], [-14.8, -11.4, 2.5, 1.0], [-17, -6.5, 1.6, 0.6], [-4.6, -8.2, 0.9, 0.35], [11.5, -11.6, 1.6, 0.5]];   /* shell holes outside the parapet */
-    const NX = 300, NZ = 250, bg = new THREE.PlaneGeometry(48, 14, NX, NZ); bg.rotateX(-Math.PI / 2); bg.translate(2, 0, -6);
+      const fm = new THREE.MeshStandardMaterial({ color: new THREE.Color(1.2, 1.1, 0.95), roughness: 1, map: soil, vertexColors: true });   /* (v9: dark wet earth; the grass patches come from the vertex colours) */ scene.add(new THREE.Mesh(fg, fm)); }
+    const NEAR = [[-6.4, -11.2, 1.7, 0.7], [-10.5, -7.6, 2.1, 0.85], [-7.4, -5.6, 1.2, 0.5], [-14.8, -11.4, 2.5, 1.0], [-17, -6.5, 1.6, 0.6], [-4.6, -8.2, 0.9, 0.35], [11.5, -11.6, 1.6, 0.5], [-23, -9.5, 2.2, 0.8], [-29, -5.8, 1.5, 0.55], [-33, -10.6, 2.6, 0.95]];   /* shell holes outside the parapet */
+    const NX = 420, NZ = 250, bg = new THREE.PlaneGeometry(68, 14, NX, NZ); bg.rotateX(-Math.PI / 2); bg.translate(-8, 0, -6);   /* (v9: out to x -42 on the left, where the eye falls on near ground over the low parapet) */
     P = bg.attributes.position; const pcol = new Float32Array(P.count * 3);
     for (let i = 0; i < P.count; i++) {
-      const x = P.getX(i), z = P.getZ(i), e = Math.min(sstep(-22, -19, x), 1 - sstep(23, 26, x), sstep(-13, -12, z), 1 - sstep(0, 1, z));
+      const x = P.getX(i), z = P.getZ(i), e = Math.min(sstep(-42, -39, x), 1 - sstep(23, 26, x), sstep(-13, -12, z), 1 - sstep(0, 1, z));
       /* lumps of spoil on the crest and the outer slope, trodden floor */
       const d = z - crestZ(x), lump = (Math.sin(x * 4.3 + z * 2.9) + Math.sin(x * 9.1 - z * 6.7) * 0.5) * 0.012 + (d < 0.1 ? (Math.sin(x * 2.7 + 1) * Math.sin(z * 3.9) * 0.05 + Math.sin(x * 11.3 + z * 7.7) * 0.02) * sstep(0.1, -0.5, d) : 0);
       let cr = 0, dk = 0, lt = 0; for (const [cx, cz, r, dp] of NEAR) { const q = Math.hypot(x - cx, z - cz) / r; if (q < 1.9) { cr += q < 1 ? -dp * (1 - q * q) + 0.2 * dp * q * q : 0.2 * dp * Math.max(0, 1 - (q - 1) / 0.9) ** 2; dk = Math.max(dk, 1 - Math.min(1, q / 1.05)); if (q > 0.95 && q < 1.7) lt = Math.max(lt, 1 - Math.abs(q - 1.25) / 0.45); } }
@@ -179,8 +182,9 @@ export class MenuScene {
     { const uv = bg.attributes.uv; for (let ix = 0; ix <= NX; ix++) { let acc = 0; for (let iz = 0; iz <= NZ; iz++) { const i = iz * (NX + 1) + ix; if (iz) { const j = i - (NX + 1); acc += Math.hypot(P.getZ(i) - P.getZ(j), P.getY(i) - P.getY(j)); } uv.setXY(i, P.getX(i) / 2.2, acc / 2.2); } } }
     bg.setAttribute('color', new THREE.BufferAttribute(pcol, 3)); berm.vertexColors = true;
     bg.computeVertexNormals(); scene.add(new THREE.Mesh(bg, berm));
-    { const wm = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x34383a, roughness: 0.15 }), NEAR.length), M = new THREE.Matrix4();
-      NEAR.forEach(([cx, cz, r, dp], i) => wm.setMatrixAt(i, M.compose(new THREE.Vector3(cx, FY + 0.035 - dp * 0.6, cz), new THREE.Quaternion(), new THREE.Vector3(r * 0.6, 1, r * 0.6)))); wm.frustumCulled = false; scene.add(wm); }
+    { const wm = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x5d6466 }), NEAR.length), M = new THREE.Matrix4();
+      /* (water only in the deeper ones, well down in the bowl: seen edge-on from the trench a row of full pools read as one grey band) */
+      NEAR.forEach(([cx, cz, r, dp], i) => wm.setMatrixAt(i, M.compose(new THREE.Vector3(cx, FY + 0.035 - dp * 0.78, cz), new THREE.Quaternion(), new THREE.Vector3(dp > 0.75 ? r * 0.42 : 0, 1, dp > 0.75 ? r * 0.42 : 0)))); wm.frustumCulled = false; scene.add(wm); }
     const road = new THREE.Mesh(new THREE.BoxGeometry(1500, 0.06, 7.5), new THREE.MeshStandardMaterial({ color: 0x2a2824, roughness: 0.95 })); road.position.set(0, PLAIN + 0.03, ROAD_Z); scene.add(road);
     // dust behind the convoy: soft sprites
     this.dust = Array.from({ length: 44 }, () => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.dot('120,108,92'), depthWrite: false, transparent: true, opacity: 0 })); sp.visible = false; sp.userData.life = 9; scene.add(sp); return sp; });
@@ -194,30 +198,28 @@ export class MenuScene {
     const P = (name, x, y, z, ry = 0, rx = 0) => {
       const t = fort.scene.getObjectByName(name); if (!t) return;
       const o = t.clone(true); o.position.set(0, 0, 0); const g = new THREE.Group(); g.add(o); g.position.set(x, y, z); g.rotation.set(rx, ry, 0, 'YXZ'); scene.add(g);
-      const bag = /sandbag/.test(name), dm = m => dirty(m, bag ? 1.0 : 0.8, bag ? 0.15 : 0.3);
+      const bag = /sandbag/.test(name), dm = m => dirty(m, bag ? 1.9 : 0.8, bag ? 0.1 : 0.3);
       g.traverse(q => { if (q.isMesh) { q.frustumCulled = false; q.material = Array.isArray(q.material) ? q.material.map(dm) : dm(q.material); } if (/_lod1$/i.test(q.name)) q.visible = false; });
     };
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
     const at = (x, d) => { const [nx, nz] = crestN(x); return [x + nx * d, crestZ(x) + nz * d, Math.atan2(nx, nz)]; };
     const face = () => WALL;                                                                   /* the cut face's distance from the crest line */
-    for (let x = REV[1] - 0.9; x > REV[0]; x -= 1.74 / crestN(x)[2]) { const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry + (R() - 0.5) * 0.03, -0.02); }
-    for (let x = REV[1] - 0.7, k = 0; x > REV[0]; x -= 1.46 / crestN(x)[2], k++) {
-      const [px, pz, ry] = at(x, face(x) - 0.27); P('sandbag_row', px, FY + crestH(x) + 0.035, pz, ry + (R() - 0.5) * 0.08);
-      if (x > 5.4 && R() < 0.8) { const [qx, qz] = at(x + 0.7, face(x) - 0.31); P('sandbag_row', qx, FY + crestH(x) + 0.31, qz, ry + (R() - 0.5) * 0.1); }   /* (the gap: the watcher's loophole) */
-    }
-    for (const d of [0.77, 1.37, 1.97]) for (let x = 6.4; x > -9.5; x -= 2.17 / crestN(x)[2]) { if (d > 1 && (x < 0.7 || x > 5.2)) continue; const [px, pz, ry] = at(x, face(x) + 0.24 + d - 0.2); P('floor_planks', px, FY + 0.045, pz, ry + (R() - 0.5) * 0.04); }
+    for (let x = REV[1] - 0.9; x > REV[0] + 0.7; x -= 1.74) { const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
+    for (let x = REV[1] - 0.7; x > REV[0] + 0.6; x -= 1.46) { if (x > 0.8 && x < 2.2) continue;   /* (the gap: the watcher's loophole) */
+      const [px, pz, ry] = at(x, face(x) - 0.27); P('sandbag_row', px, FY + crestH(x) + 0.035, pz, ry); }
+    for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); P('floor_planks', px, FY + 0.045, pz, ry); }
     { const [px, pz] = at(4.75, face(4.75) + 0.24 + 0.5); P('ammo_crates', px, FY + 0.09, pz, 0.12); }
     // clods fallen from the wall and the parapet, mud trodden onto the boards
     const cl = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), this.soilMat, 260), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
     for (let i = 0; i < 260; i++) {
-      const x = -9 + R() * 16.5, top = R() < 0.25, d = top ? face(x) - 0.62 - R() * 0.5 : face(x) + 0.26 + R() * R() * 1.6, [px, pz] = at(x, d), r = 0.008 + R() * R() * 0.03;
+      const x = 1.0 + R() * 6.6, top = R() < 0.25, d = top ? face(x) - 0.62 - R() * 0.5 : face(x) + 0.26 + R() * R() * 1.6, [px, pz] = at(x, d), r = 0.008 + R() * R() * 0.03;
       const y = top ? FY + crestH(x) + 0.03 + r * 0.4 : FY + (d < 2.0 && x < 6.6 && (d < 0.9 || (x > 0.7 && x < 5.2)) ? 0.105 : 0.04) + r * 0.4;
       cl.setMatrixAt(i, M.compose(new THREE.Vector3(px, y, pz), q.setFromEuler(e.set(R() * 3, R() * 3, R() * 3)), new THREE.Vector3(r * (1 + R()), r * 0.7, r * (1 + R()))));
     }
     cl.frustumCulled = false; scene.add(cl);
     const mm = new THREE.MeshStandardMaterial({ map: this.dot('92,76,58'), color: 0xffffff, transparent: true, opacity: 0.9, roughness: 1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const sm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mm, 34);
-    for (let i = 0; i < 34; i++) { const x = -7 + R() * 13, d = face(x) + 0.3 + R() * 1.4, [px, pz] = at(x, d); sm.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.112, pz), q.setFromEuler(e.set(0, R() * 6, 0)), new THREE.Vector3(0.35 + R() * 0.5, 1, 0.25 + R() * 0.35))); }
+    for (let i = 0; i < 34; i++) { const x = 1.2 + R() * 6, d = face(x) + 0.3 + R() * 1.4, [px, pz] = at(x, d); sm.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.112, pz), q.setFromEuler(e.set(0, R() * 6, 0)), new THREE.Vector3(0.35 + R() * 0.5, 1, 0.25 + R() * 0.35))); }
     sm.frustumCulled = false; sm.renderOrder = 1; scene.add(sm);
   }
   // an RPG-22 laid ready on the parapet beside the men (on the sandbags, along the trench)
@@ -294,7 +296,7 @@ export class MenuScene {
     // rust / crush / tear in the instance colour), loose - tangled heaps of crushed lengths, some thrown into shell holes, and a
     // few short runs lying where they were dragged, their ends sprung
     { const coils = [], cols = [], E = new THREE.Euler();
-      const gy = (x, z) => { let h = 0; for (const [cx, cz, r, dp] of this.craters || []) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) h += d < 1 ? -dp * (1 - d * d) + 0.18 * dp * d * d : 0.18 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; } return hill(z) + 0.06 + h; };
+      const gy = (x, z) => { let h = 0; for (const [cx, cz, r, dp] of this.craters || []) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) h += d < 1 ? -dp * (1 - d * d) + 0.3 * dp * d * d : 0.3 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; } return hill(z) + 0.06 + h; };
       const coil = (x, z, yaw, len, crush, tear, dy = 0, tilt = 0) => { coils.push(new THREE.Matrix4().compose(V(x, gy(x, z) + dy, z), new THREE.Quaternion().setFromEuler(E.set(0, yaw, tilt, 'YXZ')), V(len / COIL_L, 1, 1))); cols.push(new THREE.Color(0.15 + R() * 0.45, crush, tear)); };
       const heap = (x, z, k) => { for (let i = 0; i < k; i++) { const a = R() * 6.283, len = 2.2 + R() * 2.6; coil(x + (R() - 0.5) * 1.6 - Math.cos(a) * len / 2, z + (R() - 0.5) * 1.6 + Math.sin(a) * len / 2, a, len, 0.45 + R() * 0.5, 0.99, i * 0.1, (R() - 0.5) * 0.3); } };
       const CR = (this.craters || []).filter(c => c[1] > -125 && Math.abs(c[0]) < 95 && c[2] > 2);
@@ -342,7 +344,7 @@ export class MenuScene {
     // the trees sparkle like plastic)
     const rel = new THREE.Matrix4(), inv = new THREE.Matrix4(), dull = new Map();
     // (v8: unlit - one flat tone per tree, as foliage reads at 200 m under an overcast; lit, every leaf card took its own shade)
-    const matOf = (t, m) => { if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: m.alphaTest || (m.transparent ? 0.4 : 0), side: m.side, color: m.color.clone().multiplyScalar(m.map ? 0.5 : 0.4), fog: true }); d.name = m.name; dull.set(m, d); } return d; };
+    const matOf = (t, m) => { if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: m.alphaTest || (m.transparent ? 0.4 : 0), side: m.side, color: m.color.clone().multiplyScalar(m.map ? 0.27 : 0.22).lerp(new THREE.Color(0x1f241d), 0.25), fog: true });   /* (v9: they glowed - a tree line under a low overcast is a dark mass) */ d.name = m.name; dull.set(m, d); } return d; };
     for (const [t, Ms] of bins) {
       t.updateWorldMatrix(true, true); inv.copy(t.matrixWorld).invert();
       t.traverse(o => {
@@ -409,11 +411,13 @@ export class MenuScene {
     for (const s of this.men) {
       s.mixer.update(dt);
       const br = Math.sin(t * 1.25 + s.ph), sw = Math.sin(t * 0.43 + s.ph * 1.7), sw2 = Math.sin(t * 0.71 + s.ph), look = Math.sin(t * 0.17 + s.ph) * 0.5 + Math.sin(t * 0.07 + s.ph * 2) * 0.5;
+      /* (v9) a slight sway of the whole man: weight shifting on the knee / against the wall, never still */
+      s.m.rotation.set(Math.sin(t * 0.37 + s.ph * 1.3) * 0.013 + br * 0.004, s.yaw + Math.sin(t * 0.23 + s.ph) * 0.02, Math.sin(t * 0.51 + s.ph * 0.7) * (s.watch ? 0.018 : 0.01), 'YXZ');
       if (s.watch) {
-        s.spine0?.rotateX(0.16 + br * 0.006); s.spine?.rotateX(0.12 + br * 0.012); s.spine?.rotateY(-0.2 + sw * 0.015);
+        s.spine0?.rotateX(0.16 + br * 0.006); s.spine?.rotateX(0.12 + br * 0.02); s.spine?.rotateY(-0.2 + sw * 0.035); s.spine?.rotateZ(sw2 * 0.015);
         s.neck?.rotateY(-0.16); s.neck?.rotateX(-0.14); s.head?.rotateY(-0.24 + look * 0.2); s.head?.rotateX(-0.12 + sw2 * 0.02);
       } else {
-        s.spine?.rotateX(br * 0.012); s.spine?.rotateZ(sw2 * 0.006);
+        s.spine?.rotateX(br * 0.02); s.spine?.rotateZ(sw2 * 0.014);
         s.neck?.rotateX(0.62); s.head?.rotateX(0.68 + br * 0.015 + sw * 0.02); s.head?.rotateZ(0.06 * sw2);   /* head down, chin on his chest: resting (the clip throws it back) */
       }
     }
