@@ -131,6 +131,13 @@ export const VEHICLES = {
     armor: { front: { ke: 2, ce: 2 }, side: { ke: 1, ce: 1 }, rear: { ke: 1, ce: 1 }, top: { ke: 1, ce: 1 } },
     passengers: 0, seats: 3, crew: 3, turretSpeed: 0, wheeled: true,
   },
+  // ATGM pickup (assets/vehicles/pickup_atgm.glb, src/game/atgmTruck.js): the medevac truck's body, the side's Kornet / Stugna-P on
+  // its tripod in the bed, driver + loader in the cab, gunner at the launcher; unarmoured
+  atgmtruck: {
+    kind: 'atgmtruck', asset: 'pickup_atgm', hp: 160, speed: 16.5, accel: 5.0, turnRate: 1.35, radius: 1.6, length: 5.4, width: 1.9, height: 2.2,
+    armor: { front: { ke: 2, ce: 2 }, side: { ke: 1, ce: 1 }, rear: { ke: 1, ce: 1 }, top: { ke: 1, ce: 1 } },
+    passengers: 0, seats: 3, crew: 3, turretSpeed: 0, wheeled: true,
+  },
   tank: {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,
     armor: { front: { ke: 520, ce: 650 }, side: { ke: 90, ce: 260 }, rear: { ke: 50, ce: 60 }, top: { ke: 40, ce: 40 } },

@@ -23,6 +23,10 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   `npm i playwright` + `npx playwright install chromium`). Headless pages crash under memory pressure (big maps ~1.2 GB heap).
 - `node tools/dev/shot.mjs <map> <outprefix> "<JS expr returning [[x,z,dist,pitch,yaw],...]>"` — canvas screenshots (Q=low|medium env).
 - `node tools/dev/perf_probe.mjs avdiivka medium` — draw calls / triangles / per-mesh triangle breakdown.
+- `node tools/ai_bench.mjs <map> <skirmish|attack|defend> <seed> new 600 out.json` — battle-AI numbers vs the scripted defender;
+  `node tools/dev/aiprobe.mjs <map> <mode> <seed> <simS> <everyS>` — the AI's decisions + vehicles + plan over time (max 2 at once: memory).
+- `node tools/mp_roomcode.mjs` — two-browser multiplayer campaign test (needs a local PeerJS broker on :9000: `npm i peer`, PeerServer).
+- Blender: `pip install bpy` works (5.x, Python 3.13); e.g. `python3 tools/blender/vehicles/pickup.py [--atgm] [--geo out.glb | --dev]`.
 - Syntax check a module: `node --input-type=module --check < file.js`.
 - NEVER write `//` comments in the middle of a one-line statement/callback (it swallowed code several times) — use `/* */`.
 - tools/dev/ed.py (exact OLD====NEW replace in working tree + index), stage_keep.py (stage only matching hunks).
@@ -32,7 +36,8 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   trench routing), soldier.js (anim state, clips, jump/hatch/mount clips), soldierPose.js (procedural layers, twist bones),
   vehicle.js (movement, seats ride_seat_*, doors, lights, RE stern seats ~l.217), armor.js (hit zones + TANK_PARTS),
   combat.js (weapons, explode(), FPV hit quality), ai.js / ai_tactics.js (v2 commander default), support.js (FPV/arty),
-  medevac.js (driver swap; pullTick placeholder), campaign*.js, artillery.js.
+  medevac.js (driver swap; pullTick placeholder), atgmTruck.js (Kornet / Stugna-P pickup: launcher on the bed, crew aboard via the
+  squad.medevac hook, skirmish only so far), campaign*.js, artillery.js.
 - fx/: particles.js (GPU billboards: smoke / glow / fire systems, explosion() = flash + burst cloud + earth jets + ground dust +
   column + haze, no shock ring; fragments instanced), flames.js.
 - world/: maps.js (map defs incl. Avdiivka ruin knobs `ruins.blocks/houses/craters`), real.js (OSM real maps: roads via
@@ -63,6 +68,12 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
 - Owner Q&A already answered: BTR riders sit on top (8 deck seats); only overflow men go inside (door) — BMP-3 has 7 deck
   seats so the 8th uses the rear doors. Avdiivka tram line ran beside the road (OSM: 5–9 m from road centre), service
   stopped 2015, partly resumed 2016, closed Jan 2017; rails mostly left in place (OSM "disused").
+- Nov 2026 session 2 (branch claude/great-pascal-yoiw1q, NOT on main until the owner says so): mount v5 leg fix, explosions v2
+  (no shock ring), campaign v8 replacements (out of contact only, 2 LP a man, 1-3 weeks, XP dilution, depot), AI v9 (concentrated
+  attack, fewer hides, carriers support; still takes no objective vs the scripted defender in 10 min), ATGM pickup model + skirmish unit.
+- Owner's queue, not started: special units for 'CI points' (meaning unconfirmed: VDV platoons, Hind strike, Leopard), medevac
+  dead-driver push-out clips, 3D main menu scene (two crouching UA soldiers, RPG aimed at the road), slung-rifle magazine
+  orientation (asked which way), campaign-map AI (asked for an example), ATGM pickup in campaign / versus.
 - Open complaints not yet resolved: "Avdiivka doesn't look like Avdiivka" (ask for a specific spot/photo), general lag on
   the owner's machine (measure again after changes), docs/TODO.md backlog.
 

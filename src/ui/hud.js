@@ -118,7 +118,7 @@ export class HUD {
     this.cards.innerHTML = ''; this.cards.className = 'deck' + (this.rosterMini ? ' mini' : '');
     this.cardEls = new Map();
     const units = this.g.playerUnits.filter(u => !(u.type === 'squad' && u.crew && u.destroyed));
-    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'medevac' ? 'MEDICAL' : u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
+    const groupOf = u => u.type === 'vehicle' ? (u.kind === 'medevac' ? 'MEDICAL' : u.kind === 'atgmtruck' ? 'SUPPORT' : u.kind === 'spg' ? 'ARTILLERY' : u.kind === 'tank' ? 'ARMOUR' : 'MOTOR RIFLES') : u.crew ? 'CREWS' : u.kind === 'atgm' || u.kind === 'fpv' ? 'SUPPORT' : u.carrier && units.includes(u.carrier) ? null : u.assault ? 'ASSAULT' : 'MOTOR RIFLES';
     const order = ['MOTOR RIFLES', 'ASSAULT', 'ARMOUR', 'SUPPORT', 'ARTILLERY', 'MEDICAL', 'CREWS'];
     const carried = m => units.filter(q => q.type === 'squad' && q.carrier === m && groupOf(q) === null);
     const groups = order.map(grp => { const members = units.filter(u => groupOf(u) === grp); return { grp, members, all: [...members, ...members.flatMap(carried)] }; }).filter(G => G.members.length);

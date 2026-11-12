@@ -23,6 +23,7 @@ const GLYPH = {
   ifv: (x, y, w, h) => X(x, y, w, h) + ELL(x, y, w, h),                                                      // mechanized infantry
   tank: (x, y, w, h) => ELL(x, y, w, h, 1.15),                                                               // armour
   atgm: (x, y, w, h) => `<path d="M${x + w * 0.22} ${y + h * 0.88}L${x + w / 2} ${y + h * 0.12}L${x + w * 0.78} ${y + h * 0.88}"/>`,   // anti-armour
+  atgmtruck: (x, y, w, h) => `<path d="M${x + w * 0.22} ${y + h * 0.82}L${x + w / 2} ${y + h * 0.12}L${x + w * 0.78} ${y + h * 0.82}"/>` + `<circle cx="${x + w * 0.34}" cy="${y + h * 1.02}" r="${h * 0.07}"/><circle cx="${x + w * 0.66}" cy="${y + h * 1.02}" r="${h * 0.07}"/>`,   // anti-armour, wheeled
   spg: (x, y, w, h) => `<circle class="fill" cx="${x + w / 2}" cy="${y + h * 0.36}" r="${Math.min(w, h) * 0.11}"/>` + `<rect x="${x + w * 0.24}" y="${y + h * 0.62}" width="${w * 0.52}" height="${h * 0.2}" rx="${h * 0.1}"/>`,   // SP artillery
   medevac: (x, y, w, h) => `<path d="M${x + w / 2} ${y + h * 0.16}v${h * 0.68}M${x + w * 0.3} ${y + h / 2}h${w * 0.4}" stroke-width="3.2"/>`,   // medical (casualty evacuation)
   contact: (x, y, w, h) => `<text x="${x + w / 2}" y="${y + h * 0.84}" text-anchor="middle" font-size="${h * 1.05}" font-weight="800" fill="currentColor" stroke="none" font-family="sans-serif">?</text>`,   // unconfirmed contact
@@ -41,7 +42,7 @@ export function unitKindOf(u) {
   if (u.kind === 'atgm' || u.kind === 'fpv') return u.kind;
   return u.assault ? 'assault' : 'squad';
 }
-export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', crew: 'Dismounted crew', btr: 'Wheeled APC', ifv: 'Infantry fighting vehicle', tank: 'Main battle tank', atgm: 'ATGM team', spg: 'Self-propelled howitzer', fpv: 'FPV drone team', medevac: 'Casualty evacuation · pickup' };
+export const UNIT_TYPE_NAME = { squad: 'Rifle squad', assault: 'Assault squad', crew: 'Dismounted crew', btr: 'Wheeled APC', ifv: 'Infantry fighting vehicle', tank: 'Main battle tank', atgm: 'ATGM team', spg: 'Self-propelled howitzer', fpv: 'FPV drone team', medevac: 'Casualty evacuation · pickup', atgmtruck: 'ATGM carrier · pickup' };
 
 // 24×24 stroke icons for the order bar: square caps, mitred joins (style.css #orders .ico); .f = filled part.
 // Fire support keys borrow APP-6 glyphs: mortar = the mortar symbol (tube arrow on its base ring), artillery = the

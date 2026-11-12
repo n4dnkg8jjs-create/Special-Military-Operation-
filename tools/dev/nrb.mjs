@@ -1,5 +1,6 @@
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { createRequire } from 'node:module'; let _pw; try { _pw = createRequire(import.meta.url)('playwright'); } catch { _pw = createRequire('/opt/npm-tools/node_modules/')('playwright'); } const { chromium } = _pw;
-const root = new URL('../..', import.meta.url).pathname;   // repo root const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css' };
+const root = new URL('../..', import.meta.url).pathname;   /* repo root */
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css' };
 const server = http.createServer((req, res) => { const p = path.join(root, decodeURIComponent(req.url.split('?')[0])); if (!fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); } res.writeHead(200, { 'Content-Type': types[path.extname(p)] || 'application/octet-stream' }); fs.createReadStream(p).pipe(res); });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const errs = [];

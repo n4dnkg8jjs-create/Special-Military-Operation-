@@ -3,7 +3,7 @@
 // Used by the Commander in ai.js. Nothing here looks at player units the enemy has not seen.
 import * as THREE from 'three';
 
-const POW = { tank: 8, ifv: 6, btr: 4, spg: 2, truck: 0.5 };
+const POW = { tank: 8, ifv: 6, btr: 4, spg: 2, truck: 0.5, atgmtruck: 3, medevac: 0.5 };
 export const vehPower = v => (POW[v.kind] ?? 3) * (v.hp > 0 ? Math.max(0.35, v.hp / v.def.hp) : 0) * (v.crew > 0 ? 1 : 0);
 export const sqPower = q => q.effective.length * (q.kind === 'atgm' || q.kind === 'fpv' ? 0.8 : 1) * (q.routing ? 0.2 : q.morale < 35 ? 0.6 : 1);
 

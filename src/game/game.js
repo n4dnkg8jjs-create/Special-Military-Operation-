@@ -19,6 +19,7 @@ import { setupTreeDamage } from '../world/treeDamage.js';
 import { prepareSoldierAssets } from './soldier.js';
 import { Commander, AutoDefender } from './ai.js';
 import { setupMedevac } from './medevac.js';
+import { setupAtgmTrucks } from './atgmTruck.js';
 import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
 
@@ -87,6 +88,7 @@ export class Game {
     this.zoneMarkers();
     this.deploy();
     this.medevac = setupMedevac(this);   // casualty-evacuation pickup + medics for both sides (game/medevac.js)
+    this.atgmTrucks = setupAtgmTrucks(this);   // skirmish: a Kornet / Stugna-P pickup per side (game/atgmTruck.js)
     this.fires = setupFires(this);       // 152 / 155 mm tube-artillery fire missions, both sides (game/fireMission.js)
     const net = this.opts.net;
     this.commander = net ? { update() {}, begin() {}, adoptCrew() {}, plan: [], waveI: 0 } : new Commander(this);   // versus: the other side is a human

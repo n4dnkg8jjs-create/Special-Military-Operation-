@@ -25,7 +25,7 @@ let t = 0;
 while (t < +simS) {
   const r = await page.evaluate(([chunk]) => { const g = window.game; for (let i = 0; i < chunk / 0.05; i++) { window.__step(0.05); if (g.over) break; }
     return { t: Math.round(g.time), over: g.over, tk: [Math.round(g.tickets.player), Math.round(g.tickets.enemy)], obj: g.objectives.map(o => `${o.id}:${o.owner[0]}`).join(' '), plan: g.commander.debugLines?.().slice(0, 16),
-      veh: g.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.z)}${v.killedBy ? ' by ' + v.killedBy : ''}`).join(' | '), slog: (g.supportLog || []).slice(-6) }; }, [+every]);
+      veh: g.vehicles.map(v => `${v.side[0]}${v.kind}${v.destroyed ? 'X' : Math.round(v.hp)}@${Math.round(v.pos.x)},${Math.round(v.pos.z)}${v.atgm ? ` msl ${v.atgm.fired || 0} fired/${v.atgm.ammo} left` : ''}${v.killedBy ? ' by ' + v.killedBy : ''}`).join(' | '), slog: (g.supportLog || []).slice(-6) }; }, [+every]);
   t = r.t; console.log(`--- t=${r.t} tickets ${r.tk} obj ${r.obj}\n  VEH ${r.veh}\n  ${(r.plan || []).map(l => l.slice(0, 150)).join('\n  ')}\n  SUP ${JSON.stringify(r.slog)}`); if (r.over) break;
 }
 await browser.close(); server.close();
