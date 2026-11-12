@@ -48,7 +48,9 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   facade panel is gone — onRoomOpen), farmland.js (rural base; skyline blobs kept off-map), terrain.js (relief: craters /
   ditches / mounds; a crater bowl fades other rims and parapets), instancer.js (instance(), LODS, simplified(), farLod()).
 - net/: peer.js (direct + relay racing, acks, chunking), battle.js (host-authoritative snapshots, world events).
-- ui/: hud.js (dock, unit cards, selection rings drawn depthTest:false), menu.js (cinematic menu), style.css.
+- ui/: hud.js (dock, unit cards, selection rings drawn depthTest:false), menu.js (cinematic menu), backdrop.js (2-D painted town,
+  convoy timing + dust), menuScene.js (3-D layer over it: convoy as vehicle models placed from backdrop.convoy, two kneeling UA
+  soldiers on a berm; loads ~55 MB after the intro, disposed when the menu hides; `?menu2d` turns it off), style.css.
 - Assets: assets/vehicles/*.glb (+manifest.json, node contract: turret, gun_pivot, muzzle, hatches, ride_seat_*, lights,
   wreck/LOD1 — never rename), assets/soldiers/soldier_anims.glb + manifest.json (125 clips), assets/env/*.glb.
 

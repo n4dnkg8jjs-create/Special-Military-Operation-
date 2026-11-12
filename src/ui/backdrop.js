@@ -301,11 +301,12 @@ export class Backdrop {
       x.globalAlpha = a; const R = p.r; x.drawImage(p.steam ? this.steamS : p.lit && p.life < 2 ? this.smokeL : this.smokeS, p.x + ox - R, p.y + oy - R, R * 2, R * 2);
     }
     x.globalAlpha = 1;
-    [ox, oy] = off(0.5); x.drawImage(this.mid, ox, oy);
+    [ox, oy] = off(0.5); x.drawImage(this.mid, ox, oy); this._mo = [ox, oy];   // (menuScene.js: the 3-D convoy rides this layer's parallax)
     if (this.convoy?.length || this.dust?.length) {
       for (const d of this.dust) { const a = Math.min(1, d.life / 0.4) * (1 - d.life / d.max); x.globalAlpha = a * (d.exh ? 0.5 : 0.65); const R = d.r; x.drawImage(d.exh ? this.smokeS : this.steamS, d.x + ox - R, d.y + oy - R, R * 2, R * 2); }
       x.globalAlpha = 1;
       for (const v of this.convoy) {
+        if (this.scene3d?.has(v.k)) continue;   // drawn as the 3-D model by the menu's 3-D layer
         const img = this.vehSprites[v.k], bob = Math.sin(this.t * 9 + v.ph) * U * 0.03, y = this.roadY - img.height + 2 + bob + oy;
         if (v.dir > 0) x.drawImage(img, v.x + ox, y);
         else { x.save(); x.translate(v.x + ox + img.width, y); x.scale(-1, 1); x.drawImage(img, 0, 0); x.restore(); }
@@ -346,6 +347,7 @@ export class Backdrop {
         this.cost = (this.cost ?? 4) * 0.9 + (performance.now() - t0) * 0.1;
         if (this.cost > 14 && !this.slow) this.slow = true;
         else if (this.cost > 14 && !this.lowRes) { this.lowRes = true; this.build(); this.cost = 4; }
+        this.scene3d?.render();
       }
       this.raf = requestAnimationFrame(loop);
     };

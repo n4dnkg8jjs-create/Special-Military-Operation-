@@ -8,6 +8,7 @@
 // main.js keeps owning the actual launch logic (#startBtn, #campaignBtn, #versusBtn, #quality, #mapPick).
 import { applyBrand } from './brand.js';
 import { Backdrop } from './backdrop.js';
+import { MenuScene } from './menuScene.js';
 import { startMenuAudio, stopMenuAudio, menuAudioEnabled, setMenuAudio } from './menuAudio.js';
 
 const $ = id => document.getElementById(id);
@@ -83,18 +84,20 @@ if (INTRO) {
     const r = t.getBoundingClientRect();
     const s = Math.min(1.45, innerWidth * 0.78 / Math.max(1, r.width)), dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2);
     const T = `translate(${dx}px,${dy}px) scale(${s})`, D = 5200, hold = 0.56, A = [];
-    t.style.transformOrigin = '50% 50%';
+    t.style.transformOrigin = '50% 50%'; t.style.willChange = 'transform, opacity';
     A.push(t.animate([
-      { transform: `translate(${dx}px,${dy}px) scale(${s * 1.05})`, opacity: 0, filter: 'blur(10px)', offset: 0, easing: 'cubic-bezier(.2,.7,.2,1)' },
-      { transform: T, opacity: 1, filter: 'blur(0px)', offset: 0.32, easing: 'linear' },
-      { transform: T, opacity: 1, filter: 'blur(0px)', offset: hold, easing: 'cubic-bezier(.65,0,.25,1)' },
-      { transform: 'none', opacity: 1, filter: 'blur(0px)', offset: 1 }], { duration: D, fill: 'both' }));   // (easing per keyframe: an overall easing would warp the hold)
+      // (transform + opacity only: these run on the compositor. The animated blur() repainted the title every frame on the
+      // main thread, which is busy loading the game's modules just then - the reveal stuttered)
+      { transform: `translate(${dx}px,${dy}px) scale(${s * 1.05})`, opacity: 0, offset: 0, easing: 'cubic-bezier(.2,.7,.2,1)' },
+      { transform: T, opacity: 1, offset: 0.32, easing: 'linear' },
+      { transform: T, opacity: 1, offset: hold, easing: 'cubic-bezier(.65,0,.25,1)' },
+      { transform: 'none', opacity: 1, offset: 1 }], { duration: D, fill: 'both' }));   // (easing per keyframe: an overall easing would warp the hold)
     A.push(veil.animate([{ opacity: 1 }, { opacity: 1, offset: hold - 0.04, easing: 'ease-in-out' }, { opacity: 0 }], { duration: D, fill: 'both' }));
     const bgc = $('menuBg'); if (bgc) A.push(bgc.animate([{ transform: 'scale(1.08)' }, { transform: 'scale(1.08)', offset: hold - 0.04, easing: 'cubic-bezier(.3,0,.2,1)' }, { transform: 'none' }], { duration: D + 600, fill: 'both' }));
     const late = [...menu.querySelectorAll('.mainnav .nav-item'), menu.querySelector('.menu-foot')].filter(Boolean);
     late.forEach((el, i) => A.push(el.animate([{ opacity: 0, transform: 'translateX(-1.2rem)' }, { opacity: 1, transform: 'none' }], { duration: 800, delay: D * hold + 700 + i * 90, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'both' })));
     let done = false;
-    const end = () => { if (done) return; done = true; removeEventListener('keydown', skip, true); removeEventListener('pointerdown', skip, true); menu.classList.remove('intro'); for (const a of A) a.cancel(); veil.remove(); t.style.transformOrigin = ''; };
+    const end = () => { if (done) return; done = true; removeEventListener('keydown', skip, true); removeEventListener('pointerdown', skip, true); menu.classList.remove('intro'); for (const a of A) a.cancel(); veil.remove(); t.style.transformOrigin = ''; t.style.willChange = ''; };
     const skip = e => { e.preventDefault(); e.stopPropagation(); end(); };
     addEventListener('keydown', skip, true); addEventListener('pointerdown', skip, true);
     Promise.all(A.map(a => a.finished)).then(end, () => { });
@@ -123,11 +126,15 @@ if (pick) new MutationObserver(syncMap).observe(pick, { subtree: true, childList
 // ---------------------------------------------------------------- backdrop: live only while menu / loading are up
 const bgc = $('menuBg'), loading = $('loading');
 const bg = bgc ? new Backdrop(bgc) : null; window.__backdrop = bg;   // test hook
+// the 3-D layer over it (menuScene.js: the convoy as models, two soldiers in the foreground) - the menu only, not the loading screen
+const bg3 = bg && !new URLSearchParams(location.search).has('menu2d') ? new MenuScene(bg) : null;
 function syncBg() {
   if (!bg) return;
   const m = menu && !menu.classList.contains('hidden'), l = loading && !loading.classList.contains('hidden');
   bgc.classList.toggle('on', m || l);
   if (m || l) bg.start(l ? 'loading' : 'menu'); else bg.stop();
+  // (not during the intro: the layer does not take part in the push-in, and parsing its models would make the title stutter)
+  if (bg3) { if (m && !l && !menu.classList.contains('intro')) bg3.start(); else if (!m || l) bg3.stop(); }
   if (l) tips.start(); else tips.stop();
 }
 
