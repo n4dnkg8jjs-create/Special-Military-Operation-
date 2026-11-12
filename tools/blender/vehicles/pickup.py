@@ -40,7 +40,7 @@ import vbuild as VB
 # --atgm: the anti-tank 'technical' (assets/vehicles/pickup_atgm.glb): the same truck in its factory white, no hardtop canopy,
 # no roof rack, no casevac markings; a plywood firing deck in the bed with an `atgm_mount` empty (the game stands the team's
 # Kornet / Stugna-P launcher on its tripod there: tube 1.26 m over the deck = 2.14 m over the ground, 0.35 m clear of the cab
-# roof), `tlc_1` / `tlc_2` empties for spare missile containers on the deck along the bed walls, the spare wheel upright against the bulkhead.
+# roof), `tlc_1` / `tlc_2` empties for spare missile containers on the deck along the bed walls (the spare wheel stays under the bed: nothing else on the deck).
 ATGM = '--atgm' in sys.argv
 NAME = 'pickup_atgm' if ATGM else 'pickup'
 MOUNT_Y = -1.70                 # launcher origin in the bed (Stugna tripod reaches 0.68 m forward, its control unit 0.82 m back)
@@ -1210,11 +1210,7 @@ def build():
     zr = ROOF_Z + 0.10 + 0.015
     spc = (0.0, (ROOF_F + ROOF_R) / 2 - 0.12)
     sp = L._bcopy(Wp); sp.rot('Y', 90); sp.move(spc[0], spc[1], zr + WW / 2 + 0.002)
-    if ATGM:                     # the spare stands upright against the bed bulkhead (right-hand corner), one strap over it
-        sp = L._bcopy(Wp); sp.rot('Z', 90); sp.move(0.36, BED_Y[0] - WW / 2 - 0.03, BED_FLOOR + 0.058 + WR)
-        H.add(sp)
-        H.add(box(0.04, WW + 0.02, 0.01, c=(0.36, BED_Y[0] - WW / 2 - 0.03, BED_FLOOR + 0.058 + 2 * WR + 0.006), mat='canvas'))
-    else:
+    if not ATGM:                 # (--atgm: no spare in the bed - the tripod's front legs stand where it stood; it is under the bed, as on the stock truck)
         H.add(sp)
     for a in (() if ATGM else (0, 90)):
         st = box(0.04, 2 * WR + 0.03, 0.01, c=(0, 0, 0), mat='canvas').move(0, 0, WW / 2 + 0.007).rot('Z', a)
@@ -1294,7 +1290,7 @@ def build():
     lp = None
     if ATGM:
         L.node_empty('atgm_mount', hullE, (0.0, MOUNT_Y, BED_FLOOR + 0.058), 0.15)          # on the deck, +Z = the truck's front
-        for i, (x, y) in enumerate(((-(BED_IN - 0.16), -1.95), (BED_IN - 0.16, -2.05))):   # spare TLCs on the deck along both walls (the right one behind the spare wheel)
+        for i, (x, y) in enumerate(((-(BED_IN - 0.16), -1.95), (BED_IN - 0.16, -1.95))):   # spare TLCs on the deck along both walls
             L.node_empty(f'tlc_{i + 1}', hullE, (x, y, BED_FLOOR + 0.075), 0.1)
         L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
     else:

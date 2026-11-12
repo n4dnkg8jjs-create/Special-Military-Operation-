@@ -8,7 +8,7 @@ const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-un
 const p = await b.newPage({ viewport: { width: 1100, height: 620 } });
 await p.addInitScript(() => { localStorage.setItem('smo_noaudio', '1'); });
 p.on('pageerror', e => console.log('ERR', e.message));
-await p.goto(`http://127.0.0.1:${server.address().port}/index.html?autostart&quality=${process.env.Q || 'medium'}&map=${map}`);
+await p.goto(`http://127.0.0.1:${server.address().port}/index.html?autostart&quality=${process.env.Q || 'medium'}&map=${map}${process.env.SIDE ? '&side=' + process.env.SIDE : ''}`);   /* SIDE=RU: play the Russian side */
 await p.waitForFunction(() => window.game?.phase === 'deploy', null, { timeout: 500000 });
 await p.evaluate(() => { for (const e of document.querySelectorAll('#hud, .hud, #dock, #topbar, .dock, #deploy-bar')) e.style.display = 'none'; });
 const views = await p.evaluate(pick);

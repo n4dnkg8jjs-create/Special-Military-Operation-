@@ -3,6 +3,7 @@ import * as Fallback from '../engine/fallback.js';
 import { Vehicle } from './vehicle.js';
 import { Squad, angDiff } from './squad.js';
 import { hasClip } from './soldier.js';
+import { twoBone, driveTwist } from './soldierPose.js';
 import { WEAPONS } from '../config.js';
 import { SPAWNS } from '../world/city.js';
 
@@ -13,8 +14,7 @@ import { SPAWNS } from '../world/city.js';
 // AT round destroys it), six missiles.
 //   * fires only halted, at spotted enemy VEHICLES inside the launcher's arc (ARC either side of the truck's nose: the tripod
 //     is lashed down, the gunner has to stay in the rear half of the bed), one missile in flight at a time, RELOAD s between
-//     shots (the gunner reloads alone; +8 s when hurt crew leave him without help); spare containers on the deck disappear as
-//     they are used
+//     shots (the reloads are handed out of the cab; +8 s when the second man is down)
 //   * the crew squad is driven from here (squad.medevac hook, as the casualty-evacuation pickup's crew): aboard for the game
 //     logic, visible in their seats; crew hits from the armour model land on the men; when the truck burns they get out and
 //     fight on as an ordinary squad
@@ -74,18 +74,16 @@ export class AtgmTruck extends Vehicle {
       const cable = L.getObjectByName('stugna_cable'); if (cable) cable.visible = false;
       const ctl = L.getObjectByName('stugna_control');   // the Stugna's remote panel: beside the gunner, it does not turn with the launcher
       mount.add(L);
-      if (ctl) { mount.add(ctl); ctl.position.set(-0.44, 0, -0.56); ctl.rotation.set(0, 0, 0); this.kit.push(ctl); }
+      // (v2: the panel stands on the deck behind the tripod as it does on the ground - 0.52 m in front of its operator, who sits
+      // on the lowered tailgate; beside the gunner his hands held nothing and he sat against the tailgate)
+      if (ctl) { mount.add(ctl); ctl.position.set(0.03, 0, -0.53); ctl.rotation.set(0, 0, 0); this.kit.push(ctl); }
       this.muzzle = L.getObjectByName('muzzle') || null;
-      const seat = L.getObjectByName('seat'); this.seatLocal = ctl || !seat ? V3().set(0.03, 0, -0.62) : seat.position.clone(); this.seatFixed = !!ctl;
+      const seat = L.getObjectByName('seat'); this.seatLocal = ctl || !seat ? V3().set(0.03, -0.04, -1.05) : seat.position.clone(); this.seatFixed = !!ctl;
     }
+    // the tailgate is down for good: a firing platform behind the tripod (shut, the gunner's back and slung rifle went through it)
+    const tg = N('tailgate'); if (tg) tg.rotation.x = this.vman.doors?.tailgate?.open ?? -1.571;
+    // (v2: no spare containers on the deck - they lay on the tips of the tripod's legs; the reloads ride on the cab's rear seat)
     this.spares = [];
-    const tl = A.gltf.atgm_tube_carried;
-    if (tl) for (let i = 1; i <= 2; i++) {
-      const e = N(`tlc_${i}`); if (!e) continue;
-      const t = tl.scene.clone(true);
-      t.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } if (/_LOD1$/i.test(o.name)) o.visible = false; if (/^tube_(kornet|stugna)$/.test(o.name)) o.visible = o.name === (rus ? 'tube_kornet' : 'tube_stugna'); });
-      e.add(t); this.spares.push(t); this.kit.push(t);
-    }
     this.baseTurretRot = 0; this.baseGunRot = 0;
     this.game.scene.add(root);
   }
@@ -157,9 +155,6 @@ export class AtgmTruck extends Vehicle {
     A.cd = RELOAD + (this.men[1]?.s.effective ? 0 : 8);
     this.game.combat.fireVehicleMissile(this, t, W);
     this.lastShotT = this.game.time;
-    const used = MSL - A.ammo;   // (the spare containers on the deck go as the rounds are used)
-    if (used >= 2 && this.spares[1]) this.spares[1].visible = false;
-    if (used >= 4 && this.spares[0]) this.spares[0].visible = false;
     if (this.side === 'player') this.game.hud?.alert(`${this.name}: missile away (${A.ammo} left)`);
   }
   coaxFire() { }
@@ -186,14 +181,32 @@ export class AtgmTruck extends Vehicle {
       } else {         // the gunner behind the launcher on the deck
         const yaw = this.seatFixed ? 0 : this.turretYaw, c = Math.cos(yaw), sn = Math.sin(yaw), L = this.seatLocal || _a.set(0, 0, -0.62);
         const deck = this.wpos('atgm_mount', _w);
-        s.pos.copy(deck).addScaledVector(this.left(), L.x * c + L.z * sn).addScaledVector(f, -L.x * sn + L.z * c);
+        s.pos.copy(deck).addScaledVector(this.left(), L.x * c + L.z * sn).addScaledVector(f, -L.x * sn + L.z * c); s.pos.y += L.y || 0;
         s.heading = this.heading + yaw;
         if (!s.alive) { if (!s.cabSlump) this.slump(s); s.sync(); continue; }
         s.netClip = clipOf(AIM_CLIP); s.netTs = 1; s.netClipT = null;
       }
       if (s.animate) s.animate(dt, cam(s.pos));
       s.sync();
+      if (m.i < 2) this.cabHands(s, m.i);
     }
+  }
+  // the cab men's hands: the driver's on the wheel (as the medevac driver's), the other man's on his thighs - in the seated frame
+  // of the exit clip the door-side hand is already at the handle and came out through the door skin
+  cabHands(s, i) {
+    if (!s.model || this.game.noRender || this.game.camDist(s.pos) > 70) return;
+    if (s.weaponObj && s.wSock !== 'back' && s.weaponTo) s.weaponTo('back');
+    const b = s._cabB !== undefined ? s._cabB : (s._cabB = (() => { const N = n => s.model.getObjectByName(n), r = [N('LeftArm'), N('LeftForeArm'), N('LeftHand'), N('RightArm'), N('RightForeArm'), N('RightHand')]; return r.every(Boolean) ? r : null; })());
+    if (!b) return;
+    const f = this.fwd(V3()), l = this.left(V3()), seat = this.wpos(`ride_seat_${i + 1}`, V3());
+    if (i === 0) {
+      const tilt = 0.45, up = V3().set(0, Math.cos(tilt), 0).addScaledVector(f, -Math.sin(tilt)), C = seat.addScaledVector(f, 0.46); C.y += 0.40;
+      const w = -(this.steerA || 0) * 2.6, r = 0.19;
+      for (const [k, a] of [[0, 0.4 + w], [3, Math.PI - 0.4 + w]]) twoBone(b[k], b[k + 1], b[k + 2], C.clone().addScaledVector(l, Math.cos(a) * r).addScaledVector(up, Math.sin(a) * r), null);
+    } else {
+      for (const [k, sd] of [[0, 1], [3, -1]]) { const t = seat.clone().addScaledVector(f, 0.30).addScaledVector(l, sd * 0.13); t.y += 0.13; twoBone(b[k], b[k + 1], b[k + 2], t, null); }
+    }
+    driveTwist(s);
   }
   slump(s) { s.cabSlump = true; const N = n => s.model?.getObjectByName(n); N('Spine1')?.rotateX(0.35); N('Neck')?.rotateX(0.3); N('Head')?.rotateZ(0.35); }
   // the armour model's crew hits (armor.js parts driver / commander / gunner) land on the men aboard

@@ -10143,11 +10143,11 @@
     "note": "unarmoured; fires its ATGM halted only"
    },
    "file": "assets/vehicles/pickup_atgm.glb",
-   "file_mb": 5.7,
+   "file_mb": 5.14,
    "tris": {
-    "lod0": 81464,
-    "lod1": 24269,
-    "hull_wreck": 21248
+    "lod0": 73824,
+    "lod1": 21978,
+    "hull_wreck": 20646
    },
    "model_bbox_m": {
     "min": [
@@ -10502,7 +10502,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 41060,
+        "tris": 33420,
         "pos": [
          0.0,
          0.0,
@@ -10513,7 +10513,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 12313,
+        "tris": 10022,
         "pos": [
          0.0,
          0.0,
@@ -10709,7 +10709,7 @@
         "pos": [
          -0.61,
          0.955,
-         -2.05
+         -1.95
         ]
        },
        {
@@ -10782,7 +10782,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 21248,
+      "tris": 20646,
       "pos": [
        0.0,
        0.0,
