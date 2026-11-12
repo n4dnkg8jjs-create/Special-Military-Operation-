@@ -269,23 +269,23 @@ export class FX {
     // well below that to read dark against it, and dust only a little above)
     const dust = opts.dust ?? [0.55, 0.49, 0.41], soil = [dust[0] * 0.25, dust[1] * 0.235, dust[2] * 0.22], pale = [dust[0] * 0.62, dust[1] * 0.62, dust[2] * 0.62];
     // detonation flash (white-yellow, 2-3 frames) and the short fireball inside the cloud
-    for (let i = 0; i < 3; i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.5 * p, y: pos.y + (0.35 + R() * 0.5) * p, z: pos.z + (R() - .5) * 0.5 * p, life: 0.055 + R() * 0.04, size0: 1.7 * p, size1: 4.4 * p, r: 1, g: 0.94, b: 0.8, a0: 2.4, a1: 0 });
+    for (let i = 0; i < 2; i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.5 * p, y: pos.y + (0.35 + R() * 0.5) * p, z: pos.z + (R() - .5) * 0.5 * p, life: 0.055 + R() * 0.04, size0: (1.1 + R() * 0.4) * p, size1: (2.6 + R() * 0.8) * p, r: 1, g: 0.94, b: 0.8, a0: 1.5, a1: 0 });
     for (let i = 0; i < N(5); i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.8 * p, y: pos.y + 0.3 + R() * 0.8 * p, z: pos.z + (R() - .5) * 0.8 * p, vx: (R() - .5) * 6 * p, vy: 1.5 + R() * 4 * p, vz: (R() - .5) * 6 * p, life: 0.11 + R() * 0.13, size0: 0.8 * p, size1: 2.4 * p, r: 1, g: 0.74, b: 0.36, r1: 0.7, g1: 0.2, b1: 0.04, cool: 0.7, a0: 1.3, a1: 0, drag: 4.5 });
     // the burst cloud: detonation products + pulverised soil. Out fast in every direction and stalled within a few metres: a
     // short-lived layer that swells at once (the puff itself), and the same mass lingering, thinning and drifting
     // (the puff texture is opaque only in its inner half: sizes are about twice the visible lump; brown-black, not neutral)
-    const dark = (d, m) => [d * 1.25 + soil[0] * m, d * 1.05 + soil[1] * m, d * 0.85 + soil[2] * m];
-    for (let i = 0; i < N(7); i++) { const a = R() * 6.283, e = ground ? R() * 1.3 : (R() - .35) * 2.2, v = (9 + R() * 10) * sp, c = Math.cos(e), q = dark(0.02 + R() * 0.03, R() * 0.5);
+    const dark = (d, m) => [d * 1.45 + soil[0] * m, d * 1.02 + soil[1] * m * 0.92, d * 0.72 + soil[2] * m * 0.8];   // (warm: a thin neutral dark takes the green of the field behind it)
+    for (let i = 0; i < N(7); i++) { const a = R() * 6.283, e = ground ? R() * 1.3 : (R() - .35) * 2.2, v = (9 + R() * 10) * sp, c = Math.cos(e), q = dark(0.05 + R() * 0.04, R() * 0.5);
       S.spawn({ x: pos.x, y: pos.y + 0.4 * p, z: pos.z, vx: Math.cos(a) * c * v, vy: Math.max(0, Math.sin(e)) * v + 1, vz: Math.sin(a) * c * v, life: 0.9 + R() * 0.8, size0: 1.6 * p, size1: (5.5 + R() * 1.5) * p, r: q[0], g: q[1], b: q[2], a0: 1.7, a1: 0, drag: 5, wind: W, fadeIn: 0.03 }); }
-    for (let i = 0; i < N(7); i++) { const a = R() * 6.283, e = ground ? R() * 1.35 : (R() - .35) * 2.2, v = (6 + R() * 8) * sp, c = Math.cos(e), q = dark(0.025 + R() * 0.035, R() * 0.45);
-      S.spawn({ x: pos.x, y: pos.y + 0.4 * p, z: pos.z, vx: Math.cos(a) * c * v, vy: Math.max(0, Math.sin(e)) * v + 1.2, vz: Math.sin(a) * c * v, life: 4.5 + R() * 4, size0: 2.2 * p, size1: (6.5 + R() * 2.5) * p, r: q[0], g: q[1], b: q[2], a0: 1.5, a1: 0, drag: 4.4, grav: -1.4, wind: W, fadeIn: 0.05 }); }
+    for (let i = 0; i < N(7); i++) { const a = R() * 6.283, e = ground ? R() * 1.35 : (R() - .35) * 2.2, v = (6 + R() * 8) * sp, c = Math.cos(e), q = dark(0.055 + R() * 0.045, R() * 0.45);
+      S.spawn({ x: pos.x, y: pos.y + 0.4 * p, z: pos.z, vx: Math.cos(a) * c * v, vy: Math.max(0, Math.sin(e)) * v + 1.2, vz: Math.sin(a) * c * v, life: 6 + R() * 5, size0: 2.2 * p, size1: (6.5 + R() * 2.5) * p, r: q[0], g: q[1], b: q[2], a0: 1.5, a1: 0, drag: 4.4, grav: -1.4, wind: W, fadeIn: 0.05 }); }
     // the column: hot smoke carrying dust up, slowing, leaning with the wind
-    for (let i = 0; i < N(7); i++) { const q = dark(0.035 + R() * 0.045, 0.3 + R() * 0.9);
+    for (let i = 0; i < N(7); i++) { const q = dark(0.06 + R() * 0.05, 0.3 + R() * 0.9);
       S.spawn({ x: pos.x + (R() - .5) * 0.8 * p, y: pos.y + 0.6 + R() * 1.4 * p, z: pos.z + (R() - .5) * 0.8 * p, vx: (R() - .5) * 1.6, vy: (4 + R() * 6.5) * sp, vz: (R() - .5) * 1.6, life: 6 + R() * 5, size0: 2 * p, size1: (6.5 + R() * 3) * p, r: q[0], g: q[1], b: q[2], a0: 1.6, a1: 0, drag: 1.3, wind: W, fadeIn: 0.1 }); }
     if (ground) {
       // earth thrown up in separate jets: each a string of clots, the fastest leading, falling back
       const nj = N(7);
-      for (let j = 0; j < nj; j++) { const a = (j + R()) / nj * 6.283, e = 0.62 + R() * 0.72, v = (9 + R() * 9) * sp, cx = Math.cos(a) * Math.cos(e), cy = Math.sin(e), cz = Math.sin(a) * Math.cos(e);
+      for (let j = 0; j < nj; j++) { const a = (j + R()) / nj * 6.283, e = 0.75 + R() * 0.6, v = (12 + R() * 10) * sp, cx = Math.cos(a) * Math.cos(e), cy = Math.sin(e), cz = Math.sin(a) * Math.cos(e);
         for (let i = 0; i < 6; i++) { const f = 1 - i * 0.14 + R() * 0.05, t = 0.85 + R() * 0.3;
           S.spawn({ x: pos.x + cx * 0.4 * p, y: 0.3, z: pos.z + cz * 0.4 * p, vx: cx * v * f, vy: cy * v * f, vz: cz * v * f, life: 1.1 + R() * 0.9, size0: (0.45 + 0.14 * i) * p, size1: (1.3 + 0.42 * i) * p, r: soil[0] * t, g: soil[1] * t, b: soil[2] * t, a0: 1.6, a1: 0, drag: 0.9, grav: 9.8, fadeIn: 0.03 }); } }
       // dust swept along the ground by the blast: races out and stalls (this is all there is to see of the shock front)
