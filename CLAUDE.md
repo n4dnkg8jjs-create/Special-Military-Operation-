@@ -33,6 +33,8 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   vehicle.js (movement, seats ride_seat_*, doors, lights, RE stern seats ~l.217), armor.js (hit zones + TANK_PARTS),
   combat.js (weapons, explode(), FPV hit quality), ai.js / ai_tactics.js (v2 commander default), support.js (FPV/arty),
   medevac.js (driver swap; pullTick placeholder), campaign*.js, artillery.js.
+- fx/: particles.js (GPU billboards: smoke / glow / fire systems, explosion() = flash + burst cloud + earth jets + ground dust +
+  column + haze, no shock ring; fragments instanced), flames.js.
 - world/: maps.js (map defs incl. Avdiivka ruin knobs `ruins.blocks/houses/craters`), real.js (OSM real maps: roads via
   roadmesh.js merged surfaces + dead-end turning pads, rails (mitred strips, flush in asphalt on roads, Chaikin-smoothed),
   vegetation (offPaved + railGap clearance), houses, garages, pipes, skyline), ruins.js (siege destruction: craters, rubble,
@@ -57,14 +59,14 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
 ## State at handoff (Nov 2026)
 - Pushed recently: streets v1–v6 (merged roads, junction radii, signs, turning pads, rails), Avdiivka perf v1 (~½ triangles),
   siege v2 destruction, models v18 (T-72B3/AV rebuilt, BTR-82A detail), mount-up v3 (hand-keyed climbs, all 11 clips pass).
-- Mount v4 (organic keyframe detail) pushed — see "Mount v4 status" at the end of this file.
+- Mount v4 (organic keyframe detail) + v5 (leg swings inside joint limits) pushed — see "Mount v4 / v5 status" at the end of this file.
 - Owner Q&A already answered: BTR riders sit on top (8 deck seats); only overflow men go inside (door) — BMP-3 has 7 deck
   seats so the 8th uses the rear doors. Avdiivka tram line ran beside the road (OSM: 5–9 m from road centre), service
   stopped 2015, partly resumed 2016, closed Jan 2017; rails mostly left in place (OSM "disused").
 - Open complaints not yet resolved: "Avdiivka doesn't look like Avdiivka" (ask for a specific spot/photo), general lag on
   the owner's machine (measure again after changes), docs/TODO.md backlog.
 
-## Mount v4 status
+## Mount v4 / v5 status
 - PUSHED (mount v4): organic layer in clips_mount.py on top of the v3 keys (weight shift, anticipation + settle, spine/head/arm
   overlap, varied timing, head look-at, breathing/sway; `ORG['on']=False` = exact v3) + per-man playback rate 0.92–1.08
   (squad.js sets it when the climb starts and stretches the clip timer to match; soldier.js plays the clip at that rate).
@@ -74,5 +76,13 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   (right-arm lag only), rear T-72AV (no knee lift).
 - Not yet judged by the owner in game. If they still call it un-organic, the next step is changing the choreography
   (v3 key poses), not more layers. Motion capture (CMU) was tried and dropped at the owner's request.
+- Mount v5 (leg fix): tools/blender/soldiers/mount_legfix.py re-plans the leg swings of the 9 mount_deck_* clips IN the shipped
+  soldier_anims.glb (numpy + scipy only, no body.pkl / Blender): the v3 choreography carried the legs between holds through
+  impossible hips (left thigh 70-75 deg out to the side, right thigh 85-105 deg behind the pelvis, trailing leg locked straight).
+  Holds, trunk and arms are untouched; only UpLeg / Leg / Foot rotation tracks of flagged swings are rewritten in place, each
+  re-plan is kept only if it passes rotation / hull / ground / knee checks. Run it ONCE after any rebuild of the mount clips
+  (not idempotent), then mount_check.py. Previews without Blender: `npm i` (three) + link playwright into node_modules, then
+  tools/blender/soldiers/pvgame.mjs "page:/tools/blender/soldiers/preview_vehicle.html?clip=...&veh=...&vp=...&vyaw=...&ts=...".
+- The on-deck turn-and-sit still has a wide squat on some hulls (feet shuffle there, so most of it is left as authored).
 - Scripted UA-city mount test is flaky (one BTR-80 squad sometimes never starts climbing) — cause not found; look at
   squad.js mount entry/arrival logic if the owner reports men not boarding.
