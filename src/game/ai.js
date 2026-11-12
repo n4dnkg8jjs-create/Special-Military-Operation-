@@ -177,6 +177,10 @@ export class CommanderV2 extends CommanderV1 {
       // attacking a prepared defence: one concentrated assault group, not a squad per point (empty points are taken
       // once the main effort has found where the defenders are)
       if (this.offensive && (now < 120 || this.ops.some(op => op.type === 'attack' && op.phase !== 'consolidate') && free().length < 2)) continue;
+      // v9: a point on the player's side of the map (he is on it first) is not 'occupied' by one squad sent off alone - a
+      // squad per point, two of them on foot for a kilometre, was the whole opening and every one of them was beaten
+      // singly. Those points are the main effort's business: everything free attacks the best of them together.
+      if (ourHalf(o) > 150 && !live.some(b => this.isInf(b) && D(this.upos(b), [o.x, o.z]) < 250)) continue;
       let c = free().sort((a, b) => D(this.upos(a), [o.x, o.z]) - D(this.upos(b), [o.x, o.z]));
       if (!c.length && behind) {
         const att = this.ops.find(op => op.type === 'attack' && op.phase !== 'assault' && op.units.size >= 2);
@@ -506,7 +510,7 @@ export class CommanderV2 extends CommanderV1 {
     if (b.vRetreat || v.path) return;
     if (b.role === 'reserve' || b.role === 'garrison') return;
     // a thin-skinned carrier under the eyes of enemy armour: out of its sight (it is worth 16-22 tickets)
-    if (v.kind !== 'tank' && g.time - (b.vHideT || 0) > 12) { const arm = this.armourOn(v.pos.x, v.pos.z, 900).filter(e => e.u.kind === 'tank' || e.u.kind === 'ifv'); if (arm.length) { b.vHideT = g.time; const h = this.hideFrom(v.pos, arm, 70); if (h && D(h, [v.pos.x, v.pos.z]) > 6) { v.orderMove(h[0], h[1], null, true); b.vT = g.time; return; } } }
+    if (v.kind !== 'tank' && g.time - (b.vHideT || 0) > 12) { const vx = v.pos.x, vz = v.pos.z, arm = this.armourOn(vx, vz, 600, 30).filter(e => e.u.kind === 'tank' || (e.u.kind === 'ifv' && (v.kind !== 'ifv' || v.hp < v.def.hp * 0.7) && D([e.x, e.z], [vx, vz]) < 320)); if (arm.length) { b.vHideT = g.time;   /* v9: was any tank / IFV within 900 m, so carriers sat out the battle */ const h = this.hideFrom(v.pos, arm, 70); if (h && D(h, [v.pos.x, v.pos.z]) > 6) { v.orderMove(h[0], h[1], null, true); b.vT = g.time; return; } } }
     const c = sq.center(), rpg = this.intel.rpgNear(v.pos.x, v.pos.z, 75);
     if (rpg > 0 && c.distanceTo(v.pos) > 35) { const d = V3(v.pos.x - c.x, v.pos.z - c.z); if (d.lengthSq() < 1) d.set(this.ourSide[0] - v.pos.x, 0, this.ourSide[1] - v.pos.z); d.normalize(); const [x, z] = g.nav.nearestFree(c.x + d.x * 45, c.z + d.z * 45, 2.0, 20); v.orderMove(x, z); return; }
     if (g.time - (b.vT || 0) < 20) return; b.vT = g.time;
@@ -675,8 +679,11 @@ export class CommanderV2 extends CommanderV1 {
       if (!v.path && D(vp, dest) > 20) v.orderMove(dest[0], dest[1], null, true);
       return;
     }
-    const near = D(vp, tgtObj) < (b.role === 'occupy' && !known ? Math.max(80, R * 0.45) : R);
-    if (near && !danger && !b.disHide && !v.destroyed && !v.immobile) {   // the last few metres into tree cover / behind a building, out of the objective's sight
+    // v9: an objective with nobody known near it (and no known armour looking at it) is driven onto: walking the last
+    // 150-300 m the squads lost every race for an empty point (the player's carriers were on it first)
+    const empty = b.role === 'occupy' && !known && !this.intel.near(tgtObj[0], tgtObj[1], 260, 60).length && !this.armourOn(tgtObj[0], tgtObj[1], 400).length;
+    const near = D(vp, tgtObj) < (empty ? 45 : b.role === 'occupy' && !known ? Math.max(80, R * 0.45) : R);
+    if (near && !danger && !empty && !b.disHide && !v.destroyed && !v.immobile) {   // the last few metres into tree cover / behind a building, out of the objective's sight
       b.disHide = true; const h = vehicleHide(g, vp, tgtObj, this.toUs(b.op?.obj || b.obj || g.objectives[0].id), 40);
       if (h && D(h, vp) > 8) { b.hideTries = (b.hideTries || 0) + 1; v.orderMove(h[0], h[1], null, true); b.mvT = g.time + 20; return; }
     }
@@ -697,10 +704,13 @@ export class CommanderV2 extends CommanderV1 {
   // fire teams when the enemy is near; contact on the way -> fire and manoeuvre instead
   moveInf(b, dest, o = {}) {
     const g = this.g, sq = b.sq, c = sq.center(), cp = [c.x, c.z], dist = D(cp, dest);
-    if (sq.building && g.time - (b.hopT || -99) < 16) return;   // a hop: look and shoot from the building a while
+    // v9 tempo: the careful drill (hop, hold, wait, bound in turn) moved an attack at under 1 m/s while the tickets bled:
+    // an attacker (behind on points, or attacking in a campaign battle) halves its halts
+    const tk = this.posture === 'attack' || this.offensive ? 0.5 : 0.8;
+    if (sq.building && g.time - (b.hopT || -99) < 16 * tk) return;   // a hop: look and shoot from the building a while
     // enemy about and buildings on the way: bound from building to building (cover + firing positions) rather than
     // across the open
-    if (!o.final && dist > 50 && this.intel.near(c.x, c.z, 320, 45).length) {
+    if (!o.final && dist > 50 && this.intel.near(c.x, c.z, 260, 45).length) {
       const ux = (dest[0] - c.x) / dist, uz = (dest[1] - c.z) / dist;
       let hop = null, hs = 1e9;
       for (const bl of g.allBuildings()) {
@@ -722,7 +732,7 @@ export class CommanderV2 extends CommanderV1 {
     const th0 = this.intel.near(c.x, c.z, 320, 45)[0];
     const path = concealedPath(g, cp, dest, th0 ? [th0.x, th0.z] : null);
     if (!path || path.length < 1) { sq.orderMove(dest[0], dest[1], null, 16, true); b.wait = 4; return; }
-    const step = dist < 45 ? dist + 2 : quiet ? Math.min(dist + 2, 90) : (o.careful ? 26 : 32) + Math.random() * 12;
+    const step = dist < 45 ? dist + 2 : quiet ? Math.min(dist + 2, 120) : (o.careful ? 26 : 38) + Math.random() * 14;
     const nb = nextBound(g, path, cp, step, dist < 45 ? null : this.friendSpots(sq));
     let [tx, tz] = nb.p;
     const thr = this.intel.near(tx, tz, 260, 60).sort((a, e) => D([a.x, a.z], [tx, tz]) - D([e.x, e.z], [tx, tz]))[0];
@@ -730,7 +740,7 @@ export class CommanderV2 extends CommanderV1 {
     if (T && dist > 30) { const cv = this.coverSpot(V3(tx, tz), T, 9); if (cv) [tx, tz] = cv; }
     const near = !!thr || sq.underFireT < 6, openLeg = nb.open > 0.6 && !quiet;
     sq.orderMove(tx, tz, T ? Math.atan2(T.x - tx, T.z - tz) : null, near ? 14 : openLeg ? 22 : 18, !near || o.run, false, (near || openLeg) && sq.effective.length > 3);
-    b.bound = (b.bound || 0) + 1; b.wait = near ? 4 + Math.random() * 4 : 2 + Math.random() * 3;
+    b.bound = (b.bound || 0) + 1; b.wait = (near ? 4 + Math.random() * 4 : 2 + Math.random() * 3) * tk;
   }
   // in contact while moving: outgunned -> go to ground in cover; else one team fires while the other bounds forward to
   // cover offset to the flank side; smoke when the next bound crosses ground the enemy can see
@@ -738,12 +748,13 @@ export class CommanderV2 extends CommanderV1 {
     const g = this.g, sq = b.sq, c = sq.center(), T = ct.p;
     const local = this.intel.strength(c.x, c.z, 100, 20), mine = this.power(b) + this.friendsNear(c, 70) * 3;
     if (b.task) b.task.contact = g.time;
+    const tk = this.posture === 'attack' || this.offensive ? 0.5 : 0.8;   // (v9 tempo, see moveInf)
     // a building / trench right here facing the contact: fight from it for a while (strongpoint) instead of in the open
     if (b.kind !== 'assault' && !sq.trench && !sq.building && ct.d < 170 && local >= mine * 0.6) {
       const tr = this.freeTrench(c.x, c.z, 30, sq);
-      if (tr && Math.random() < 0.8) { sq.orderTrench(tr); b.state = 'strongpoint'; b.holdT = g.time + 25 + Math.random() * 25; b.wait = 5; return true; }
+      if (tr && Math.random() < 0.8) { sq.orderTrench(tr); b.state = 'strongpoint'; b.holdT = g.time + (25 + Math.random() * 25) * tk; b.wait = 5 * tk; return true; }
       const bld = this.nearBuilding(c, 26, sq);
-      if (bld && Math.random() < 0.75) { sq.orderGarrison(bld); b.state = 'strongpoint'; b.holdT = g.time + 25 + Math.random() * 25; b.wait = 5; return true; }
+      if (bld && Math.random() < 0.75) { sq.orderGarrison(bld); b.state = 'strongpoint'; b.holdT = g.time + (25 + Math.random() * 25) * tk; b.wait = 5 * tk; return true; }
     }
     if (local > mine * 1.3 && sq.morale < 70) { const cv = this.coverSpot(c, T, 14); if (cv) sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 12, true); b.wait = 7 + Math.random() * 5; return true; }
     // keep heading for the destination, but in short covered bounds; bias to the side away from the contact's front
@@ -755,7 +766,7 @@ export class CommanderV2 extends CommanderV1 {
     const open = covered(g, cv[0], cv[1], T.x, T.z) < 0.5;
     if (open && (b.smokes ?? 2) > 0 && ct.d < 200) { const th = sq.effective.find(s => !s.inside); if (th) { b.smokes = (b.smokes ?? 2) - 1; g.combat.throwSmoke(th, V3((c.x + T.x) / 2, (c.z + T.z) / 2)); } }
     sq.focus = ct.u; sq.orderMove(cv[0], cv[1], Math.atan2(T.x - cv[0], T.z - cv[1]), 14, true, false, sq.effective.length > 3);
-    b.wait = 5 + Math.random() * 5; return true;
+    b.wait = (5 + Math.random() * 5) * tk; return true;
   }
   // the close fight onto an objective: the v1 fire-and-manoeuvre micro (bounding by fire teams, strongpoints in buildings /
   // trenches taken in contact, storming garrisons, smoke) with the objective, the flank side (from the chosen lane) and the
@@ -845,15 +856,19 @@ export class CommanderV2 extends CommanderV1 {
   dodgeArmour(b) {
     const g = this.g, sq = b.sq; if (sq.building || sq.trench || sq.order?.type === 'storm' || sq.order?.type === 'clear') return false;
     if (g.time < (b.hideT || 0)) return true;
-    const c = sq.center(), arm = this.armourOn(c.x, c.z, 300);
+    // v9: only armour that is close (220 m; 130 m once the assault is going in) and seen in the last 25 s, and after a
+    // hide the squad carries on for half a minute (its bounds are concealed ones anyway): hiding every 10 s from any
+    // vehicle within 300 m pinned whole attacks 300 m short of the objective for the rest of the battle
+    if (g.time < (b.noDodgeT || 0)) return false;
+    const c = sq.center(), arm = this.armourOn(c.x, c.z, b.op?.phase === 'assault' ? 130 : 220, 25);
     if (!arm.length) return false;
     // close enough for the RPGs and in some cover: fight it
     if (D([arm[0].x, arm[0].z], [c.x, c.z]) < 70 && sq.effective.some(s => s.weaponKey === 'rpg7' || s.rpg22 > 0)) return false;
     const bld = this.nearBuilding(c, 22, sq);
     if (!b.hideNote || g.time - b.hideNote > 20) { b.hideNote = g.time; this.note(`${sq.name}: enemy ${arm[0].u.kind} at ${Math.round(D([arm[0].x, arm[0].z], [c.x, c.z]))} m sees us — ${bld ? 'into a building' : 'out of its sight'}`); }
-    if (bld) { sq.orderGarrison(bld); b.hideT = g.time + 14; if (b.state !== 'regroup') b.state = 'strongpoint', b.holdT = g.time + 20; this.stats.hides = (this.stats.hides || 0) + 1; return true; }
+    if (bld) { sq.orderGarrison(bld); b.hideT = g.time + 14; b.noDodgeT = b.hideT + 30; if (b.state !== 'regroup') b.state = 'strongpoint', b.holdT = g.time + 20; this.stats.hides = (this.stats.hides || 0) + 1; return true; }
     const h = this.hideFrom(c, arm, 34);
-    if (h) { sq.orderMove(h[0], h[1], Math.atan2(arm[0].x - h[0], arm[0].z - h[1]), 10, true); b.hideT = g.time + 10; this.stats.hides = (this.stats.hides || 0) + 1; if (b.task) b.task.why = `hiding from enemy ${arm[0].u.kind}`; return true; }
+    if (h) { sq.orderMove(h[0], h[1], Math.atan2(arm[0].x - h[0], arm[0].z - h[1]), 10, true); b.hideT = g.time + 10; b.noDodgeT = b.hideT + 30; this.stats.hides = (this.stats.hides || 0) + 1; if (b.task) b.task.why = `hiding from enemy ${arm[0].u.kind}`; return true; }
     // nowhere to hide close by: back off out of its reach
     const ax = c.x - arm[0].x, az = c.z - arm[0].z, L = Math.hypot(ax, az) || 1, [bx, bz] = g.nav.nearestFree(c.x + ax / L * 40, c.z + az / L * 40, 0.5, 10);
     sq.orderMove(bx, bz, Math.atan2(-ax, -az), 12, true); b.hideT = g.time + 9; this.stats.hides = (this.stats.hides || 0) + 1; return true;
