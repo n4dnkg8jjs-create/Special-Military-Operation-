@@ -728,6 +728,7 @@ export class City {
     roofMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n  { vec4 rp = vec4(position, 1.0);\n  #ifdef USE_INSTANCING\n    rp = instanceMatrix * rp;\n  #endif\n  vMapUv = (modelMatrix * rp).xz / 9.0; }\n#endif'); };
     const roofs = new THREE.InstancedMesh(box, roofMat, Math.max(1, counters.roofs.length)); counters.roofs.forEach((m, i) => roofs.setMatrixAt(i, m));
     { const col = new THREE.Color(); counters.roofs.forEach((m, i) => { const t = counters.roofTint?.[i]; roofs.setColorAt(i, t ? col.setRGB(t[0], t[1], t[2]) : col.setRGB(1, 1, 1)); }); if (roofs.instanceColor) roofs.instanceColor.needsUpdate = true; }
+    roofs.count = counters.roofs.length;   /* (a map without flat roofs: the spare instance was a 1 m cube at the map origin) */
     roofs.castShadow = roofs.receiveShadow = true; this.scene.add(roofs); this.roofMesh = roofs; this.falling = [];
     for (const m of [slab, dark, roofs]) { m.matrixAutoUpdate = false; markStatic(m); }   // (cached static shadow: engine/renderer.js)
     // nav + occluders (one per contiguous standing part; pancaked gap leaves a passage)

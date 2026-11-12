@@ -277,9 +277,13 @@ const RIVER = { top: 42, bot: 18, depth: 2.5, water: 1.55, half: 12, sheet: 14.5
 let _ripple = null;
 function rippleTex() {
   if (_ripple) return _ripple;
-  const n = 128, d = new Uint8Array(n * n * 4), W = [[3, 1, 0, 0.5], [-2, 5, 1.3, 0.34], [5, -4, 2.1, 0.3], [1, 7, 0.6, 0.24], [-6, 2, 4.0, 0.2], [7, 3, 5.2, 0.16], [-3, -8, 3.3, 0.15], [9, -2, 1.9, 0.11], [4, 11, 2.7, 0.09], [-11, 6, 0.2, 0.08]], h = (x, y) => { let v = 0; for (const [a, b, ph, am] of W) v += Math.sin((x * a + y * b) * 6.2832 / n + ph) * am; return v; };
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const dx = h(x + 1, y) - h(x - 1, y), dy = h(x, y + 1) - h(x, y - 1), i = (y * n + x) * 4; d[i] = 128 + dx * 120; d[i + 1] = 128 + dy * 120; d[i + 2] = 255; d[i + 3] = 255; }
-  const t = _ripple = new THREE.DataTexture(d, n, n, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true; return t;
+  /* fine wind wavelets only: 22 wave trains of 6-19 cycles per tile in scattered directions (the low harmonics of the old
+     set read as a quilt from the air) */
+  const n = 256, d = new Uint8Array(n * n * 4), R = mulberry(4471), W = [];
+  for (let i = 0; i < 22; i++) { const k = 6 + R() * 13, a = R() * 6.2832; W.push([Math.round(Math.cos(a) * k), Math.round(Math.sin(a) * k), R() * 6.2832, 0.5 / (0.6 + k * 0.09) * (0.6 + R() * 0.8)]); }
+  const h = (x, y) => { let v = 0; for (const [a, b, ph, am] of W) v += Math.sin((x * a + y * b) * 6.2832 / n + ph) * am; return v; };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const dx = h(x + 1, y) - h(x - 1, y), dy = h(x, y + 1) - h(x, y - 1), i = (y * n + x) * 4; d[i] = Math.max(0, Math.min(255, 128 + dx * 150)); d[i + 1] = Math.max(0, Math.min(255, 128 + dy * 150)); d[i + 2] = 255; d[i + 3] = 255; }
+  const t = _ripple = new THREE.DataTexture(d, n, n, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = 4; t.needsUpdate = true; return t;
 }
 // ================================================================ shared world-building (mixed into both classes)
 const Real = {
@@ -557,7 +561,7 @@ const Real = {
   // ---------------------------------------------------------------- house templates fitted to footprints
   houseTemplates() {
     if (this._houseT) return this._houseT;
-    const names = ['house_a', 'house_b', 'house_c', 'house_d', 'house_e'].filter(n => this.tpl(n));
+    const names = ['house_a', 'house_b', 'house_d', 'house_e'].filter(n => this.tpl(n));   /* (house_c, the authored ruin, is out: speckled black walls, a ridge beam on nothing - the damage states are made from the four sound houses) */
     return (this._houseT = names.map(n => { const bb = this.tpl(n).userData.bb, sx = bb.max.x - bb.min.x, sz = bb.max.z - bb.min.z; return { n, sx, sz, long: sx >= sz }; }));
   },
   // houses, sheds, kiosks, silos, churches, ruins (template-built)
@@ -967,39 +971,49 @@ const Real = {
   riverReal(l, soft, N, half) {
     const T = this.terrain, W = RIVER, P = densify(l.pts, 3), runs = T.runs(P, W.gap).filter(r => r.length > 3);
     T.balka(P, { top: W.top, bot: W.bot, depth: W.depth, gap: W.gap });
-    const pos = [], uv = [], idx = [], head = [];
+    const pos = [], uv = [], idx = [], head = [], col = [], ACROSS = [[1, 0], [0.8, 1], [0, 1], [-0.8, 1], [-1, 0]];   /* (waterline ~12 m out: the last 3 m of the sheet thin out to nothing over the mud) */
     this.nav.veh ||= new Uint8Array(this.nav.n * this.nav.n);
     for (const run of runs) {
       /* the water sheet a little past both ends of the run (it runs in under the bank: the hollow's end is a round cap) */
       const e = (a, b, k) => { const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; return [a[0] + (a[0] - b[0]) / L * k, a[1] + (a[1] - b[1]) / L * k]; };
-      const Q = [e(run[0], run[1], 12.5), ...run, e(run[run.length - 1], run[run.length - 2], 12.5)], b0 = pos.length / 3; let along = 0;
+      const Q = [e(run[0], run[1], 12.8), e(run[0], run[1], 8), ...run, e(run[run.length - 1], run[run.length - 2], 8), e(run[run.length - 1], run[run.length - 2], 12.8)], b0 = pos.length / 3; let along = 0;
       for (let i = 0; i < Q.length; i++) {
         const a = Q[Math.max(0, i - 1)], b = Q[Math.min(Q.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
         if (i) along += Math.hypot(Q[i][0] - Q[i - 1][0], Q[i][1] - Q[i - 1][1]);
-        pos.push(Q[i][0] + nx * W.sheet, -W.water, Q[i][1] + nz * W.sheet, Q[i][0] - nx * W.sheet, -W.water, Q[i][1] - nz * W.sheet); uv.push(0, along / 6, 5, along / 6);
-        if (i) { const k = b0 + i * 2; idx.push(k - 2, k, k - 1, k - 1, k, k + 1); }
+        const endA = i === 0 || i === Q.length - 1 ? 0 : 1;
+        for (const [o, al] of ACROSS) { pos.push(Q[i][0] + nx * W.sheet * o, -W.water, Q[i][1] + nz * W.sheet * o); uv.push(W.sheet * o / 7, along / 7); col.push(1, 1, 1, al * endA); }
+        if (i) for (let q = 0; q < ACROSS.length - 1; q++) { const k = b0 + i * ACROSS.length + q, j = k - ACROSS.length; idx.push(j, k, j + 1, j + 1, k, k + 1); }
       }
       for (const [ax, az] of run) for (let z = Math.floor(az - W.half); z <= az + W.half; z++) for (let x = Math.floor(ax - W.half); x <= ax + W.half; x++) {
         if (Math.hypot(x + 0.5 - ax, z + 0.5 - az) > W.half) continue;
         const k = this.nav.idx(x + 0.5, z + 0.5); if (k >= 0) { this.nav.veh[k] = 2; if (this.nav.cost[k] < 7) this.nav.cost[k] = 7; }
       }
-      for (const [end, nb] of [[run[0], run[1]], [run[run.length - 1], run[run.length - 2]]]) if (Math.abs(end[0]) < half - 40 && Math.abs(end[1]) < half - 40) head.push([e(end, nb, W.half + 1.6), Math.atan2(end[0] - nb[0], end[1] - nb[1])]);
+      for (const [end, nb] of [[run[0], run[1]], [run[run.length - 1], run[run.length - 2]]]) if (Math.abs(end[0]) < half - 40 && Math.abs(end[1]) < half - 40) head.push([e(end, nb, 11.5), Math.atan2(end[0] - nb[0], end[1] - nb[1])]);
       for (let i = 0; i < run.length - 1; i++) { const [ax, az] = run[i], [bx, bz] = run[i + 1]; for (let z = Math.floor(Math.min(az, bz) - 24); z <= Math.max(az, bz) + 24; z++) for (let x = Math.floor(Math.min(ax, bx) - 24); x <= Math.max(ax, bx) + 24; x++) { const d = segD(x + 0.5, z + 0.5, ax, az, bx, bz), ii = x + half, jj = z + half; if (d < 24 && ii >= 0 && jj >= 0 && ii < N && jj < N) soft[jj * N + ii] = Math.max(soft[jj * N + ii], Math.round(255 * Math.min(1, (24 - d) / 5))); } }
     }
     this.nav.vehDirty = true; this.riverRuns = (this.riverRuns || []).concat(runs);
     if (!idx.length) return;
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-    const water = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x35402f, roughness: 0.4, metalness: 0, normalMap: rippleTex(), normalScale: new THREE.Vector2(0.1, 0.1), transparent: true, opacity: 0.9, depthWrite: false }));
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4)); g.setIndex(idx); g.computeVertexNormals();
+    /* still, silty steppe water: dark olive-brown, fine wavelets drifting slowly downstream, the sky on it only at a low angle
+       (Schlick), thinning to nothing over the shallows */
+    const rip = rippleTex(), sky = new THREE.Color(0x7d858a);
+    const wm = new THREE.MeshStandardMaterial({ color: 0x262c22, roughness: 0.3, metalness: 0, normalMap: rip, normalScale: new THREE.Vector2(0.05, 0.05), transparent: true, opacity: 0.94, depthWrite: false, vertexColors: true });
+    wm.onBeforeCompile = sh => { sh.uniforms.uSky = { value: sky }; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSky;').replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directSpecular *= 0.3;   /* (the sun on it: a glitter path, not a sheet of foil) */').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  { float wc = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0); float wf = 0.02 + 0.98 * pow(1.0 - wc, 5.0); totalEmissiveRadiance += uSky * wf * 0.8; }'); };
+    wm.customProgramCacheKey = () => 'river_water_v3';
+    const water = new THREE.Mesh(g, wm);
     water.name = 'river_water'; water.renderOrder = 1; water.receiveShadow = true; this.scene.add(water);
-    /* culvert headwalls where the water meets a dam: a concrete wall set into the bank, the pipe mouth half under water */
+    water.onBeforeRender = () => { rip.offset.y = (performance.now() * 0.000006) % 1; };   /* (~4 cm/s) */
+    /* culverts where the water meets a dam: the end of a concrete pipe lying out of the bank, half under water (a wall set
+       into this gentle slope stood free of the ground behind it) */
     if (head.length) {
-      const conc = new THREE.MeshStandardMaterial({ color: 0x8b887e, roughness: 0.92 }), dark = new THREE.MeshStandardMaterial({ color: 0x0c0d0c, roughness: 1 }), parts = { c: [], d: [] };
+      const conc = new THREE.MeshStandardMaterial({ color: 0x5d5b54, roughness: 0.95, side: THREE.DoubleSide }), dark = new THREE.MeshStandardMaterial({ color: 0x0b0c0b, roughness: 1, side: THREE.DoubleSide }), parts = { c: [], d: [] };
       for (const [p, ry] of head) {
-        const M = trs(p[0], -W.water, p[1], ry), put = (geo, k) => { geo.applyMatrix4(M); parts[k].push(geo); };
-        put(new THREE.BoxGeometry(5.2, 2.3, 0.5).translate(0, 0.1, 0), 'c'); put(new THREE.BoxGeometry(0.45, 1.9, 2.4).translate(-2.6, -0.1, -1.1), 'c'); put(new THREE.BoxGeometry(0.45, 1.9, 2.4).translate(2.6, -0.1, -1.1), 'c');
-        put(new THREE.CylinderGeometry(0.72, 0.72, 0.5, 18, 1, true).rotateX(Math.PI / 2).translate(0, 0.08, -0.5), 'c'); put(new THREE.CircleGeometry(0.64, 18).rotateY(Math.PI).translate(0, 0.08, -0.56), 'd');
+        const M = trs(p[0], -W.water - 0.3, p[1], ry), put = (geo, k) => { geo.applyMatrix4(M); parts[k].push(geo); };   /* (set low: the crown of the pipe shows over the water, the bank covers it 2 m in) */
+        put(new THREE.CylinderGeometry(0.64, 0.64, 7, 20, 1, true).rotateX(Math.PI / 2).translate(0, 0, 3.5), 'c');
+        put(new THREE.RingGeometry(0.52, 0.64, 20).rotateY(Math.PI), 'c');
+        put(new THREE.CylinderGeometry(0.52, 0.52, 2.2, 20, 1, true).rotateX(Math.PI / 2).translate(0, 0, 1.1), 'd'); put(new THREE.CircleGeometry(0.52, 20).rotateY(Math.PI).translate(0, 0, 2.2), 'd');
       }
-      for (const [k, m] of [['c', conc], ['d', dark]]) { const mesh = new THREE.Mesh(mergeGeometries(parts[k].map(q => q.index ? q.toNonIndexed() : q)), m); mesh.castShadow = mesh.receiveShadow = true; mesh.name = 'river_culverts'; this.scene.add(mesh); }
+      for (const [k, m] of [['c', conc], ['d', dark]]) { const mesh = new THREE.Mesh(mergeGeometries(parts[k].map(q => q.index ? q.toNonIndexed() : q)), m); mesh.castShadow = k === 'c'; mesh.receiveShadow = true; mesh.name = 'river_culverts'; this.scene.add(mesh); }
     }
   },
   // ---------------------------------------------------------------- knocked-out armour, burnt cars, barricades

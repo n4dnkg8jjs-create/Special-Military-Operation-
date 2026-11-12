@@ -9,7 +9,7 @@ import * as THREE from 'three';
 // drawn with a polygon offset and no depth write so it neither flickers against the ground nor hides anything; marks darken
 // from wet red-brown to dry brown over a few minutes.
 const MAX = 420, SCAN = 0.2;
-const WET = new THREE.Color(0x7a0c0a), DRY = new THREE.Color(0x3c0d0a);   /* (v2: it read brown on the earth - blood stays dark red a good while) */
+const WET = new THREE.Color(0x560806), DRY = new THREE.Color(0x2b0907);   /* (v3: darker, and lit like the ground it lies on - the unlit v2 red glowed in shade and at dusk) */
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color(), _up = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3();
 
 function blobTexture() {
@@ -26,7 +26,7 @@ function blobTexture() {
 export class BloodDecals {
   constructor(scene) {
     const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ map: blobTexture(), color: 0xffffff, transparent: true, opacity: 0.86, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const mat = new THREE.MeshLambertMaterial({ map: blobTexture(), color: 0xffffff, transparent: true, opacity: 0.86, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     const m = this.mesh = new THREE.InstancedMesh(g, mat, MAX); m.count = 0; m.frustumCulled = false; m.renderOrder = 2; m.name = 'blood_decals';
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < MAX; i++) m.setColorAt(i, WET);

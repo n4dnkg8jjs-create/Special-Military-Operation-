@@ -188,6 +188,21 @@ export class TreeDamage {
     }
     if (big) { nav.vehDirty = true; nav.finalize(); }
   }
+  // A hull stopped by a trunk it can push over (same limits as crush): the tree goes down at once and its trunk's cells open
+  // in the nav grid (a stump is rough going, not a wall) - tracked armour hung up in front of every sapling its route or its
+  // nose came within a cell of. Returns true when something was felled at / next to x, z.
+  pushOver(v, x, z) {
+    if (!this.N || !v.def) return false;
+    const light = v.kind === 'medevac' || (v.def.mass ?? 99) < 5 || /pickup/i.test(v.def.asset || ''), lim = light ? LIGHT_TRUNK : v.def.wheeled || v.kind === 'btr' ? WHEEL_TRUNK : BIG_TRUNK;
+    const nav = this.nav, s = Math.sin(v.heading), c = Math.cos(v.heading), dir = (v.speed || 0) >= 0 ? 1 : -1, gx = Math.floor(x / GC), gz = Math.floor(z / GC); let hit = false;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const t of this.grid.get((gx + i) * 4096 + gz + j) || []) {
+      if (this.tr[t] >= lim || Math.hypot(this.x[t] - x, this.z[t] - z) > 1.5) continue;
+      if (this.st[t] !== 2) { this.snap(t, this.x[t] - s * dir, this.z[t] - c * dir, 0.5, 5); this.stats.crushed++; if (this.g.camDist?.(v.pos) < 160) this.g.sfx?.('debris', v.pos); }
+      if (nav) { for (let pz = this.z[t] - 0.5; pz <= this.z[t] + 0.5; pz += nav.cell) for (let px = this.x[t] - 0.5; px <= this.x[t] + 0.5; px += nav.cell) { const q = nav.idx(px, pz); if (q >= 0 && nav.cost[q] === 255) { nav.cost[q] = 3; hit = true; } } }
+    }
+    if (hit && nav) nav.refreshArea(x - 2, z - 2, x + 2, z + 2, 6);
+    return hit;
+  }
   crush(v) {
     if (!this.N || !v.def) return;
     // what this hull can push over: tracked armour anything below BIG_TRUNK, a heavy 8x8 (BTR, Bohdana) saplings, a pickup

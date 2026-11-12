@@ -479,7 +479,7 @@ export class Farmland extends City {
   villages() {
     const R = this.rng; this.gardenRects ||= []; this.yardRects ||= [];
     const fences = ['fence_wattle', 'fence_wood_village'];
-    const houseNames = ['house_a', 'house_b', 'house_c', 'house_d', 'house_e'].filter(n => this.tpl(n)); if (!houseNames.length) houseNames.push('shed_wood');
+    const houseNames = ['house_a', 'house_b', 'house_d', 'house_e'].filter(n => this.tpl(n));   /* (no house_c: see real.js houseTemplates) */ if (!houseNames.length) houseNames.push('shed_wood');
     const trees = ['tree_walnut_leafy', 'leafy_summer_chestnut', 'tree_acacia_leafy', 'leafy_summer_birch'];
     this.houseSpots = [];
     for (const v of MAP.villages) {

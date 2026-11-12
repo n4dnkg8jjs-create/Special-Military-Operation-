@@ -120,8 +120,18 @@ export class Game {
   }
   makeVehicle(side, kind, x, z, h, variant = null) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
-    const [fx, fz] = this.nav.nearestFree(x, z, kind === 'tank' ? 2.2 : 2.0, 30);
-    const v = new Vehicle(this, side, f, kind, variant); v.place(fx, fz, h); this.vehicles.push(v); return v;
+    const v = new Vehicle(this, side, f, kind, variant); const [fx, fz] = this.vehSpot(x, z, v); v.place(fx, fz, h); this.vehicles.push(v); return v;
+  }
+  // where a vehicle may be stood (line-up, deployment): free ground for its hull, not in among trees (no trunk within a
+  // crown's reach of the hull: a belt, a wood, an orchard - light trucks may tuck in closer) and with a drivable way to a
+  // road, the nearest such spot to x, z (ok2: a further test, e.g. inside the deployment ground)
+  vehSpot(x, z, v, ok2 = null, maxR = 60) {
+    const nav = this.nav, clr = v.kind === 'tank' ? 2.2 : 2.0, tracked = !v.def?.wheeled, tr = v.def?.wheeled && v.kind !== 'btr' ? 2.4 : 4.2;
+    const reach = this.phase === 'deploy' ? nav.roadReach?.() : null, tree = k => k !== 'tree', apart = (px, pz) => this.vehicles.every(o => o === v || Math.hypot(o.pos.x - px, o.pos.z - pz) > 6.5);
+    const ok = (px, pz) => { const i = nav.idx(px, pz); return i >= 0 && (nav.clearV ? nav.passableV(i, clr, tracked) : nav.passable(i, clr)) && (!reach || reach[i]) && !this.city.solidHit?.(px, pz, tr, tr, 0, 0, tree) && (!ok2 || ok2(px, pz)); };
+    if (ok(x, z)) return [x, z];
+    for (let r = 1; r <= maxR; r++) for (let a = 0; a < 16 + r * 4; a++) { const t = a / (16 + r * 4) * Math.PI * 2, px = x + Math.cos(t) * r * nav.cell, pz = z + Math.sin(t) * r * nav.cell; if (ok(px, pz) && apart(px, pz)) return [px, pz]; }
+    return nav.nearestFree(x, z, clr, 30);
   }
   garrison(sq, b) {
     sq.building = b;
@@ -194,7 +204,7 @@ export class Game {
   deployPlace(u, x, z, facing, side = 'player') {
     [x, z] = this.inZone(x, z, side);
     if (u.type === 'vehicle') {
-      const [fx, fz] = this.nav.nearestFree(x, z, u.kind === 'tank' ? 2.2 : 2.0, 30); u.place(fx, fz, facing ?? u.heading); u.path = null;
+      const [fx, fz] = this.vehSpot(x, z, u, (px, pz) => { const q = this.inZone(px, pz, side, 1); return q[0] === px && q[1] === pz; }); u.place(fx, fz, facing ?? u.heading); u.path = null;
       if (u.passengers?.mounted) u.passengers.board(u, true);
     } else if (u.mounted && u.carrier) this.deployPlace(u.carrier, x, z, facing);
     else { const [fx, fz] = this.nav.nearestFree(x, z, 0.5, 20); u.placeAt(fx, fz, facing ?? u.facing); for (const s of u.soldiers) { s.path = null; s.goal = null; s.pathReq = null; s.waitTeam = false; } u.order = null; }
@@ -587,7 +597,6 @@ export class Game {
       const g = new THREE.Group();
       const ring = new THREE.Mesh(new THREE.RingGeometry((o.r ?? TUNING.captureRadius) - 0.6, o.r ?? TUNING.captureRadius, 96), new THREE.MeshBasicMaterial({ color: 0x8fb069, transparent: true, opacity: 0.45, depthWrite: false }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.12; g.add(ring);
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 6, 6), new THREE.MeshStandardMaterial({ color: 0x333333 })); pole.position.y = 3; g.add(pole);
       g.position.set(o.x, 0, o.z); this.scene.add(g); o.ring = ring; return g;
     });
   }

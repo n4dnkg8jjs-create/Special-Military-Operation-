@@ -391,6 +391,7 @@ export class Vehicle {
     const nav = this.game.nav, tracked = !def.wheeled, free = nav.vehPassable ? (x, z) => nav.vehPassable(x, z, tracked) : (x, z) => { const k = nav.idx(x, z); return k >= 0 && nav.cost[k] !== 255; };
     const lead = (this.speed >= 0 ? 1 : -1) * def.length * 0.45, fx = nx + Math.sin(this.heading) * lead, fz = nz + Math.cos(this.heading) * lead;
     if (free(nx, nz) && free(fx, fz)) { this.pos.x = nx; this.pos.z = nz; }
+    else if (Math.abs(this.speed) > 0.3 && this.game.treeDamage?.pushOver(this, free(nx, nz) ? fx : nx, free(nx, nz) ? fz : nz)) this.speed *= 0.8;   /* (a tree this hull can push over: down it goes, on next frame) */
     else { this.speed *= 0.3; if (this.path && !(this.reverseT > 0) && this.speed * (this.revDrive ? -1 : 1) >= 0) { this.blockT = (this.blockT || 0) + dt; if (this.blockT > 0.8) { this.blockT = 0; this.reverseT = 1.4; this.revTurn = Math.sign(turn || 1); } } }
     if (!free(this.pos.x, this.pos.z)) { const [ex, ez] = nav.nearestFree(this.pos.x, this.pos.z, this.kind === 'tank' ? 2.0 : 1.8, 12); this.pos.x = ex; this.pos.z = ez; }
     this.dist = (this.dist || 0) + this.speed * dt;

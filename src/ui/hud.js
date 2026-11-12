@@ -65,9 +65,9 @@ export class HUD {
     const ringGeo = new THREE.RingGeometry(0.55, 0.72, 24); ringGeo.rotateX(-Math.PI / 2);
     // (v9: drawn over the ground cover -- at a fixed height the grass tufts and every terrain bump cut the rings to pieces)
     this.ringMesh = new THREE.InstancedMesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xd8b25a, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false }), 200);
-    this.ringMesh.frustumCulled = false; this.ringMesh.renderOrder = 5; g.scene.add(this.ringMesh);
+    this.ringMesh.count = 0; this.ringMesh.frustumCulled = false; this.ringMesh.renderOrder = 5; g.scene.add(this.ringMesh);   /* (count 0: the unused instances sat at the map origin as a gold ring) */
     const vg = new THREE.RingGeometry(4.6, 5.0, 48); vg.rotateX(-Math.PI / 2);
-    this.vRing = new THREE.InstancedMesh(vg, this.ringMesh.material, 20); this.vRing.frustumCulled = false; this.vRing.renderOrder = 5; g.scene.add(this.vRing);
+    this.vRing = new THREE.InstancedMesh(vg, this.ringMesh.material, 20); this.vRing.count = 0; this.vRing.frustumCulled = false; this.vRing.renderOrder = 5; g.scene.add(this.vRing);
     const lineMat = new THREE.LineDashedMaterial({ color: 0xd8b25a, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.7 });
     this.orderLines = new THREE.LineSegments(new THREE.BufferGeometry(), lineMat); this.orderLines.frustumCulled = false; g.scene.add(this.orderLines);
     // v6: fire marks of men on individual fire tasks (trench clearing: the fire group's rounds ahead of the assault group)

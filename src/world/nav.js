@@ -401,6 +401,17 @@ export class NavGrid {
     if (end) out[out.length - 1] = end;
     return out;
   }
+  // cells a wheeled vehicle can reach from the road net (flood fill from every road cell over passableV cells; built once,
+  // on first use after the world is finished): a deployment spot off it is boxed in by trees / fences / walls
+  roadReach(clearance = 2.0) {
+    if (this._reach !== undefined) return this._reach;
+    const n = this.n, N = n * n, m = new Uint8Array(N), q = new Int32Array(N); let h = 0, t = 0;
+    const ok = this.clearV ? i => this.passableV(i, clearance, false) : i => this.passable(i, clearance);
+    for (let i = 0; i < N; i++) if (this.road[i] && ok(i)) { m[i] = 1; q[t++] = i; }
+    if (!t) return (this._reach = null);
+    while (h < t) { const k = q[h++], x = k % n; for (const d of [-1, 1, -n, n]) { if ((d === -1 && x === 0) || (d === 1 && x === n - 1)) continue; const j = k + d; if (j < 0 || j >= N || m[j] || !ok(j)) continue; m[j] = 1; q[t++] = j; } }
+    return (this._reach = m);
+  }
   nearestFreeV(x, z, clearance, tracked, maxR = 30) {
     let i = this.idx(x, z); if (this.passableV(i, clearance, tracked)) return [x, z];
     for (let r = 1; r <= maxR; r++) for (let a = 0; a < 16 + r * 4; a++) {

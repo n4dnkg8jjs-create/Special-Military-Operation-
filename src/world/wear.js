@@ -344,6 +344,7 @@ export function weatherMaterial(m, { amount = 1, soot = 0, key = 'w' } = {}) {
 export function weatherEnv(assets) {
   if (assets._weathered) return; assets._weathered = true;
   cleanHouseTemplates(assets);   // (before anything derives burnt / ruined variants from them)
+  cleanFenceTemplates(assets);
   const amt = { panel_kit: 1, city: 1, farmland: 0.9, modern: 0.8, props: 0.7, fortifications: 0.5, wires: 0.4 };
   for (const [k, a] of Object.entries(amt)) {
     const g = assets.gltf[k]; if (!g) continue;
@@ -430,17 +431,21 @@ export function burntHouse(tpl) {
     const tv = keep.map(i => [0, 1, 2].map(t => vid(a.fromBufferAttribute(pos, i + t))));
     for (const [p0, p1, p2] of tv) { const r = find(p0); par[find(p1)] = r; par[find(p2)] = r; }
     const low = new Map(); keep.forEach((i, j) => { const r = find(tv[j][0]); let m = low.get(r) ?? 1e9; for (let t = 0; t < 3; t++) m = Math.min(m, pos.getY(i + t)); low.set(r, m); });
-    const kept = keep.filter((i, j) => low.get(find(tv[j][0])) < eave + 0.3); keep.length = 0; keep.push(...kept);
+    /* (a chimney stack is no roof fitting: brick, it outlives the fire - kept, and set down to the floor below) */
+    const box = new Map(); keep.forEach((i, j) => { const r = find(tv[j][0]); let q = box.get(r); if (!q) box.set(r, q = [1e9, -1e9, 1e9, -1e9, 1e9, -1e9]); for (let t = 0; t < 3; t++) { const x = pos.getX(i + t), y = pos.getY(i + t), z = pos.getZ(i + t); q[0] = Math.min(q[0], x); q[1] = Math.max(q[1], x); q[2] = Math.min(q[2], y); q[3] = Math.max(q[3], y); q[4] = Math.min(q[4], z); q[5] = Math.max(q[5], z); } });
+    const stack = r => { const q = box.get(r); return q[1] - q[0] <= 1.3 && q[5] - q[4] <= 1.3 && q[1] - q[0] >= 0.25 && q[5] - q[4] >= 0.25 && q[3] - q[2] >= 0.8; };
+    const kept = keep.filter((i, j) => { const r = find(tv[j][0]); return low.get(r) < eave + 0.3 || stack(r); }); keep.length = 0; keep.push(...kept);
   }
   // footprint of the walls (vertical faces between knee and eave height): the floor slab stays inside them (the
   // template bbox includes roof overhangs, porches and steps)
   const wb = new THREE.Box3();
   for (const i of keep) { a.fromBufferAttribute(pos, i); b.fromBufferAttribute(pos, i + 1); c.fromBufferAttribute(pos, i + 2); n.subVectors(c, b).cross(a.clone().sub(b)).normalize(); if (Math.abs(n.y) > 0.3) continue; for (const v of [a, b, c]) if (v.y > bb.min.y + 1.0 && v.y < eave - 0.2) wb.expandByPoint(v); }
   const g2 = new THREE.BufferGeometry();
-  for (const k of Object.keys(all.attributes)) {
-    const src = all.attributes[k], d = new Float32Array(keep.length * 3 * src.itemSize);
-    keep.forEach((i, j) => { for (let t = 0; t < 3; t++) for (let e = 0; e < src.itemSize; e++) d[(j * 3 + t) * src.itemSize + e] = src.getComponent(i + t, e); });
-    g2.setAttribute(k, new THREE.BufferAttribute(d, src.itemSize));
+  {
+    const arr = k => { const src = all.attributes[k], d = []; if (src) keep.forEach(i => { for (let t = 0; t < 3; t++) for (let e = 0; e < src.itemSize; e++) d.push(src.getComponent(i + t, e)); }); return d; };
+    const P = arr('position'), N = arr('normal'), U = arr('uv'), ex = [[], [], []];
+    if (U.length) chimneyDown(P, N, U, bb.min.y + 0.4, ex);
+    g2.setAttribute('position', new THREE.Float32BufferAttribute(P.concat(ex[0]), 3)); g2.setAttribute('normal', new THREE.Float32BufferAttribute(N.concat(ex[1]), 3)); if (U.length) g2.setAttribute('uv', new THREE.Float32BufferAttribute(U.concat(ex[2]), 2));
   }
   const m = charred(mat, true);
   const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_burnt';
@@ -461,6 +466,17 @@ export function burntHouse(tpl) {
 //            sooted; the caller heaps rubble inside (ruins.js).
 // userData.frame: the wall box, eave / ridge height and ridge axis in the template frame (rafters, debris: ruins.js),
 // userData.holes: the roof holes [x, z, r] (template frame).
+// A chimney stack is built up from the floor. In the templates it starts at the roof surface, so with the roof gone or broken
+// open it stood on nothing: copies of the stack (a small tall island of the given triangles) are set under it down to the floor.
+function chimneyDown(P, N, U, floorY, out) {
+  for (const ts of islandsOf(P)) {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const t of ts) for (let k = 0; k < 3; k++) { const x = P[t * 9 + k * 3], y = P[t * 9 + k * 3 + 1], z = P[t * 9 + k * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    if (x1 - x0 > 1.3 || z1 - z0 > 1.3 || x1 - x0 < 0.25 || z1 - z0 < 0.25 || y1 - y0 < 0.8 || y0 < floorY + 0.6) continue;
+    const step = (y1 - y0) * 0.8;
+    for (let d = step; y1 - d > floorY; d += step) for (const t of ts) { for (let k = 0; k < 9; k++) out[0].push(P[t * 9 + k] - (k % 3 === 1 ? d : 0)); for (let k = 0; k < 9; k++) out[1].push(N[t * 9 + k]); for (let k = 0; k < 6; k++) out[2].push(U[t * 6 + k]); }
+  }
+}
 const _ruinMat = new Map();
 function ruinMat(src, soot, key) {
   const k = (src?.uuid || 'none') + key; if (_ruinMat.has(k)) return _ruinMat.get(k);
@@ -542,6 +558,19 @@ export function floatingWindows(P) {
   return drop;
 }
 // the house_* templates as shipped: a window left hanging in a shell hole (house_d) goes (geometry index edited once)
+// The wattle fence panel carries a clay pot upside down on its middle stake. One panel, charming; a run of them, a red ball on
+// every third stake - and on the stretched / simplified panels of a fitted run the pot slid off its stake or hung beside it
+// ("fence post tops float"). The pot (the only piece of the panel that does not reach down to the weave) is taken off.
+export function cleanFenceTemplates(assets) {
+  const o = assets.gltf.farmland?.scene.getObjectByName('fence_wattle_geo'); if (!o?.isMesh || o.userData.potOff) return; o.userData.potOff = true;
+  const geo = o.geometry, pos = geo.attributes.position, idx = geo.index, n = idx ? idx.count : pos.count, P = new Float32Array(n * 3), sy = o.scale.y, oy = o.position.y;
+  for (let i = 0; i < n; i++) { const k = idx ? idx.getX(i) : i; P[i * 3] = pos.getX(k); P[i * 3 + 1] = pos.getY(k) * sy + oy; P[i * 3 + 2] = pos.getZ(k); }
+  const drop = new Set();
+  for (const ts of islandsOf(P)) { let lo = 1e9; for (const t of ts) for (let k = 0; k < 3; k++) lo = Math.min(lo, P[t * 9 + k * 3 + 1]); if (lo > 1.0) for (const t of ts) drop.add(t); }
+  if (!drop.size || drop.size * 3 >= n) return;
+  const keep = []; for (let t = 0; t < n / 3; t++) if (!drop.has(t)) for (let k = 0; k < 3; k++) keep.push(idx ? idx.getX(t * 3 + k) : t * 3 + k);
+  const g2 = geo.clone(); g2.setIndex(keep); o.geometry = g2;
+}
 export function cleanHouseTemplates(assets) {
   const g = assets.gltf.city; if (!g) return;
   g.scene.traverse(o => {
@@ -629,22 +658,44 @@ export function houseRuin(tpl, mode, seed = 1) {
       for (let q = 0; q < 9; q++) { kp.push(tp[i * 9 + q]); kn.push(tn[i * 9 + q]); } for (let q = 0; q < 6; q++) ku.push(tu[i * 6 + q]);
     }
     outP = [...restP, ...kp]; outN = [...restN, ...kn]; outU = [...restU, ...ku];
+    chimneyDown(roofP, roofN, roofU, bb.min.y + 0.4, [outP, outN, outU]); chimneyDown(restP, restN, restU, bb.min.y + 0.4, [outP, outN, outU]);
   } else {
     // stub / flat: no roof; walls cut at a ragged height wandering round the outline ('flat': knee-high, the corners and a
     // stretch or two standing higher -- the outline, plinth and floor stay readable)
     const flat = mode === 'flat', [tp, tn, tu] = tessellate(restP, restN, restU, 0.6), k0 = R() * 50, h0 = flat ? 0.45 + R() * 0.4 : 0.9 + R() * 0.7, P = 2 * (hx + hz) * 2, kp = [], kn = [], ku = [];
     const corner = R() * 6.28, cutH = (x, z) => {
       const ang = Math.atan2((z - cz) / Math.max(hz, 0.5), (x - cx) / Math.max(hx, 0.5)), t = (ang + Math.PI) / 6.2832 * P / 0.55;
-      let h = h0 + (hn(k0, t * 0.25) - 0.5) * 1.3 + (hn(k0 + 7, Math.floor(t)) - 0.5) * 0.45;
+      let h = h0 + (hn(k0, t * 0.25) - 0.5) * 1.3 + (hn(k0 + 7, t * 0.9) - 0.5) * 0.5 + (hn(k0 + 11, t * 2.6) - 0.5) * 0.16;   /* (continuous: the wall top is cut along it) */
       if (hn(k0 + 3, t * 0.12) < (flat ? 0.3 : 0.22)) h = 0.15 + hn(k0 + 9, t) * 0.3;                          // fallen outright
       const dc = Math.abs(((ang - corner + 9.42) % 6.2832) - 3.1416); if (dc < 0.35) h = Math.max(h, (flat ? 1.5 : 2.2) + (0.35 - dc) * 1.5);   // a corner still up
       if (flat) { const dc2 = Math.abs(((ang - corner - 2.4 + 9.42) % 6.2832) - 3.1416); if (dc2 < 0.25) h = Math.max(h, 1.1 + (0.25 - dc2) * 2); }   // another corner, lower
       return bb.min.y + Math.max(0.12, Math.min(eave - bb.min.y - 0.1, h));
     };
+    /* v2: every wall triangle is CUT at the height line (it was kept or dropped whole by its centre: saw-teeth along every
+       wall top, and the floor carved away in wedges where a wall "fell outright"). The floor and the plinth always stay; the
+       cut edge of a wall face gets a strip of broken masonry laid back into the wall's thickness, so a stub is not a sheet. */
+    const keepY = bb.min.y + 0.52, cutV = (x, y, z) => y - Math.max(keepY, Math.round(cutH(x, z) / 0.15) * 0.15);   /* (broken off by courses) */
     for (let i = 0; i < tp.length / 9; i++) {
-      const mx = (tp[i * 9] + tp[i * 9 + 3] + tp[i * 9 + 6]) / 3, my = (tp[i * 9 + 1] + tp[i * 9 + 4] + tp[i * 9 + 7]) / 3, mz = (tp[i * 9 + 2] + tp[i * 9 + 5] + tp[i * 9 + 8]) / 3;
-      if (my > cutH(mx, mz)) continue;
-      for (let q = 0; q < 9; q++) { kp.push(tp[i * 9 + q]); kn.push(tn[i * 9 + q]); } for (let q = 0; q < 6; q++) ku.push(tu[i * 6 + q]);
+      const V = [0, 1, 2].map(q => ({ p: [tp[i * 9 + q * 3], tp[i * 9 + q * 3 + 1], tp[i * 9 + q * 3 + 2]], n: [tn[i * 9 + q * 3], tn[i * 9 + q * 3 + 1], tn[i * 9 + q * 3 + 2]], u: [tu[i * 6 + q * 2], tu[i * 6 + q * 2 + 1]] }));
+      for (const v of V) v.d = cutV(v.p[0], v.p[1], v.p[2]);
+      if (V.every(v => v.d > 0)) continue;
+      let poly = V, edge = null;
+      if (V.some(v => v.d > 0)) {
+        poly = []; edge = [];
+        for (let q = 0; q < 3; q++) {
+          const A = V[q], B = V[(q + 1) % 3];
+          if (A.d <= 0) poly.push(A);
+          if ((A.d <= 0) !== (B.d <= 0)) { const t = A.d / (A.d - B.d), mix = (x, y) => x.map((v, k) => v + (y[k] - v) * t), C = { p: mix(A.p, B.p), n: A.n, u: mix(A.u, B.u), d: 0 }; poly.push(C); edge.push(C); }
+        }
+      }
+      for (let q = 1; q < poly.length - 1; q++) for (const v of [poly[0], poly[q], poly[q + 1]]) { kp.push(...v.p); kn.push(...v.n); ku.push(...v.u); }
+      const nn = V[0].n;
+      if (edge && edge.length === 2 && Math.abs(nn[1]) < 0.3) {   /* the wall's broken top: 0.2 m back from this face (the other face brings the other half) */
+        const hl = Math.hypot(nn[0], nn[2]) || 1, ox = -nn[0] / hl * 0.2, oz = -nn[2] / hl * 0.2, [E0, E1] = edge, q0 = [E0.p[0] + ox, E0.p[1] - 0.03, E0.p[2] + oz], q1 = [E1.p[0] + ox, E1.p[1] - 0.03, E1.p[2] + oz];
+        /* wound so the strip faces up whichever way the edge runs */
+        const up = (E1.p[0] - E0.p[0]) * oz - (E1.p[2] - E0.p[2]) * ox < 0, tris = up ? [E0.p, E1.p, q1, E0.p, q1, q0] : [E0.p, q1, E1.p, E0.p, q0, q1], uu = up ? [E0.u, E1.u, E1.u, E0.u, E1.u, E0.u] : [E0.u, E1.u, E1.u, E0.u, E0.u, E1.u];
+        for (let q = 0; q < 6; q++) { kp.push(...tris[q]); kn.push(0, 1, 0); ku.push(...uu[q]); }
+      }
     }
     outP = kp; outN = kn; outU = ku;
     // the chimney stack often survives (brick, built from the floor): the roof's chimney island, set down on the floor
@@ -676,7 +727,7 @@ export function charred(src, doubleSide = false) {
   const key = (src?.uuid || 'none') + doubleSide; if (_char.has(key)) return _char.get(key);
   const m = src ? src.clone() : new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 1 });
   m.userData = { weathered: true, staticOk: true }; m.roughness = 0.97; m.metalness = 0; m.vertexColors = false; if (m.color) m.color.setRGB(1, 1, 1); if (doubleSide) m.side = THREE.DoubleSide;
-  m.customProgramCacheKey = () => 'charred_env' + (src ? 1 : 0);
+  m.customProgramCacheKey = () => 'charred_env_v2' + (src ? 1 : 0);
   if (!src) m.defines = { CHAR_FLOOR: '' };
   m.onBeforeCompile = sh => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vChP;')
@@ -695,11 +746,17 @@ export function charred(src, doubleSide = false) {
           float fa = wfbm(vChP.xz * 0.6), fb = wn1(vChP.xz * 3.0);
           diffuseColor.rgb = mix(vec3(0.05, 0.046, 0.042), vec3(0.15, 0.14, 0.13), smoothstep(0.55, 0.85, fa) * 0.7) * (0.75 + 0.5 * fb);
         #else
+        /* v2: a burnt-out brick / plaster house keeps its walls' colour low down - bleached and grimy - and is black where the
+           fire came out: tongues of soot climbing from the openings to the wall top, everything under the eaves, the inside.
+           (v1 painted the whole shell near-black and dotted it with pale "ash" blobs.) */
         float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-        float soot = clamp(0.45 + 0.55 * smoothstep(0.2, 0.7, wn1(vec2(hz * 1.2, vChP.y * 0.45))) + 0.2 * smoothstep(0.8, 2.6, vChP.y), 0.0, 1.0);
-        vec3 c = mix(vec3(lum) * vec3(0.95, 0.9, 0.84), vec3(0.035, 0.032, 0.03), soot * 0.88);
-        c = mix(c, vec3(0.34, 0.33, 0.31), smoothstep(0.7, 0.86, wn1(vec2(hz * 4.0, vChP.y * 3.0))) * 0.4);   // ash-grey bloom
-        if (!gl_FrontFacing) c *= 0.6;
+        vec3 c = mix(diffuseColor.rgb, vec3(lum) * vec3(0.97, 0.93, 0.87), 0.55) * 0.8;
+        float tongue = smoothstep(0.3, 0.72, wn1(vec2(hz * 0.62, 3.7)));
+        float hgt = smoothstep(0.7, 2.7, vChP.y) * (0.3 + 0.85 * tongue) + smoothstep(2.3, 3.3, vChP.y) * 0.5;
+        float soot = clamp(hgt + 0.3 * smoothstep(0.45, 0.85, wfbm(vec2(hz, vChP.y) * 0.55)) - 0.08, 0.0, 1.0);
+        c = mix(c, vec3(0.04, 0.036, 0.033), soot * 0.93);
+        c *= 0.9 + 0.2 * wn1(vec2(hz * 5.0, vChP.y * 5.0));
+        if (!gl_FrontFacing) c = mix(c, vec3(0.03, 0.028, 0.026), 0.72);
         diffuseColor.rgb = c;
         #endif
       }`);

@@ -121,7 +121,7 @@ function build(S) {
           if (R() < (st.skip ?? 0.12)) { t += fr; continue; }
           const hl = 9 + R() * 4, hd = 7 + R() * 2.5, back = w / 2 + 6.5 + R() * 4, mid = add(a, u, t + fr / 2), hp = add(mid, n, sd * (back + hd / 2));
           if (!inBox(hp, 40) || frontOf(hp[0], hp[1]) < back + hd / 2 - 1.5) { t += fr; continue; }
-          const pa = add(add(a, u, t + 1), n, sd * (w / 2 + 2.6)), pb = add(add(a, u, t + fr - 1), n, sd * (w / 2 + 2.6)), f = [-n[0] * sd, -n[1] * sd];
+          const pa = add(add(a, u, t), n, sd * (w / 2 + 2.6)), pb = add(add(a, u, t + fr), n, sd * (w / 2 + 2.6)), f = [-n[0] * sd, -n[1] * sd];   /* (neighbours share the edge exactly: one fence between two yards - a 2 m gap gave every boundary two) */
           D.buildings.push({ x: r1(hp[0]), z: r1(hp[1]), L: r1(hl), D: r1(hd), rot: +(Math.atan2(-u[1], u[0]) + (R() - 0.5) * 0.08).toFixed(4), cls: 'house', a: Math.round(hl * hd), b: 'house' });
           D.plots.push({ pts: [pa, pb, add(pb, f, -dep), add(pa, f, -dep)].map(P1), h: D.buildings.length - 1, f: [+f[0].toFixed(3), +f[1].toFixed(3)] });
           t += fr;
