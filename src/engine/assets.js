@@ -35,6 +35,7 @@ export class Assets {
     if (!opts.rural || extra.includes('modern')) jobs.push(['modern', 'assets/env/modern.glb']);
     jobs.push(['fortifications', 'assets/env/fortifications.glb']);   // trench revetment, dugout roofs, dragon's teeth
     for (const m of ['soldiers', 'vehicles', 'env']) this.manifest[m] = (await tryJSON(`assets/${m}/manifest.json`)) || {};
+    this.sling2 = await tryJSON('assets/soldiers/sling_shoulder.json');   /* sling v11: shoulder carry (rifle socket + strap per back-gear class, tools/blender/soldiers/sling_shoulder.py) */
     // researched armour layouts for the newer vehicles (zones / parts in the armor.js frame)
     this.armor = {};
     for (const k of ['bmp3', 'bradley_ua', 'msta_s', 'bohdana', 'pickup', 'pickup_atgm']) { const a = await tryJSON(`assets/vehicles/${k}_armor.json`); if (a) this.armor[k] = a; }

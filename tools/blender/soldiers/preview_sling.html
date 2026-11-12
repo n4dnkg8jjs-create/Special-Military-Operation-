@@ -34,6 +34,7 @@ const sdir = q.get('sdir');   // sdir=<dir>: soldier_ua / soldier_ru from a buil
 const adir = q.get('adir');   // arms_v1: adir=<dir>: soldier_anims.glb from another directory (before / after comparisons)
 await Promise.all(files.map(async f => { try { assets.gltf[f] = await loader.loadAsync(sdir && /^soldier_(ua|ru)$/.test(f) ? `${sdir}/${f}.glb` : adir && f === 'soldier_anims' ? `${adir}/${f}.glb` : `/assets/soldiers/${f}.glb`); } catch (e) { } }));
 assets.manifest.soldiers = await (await fetch('/assets/soldiers/manifest.json')).json();
+try { assets.sling2 = await (await fetch('/assets/soldiers/sling_shoulder.json')).json(); } catch { }
 prepareSoldierAssets(assets);
 const SETS = { S: SQUAD_ROLES, A: ASSAULT_ROLES, C: CREW_ROLES, T: ATGM_ROLES, F: FPV_ROLES };
 const lineup = (q.get('L') || 'UA:S2:idle_rifle:0.3:combo_1').split(';');

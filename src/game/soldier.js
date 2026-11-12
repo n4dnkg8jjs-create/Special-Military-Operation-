@@ -44,6 +44,32 @@ function fallMag(d, dt) {
   return k >= 1;
 }
 
+// sling v11 (owner: sling over one shoulder, fixed at the rifle's two swivels, magazine out): the drill position "on the sling" -
+// the rifle hangs muzzle up behind the right shoulder, strap from the front swivel over the shoulder and back under the arm to the
+// rear swivel. Socket and strap come from assets/soldiers/sling_shoulder.json (per faction and back-gear class, generated from the
+// shipped rest meshes by tools/blender/soldiers/sling_shoulder.py); the strap is a small skinned ribbon bound to this man's own
+// skeleton. The v9 socket / strap nodes in the GLB stay as they are (hidden; gearSock still tells fitBackKit where the gear ends).
+const SLING2 = new Map();
+function shoulderSling(s, m, F) {
+  const old = s.slingSock, C = F?.classes?.[old?.name], spine = m.getObjectByName('Spine1'); if (!C || !spine) return;
+  let ref = null; m.traverse(o => { if (!ref && o.isSkinnedMesh) ref = o; }); if (!ref) return;
+  const key = s.faction.id + ':' + old.name;
+  let G = SLING2.get(key);
+  if (!G) {
+    const idx = Object.fromEntries(ref.skeleton.bones.map((b, i) => [b.name, i])), g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(C.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(C.nrm, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(C.uv, 2));
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(C.ji.map(k => idx[F.bones[k]] ?? 0), 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(C.jw, 4));
+    g.setIndex(C.idx); g.computeBoundingSphere(); g.boundingSphere.radius += 1.2;
+    let mat = null; s.slingNode?.traverse(o => { if (!mat && o.isMesh) mat = (Array.isArray(o.material) ? o.material : [o.material]).find(x => /^sling_(ua|ru)/i.test(x.name)) || null; });
+    mat = mat ? mat.clone() : new THREE.MeshStandardMaterial({ color: 0x4a4a3c, roughness: 0.9 }); mat.side = THREE.DoubleSide; mat.name = 'sling_shoulder';
+    SLING2.set(key, G = { g, mat });
+  }
+  const strap = new THREE.SkinnedMesh(G.g, G.mat); strap.name = 'sling_shoulder'; strap.castShadow = true; strap.frustumCulled = ref.frustumCulled; strap.visible = false;
+  ref.parent.add(strap); strap.bind(ref.skeleton, ref.bindMatrix);
+  const sock = new THREE.Object3D(); sock.name = 'weapon_socket_shoulder'; sock.position.fromArray(C.p); sock.quaternion.fromArray(C.q); spine.add(sock);
+  s.gearSock = old; s.slingSock = sock; s.slingNode = strap; s.slingOut = new THREE.Vector3().fromArray(C.out);
+}
+
 export class Soldier {
   constructor(squad, idx, role, faction, scene) {
     this.squad = squad; this.idx = idx; this.role = role; this.faction = faction; this.scene = scene;
@@ -116,6 +142,7 @@ export class Soldier {
       this.slingSock = (pr?.sling_socket && m.getObjectByName(pr.sling_socket)) || m.getObjectByName('weapon_socket_sling') || null;
       this.slingNode = (pr?.sling_node && m.getObjectByName(pr.sling_node)) || (this.slingSock ? m.getObjectByName('sling_back') : null);
       if (this.slingNode) this.slingNode.traverse(o => { if (o.isMesh) o.visible = false; });
+      shoulderSling(this, m, A.sling2?.[this.faction.id]);   // sling v11: over the right shoulder, muzzle up, magazine out
       this.mixer = new THREE.AnimationMixer(m);
       this.actions = {}; this.cur = null;
       this.spine = m.getObjectByName('Spine1') || m.getObjectByName('Spine') || m.getObjectByName('spine_02');
@@ -169,7 +196,7 @@ export class Soldier {
     sock.add(o); o.visible = true; this._stowFar = undefined;
     if (key === 'rpg7' && this.slingSock) { o.position.set(0, 0.16, 0.18); o.quaternion.set(0, 0, 1, 0); } else { o.position.set(0, 0, 0); o.quaternion.identity(); }
     if (key === 'ak12' && this.slingSock) o.position.set(0, 0.008, 0.03);   // v10 sling: AK-12 swivels sit 4 cm further back than the AK-74M's the strap is built for
-    if (this.backKitDepth && sock === this.slingSock) o.position.x -= this.backKitDepth;   // over the TLC / tripod (sling socket +X = toward the body)
+    if (this.backKitDepth && sock === this.slingSock) { if (this.slingOut) o.position.addScaledVector(this.slingOut, this.backKitDepth); else o.position.x -= this.backKitDepth; }   // over the TLC / tripod (out behind him; v9 socket: +X = toward the body)
     this.slingUpdate();
   }
   slingUpdate() { this.showSling(!!this.slingSock && this.slingSock.children.some(c => c.visible !== false)); }
@@ -232,13 +259,14 @@ export class Soldier {
   // socket's rifle footprint); a rifle slung over it (drag / wounded clips) lies on the kit, not through it.
   fitBackKit() {
     const back = this.sockets?.back, kit = (this.kitObjs || []).filter(o => o.userData.atgmKit || o.userData.atgmFolded);
-    if (!back || !kit.length || !this.slingSock || back.parent !== this.slingSock.parent) return;
+    const gear = this.gearSock || this.slingSock;   /* (the v9 socket still marks the back gear's outer surface) */
+    if (!back || !kit.length || !gear || back.parent !== gear.parent) return;
     const sp = back.parent; this.model.updateWorldMatrix(true, true);
     const inv = sp.matrixWorld.clone().invert(), v = new THREE.Vector3(); let zin = -1e9, zout = 1e9;
     for (const o of kit) o.traverse(x => { if (!x.isMesh || /_LOD1$/i.test(x.name)) return; const P = x.geometry.attributes.position, M = new THREE.Matrix4().multiplyMatrices(inv, x.matrixWorld);
       for (let i = 0; i < P.count; i += 3) { v.fromBufferAttribute(P, i).applyMatrix4(M); if (Math.abs(v.x) < 0.2) { zin = Math.max(zin, v.z); zout = Math.min(zout, v.z); } } });
     if (zin < -1e8) return;
-    const dz = this.slingSock.position.z + 0.039 - 0.004 - zin;   // (sling socket: rifle origin 39 mm out from the gear surface)
+    const dz = gear.position.z + 0.039 - 0.004 - zin;   // (sling socket: rifle origin 39 mm out from the gear surface)
     back.position.z += dz; this.backKitDepth = zin - zout;
   }
   tubeStandIn() { const g = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 1.2, 10), new THREE.MeshStandardMaterial({ color: 0x4b5039, roughness: 0.8 })); g.rotation.x = 0; return g; }
