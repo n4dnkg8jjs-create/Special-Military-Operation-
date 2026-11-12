@@ -164,9 +164,9 @@ export class MenuScene {
         const x = F.getX(i), z = F.getZ(i); let h = 0, dk = 0, lt = 0;
         for (const [cx, cz, r, dp] of CR) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) { h += d < 1 ? -dp * (1 - d * d) + 0.3 * dp * d * d : 0.3 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; dk = Math.max(dk, 1 - Math.min(1, d / 1.05)); if (d > 0.95 && d < 1.7) lt = Math.max(lt, 1 - Math.abs(d - 1.25) / 0.45); } }
         const e = Math.min(sstep(-210, -200, x), 1 - sstep(200, 210, x), sstep(-172, -168, z), 1 - sstep(-11.4, -10, z));
-        F.setY(i, hill(z) + (0.06 * sstep(-13, -16, z) + h + Math.sin(x * 0.31 + z * 0.17) * Math.sin(z * 0.23) * 0.12 * sstep(-13, -20, z)) * e - 0.3 * (1 - e));
+        F.setY(i, hill(z) + (0.06 * sstep(-13, -16, z) + h + Math.sin(x * 0.31 + z * 0.17) * Math.sin(z * 0.23) * 0.12 * sstep(-12, -16, z) + (Math.sin(x * 1.9 + z * 1.3) * Math.sin(z * 2.3 - x * 0.7) * 0.05 + Math.sin(x * 4.3 + z * 2.9) * 0.015) * sstep(-11, -12.5, z)) * e - 0.3 * (1 - e));   /* (v13: lumpy from its first metre - a dead-level strip just beyond the parapet read as a pale flat band) */
         /* dark wet bowl, pale thrown-out spoil round it; between the holes last year's grass, flattened and yellow-grey, in patches on the mud */
-        const gr = sstep(0.05, 0.5, Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.4) + 0.5 * Math.sin(x * 0.37 - z * 0.23) + 0.25 * Math.sin(x * 1.1 + z * 0.9)) * (1 - Math.min(1, dk * 3 + Math.max(0, lt) * 2));
+        const gr = sstep(0.05, 0.5, Math.sin(x * 0.11 + 1.3) * Math.sin(z * 0.09 + 0.4) + 0.5 * Math.sin(x * 0.37 - z * 0.23) + 0.25 * Math.sin(x * 1.1 + z * 0.9)) * (1 - Math.min(1, dk * 3 + Math.max(0, lt) * 2)) * sstep(-15, -26, z);
         const k = (1 - dk * 0.8) * (1 + Math.max(0, lt) * 0.45); col[i * 3] = k * (1 + 0.42 * gr); col[i * 3 + 1] = k * (0.97 + 0.5 * gr); col[i * 3 + 2] = k * (0.93 + 0.1 * gr); uv.setXY(i, x / 3.1, z / 3.1);
       }
       fg.setAttribute('color', new THREE.BufferAttribute(col, 3)); fg.computeVertexNormals();
@@ -209,7 +209,7 @@ export class MenuScene {
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
     const at = (x, d) => { const [nx, nz] = crestN(x); return [x + nx * d, crestZ(x) + nz * d, Math.atan2(nx, nz)]; };
     const face = () => WALL;                                                                   /* the cut face's distance from the crest line */
-    for (let x = REV[1] - 0.9; x > REV[0] + 0.7; x -= 1.74) {   /* (none into the bend: a straight piece turned with the wall there and stuck out across the corner; the slumped pile covers the wall's end) */ const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
+    for (let x = REV[1] - 0.9; x > 2.6; x -= 1.74) {   /* (none into the bend: a straight piece turned with the wall there and stuck out across the corner; the slumped pile covers the wall's end) */ const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
     // (v12) sandbags. Woven polypropylene sacks, filled three-quarters, mouth tied in a choke at one end and sewn flat at the
     // other; thrown down by hand: none square to its neighbour, each slumped onto what is under it, creased across where it
     // bends over an edge. Four different sacks (lumps, sag, which end is tied), each laid with its own turn, tilt and overlap;
@@ -220,10 +220,10 @@ export class MenuScene {
         for (let i = 0; i < N; i += 4) { x.fillStyle = 'rgba(40,36,28,0.16)'; x.fillRect(i, 0, 1, N); x.fillRect(0, i, N, 1); x.fillStyle = 'rgba(255,250,235,0.07)'; x.fillRect(i + 2, 0, 1, N); y.fillStyle = 'rgba(0,0,0,0.3)'; y.fillRect(i, 0, 1, N); y.fillRect(0, i, N, 1); y.fillStyle = 'rgba(255,255,255,0.2)'; y.fillRect(i + 2, 0, 1, N); y.fillRect(0, i + 2, N, 1); }   /* the weave */
         for (let i = 0; i < 26; i++) { const px = Q() * N, py = Q() * N, r = 14 + Q() * 46, g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, `rgba(${Q() < 0.5 ? '70,58,42' : '120,112,92'},${0.18 + Q() * 0.2})`); g.addColorStop(1, 'rgba(70,58,42,0)'); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r); }   /* earth stains, bleached patches */
         { const g = x.createLinearGradient(0, 0, 0, N); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.72, 'rgba(30,26,20,0)'); g.addColorStop(1, 'rgba(30,26,20,0.5)'); x.fillStyle = g; x.fillRect(0, 0, N, N); }   /* damp and dirt low down */
-        for (let i = 0; i < 22; i++) { const across = Q() < 0.7, a = Q() * N, b0 = Q() * N * 0.5, len = 40 + Q() * 120, bend = (Q() - 0.5) * 30, w = 1.5 + Q() * 3;   /* creases: a dark valley with a light shoulder */
-          for (const [ctx, st, lw, o] of [[y, 'rgba(0,0,0,0.55)', w, 0], [y, 'rgba(255,255,255,0.4)', w * 0.8, w], [x, 'rgba(30,26,20,0.3)', w * 0.8, 0], [x, 'rgba(255,250,235,0.12)', w * 0.6, w]]) { ctx.strokeStyle = st; ctx.lineWidth = lw; ctx.beginPath(); if (across) { ctx.moveTo(a + o, b0); ctx.quadraticCurveTo(a + o + bend, b0 + len / 2, a + o, b0 + len); } else { ctx.moveTo(b0, a + o); ctx.quadraticCurveTo(b0 + len / 2, a + o + bend, b0 + len, a + o); } ctx.stroke(); } }
+        /* (v13: no drawn creases - they read as scratches. The sack's form is in its shape; the cloth darkens towards its edges and seams, as a filled bag's does where it turns under) */
+        { const g = x.createRadialGradient(N / 2, N / 2, N * 0.18, N / 2, N / 2, N * 0.74); g.addColorStop(0, 'rgba(20,17,12,0)'); g.addColorStop(0.7, 'rgba(20,17,12,0.22)'); g.addColorStop(1, 'rgba(20,17,12,0.6)'); x.fillStyle = g; x.fillRect(0, 0, N, N); }
         const map = new THREE.CanvasTexture(cc), bump = new THREE.CanvasTexture(bc); map.colorSpace = THREE.SRGBColorSpace; for (const t of [map, bump]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; } return { map, bump }; })();
-      const bagM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, map: tex.map, bumpMap: tex.bump, bumpScale: 2.2 });
+      const bagM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, map: tex.map, bumpMap: tex.bump, bumpScale: 0.9 });
       const sack = seed => { const Q = rng(seed), g = new THREE.BoxGeometry(2, 2, 2, 14, 6, 8), p = g.attributes.position, tie = Q() < 0.5 ? 1 : -1, a1 = Q() * 6, a2 = Q() * 6, sag = 0.05 + Q() * 0.12, fill = 0.82 + Q() * 0.22;
         for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = (x ** 6 + y ** 4 + z ** 4) ** 0.25 || 1, k = 1 / Math.max(1, n * 0.92); x *= k; y *= k; z *= k;
           const t = Math.max(0, x * tie - 0.62) / 0.38, sw = Math.max(0, -x * tie - 0.74) / 0.26;                              /* towards the tied mouth / the sewn end */
@@ -241,19 +241,24 @@ export class MenuScene {
       for (let x = REV[1] - 0.2 - BL / 2; x > 5.0; x -= BL * (0.92 + R() * 0.1)) if (R() < 0.9) lay(x, 1);
       lists.forEach((L, v) => { if (!L.length) return; const im = new THREE.InstancedMesh(G[v], bagM, L.length), c = new THREE.Color(); L.forEach(([M, col], i) => { im.setMatrixAt(i, M); im.setColorAt(i, c.setRGB(col[0], col[1], col[2])); }); im.frustumCulled = false; scene.add(im); });
       this.bagTop = x => y0(x) + BH * 0.95; }
-    // (v11) the revetment's posts: stakes driven in in front of the logs, their split tops standing a hand above the wall
-    { const pg = new THREE.CylinderGeometry(0.04, 0.05, 1.02, 7), pm = new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 1 }), xs = []; for (let x = REV[1] - 0.25; x > REV[0] + 0.3; x -= 0.87) xs.push(x);
-      const posts = new THREE.InstancedMesh(pg, pm, xs.length), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
-      xs.forEach((x, i) => { const [px, pz] = at(x, face(x) + 0.31); posts.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.5 + (R() - 0.5) * 0.08, pz), q.setFromEuler(e.set((R() - 0.5) * 0.05, R() * 6, (R() - 0.5) * 0.05)), new THREE.Vector3(1, 1, 1))); });
-      posts.frustumCulled = false; scene.add(posts); }
+    // (v13) the stretch behind the watcher is held up with what was to hand: a sheet of plywood and a pallet stood against the
+    // earth, their feet dug in (the kit's pieces, 1.25 / 1.2 m tall: sunk until their tops are level with the wall's), leaning back on it
+    { const [px, pz, ry] = at(1.42, face(1.42) + 0.045); P('rv_ply', px, FY - 0.36, pz, ry, -0.035); }
+    { const [px, pz, ry] = at(2.28, face(2.28) + 0.075); P('rv_pallet', px, FY - 0.31, pz, ry, -0.03); }
+    // an opened crate stack of ammunition on the duckboards at the foot of the wall, loaded magazines left on its lid
+    { const cx = 3.2, [px, pz, ry] = at(cx, face(cx) + 0.27 + 0.36); P('ammo_crates', px, FY + 0.09, pz, ry);
+      const mg = new THREE.BoxGeometry(0.2, 0.028, 0.062, 8, 1, 1); { const q = mg.attributes.position; for (let i = 0; i < q.count; i++) { const x = q.getX(i); q.setZ(i, q.getZ(i) + 0.9 * x * x); } mg.computeVertexNormals(); }   /* the AK magazine's curve */
+      const mags = new THREE.InstancedMesh(mg, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 4), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+      [[0.55, 0.02, 0.4, 0x15130f], [0.72, -0.06, -0.5, 0x15130f], [0.66, 0.1, 1.3, 0x4a2412], [0.98, -0.02, 0.1, 0x15130f]].forEach(([dx, dz, yaw, col], i) => { mags.setMatrixAt(i, M.compose(new THREE.Vector3(px + dx, FY + 0.09 + 0.61 + 0.014, pz + 0.1 + dz), q.setFromEuler(e.set(0, yaw, 0)), new THREE.Vector3(1, 1, 1))); mags.setColorAt(i, c.setHex(col)); });
+      mags.frustumCulled = false; scene.add(mags); }
     for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); P('floor_planks', px, FY + 0.045, pz, ry); }
     { const [px, pz] = at(4.75, face(4.75) + 0.24 + 0.5); P('ammo_crates', px, FY + 0.09, pz, 0.12); }
     // clods fallen from the wall and the parapet, mud trodden onto the boards
     // (v9) the earth that came out of the wall where the revetment ends: one slumped pile at the foot of the bare face, its toe
     // spread on the floor - a heap, not scattered lumps (the clods below are the few that rolled off it)
-    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.5, pz = crestZ(0.5) + 0.72, hx = 1.15, hz = 0.85, hh = 0.8, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
+    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.25, pz = crestZ(0.5) + 0.6, hx = 1.35, hz = 0.95, hh = 0.46, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
       for (let i = 0; i <= N; i++) for (let j = 0; j < K; j++) { const r = i / N, a = j / K * 6.2832, lob = 1 + 0.16 * Math.sin(a * 3 + 0.7) + 0.09 * Math.sin(a * 5 + 2.1), x = px + Math.cos(a) * r * hx * lob, z = pz + Math.sin(a) * r * hz * lob - 0.22 * (1 - r) /* (leaning into the wall) */;
-        const y = FY + 0.03 + hh * Math.pow(1 - r * r, 1.5) * (1 + 0.22 * nz(x, z)) + 0.02 * nz(x * 2.3, z * 2.3) * (1 - r) - 0.05 * r * r;
+        const y = FY + 0.03 + hh * Math.pow(1 - r * r, 0.85) * (0.8 + 0.3 * nz(x * 0.9, z * 1.1) + 0.12 * nz(x * 2.9, z * 2.1)) * (1 + 0.25 * Math.cos(a - 1.2)) + 0.025 * nz(x * 4.3, z * 3.7) * (1 - r * r) - 0.05 * r * r;   /* (v13: broad and lumpy, higher against the wall - it stood there as a smooth cone) */
         pos.push(x, y, z); uv.push(x / 2.2, z / 2.2 + y); const k = 0.82 + 0.3 * (y - FY) + 0.08 * nz(x * 1.9, z * 2.4); col.push(k, k * 0.97, k * 0.93); }
       for (let i = 0; i < N; i++) for (let j = 0; j < K; j++) { const a = i * K + j, b = i * K + (j + 1) % K, c = a + K, d = b + K; idx.push(a, b, c, b, d, c); }   /* (facing up: wound the other way it was lit from inside and showed as a black dome) */
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
