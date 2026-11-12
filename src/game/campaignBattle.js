@@ -25,6 +25,7 @@ export function deployCampaign(game, side = 'player', forceOverride = null, mods
   const recs = (forceOverride || C.force).filter(u => crewUnit(u) ? !u.veh.lost : (u.men > 0 || (u.veh && !u.veh.lost)));
   // the records that went in (collectResult: every deployed unit gets a result entry; crews scaled to the unit's men)
   (game.campRecs ||= {})[side] = recs.map(u => ({ uid: u.uid, kind: u.kind, men: u.men || 0, veh: u.veh ? { kind: u.veh.kind, hp: u.veh.hp, lost: !!u.veh.lost } : null }));
+  if (side === 'player' && game.heli) game.heli.left.player = C.ci?.heli || 0;   /* Command Influence: Mi-24 on call */
   // order: carriers with their squads, tanks, assault, support, guns
   const rank = { mech: 0, imech: 0, tank: 1, assault: 2, atgm: 3, fpv: 3, spg: 4 };
   recs.sort((a, b) => (rank[a.kind] ?? 5) - (rank[b.kind] ?? 5));
@@ -33,19 +34,20 @@ export function deployCampaign(game, side = 'player', forceOverride = null, mods
   const squadOf = (r, x, z) => {
     const roles = (ROLES[r.kind] || SQUAD_ROLES).slice(0, Math.max(1, Math.min(r.men, (ROLES[r.kind] || SQUAD_ROLES).length)));
     const sq = game.makeSquad(side, x, z, N, r.name, r.kind === 'imech' ? 'mech' : r.kind, roles); sq.name = r.name; sq.rec = r.uid; sq.vet = xpLevel(r.xp); sq.morale = Math.min(100, sq.morale + sq.vet * 5);
+    if (r.special === 'vdv') { sq.vet = 3; sq.morale = 100; sq.elite = true; }   /* airborne assault section on loan (campaign/v2/influence.js) */
     return sq;
   };
   for (const r of recs) {
     if (r.kind === 'assault' && r.mounted) continue;
     const [x, z] = S[si++];
     if (r.veh && !r.veh.lost) {
-      const v = game.makeVehicle(side, r.veh.kind, x, z, N); v.name = r.name.replace(/ squad$/i, '') + (r.kind === 'mech' || r.kind === 'imech' ? '' : '');
+      const v = game.makeVehicle(side, r.veh.kind, x, z, N, r.veh.variant || null); v.name = r.name.replace(/ squad$/i, '') + (r.kind === 'mech' || r.kind === 'imech' ? '' : '');
       v.rec = r.uid; v.vet = xpLevel(r.xp); v.hp = v.def.hp * Math.max(0.2, r.veh.hp ?? 1);
       if (r.kind === 'mech' || r.kind === 'imech') { v.name = `${r.veh.kind === 'ifv' ? pf.ifvName : pf.btrName} (${r.name})`; }
       list.push(v);
       let sq = null;
       if ((r.kind === 'mech' || r.kind === 'imech') && r.men > 0) sq = squadOf(r, x, z + 6);
-      else if (r.kind === 'tank') { const a = assaults.find(q => !q.mounted && q.men > 0); if (a) { a.mounted = true; sq = squadOf(a, x, z + 6); } }
+      else if (r.kind === 'tank' && v.def.seats !== 0) { const a = assaults.find(q => !q.mounted && q.men > 0); if (a) { a.mounted = true; sq = squadOf(a, x, z + 6); } }
       if (sq) { sq.board(v, true); list.splice(list.length - 1, 0, sq); }
     } else if (r.men > 0) list.push(squadOf(r, x, z));
   }

@@ -191,7 +191,7 @@ export class CampaignScreen {
     const C = this.C, D = C.def, wk = Math.min(C.turn, C.maxTurn);
     this.top.innerHTML = `<div class="c2-id"><div class="c2-k">${esc([D.brigade?.short || D.brigade?.name, D.region].filter(Boolean).join(' · '))}</div><div class="c2-t">${esc(D.intro?.place || D.aor.name)}</div></div>
       <div class="c2-date"><div class="c2-d">${esc(dateLabel(C.date, true).toUpperCase())}</div><div class="c2-k">WEEK ${wk} OF ${C.maxTurn} · <span class="c2-season">${seasonName(C.date)}</span></div><div class="c2-prog"><i style="width:${(100 * (wk - 1) / Math.max(1, C.maxTurn - 1)).toFixed(1)}%"></i></div></div>
-      <div class="c2-stats"><div><span>LP</span><b class="lp">${C.lp}</b></div><div><span>PER WEEK</span><b>+${C.lpIncome()}</b></div><div><span>BATTLES</span><b>${C.stats.won}/${C.stats.battles}</b></div><div><span>GRID HELD</span><b>${this.held()}</b></div></div>`;
+      <div class="c2-stats"><div><span>LP</span><b class="lp">${C.lp}</b></div><div><span>PER WEEK</span><b${C.ciLpPenalty?.() ? ` class="bad" title="−${C.ciLpPenalty()} LP a week: fines for losing units high command lent"` : ''}>+${C.lpIncome()}</b></div>${C.def.versus ? '' : `<div title="Command influence: earned by carrying out directives and winning battles, spent on attachments from high command (High command › Influence)"><span>INFLUENCE</span><b>${C.ci ?? 2}</b></div>`}<div><span>BATTLES</span><b>${C.stats.won}/${C.stats.battles}</b></div><div><span>GRID HELD</span><b>${this.held()}</b></div></div>`;
     if (this.vs) this.top.appendChild(h('div', { class: 'c2-vs ' + (this.vs.statusKind?.() || '') }, this.vs.status()));
     const end = h('button', { class: 'c2-end' + (this.vs?.isReady?.() ? ' wait' : ''), title: this.vs ? (this.vs.isReady() ? 'Click to change your orders' : 'Finish planning: the week is carried out when both commanders have ended it') : 'End the week (Enter)', onclick: () => this.endTurn(true) }, this.vs ? this.vs.endLabel() : C.outcome() ? 'CAMPAIGN OVER ▸' : 'END WEEK ▸'); this.top.appendChild(end);
     const menu = h('div', { class: 'c2-menu' });
@@ -268,13 +268,23 @@ export class CampaignScreen {
     if (C.orders.length) p.appendChild(h('div', { class: 'c2-card' }, `<div class="c2-ch">On the way</div>${C.orders.map(o => `<div class="c2-kv"><span>${esc(o.what === 'tech' ? C.techItem(o.key)?.name : C.catalogItem(o.key)?.label)}</span><b>${o.eta} wk</b></div>`).join('')}`));
     const sub = h('div', { class: 'c2-subtabs' });
     this.hcTab ||= 'units';
-    for (const [k, l] of [['units', 'Units'], ['repl', 'Replacements'], ['tech', 'Tech tree']]) sub.appendChild(h('button', { class: this.hcTab === k ? 'on' : '', onclick: () => { this.hcTab = k; this.renderLeft(); } }, l));
+    for (const [k, l] of [['units', 'Units'], ['repl', 'Replacements'], ['tech', 'Tech tree'], ...(C.def.versus || !C.ciList ? [] : [['ci', 'Influence']])]) sub.appendChild(h('button', { class: this.hcTab === k ? 'on' : '', onclick: () => { this.hcTab = k; this.renderLeft(); } }, l));
     p.appendChild(sub);
     if (this.hcTab === 'units') for (const c of C.def.catalog) {
       const unlocked = C.available.includes(c.key) && (c.req || []).every(r => C.unlocked.includes(r)), dateOk = C.dateOk(c), ok = C.catalogAvailable(c), cost = C.unitCost(c);
       const row = h('div', { class: 'c2-card cat' + (unlocked ? '' : ' locked') }, `<div class="c2-ch"><span class="ic">${KIND_ICON[c.kind] || '·'}</span> ${esc(c.label)} <small>${cost} LP · ${c.eta ?? 1} wk</small></div><div class="c2-ck">${esc(KIND[c.kind] || c.kind)}${c.men ? ` · ${c.men} men` : ''}${c.vehicle ? ` · ${c.vehicle.toUpperCase()}` : ''}</div><div class="c2-desc">${esc(c.desc || '')}</div>${!unlocked ? `<div class="c2-req">Needs ${(c.req || []).map(r => esc(C.techItem(r)?.name || r)).join(', ') || 'authorisation from high command'}</div>` : !dateOk ? `<div class="c2-req">Available from ${esc(dateLabel(c.date))}</div>` : ''}`);
       if (unlocked && dateOk) row.appendChild(h('button', { class: 'c2-btn pri', disabled: !ok || C.lp < cost, onclick: () => { const e = this.act('orderUnit', c.key); this.toast(e || `${c.label} ordered`, !e); this.render(); } }, ok ? `Order (${cost} LP)` : 'Limit reached'));
       p.appendChild(row);
+    }
+    if (this.hcTab === 'ci') {
+      // Command Influence (influence.js): attachments on loan from above, what they cost and what losing them costs
+      p.appendChild(h('div', { class: 'c2-note' }, `Command influence: <b>${C.ci}</b>. Earned by carrying out directives (+2) and winning battles you fight yourself (+1); spent on attachments that army command lends for a few weeks. They are better than anything the brigade owns, and they are on loan: lose one and the brigade's LP allocation is cut for weeks.`));
+      for (const f of C.ciPenalty || []) p.appendChild(h('div', { class: 'c2-card c2-alert' }, `<div class="c2-ch">ALLOCATION CUT</div><div class="c2-kv"><span>${esc(f.why)}</span><b class="bad">−${f.lp} LP / wk · ${Math.max(0, f.until - C.turn)} wk left</b></div>`));
+      for (const r of C.ciList()) {
+        const row = h('div', { class: 'c2-card cat' + (r.block && !r.active ? ' locked' : '') }, `<div class="c2-ch"><span class="ic">${r.id === 'hind' ? '✈' : r.id === 'vdv' ? '✕' : '⬭'}</span> ${esc(r.name)} <small>${r.cost} influence · ${r.weeks} wk</small></div><div class="c2-note">${esc(r.text)}</div><div class="c2-kv"><span>Risk</span><b class="warn">${esc(r.risk)}</b></div>${r.active ? `<div class="c2-kv"><span>Status</span><b class="good">${r.active.gone ? 'lost' : `with the brigade · ${Math.max(0, r.active.until - C.turn)} wk left`}</b></div>` : ''}`);
+        if (!r.active) row.appendChild(h('button', { class: 'c2-btn pri', disabled: !!r.block, title: r.block || '', onclick: () => { const e = this.act('ciRequest', r.id); this.toast(e || `${r.name} attached to the brigade`, !e); this.render(); this.map?.refresh?.(); } }, r.block || `Request (${r.cost} influence)`));
+        p.appendChild(row);
+      }
     }
     if (this.hcTab === 'repl') {
       const units = C.units.filter(u => C.replaceCost(u) > 0);

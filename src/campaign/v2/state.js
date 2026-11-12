@@ -12,6 +12,7 @@ import * as F from './fires.js';
 import * as UAVR from './recon.js';
 import * as AI from './ai.js';
 import * as GR from './growth.js';
+import { CI, install as installInfluence } from './influence.js';
 
 export const KEY2 = 'smo.campaign.v2';
 export const MAX_BATTLE = 12;                 // units one battle can deploy (the rest of a task force stays in reserve)
@@ -63,7 +64,7 @@ export class Campaign2 {
     this.unlocked = [...(S.unlocked || [])]; this.available = [...(S.available || [])];
     this.orders = []; this.directives = []; this.doneDirectives = {}; this.depots = [];
     this.recon = {}; this.pendingAttacks = []; this.battle = null; this.seenEvents = {};
-    this.log = [];
+    this.log = []; this.ciInit?.();
     this.stats = { battles: 0, won: 0, kills: 0, losses: 0, vehLost: 0, vehKills: 0, cellsTaken: 0, cellsLost: 0 };
     this.note(def.intro?.lines?.[0] || 'The operation begins.');
     this.ensureV4();
@@ -116,6 +117,7 @@ export class Campaign2 {
   }
   signature() { const a = (this.baseDef || this.def).aor; return `${this.def.id}:${a.cols}x${a.rows}:${a.cells.length}:${this.def.start.date}`; }
   index() {
+    if (this.turn != null) this.ciInit?.();   /* Command Influence fields (influence.js), also on older saves */
     const a = this.def.aor; this.cellById = {}; this.grid = [];
     for (const c of a.cells) { this.cellById[c.id] = c; (this.grid[c.col] ||= [])[c.row] = c; }
     this.blocked = new Set((a.blocked || []).map(([p, q]) => [p, q].sort().join('|')));
@@ -156,7 +158,7 @@ export class Campaign2 {
     const c = this.catalogItem(u.key) || {};
     const men = u.men ?? c.men ?? 0, kind = u.kind || c.kind, vk = u.veh?.kind || c.vehicle;
     return { uid: u.uid ?? this.newId('u'), key: u.key, name: u.name || c.label || kind, kind, men, menMax: u.menMax ?? men, wounded: u.wounded || 0, woundedT: u.woundedT || 0,
-      veh: vk ? { kind: vk, hp: u.veh?.hp ?? 1, lost: !!u.veh?.lost } : null, xp: u.xp || 0, battles: u.battles || 0, kills: u.kills || 0, status: u.status || 'ready', eta: u.eta || 0 };
+      veh: vk ? { kind: vk, hp: u.veh?.hp ?? 1, lost: !!u.veh?.lost, ...(u.veh?.variant ? { variant: u.veh.variant } : {}) } : null, ...(u.special ? { special: u.special } : {}), xp: u.xp || 0, battles: u.battles || 0, kills: u.kills || 0, status: u.status || 'ready', eta: u.eta || 0 };
   }
   unit(uid) { return this.units.find(u => u.uid === uid); }
   get force() { return this.units; }                       // v1 name (campaignBattle / versus helpers)
@@ -474,7 +476,7 @@ export class Campaign2 {
     const base = this.def.start.lpBase ?? 6;
     const k = this.def.start.cellLp ?? 0.5;   // held cells yield a trickle; battles and directives are the main LP source
     const cells = k * this.def.aor.cells.filter(c => this.owner[c.id] === 'player').reduce((a, c) => a + (c.lp || 0) * (this.supplied?.[c.id] ?? 1), 0);
-    return Math.round((base + cells) * (1 + (this.mods().lpGain || 0)));
+    return Math.max(0, Math.round((base + cells) * (1 + (this.mods().lpGain || 0))) - (this.ciLpPenalty?.() || 0));   /* (influence.js: fines for losing what high command lent) */
   }
   depotAllowed(cellId) { return this.owner[cellId] === 'player' && (this.supplied[cellId] || 0) >= 1 && !(this.depots || []).includes(cellId) && !(this.def.aor.supplySources || []).includes(cellId) && (this.depots || []).length < 2; }
   buildDepot(cellId) { const cost = 30; if (!this.depotAllowed(cellId)) return 'A forward depot needs an own, supplied cell (max 2 depots)'; if (this.lp < cost) return 'Not enough logistics points'; this.lp -= cost; this.depots.push(cellId); this.computeSupply(); this.note(`Forward supply depot established at ${this.cellName(cellId)} (${cost} LP).`, 'good'); this.save(); return null; }
@@ -510,7 +512,8 @@ export class Campaign2 {
   replaceWeeks(u) { const sh = u.menMax ? this.replaceMissing(u) / u.menMax : 0; return Math.max(sh > 0.6 ? 3 : sh > 0.3 ? 2 : 1, u.veh?.lost ? 2 : 1); }
   inContact(tf) { return !!tf && this.neighbors(tf.cell).some(n => this.owner[n] !== 'player'); }
   dilute(u, before, after) { if (after > before && after > 0) u.xp = Math.max(0, Math.round(u.xp * before / after * 10) / 10); }
-  replenishBlock(u) {   // why this unit cannot be rebuilt now (null = it can)
+  replenishBlock(u) {
+    if (u.special) return 'On loan from high command: it is not rebuilt here';   // why this unit cannot be rebuilt now (null = it can)
     const tf = this.tfOf(u.uid);
     if (tf && (tf.supply ?? 1) < 0.5) return 'Out of supply: replacements cannot reach this task force';
     if (this.inContact(tf)) return 'In contact with the enemy: pull the task force back a square to rebuild it';
@@ -589,6 +592,7 @@ export class Campaign2 {
     (this.history ||= []).push({ id: d.id, ok, date: this.date });
     if (ok) {
       const r = d.reward || {}; const lp = Math.round((r.lp || 0) * (1 + (this.mods().lpGain || 0))); this.lp += lp;
+      this.ciEarn?.(r.ci ?? CI.directive, 'directive carried out');
       for (const t of r.unlock || []) if (!this.unlocked.includes(t)) { this.unlocked.push(t); const ti = this.techItem(t); for (const k of ti?.unlock || []) if (!this.available.includes(k)) this.available.push(k); }
       for (const u of r.units || []) this.deliverUnit(this.record({ ...u, uid: undefined, status: 'ready' }));
       if (r.battery) this.addBattery(r.battery);
@@ -653,6 +657,7 @@ export class Campaign2 {
     const force = this.battleUnits(uids);
     return {
       v2: true, sector: cellId, sectorName: this.cellName(cellId), map: c.battleMap || (urban ? 'city' : 'farmland'), mapFallback: urban ? 'city' : 'farmland', mode,
+      ci: this.ciBattle?.() || { heli: 0 },
       fort: this.fort[cellId] || 0, strength, force: JSON.parse(JSON.stringify(force)), enemy: tpl.map(e => ({ ...e })), mods: { ...this.battleMods(cellId, uids), mortar: (this.battleMods(cellId, uids).mortar || 0) + Math.round(prep) }, side: this.side,
       fpvThreat: E.fpvThreat ?? 0.5, artillery: Math.round((E.artillery ?? 0.5) * this.enemyArtyFactor(cellId) * 100) / 100, turn: this.turn, date: this.date,
       fires: { prep, enemyArty: this.enemyArtyFactor(cellId), enemyForces: ob ? ob.forces.map(f => f.name) : AI.forcesAt(this, cellId).map(f => f.name) },
@@ -692,6 +697,7 @@ export class Campaign2 {
   // apply what happened in a battle (fought: src/game/campaignBattle.js collectResult, or auto-resolved)
   applyResult(r) {
     const B = (this.battle && this.battle.cell === r.sector) ? this.battle : { mode: r.mode, cell: r.sector };
+    if (r.win && !r.auto) this.ciEarn?.(CI.win, 'battle won');
     const cellId = r.sector, c = this.cell(cellId); if (!c) return;
     const mods = this.mods(), lpMul = 1 + (mods.lpGain || 0);
     this.stats.battles++;
@@ -709,6 +715,7 @@ export class Campaign2 {
       u.xp += (ur.alive > 0 || (u.veh && !u.veh.lost) ? 1 : 0) + (r.win ? 1 : 0) + Math.min(2, (ur.kills || 0) / 4);
     }
     this.stats.vehKills += r.enemyVehLost || 0;
+    this.ciAfterBattle?.(r);
     let lp = 6 + (r.enemyKia || 0) * 0.6 + (r.enemyVehLost || 0) * 4 + (r.objectivesHeld || 0) * 5;
     const name = this.cellName(cellId);
     if (B.mode === 'attack') {
@@ -969,6 +976,7 @@ export class Campaign2 {
     }
     this.checkDirectives(null, true);
     this.turn++; this.battleFought = false;
+    this.ciTick?.();
     // deliveries from high command
     for (const o of this.orders) o.eta--;
     let arrived = 0;
@@ -1102,3 +1110,5 @@ export const DIRECTIVE_KINDS = {
 // medSave: stabilisation points, blood forward, armoured ambulances) keeps more of them alive (versus.js autoBattle too)
 export const woundedShare = (m = {}) => Math.min(0.8, 0.6 + 0.25 * (m.medSave || 0));
 const VIS = new WeakMap();   // visibleEnemy() cache (not saved)
+
+installInfluence(Campaign2);   // Command Influence requests (influence.js)

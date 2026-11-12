@@ -79,5 +79,5 @@ export function collectResult(game, side = 'player') {
   }
   const win = won;
   return { sector: C.sector, mode: side === 'player' ? C.mode : (C.mode === 'attack' ? 'defend' : 'attack'), win, units: Object.values(units), enemyKia: E.kia || 0, enemyVehLost: E.vehLost || 0,
-    objectivesHeld: (game.objectives || []).filter(o => o.owner === side).length, losses: P.kia || 0, time: game.time };
+    objectivesHeld: (game.objectives || []).filter(o => o.owner === side).length, losses: P.kia || 0, time: game.time, heliLost: game.heli?.lost?.[side] || 0 };
 }
