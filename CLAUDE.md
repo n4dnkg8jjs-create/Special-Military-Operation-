@@ -73,9 +73,26 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
 - Nov 2026 session 2 (branch claude/great-pascal-yoiw1q, NOT on main until the owner says so): mount v5 leg fix, explosions v2
   (no shock ring), campaign v8 replacements (out of contact only, 2 LP a man, 1-3 weeks, XP dilution, depot), AI v9 (concentrated
   attack, fewer hides, carriers support; still takes no objective vs the scripted defender in 10 min), ATGM pickup model + skirmish unit.
-- Owner's queue, not started: special units for 'CI points' (meaning unconfirmed: VDV platoons, Hind strike, Leopard), medevac
-  dead-driver push-out clips, 3D main menu scene (two crouching UA soldiers, RPG aimed at the road), slung-rifle magazine
-  orientation (asked which way), campaign-map AI (asked for an example), ATGM pickup in campaign / versus.
+- Nov 2026 session 3 (same branch, still NOT on main): pickup v5/v6 (bed sill beam / pan no longer through the rear tyres; steering
+  wheel is its own node `steer_wheel`, manifest `steering_wheel.axis`), ATGM pickup v3 (tailgate shut, only the launcher head turns -
+  atgmTruck.js splitHead(), Kornet arc 34 deg / Stugna 100 deg, Stugna operator on ride_seat_3, spare tubes in the bed, no med kit),
+  cab crew v1 (src/game/cabPose.js: both pickups - hands grip the turning wheel, passengers' hands on thighs, heads forward, out to
+  220 m), unit cards (mounted squads no longer greyed), tape bands (tools/blender/soldiers/band_weights.py: bands take the cloth's
+  skin weights, idempotent), sling v11 (rifle muzzle-up behind the right shoulder, magazine out, strap over that shoulder:
+  sling_shoulder.py -> assets/soldiers/sling_shoulder.json, soldier.js shoulderSling(); the GLB's v9 socket / strap stay hidden),
+  menu v3 (menuScene.js: whole scene 3-D under the painted sky; backdrop.js skips its town when scene3d.full).
+- The soldier GLBs cannot be rebuilt in a fresh container (tools/blender/soldiers/.cache has no body.pkl): patch the shipped GLB
+  (band_weights.py, mount_legfix.py) or add runtime meshes (sling_shoulder.json) instead.
+- Owner's queue, not started (his words, Nov 2026): CI-point special units - "model the CI vehicles using references" (VDV platoons,
+  Hind strike with crash physics that can be shot down, Leopard; LP deduction when their casualties are high; 'CI' meaning still
+  unconfirmed); animate pushing the dead medevac driver out of the seat; lightweight realistic blood (runs / pools from a wound,
+  drag trails); high-crawl clip "still really bad" + body parts swelling / twisting / shrinking in many clips; dugouts need a real
+  visible opening in trenches; better destroyed apartment blocks + damage "based off satellite images"; campaign tiles -> maps
+  (open land and small towns = farmland map, cities without their own map = city map) + new map types: river map, generic rural
+  map (tree lines, fields, roads, trenches), grey-zone map (mud, few trees, ruins, trenches, stumps - only if accurate for some
+  tile); BTR cope cages accuracy + more work on the BTR-82A turret (measurements, side profiles); defence system (defenders place
+  units on objectives / trenches at deploy, attackers' staging grounds further back so they cannot be camped: maps a little
+  bigger, still square); campaign-map AI (asked for an example); ATGM pickup in campaign / versus.
 - Open complaints not yet resolved: "Avdiivka doesn't look like Avdiivka" (ask for a specific spot/photo), general lag on
   the owner's machine (measure again after changes), docs/TODO.md backlog.
 
