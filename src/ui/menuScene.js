@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { tapeMaterial } from '../game/tapeTex.js';
 import { charObject } from '../game/vehicle.js';
 import { coilGeo, wireMats, pixHook, COIL_L } from '../world/battlefieldDetail.js';
+import { Flames } from '../fx/flames.js';
 
 // The main menu's scene, in 3-D (v2: the whole view, not a layer of models over the painting). Drawn on its own canvas over the
 // painted backdrop (backdrop.js), which keeps the sky - cloud deck, the glow of the last light, artillery flashes, smoke columns,
@@ -33,18 +34,14 @@ const hill = z => FY + (PLAIN - FY) * sstep(-14, -120, z);
 // the trench line: straight in front of the two men, then (left of them) it turns toward the viewer and runs out of the bottom
 // of the screen; crestD = its slope dz/dx, crestN = the unit normal to the men's side
 const TURN = [0.35, -1.75, 6.6];   /* (v6: the bend starts right beside the watcher and is sharp - a parapet across the whole view hid the road) */
-const crestZ = x => -9.0 + TURN[2] * sstep(TURN[0], TURN[1], x);
+const CZ = -7.5;   /* (v11: the trench 1.5 m nearer - its floor is below the frame now, no bare square of it in view; the rear bank is gone again: it hid the men) */
+const crestZ = x => CZ + TURN[2] * sstep(TURN[0], TURN[1], x);
 const crestD = x => { const t = (x - TURN[0]) / (TURN[1] - TURN[0]); return t <= 0 || t >= 1 ? 0 : -6 * t * (1 - t); };
 const crestN = x => { const f = crestD(x), l = Math.hypot(f, 1); return [-f / l, 1 / l, l]; };
 const crestH = x => 0.86 + (x > 8.2 || x < -12 ? 0.05 * Math.sin(x * 1.3 + 0.4) : 0);
 // steep to the men, easy to the enemy; between REV[0] and REV[1] the inner face is cut vertical and revetted with logs
 const REV = [0.95, 7.8], WALL = 0.2;   /* (v9: the bend and the stretch beyond it are bare earth - kit pieces are straight and crossed each other there) */
-// (v9) the trench has its other side too: 1.9 m behind the front wall the ground comes up again - a rear bank lower than the
-// parapet (the men stay in view over it from where the viewer is), running on round the bend and off towards him, with the
-// spoil that was thrown out backwards heaped along its edge
-const BANK = [1.95, 0.64], SPOIL = [[6.3, -6.2, 1.3, 0.34], [9.6, -6.0, 1.5, 0.4], [-0.6, -4.9, 1.2, 0.3], [3.9, -5.4, 0.9, 0.16]];
-const bankAt = (x, z, d) => { if (d < BANK[0] - 0.05) return 0; let h = BANK[1] * sstep(BANK[0], BANK[0] + 0.32 + 0.1 * Math.sin(x * 1.7), d) * (1 + 0.05 * Math.sin(x * 2.3 + z * 1.1)); for (const [sx, sz, r, sh] of SPOIL) { const q = Math.hypot(x - sx, (z - sz) * 1.5) / r; if (q < 1) h += sh * (1 - q * q) ** 1.5 * sstep(BANK[0] - 0.05, BANK[0] + 0.35, d); } return h; };
-const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.95 - (0.95 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)) + bankAt(x, z, d); };
+const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.95 - (0.95 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)); };
 
 export class MenuScene {
   constructor(backdrop) {
@@ -68,7 +65,7 @@ export class MenuScene {
     this.bd.scene3d = null;
     if (this.renderer) {   // free the GPU side: the battle is about to make its own context
       this.scene.traverse(o => { if (o.isMesh || o.isSprite || o.isLine) { o.geometry?.dispose?.(); for (const m of [].concat(o.material || [])) { for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap']) m[k]?.dispose?.(); m.dispose?.(); } } });
-      this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer = null; this.scene = null; this.ready = false; this.loading = null; this.pool.clear(); this.men = []; this.veh = {};
+      this.renderer.dispose(); this.renderer.forceContextLoss?.(); this.renderer = null; this.scene = null; this.ready = false; this.fl = null; this.glows = this.flames = this.smokes = null; this._dressed = false; this._rpg = null; this._fk = null; this.loading = null; this.pool.clear(); this.men = []; this.veh = {};
       removeEventListener('resize', this._rs);
       this.canvas.remove(); this.canvas = null;
     }
@@ -88,18 +85,18 @@ export class MenuScene {
     r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.87;
     const scene = this.scene = new THREE.Scene();
     // v7: day, but a heavy overcast one - a low grey deck, flat light from the front (the men are seen against it), haze
-    const HZ = 0x777b7b;   /* (v9: the gloom back - darker haze, less light, dark wet ground) */
-    scene.fog = new THREE.FogExp2(HZ, 0.0036);
+    const HZ = 0x5b6062;   /* (v9: the gloom back - darker haze, less light, dark wet ground) */
+    scene.fog = new THREE.FogExp2(HZ, 0.0033);
     { // the sky is painted once and shown as the scene's background: horizon at 60 % of the height, as the camera has it
       const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const x = c.getContext('2d'), R = rng(9), g = x.createLinearGradient(0, 0, 0, 512);
-      g.addColorStop(0, '#41474c'); g.addColorStop(0.36, '#5c6165'); g.addColorStop(0.57, '#767a7a'); g.addColorStop(1, '#777b7b'); x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
+      g.addColorStop(0, '#3b4146'); g.addColorStop(0.3, '#4b5156'); g.addColorStop(0.5, '#5b6062'); g.addColorStop(1, '#5b6062');   /* (v11: the haze is the sky's own tone at the horizon - far blocks sink into it instead of standing out white) */ x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
       for (let i = 0; i < 46; i++) { const px = R() * 1024, py = R() * 290, w = 110 + R() * 230, d = R() < 0.55; x.save(); x.translate(px, py); x.scale(1, 0.4 + py / 900); const q = x.createRadialGradient(0, 0, 0, 0, 0, w); q.addColorStop(0, d ? 'rgba(56,60,64,.24)' : 'rgba(152,154,152,.15)'); q.addColorStop(1, 'rgba(100,104,106,0)'); x.fillStyle = q; x.fillRect(-w, -w, w * 2, w * 2); x.restore(); }
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; scene.background = t; }
     scene.add(new THREE.HemisphereLight(0x9aa3ac, 0x3b3832, 1.45));
     const sun = new THREE.DirectionalLight(0xcfcdc6, 0.75); sun.position.set(60, 120, -260); scene.add(sun);          // what gets through the cloud: high, from the town's side
     const fill = new THREE.DirectionalLight(0x7f8a96, 0.25); fill.position.set(-40, 60, 60); scene.add(fill);
     // the two men: in the trench's shade from our side; a little warmth from the fires ahead
-    const rim = new THREE.SpotLight(0xffa868, 26, 20, 0.27, 0.95, 1.4); rim.position.set(8.5, 0.2, -14.2); rim.target.position.set(2.2, -1.25, -8.1); scene.add(rim, rim.target);
+    const rim = new THREE.SpotLight(0xffa868, 26, 20, 0.27, 0.95, 1.4); rim.position.set(8.5, 0.2, -12.7); rim.target.position.set(2.2, -1.25, -6.6); scene.add(rim, rim.target);
     this.rim = rim;
     this.cam = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1.2, 1400); this.cam.rotation.order = 'YXZ'; this.cam.rotation.x = PITCH;
     this.resize(); addEventListener('resize', this._rs = () => this.resize());
@@ -212,23 +209,32 @@ export class MenuScene {
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
     const at = (x, d) => { const [nx, nz] = crestN(x); return [x + nx * d, crestZ(x) + nz * d, Math.atan2(nx, nz)]; };
     const face = () => WALL;                                                                   /* the cut face's distance from the crest line */
-    for (let x = REV[1] - 0.9; x > REV[0] - 1.1; x -= 1.74) {   /* (the last one's end is buried in the slumped earth of the bend) */ const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
-    // (v9) sandbags: the kit's row is one flat-sided block (fine from the game's height; from inside the trench it read as a
-    // plank lying on the parapet). Here every bag is its own lump - filled sacks, each a little different, laid end to end in a
-    // course with a second, broken course bonded over the joints; a gap where the watcher looks out
-    { const bagG = new THREE.SphereGeometry(1, 14, 9); { const p = bagG.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), x = p.getX(i), z = p.getZ(i), k = 1 - 0.28 * Math.abs(y) ** 3; p.setXYZ(i, Math.sign(x) * Math.abs(x) ** 0.5 * k, (y < 0 ? y * 0.85 : y) * (1 - 0.18 * Math.abs(x) ** 6), Math.sign(z) * Math.abs(z) ** 0.6 * k);   /* (a filled sack: squarish in plan, pinched at its sewn ends) */ } bagG.computeVertexNormals(); }
-      const bagM = new THREE.MeshStandardMaterial({ color: 0xb3a688, roughness: 1, bumpMap: this.soilMat.bumpMap, bumpScale: 0.6 }), list = [];
-      for (let x = REV[1] - 0.3; x > REV[0] + 0.1; x -= 0.44) if (!(x > 0.75 && x < 2.15)) list.push([x, 0, 0]);
-      for (let x = REV[1] - 0.52; x > 3.1; x -= 0.44) if (R() < 0.85) list.push([x, 1, 0]);
+    for (let x = REV[1] - 0.9; x > REV[0] + 0.7; x -= 1.74) {   /* (none into the bend: a straight piece turned with the wall there and stuck out across the corner; the slumped pile covers the wall's end) */ const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
+    // (v11) sandbags. A filled sack is a flattened block with rounded corners and slack, pinched ends - it lies flat on what is
+    // under it. Lower course butted end to end on the levelled crest, upper course bonded over the joints and sunk a centimetre
+    // into it (they are heavy), each sagging a little over the gap below; a gap where the watcher looks out, and a stretch left
+    // one course high where the RPG-22 lies
+    { const bagG = new THREE.BoxGeometry(2, 2, 2, 10, 4, 6); { const p = bagG.attributes.position; for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = (x ** 6 + y ** 4 + z ** 4) ** 0.25 || 1; x /= Math.max(1, n * 0.92); y /= Math.max(1, n * 0.92); z /= Math.max(1, n * 0.92);
+        const end = Math.max(0, Math.abs(x) - 0.72) / 0.28; y *= (1 - 0.45 * end * end) * (1 + 0.1 * (1 - x * x) * (1 - z * z)); z *= 1 - 0.12 * end * end; p.setXYZ(i, x, y, z); } bagG.computeVertexNormals(); }
+      const bagM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, bumpMap: this.soilMat.bumpMap, bumpScale: 0.5 }), list = [], BL = 0.58, BH = 0.07, y0 = x => FY + crestH(x) + 0.035 + BH - 0.012;
+      for (let x = REV[1] - 0.2; x > REV[0] + 0.2; x -= BL) if (!(x > 0.7 && x < 2.2)) list.push([x, 0]);
+      for (let x = REV[1] - 0.2 - BL / 2; x > 5.0; x -= BL) list.push([x, 1]);
       const bags = new THREE.InstancedMesh(bagG, bagM, list.length), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
-      list.forEach(([x, k], i) => { const [px, pz] = at(x, face(x) - 0.27 + (R() - 0.5) * 0.03); bags.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + crestH(x) + 0.035 + 0.068 + k * 0.128, pz + k * 0.02), q.setFromEuler(e.set((R() - 0.5) * 0.08, (R() - 0.5) * 0.14, (R() - 0.5) * 0.06)), new THREE.Vector3(0.225 + R() * 0.015, 0.07 + R() * 0.01, 0.14 + R() * 0.015))); bags.setColorAt(i, c.setRGB(0.8 + R() * 0.3, 0.8 + R() * 0.28, 0.76 + R() * 0.24)); });
-      bags.frustumCulled = false; scene.add(bags); }
+      list.forEach(([x, k], i) => { const [px, pz] = at(x, face(x) - 0.27), v = 0.82 + R() * 0.3, ol = R() < 0.3;
+        bags.setMatrixAt(i, M.compose(new THREE.Vector3(px, y0(x) + k * (2 * BH - 0.014), pz + k * 0.015), q.setFromEuler(e.set(0, (R() - 0.5) * 0.07, 0)), new THREE.Vector3(BL / 2 + 0.004, BH, 0.145 + R() * 0.012)));
+        bags.setColorAt(i, ol ? c.setRGB(0.25 * v, 0.27 * v, 0.19 * v) : c.setRGB(0.4 * v, 0.37 * v, 0.29 * v)); });   /* (weathered sacking, wet and earth-stained: not white) */
+      bags.frustumCulled = false; scene.add(bags); this.bagTop = x => y0(x) + BH; }
+    // (v11) the revetment's posts: stakes driven in in front of the logs, their split tops standing a hand above the wall
+    { const pg = new THREE.CylinderGeometry(0.04, 0.05, 1.02, 7), pm = new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 1 }), xs = []; for (let x = REV[1] - 0.25; x > REV[0] + 0.3; x -= 0.87) xs.push(x);
+      const posts = new THREE.InstancedMesh(pg, pm, xs.length), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+      xs.forEach((x, i) => { const [px, pz] = at(x, face(x) + 0.31); posts.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.5 + (R() - 0.5) * 0.08, pz), q.setFromEuler(e.set((R() - 0.5) * 0.05, R() * 6, (R() - 0.5) * 0.05)), new THREE.Vector3(1, 1, 1))); });
+      posts.frustumCulled = false; scene.add(posts); }
     for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); P('floor_planks', px, FY + 0.045, pz, ry); }
     { const [px, pz] = at(4.75, face(4.75) + 0.24 + 0.5); P('ammo_crates', px, FY + 0.09, pz, 0.12); }
     // clods fallen from the wall and the parapet, mud trodden onto the boards
     // (v9) the earth that came out of the wall where the revetment ends: one slumped pile at the foot of the bare face, its toe
     // spread on the floor - a heap, not scattered lumps (the clods below are the few that rolled off it)
-    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.0, pz = crestZ(0.5) + 0.78, hx = 1.05, hz = 0.8, hh = 0.72, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
+    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.5, pz = crestZ(0.5) + 0.72, hx = 1.15, hz = 0.85, hh = 0.8, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
       for (let i = 0; i <= N; i++) for (let j = 0; j < K; j++) { const r = i / N, a = j / K * 6.2832, lob = 1 + 0.16 * Math.sin(a * 3 + 0.7) + 0.09 * Math.sin(a * 5 + 2.1), x = px + Math.cos(a) * r * hx * lob, z = pz + Math.sin(a) * r * hz * lob - 0.22 * (1 - r) /* (leaning into the wall) */;
         const y = FY + 0.03 + hh * Math.pow(1 - r * r, 1.5) * (1 + 0.22 * nz(x, z)) + 0.02 * nz(x * 2.3, z * 2.3) * (1 - r) - 0.05 * r * r;
         pos.push(x, y, z); uv.push(x / 2.2, z / 2.2 + y); const k = 0.82 + 0.3 * (y - FY) + 0.08 * nz(x * 1.9, z * 2.4); col.push(k, k * 0.97, k * 0.93); }
@@ -252,15 +258,11 @@ export class MenuScene {
   // an RPG-22 laid ready on the parapet beside the men (on the sandbags, along the trench)
   launcher(scene, g) {
     const o = g.scene.clone(true); o.traverse(q => { if (q.isMesh) { q.frustumCulled = false; if (/_LOD1$/i.test(q.name)) q.visible = false; } });
-    // (v9: it floated. The model's tube is a 9 cm tube about its own axis with the sling and sights hanging / standing off it: laid
-    // on its side the lowest point is the tube wall, 4.6 cm under the axis - it was set down by the bounding box, sling and all.)
-    // The top of the bags is found on the bags themselves: a ray down onto the scene at the spot.
-    const x = 4.18, z = crestZ(x) + WALL - 0.27, grp = new THREE.Group(); grp.add(o);
-    scene.updateMatrixWorld(true);
-    const hit = new THREE.Raycaster(new THREE.Vector3(x, FY + 3, z), new THREE.Vector3(0, -1, 0), 0, 6).intersectObjects(scene.children, true).find(h => h.object.isMesh && h.object.visible);
-    const top = hit ? hit.point.y : FY + crestH(x) + 0.2;
-    o.rotation.z = Math.PI / 2;                                  /* on its side: sights to the men, sling slack over the bags */
-    grp.position.set(x, top + 0.044, z); grp.rotation.set(0, Math.PI / 2 + 0.18, 0); scene.add(grp);
+    // (v11: it still floated - the ray that looked for the bags' top found something else first.) Its place is known: the stretch
+    // of the parapet left one course high. The tube is 9.2 cm across about the model's own axis, sling below and sights above:
+    // rolled a quarter turn so both lie to the sides, the tube's wall rests on the bags (sunk 4 mm into the sacking)
+    const x = 4.3, grp = new THREE.Group(); o.rotation.z = Math.PI / 2; grp.add(o);
+    grp.position.set(x, (this.bagTop ? this.bagTop(x) : FY + crestH(x) + 0.17) + 0.046 - 0.004, crestZ(x) + WALL - 0.27); grp.rotation.set(0, Math.PI / 2 + 0.1, 0); scene.add(grp);
   }
   // a fire: flames (flickering additive tongues), their glow, dark smoke going up on the wind; `big`: through a roof / a wreck
   addFire(scene, x, y, z, sz, big = 0, quiet = 0) {
@@ -274,7 +276,8 @@ export class MenuScene {
     })());
     this.glows ||= []; this.flames ||= []; this.smokes ||= [];
     const gl = new THREE.Sprite(K.glow.clone()); gl.position.set(x, y + 0.4, z + 0.6); gl.userData.s = sz * (big ? 4.2 : 2.4); scene.add(gl); this.glows.push(gl);
-    for (let k = 0; k < (big ? 5 : 3); k++) { const f = new THREE.Sprite(K.flame.clone()); f.center.set(0.5, 0.12); f.userData = { x: x + (k - (big ? 2 : 1)) * sz * 0.34, y: y - (big ? 0.2 : 0.9), z, s: sz * (big ? 1.5 : 1) * (0.8 + Math.random() * 0.5), ph: Math.random() * 9 }; scene.add(f); this.flames.push(f); }
+    /* (v11) the flames are the game's own (fx/flames.js: noise-eaten tongues, slow licking, smoke wisps at the tips) - the menu's were paper cut-outs flapping */
+    this.fl ||= new Flames(scene, 96); this.fl.add(new THREE.Vector3(x, y - (big ? 0.5 : 0.9), z + 0.2), sz * (big ? 0.85 : 0.5), { n: big ? 4 : 2 });
     if (!quiet) for (let k = 0; k < 6; k++) { const sm = new THREE.Sprite(K.smoke.clone()); sm.userData = { x, y: y + 1, z: z - 1, s: sz * 2.2, ph: k / 6, sp: 0.085 + Math.random() * 0.03 }; scene.add(sm); this.smokes.push(sm); }
   }
   dot(rgb) {
@@ -378,7 +381,9 @@ export class MenuScene {
     // the trees sparkle like plastic)
     const rel = new THREE.Matrix4(), inv = new THREE.Matrix4(), dull = new Map();
     // (v8: unlit - one flat tone per tree, as foliage reads at 200 m under an overcast; lit, every leaf card took its own shade)
-    const matOf = (t, m) => { if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: m.alphaTest || (m.transparent ? 0.4 : 0), side: m.side, color: m.color.clone().multiplyScalar(m.map ? 0.27 : 0.22).lerp(new THREE.Color(0x1f241d), 0.25), fog: true });   /* (v9: they glowed - a tree line under a low overcast is a dark mass) */ d.name = m.name; dull.set(m, d); } return d; };
+    const kitSet = new Set(); kit.scene.traverse(o => kitSet.add(o)); const dim = new Map();
+    const matOf = (t, m) => { if (kitSet.has(t)) { let d = dim.get(m); if (!d) { d = m.clone(); d.color.multiplyScalar(0.5).lerp(new THREE.Color(0x4a4c4c), 0.2); dim.set(m, d); } return d; }   /* (pale concrete panels a kilometre off under a dark sky: grey, not white) */
+      if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: m.alphaTest || (m.transparent ? 0.4 : 0), side: m.side, color: m.color.clone().multiplyScalar(m.map ? 0.27 : 0.22).lerp(new THREE.Color(0x1f241d), 0.25), fog: true });   /* (v9: they glowed - a tree line under a low overcast is a dark mass) */ d.name = m.name; dull.set(m, d); } return d; };
     for (const [t, Ms] of bins) {
       t.updateWorldMatrix(true, true); inv.copy(t.matrixWorld).invert();
       t.traverse(o => {
@@ -470,8 +475,8 @@ export class MenuScene {
     for (const [v, o] of this.pool) if (!seen.has(v)) { this.scene.remove(o); this.pool.delete(v); }
     for (const d of this.dust) { if (!d.visible) continue; const u = d.userData; u.life += dt; if (u.life >= u.max) { d.visible = false; continue; } const k = u.life / u.max; d.position.x += u.vx * dt; d.position.y += 0.5 * dt; const r = u.r * (1 + k * 3.2); d.scale.set(r * 1.6, r, 1); d.material.opacity = 0.34 * Math.min(1, u.life / 0.3) * (1 - k); }
     let fl0 = 1;
-    for (const [i, g] of (this.glows || []).entries()) { const f = 0.75 + 0.18 * Math.sin(t * 11 + i * 3) + 0.1 * Math.sin(t * 23 + i * 1.7); g.scale.set(g.userData.s * f * 1.15, g.userData.s * f * 0.8, 1); g.material.opacity = 0.3 * f; if (!i) fl0 = f; }
-    for (const f of this.flames || []) { const u = f.userData, a = 0.75 + 0.3 * Math.sin(t * 9 + u.ph) + 0.2 * Math.sin(t * 17.3 + u.ph * 2.1), w = 0.8 + 0.25 * Math.sin(t * 13 + u.ph * 1.7); f.position.set(u.x + Math.sin(t * 6 + u.ph) * u.s * 0.08, u.y, u.z + 0.3); f.scale.set(u.s * 0.9 * w, u.s * 2.1 * a, 1); f.material.opacity = 0.85; }
+    for (const [i, g] of (this.glows || []).entries()) { const f = 0.82 + 0.12 * Math.sin(t * 2.3 + i * 3) + 0.06 * Math.sin(t * 5.1 + i * 1.7); g.scale.set(g.userData.s * f * 1.15, g.userData.s * f * 0.8, 1); g.material.opacity = 0.3 * f; if (!i) fl0 = f; }
+    this.fl?.update(dt, t, this.cam.position, this.scene.fog?.density);
     for (const m of this.smokes || []) { const u = m.userData, k = (t * u.sp + u.ph) % 1; m.position.set(u.x + k * k * 26, u.y + k * 34, u.z); const r = u.s * (1 + k * 4.5); m.scale.set(r, r, 1); m.material.opacity = 0.5 * Math.min(1, k * 6) * (1 - k); }
     if (this.rim) this.rim.intensity = 26 * (0.85 + 0.15 * fl0);
    /* the fires' light on the two men flickers with them */
