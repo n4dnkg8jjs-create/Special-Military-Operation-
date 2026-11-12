@@ -269,7 +269,8 @@ export class FX {
     // well below that to read dark against it, and dust only a little above)
     const dust = opts.dust ?? [0.55, 0.49, 0.41], soil = [dust[0] * 0.25, dust[1] * 0.235, dust[2] * 0.22], pale = [dust[0] * 0.62, dust[1] * 0.62, dust[2] * 0.62];
     // detonation flash (white-yellow, 2-3 frames) and the short fireball inside the cloud
-    for (let i = 0; i < 2; i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.5 * p, y: pos.y + (0.35 + R() * 0.5) * p, z: pos.z + (R() - .5) * 0.5 * p, life: 0.055 + R() * 0.04, size0: (1.1 + R() * 0.4) * p, size1: (2.6 + R() * 0.8) * p, r: 1, g: 0.94, b: 0.8, a0: 1.5, a1: 0 });
+    for (let i = 0; i < 3; i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.6 * p, y: pos.y + (0.4 + R() * 0.6) * p, z: pos.z + (R() - .5) * 0.6 * p, life: 0.06 + R() * 0.045, size0: (1.6 + R() * 0.5) * p, size1: (3.7 + R() * 0.9) * p, r: 1, g: 0.94, b: 0.8, a0: 1.7, a1: 0 });
+    this.fire.spawn({ x: pos.x, y: pos.y + 0.5 * p, z: pos.z, life: 0.09, size0: 4.5 * p, size1: 8 * p, r: 1, g: 0.78, b: 0.5, a0: 0.42, a1: 0 });   // its glow on the dust and the ground round it
     for (let i = 0; i < N(5); i++) this.fire.spawn({ x: pos.x + (R() - .5) * 0.8 * p, y: pos.y + 0.3 + R() * 0.8 * p, z: pos.z + (R() - .5) * 0.8 * p, vx: (R() - .5) * 6 * p, vy: 1.5 + R() * 4 * p, vz: (R() - .5) * 6 * p, life: 0.11 + R() * 0.13, size0: 0.8 * p, size1: 2.4 * p, r: 1, g: 0.74, b: 0.36, r1: 0.7, g1: 0.2, b1: 0.04, cool: 0.7, a0: 1.3, a1: 0, drag: 4.5 });
     // the burst cloud: detonation products + pulverised soil. Out fast in every direction and stalled within a few metres: a
     // short-lived layer that swells at once (the puff itself), and the same mass lingering, thinning and drifting
@@ -302,7 +303,7 @@ export class FX {
     // burst (3-12 cm)
     for (let i = 0; i < Math.round(10 * p); i++) { const a = R() * 6.28, v = (12 + R() * 22) * sp; this.fragment('shard', pos.x, pos.y + 0.3, pos.z, Math.cos(a) * v, 2 + R() * 9 * sp, Math.sin(a) * v, (0.02 + R() * 0.06) * Math.min(1.6, sp)); }
     if (ground) for (let i = 0; i < Math.round(9 * p); i++) { const a = R() * 6.28, v = (2 + R() * 7) * sp; this.fragment('clod', pos.x + (R() - .5) * p, pos.y + 0.3, pos.z + (R() - .5) * p, Math.cos(a) * v, (5 + R() * 9) * sp, Math.sin(a) * v, (0.03 + R() * 0.09) * Math.min(1.5, sp)); }
-    this.light(new THREE.Vector3(pos.x, pos.y + 1.6, pos.z), 0xffbe78, 85 * p, 28 * p, 0.15);
+    this.light(new THREE.Vector3(pos.x, pos.y + 1.6, pos.z), 0xffbe78, 120 * p, 34 * p, 0.17);
   }
   collapseDust(pos, w, d, h) {
     const R = Math.random;

@@ -15,6 +15,7 @@ import * as GR from './growth.js';
 
 export const KEY2 = 'smo.campaign.v2';
 export const MAX_BATTLE = 12;                 // units one battle can deploy (the rest of a task force stays in reserve)
+export const FRONT_TRICKLE = 2;               // men of a replacement draft a unit in contact with the enemy can absorb in a week
 export const FRONTAGE = 8;                    // companies that can fight for one 2 km square at once (auto-resolve)
 export const XP_NAMES = ['Green', 'Trained', 'Veteran', 'Elite'];
 export function xpLevel(xp) { return xp >= 9 ? 3 : xp >= 5 ? 2 : xp >= 2 ? 1 : 0; }
@@ -497,13 +498,32 @@ export class Campaign2 {
     const cost = this.unitCost(c); if (this.lp < cost) return 'Not enough logistics points';
     this.lp -= cost; this.orders.push({ what: 'unit', key, eta: c.eta ?? 1 }); this.note(`Ordered: ${c.label} (arrives in ${c.eta ?? 1} wk).`); this.save(); return null;
   }
-  replaceCost(u) { const missing = Math.max(0, u.menMax - u.men - u.wounded); const vc = u.veh ? (u.veh.lost ? (this.catalogItem(u.key)?.lp || 12) * 0.6 : (1 - u.veh.hp) * 8) : 0; return Math.ceil((missing * 1.2 + vc) * (1 + (this.mods().replacementsCost || 0))); }
-  replenish(uid) {
-    const u = this.unit(uid); if (!u) return 'No such unit'; const tf = this.tfOf(uid);
+  // Replacements (v8: it was too easy to keep units at full strength - 1.2 LP a man, anywhere, back next week, one XP point).
+  // Brigades in 2023-24 could seldom be pulled out and were refilled with barely trained men who had to learn in action:
+  //   - a unit is rebuilt only out of contact (no enemy-held square next to its task force) and in supply
+  //   - 2 LP a man; it is out for 1-3 weeks by the share of it that is new (a destroyed vehicle: at least 2)
+  //   - its experience is diluted by the share of new men (a squad of 3 veterans and 5 recruits is not a veteran squad)
+  //   - drafts ordered from high command go to units in the rear first; a unit in the line takes at most FRONT_TRICKLE men
+  //     of a draft, the rest wait at the brigade depot (this.depot) and are fed in at the start of each following week
+  replaceMissing(u) { return Math.max(0, u.menMax - u.men - u.wounded); }
+  replaceCost(u) { const missing = this.replaceMissing(u); const vc = u.veh ? (u.veh.lost ? (this.catalogItem(u.key)?.lp || 12) * 0.6 : (1 - u.veh.hp) * 8) : 0; return Math.ceil((missing * 2 + vc) * (1 + (this.mods().replacementsCost || 0))); }
+  replaceWeeks(u) { const sh = u.menMax ? this.replaceMissing(u) / u.menMax : 0; return Math.max(sh > 0.6 ? 3 : sh > 0.3 ? 2 : 1, u.veh?.lost ? 2 : 1); }
+  inContact(tf) { return !!tf && this.neighbors(tf.cell).some(n => this.owner[n] !== 'player'); }
+  dilute(u, before, after) { if (after > before && after > 0) u.xp = Math.max(0, Math.round(u.xp * before / after * 10) / 10); }
+  replenishBlock(u) {   // why this unit cannot be rebuilt now (null = it can)
+    const tf = this.tfOf(u.uid);
     if (tf && (tf.supply ?? 1) < 0.5) return 'Out of supply: replacements cannot reach this task force';
+    if (this.inContact(tf)) return 'In contact with the enemy: pull the task force back a square to rebuild it';
+    return null;
+  }
+  replenish(uid) {
+    const u = this.unit(uid); if (!u) return 'No such unit';
+    const block = this.replenishBlock(u); if (block) return block;
     const cost = this.replaceCost(u); if (!cost) return 'Already at full strength'; if (this.lp < cost) return 'Not enough logistics points';
-    this.lp -= cost; u.men = Math.max(u.men, u.menMax - u.wounded); if (u.veh) { u.veh.hp = 1; u.veh.lost = false; } u.status = 'refit'; u.eta = 1; u.xp = Math.max(0, u.xp - 1);
-    this.note(`${u.name}: replacements and repairs (${cost} LP); ready next week.`); this.save(); return null;
+    const weeks = this.replaceWeeks(u), before = u.men + u.wounded;
+    this.lp -= cost; u.men = Math.max(u.men, u.menMax - u.wounded); this.dilute(u, before, u.men + u.wounded);
+    if (u.veh) { u.veh.hp = 1; u.veh.lost = false; } u.status = 'refit'; u.eta = weeks;
+    this.note(`${u.name}: replacements and repairs (${cost} LP); ready in ${weeks} week${weeks > 1 ? 's' : ''}.`); this.save(); return null;
   }
   deliveryCell() {
     const hq = this.hq || this.def.start.hq; if (this.owner[hq] === 'player') return hq;
@@ -951,12 +971,16 @@ export class Campaign2 {
     this.turn++; this.battleFought = false;
     // deliveries from high command
     for (const o of this.orders) o.eta--;
+    let arrived = 0;
     for (const o of this.orders.filter(o => o.eta <= 0)) {
       if (o.what === 'tech') { this.unlocked.push(o.key); const t = this.techItem(o.key); for (const k of t?.unlock || []) if (!this.available.includes(k)) this.available.push(k); if (t?.battery) this.addBattery(t.battery); this.note(`Delivered: ${t?.name}.`, 'good'); }
-      else { const c = this.catalogItem(o.key); if (c?.kind === 'replacements') { const n = this.distributeReplacements(c.men || 8); this.note(`${c.men || 8} replacements arrived${n < (c.men || 8) ? ` (${(c.men || 8) - n} held at the brigade depot: no unit in supply needs them)` : ''}.`, 'good'); } else if (c) { this.deliverUnit(this.record({ key: c.key, kind: c.kind, men: c.men, veh: c.vehicle ? { kind: c.vehicle } : null, name: this.unitName(c) })); this.note(`Arrived at ${this.cellName(this.deliveryCell())}: ${c.label}.`, 'good'); } }
+      else { const c = this.catalogItem(o.key); if (c?.kind === 'replacements') { this.depot = (this.depot || 0) + (c.men || 8); arrived += c.men || 8; } else if (c) { this.deliverUnit(this.record({ key: c.key, kind: c.kind, men: c.men, veh: c.vehicle ? { kind: c.vehicle } : null, name: this.unitName(c) })); this.note(`Arrived at ${this.cellName(this.deliveryCell())}: ${c.label}.`, 'good'); } }
     }
     this.orders = this.orders.filter(o => o.eta > 0);
     this.computeSupply();
+    // the replacement depot: this week's drafts and the men still waiting from earlier ones join their units
+    if (this.depot > 0) { const n = this.distributeReplacements(this.depot); this.depot -= n;
+      if (arrived || n) this.note(`${arrived ? `${arrived} replacements arrived at the brigade depot. ` : ''}${n} joined their units${this.depot ? `; ${this.depot} wait at the depot (a unit in the line takes ${FRONT_TRICKLE} a week, one out of supply none)` : ''}.`, 'good'); }
     // refits, wounded returning (in supply only), wear out of supply
     for (const tf of this.forces) {
       const sup = tf.supply ?? 0;
@@ -993,8 +1017,10 @@ export class Campaign2 {
   }
   distributeReplacements(n) {
     let used = 0;
-    const us = this.forces.filter(f => (f.supply ?? 1) >= 0.5).flatMap(f => this.tfUnits(f)).filter(u => u.menMax > 0).sort((a, b) => (a.men / a.menMax) - (b.men / b.menMax));
-    for (const u of us) { const k = Math.min(n - used, u.menMax - u.men - u.wounded); if (k > 0) { u.men += k; used += k; u.xp = Math.max(0, u.xp - 0.5); } if (used >= n) break; }
+    const front = new Map(this.forces.map(f => [f.id, this.inContact(f)]));
+    const us = this.forces.filter(f => (f.supply ?? 1) >= 0.5).flatMap(f => this.tfUnits(f).map(u => ({ u, fr: front.get(f.id) }))).filter(x => x.u.menMax > 0 && x.u.status !== 'arriving')
+      .sort((a, b) => (a.fr - b.fr) || (a.u.men / a.u.menMax) - (b.u.men / b.u.menMax));   // the rear first, the weakest first
+    for (const { u, fr } of us) { const k = Math.min(n - used, this.replaceMissing(u), fr ? FRONT_TRICKLE : 99); if (k > 0) { const before = u.men + u.wounded; u.men += k; used += k; this.dilute(u, before, before + k); } if (used >= n) break; }
     return used;
   }
   // a delivered unit is called by what was ordered: the catalog label, numbered among the units of that label only (the

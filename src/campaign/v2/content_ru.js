@@ -329,8 +329,8 @@ export const CAMPAIGN2_RU = {
     artillery: 0.5, fpvThreat: 0.75, mortarMissions: 2,
   },
   catalog: [
-    { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised and contract soldiers from the brigade\'s replenishment company.', kind: 'replacements', men: 8, lp: 10, eta: 1 },
-    { key: 'repl_large', label: 'Replacement draft (16 men)', desc: 'A full draft from the training ground behind the lines.', kind: 'replacements', men: 16, lp: 18, eta: 2, req: ['ru_log_mob'] },
+    { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised and contract soldiers from the brigade\'s replenishment company.', kind: 'replacements', men: 8, lp: 16, eta: 1 },
+    { key: 'repl_large', label: 'Replacement draft (16 men)', desc: 'A full draft from the training ground behind the lines.', kind: 'replacements', men: 16, lp: 30, eta: 2, req: ['ru_log_mob'] },
     { key: 'mech_btr', label: 'MR Coy (BTR-82A)', desc: 'Eight-man squad with its wheeled carrier: 30 mm 2A72 and PKT.', kind: 'mech', vehicle: 'btr', men: 8, lp: 40, eta: 2, limit: 4 },
     { key: 'mech_ifv', label: 'MR Coy (BMP-2)', desc: 'Seven dismounts in a BMP-2: 30 mm cannon and Konkurs ATGM, light armour.', kind: 'imech', vehicle: 'ifv', men: 7, lp: 55, eta: 3, limit: 2 },
     { key: 'mech_ifv_plus', label: 'MR Coy (BMP-3)', desc: 'BMP-3s for a second mechanised company: 100 mm gun-launcher and 30 mm cannon.', kind: 'imech', vehicle: 'ifv', men: 7, lp: 65, eta: 3, req: ['ru_arm_bmp'], limit: 2 },

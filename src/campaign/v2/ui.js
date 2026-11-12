@@ -1,7 +1,7 @@
 // Campaign v2 strategic screen: the 3D grid map (map3d.js) with the HTML command interface around it — date / turn /
 // LP bar, directives, task forces (select, move, attack, split, merge, stance), high command (catalog, replacements,
 // tech tree, depots), the operations log, enemy attack warnings, battle launch / return, and the intro cutscene.
-import { Campaign2, xpLevel, XP_NAMES, MAX_BATTLE, dateLabel } from './state.js';
+import { Campaign2, xpLevel, XP_NAMES, MAX_BATTLE, FRONT_TRICKLE, dateLabel } from './state.js';
 import { loadCampaigns } from './index.js';
 import { StrategicMap, natoSvg, echelon, COL } from './map3d.js';
 import { playIntroMusic, primeAudio, blip } from './audio.js';
@@ -278,9 +278,11 @@ export class CampaignScreen {
     }
     if (this.hcTab === 'repl') {
       const units = C.units.filter(u => C.replaceCost(u) > 0);
+      p.appendChild(h('div', { class: 'c2-note' }, `A unit is rebuilt out of the line: no enemy-held square next to its task force, and in supply. New men dilute its experience, and the more of it is new the longer it is out (1–3 weeks). Drafts ordered from high command reach units in the rear first; a unit in the line takes ${FRONT_TRICKLE} men a week.${C.depot ? ` <b>${C.depot} replacements are waiting at the brigade depot.</b>` : ''}`));
       if (!units.length) p.appendChild(h('div', { class: 'c2-note' }, 'All units are at full strength.'));
       for (const u of units) { const tf = C.tfOf(u.uid), cost = C.replaceCost(u); const row = h('div', { class: 'c2-card' }, `<div class="c2-ch"><span class="ic">${KIND_ICON[u.kind] || '·'}</span> ${esc(u.name)} <small>${esc(tf?.name || '')}</small></div><div class="c2-ck">${u.menMax ? `${u.men}/${u.menMax} men${u.wounded ? ` (+${u.wounded} wounded)` : ''}` : ''}${u.veh ? ` · vehicle ${u.veh.lost ? 'destroyed' : Math.round(u.veh.hp * 100) + '%'}` : ''}</div>`);
-        row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || (tf && (tf.supply ?? 1) < 0.5), onclick: () => { const e = this.act('replenish', u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, (tf && (tf.supply ?? 1) < 0.5) ? 'Out of supply' : `Replenish (${cost} LP)`)); p.appendChild(row); }
+        const block = C.replenishBlock(u), wk = C.replaceWeeks(u);
+        row.appendChild(h('button', { class: 'c2-btn pri', disabled: C.lp < cost || !!block, title: block || '', onclick: () => { const e = this.act('replenish', u.uid); this.toast(e || `${u.name}: replacements on the way`, !e); this.render(); this.map.refresh(); } }, block ? (/supply/.test(block) ? 'Out of supply' : 'In contact — pull back') : `Rebuild (${cost} LP, ${wk} wk)`)); p.appendChild(row); }
     }
     if (this.hcTab === 'tech') {
       const owned = kitsOwned(C), lines = linesOf(C);

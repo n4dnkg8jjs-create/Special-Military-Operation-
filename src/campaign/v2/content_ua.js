@@ -328,8 +328,8 @@ export const CAMPAIGN2_UA = {
     coyPower: 1.9,   // v7: a dug-in Russian company in the belt (minefields, ATGMs, Ka-52s, artillery on call) — ai.js COY_POWER
   },
   catalog: [
-    { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised soldiers from the brigade\'s reserve battalion to fill gaps in depleted squads.', kind: 'replacements', men: 8, lp: 12, eta: 1 },
-    { key: 'repl_draft', label: 'Trained draft (16 men)', desc: 'A full draft through the brigade training centre: better prepared, arrives together.', kind: 'replacements', men: 16, lp: 20, eta: 2, req: ['ua_log_tc'] },
+    { key: 'repl', label: 'Replacements (8 men)', desc: 'Mobilised soldiers from the brigade\'s reserve battalion to fill gaps in depleted squads.', kind: 'replacements', men: 8, lp: 18, eta: 1 },
+    { key: 'repl_draft', label: 'Trained draft (16 men)', desc: 'A full draft through the brigade training centre: better prepared, arrives together.', kind: 'replacements', men: 16, lp: 32, eta: 2, req: ['ua_log_tc'] },
     { key: 'mech_btr', label: 'Mech. Coy (BTR-80)', desc: 'Eight-man squad with its wheeled carrier: KPVT and PKT, light armour.', kind: 'mech', vehicle: 'btr', men: 8, lp: 45, eta: 2, limit: 4 },
     { key: 'mech_bmp', label: 'Mech. Coy (BMP-2)', desc: 'Seven dismounts in a BMP-2: 30 mm cannon and Konkurs ATGM, thin armour.', kind: 'imech', vehicle: 'ifv', men: 7, lp: 55, eta: 2, limit: 3 },
     { key: 'mech_ifv', label: 'Mech. Coy (M2A2 Bradley)', desc: 'Six dismounts in an M2A2 ODS-SA: 25 mm Bushmaster, TOW-2, armour that brings crews home. Deliveries from spring 2023.', kind: 'imech', vehicle: 'ifv', men: 6, lp: 70, eta: 3, limit: 3, date: '2023-04-01' },
