@@ -1019,3 +1019,4 @@ export function paintScorch(w, spots) {
 }
 // (debris writer, piece library and helpers for map-specific dressing: ruins.js)
 export { Debris, PC, geos, G as DG, lm, col, mcol, hash2, seedOf, debrisMaterial, shatteredTpl };
+export { coilGeo, wireMats, pixHook, COIL_L, COIL_R };   /* (ui/menuScene.js lays the same concertina on the menu's field) */
