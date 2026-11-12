@@ -341,7 +341,7 @@ export class Building {
     for (const [a, c, depth] of plan.fab || []) {
       const mid = (a + c) / 2, half = (c - a) / 2 + 1;
       for (let col = a; col <= c; col++) {
-        const d = Math.max(1, Math.round(depth * (1 - Math.abs(col - mid) / half * 0.6) + (r() - 0.5) * 0.8)), cut = Math.max(3, F - d);
+        const d = Math.max(1, Math.round(depth * (1 - Math.abs(col - mid) / half * 0.6) + (r() - 0.5) * 0.8)), cut = Math.max(F >= 9 ? 3 : 2, F - d);   /* (v2: a five-storey can lose three storeys at the middle of the hit) */
         this.cut[col] = Math.min(this.cut[col], cut);
         for (let f = cut; f < F; f++) { lose(P('front', col, f)); lose(P('back', col, f)); }
         wreck(P('front', col, cut - 1)); wreck(P('back', col, cut - 1));
@@ -492,7 +492,13 @@ export class Building {
       if (gone || corner || (this.ruined && this.ruinedCol(c, this.floors - 1))) continue;
       const a = Math.max(-this.L / 2 + ins, -this.L / 2 + c * W - 0.005), b = Math.min(this.L / 2 - ins, -this.L / 2 + (c + 1) * W + 0.005);
       this.toWorld((a + b) / 2, this.floors * H + 0.05, 0, tmpV); tmpQ.setFromAxisAngle(Y, this.rot);
-      tmpM.compose(tmpV, tmpQ, tmpS.set(b - a, 0.3, this.D - 2 * ins)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]); counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
+      tmpM.compose(tmpV, tmpQ, tmpS.set(b - a, 0.3, this.D - 2 * ins)); ((this.intIdx ||= {})[c] ||= []).push(['roof', counters.roofs.length]);
+      if (this.ruined) {   /* (roofs v2: dust beside the parts that came down, soot over a flat that burnt, otherwise just uneven) */
+        const top = this.floors - 1, near = [c - 1, c + 1].some(k => k >= 0 && k < this.modules && this.ruinedCol(k, top)) || (this.pancaked && (c === this.pancaked[0] - 1 || c === this.pancaked[1] + 1));
+        const h = Math.sin((this.x * 12.9898 + this.z * 78.233 + c * 37.719)) * 43758.5453, u = h - Math.floor(h), k = this.burnt?.has(c + ':' + top) ? 0.5 + u * 0.2 : near ? 1.25 + u * 0.35 : 0.85 + u * 0.3;
+        (counters.roofTint ||= [])[counters.roofs.length] = near && !this.burnt?.has(c + ':' + top) ? [k, k * 0.98, k * 0.93] : [k, k, k];
+      }
+      counters.roofs.push(tmpM.clone()); tmpS.set(1, 1, 1);
     }
   }
   // damage variants (_v2/_v3) keep a facade from repeating the same hole over and over

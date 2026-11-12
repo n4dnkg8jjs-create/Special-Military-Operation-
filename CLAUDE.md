@@ -94,6 +94,22 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   'river' (real.js riverReal: balka hollow + water sheet + nav.veh 2, earth dams where roads cross, culvert headwalls), grey zone =
   `fallow: 1` + heavy `ruin`. src/campaign/v2/battlemap.js battleMapFor(): real map only on its own square, city / river /
   greyzone (opening contact line) / farmland (villages) / rural. Cell data keeps `battleMap` = the sector's real map (validated).
+  Later in session 4 (all on main): BTR cage v2 (vehicleKit.js buildCage `visor`: BTR turret screen = rectangle 30 cm wider than
+  the turret on raked posts from the turret roof only), medevac v10 (medevac.js pullStart / pullTick / pullHands: dead driver hauled
+  out with IK, mirrored cab-enter clip for the left door via root.scale.x = -1), anim v12 (tools/blender/soldiers/crawl_fix.py:
+  high_crawl re-authored in the GLB by geometry), uniforms v2 (tools/blender/soldiers/camo_tex.py: MM-14 / MultiCam generated and
+  patched into soldier_ua.glb; THE GAME DRAWS THE MERGED combo_* MESHES WITH soldier_atlas_ua / soldier_atlas_crew_ua - a change to a
+  part's texture must be re-baked into those atlases (rebake(): triangle matching by vertex positions); run it on the git original),
+  ruins v3 (city.js roofTexture(): felt roofs + per-slab dust / soot tint from Building.buildInterior; deeper FAB craters in
+  five-storeys; Avdiivka pancakeD 0.58).
+- Findings worth keeping: (1) this container's network policy blocks most reference sites (web search works, page / image fetches
+  mostly do not; Wikimedia rate-limits): ask the owner for photos when a task needs references (the BTR-82A turret rework is waiting
+  on that; btr.py's turret is already 'rebuilt from photos', its TURRET_SPEC.md was local only). (2) 'Body parts twisting / shrinking':
+  the clips have NO scale or bone-length keys and knees / elbows are clean hinges; what wrings the skin is upper-arm / wrist roll past
+  100 deg where the twist helpers fade out (hatch_exit*, medevac_lift / _load_bed, being_dragged, dismount_door, atgm_pack / _setup,
+  throw_grenade_window, death_blast / _run) and deep hip flexion (no leg helpers). A new twist reference + unwrap was tried and is
+  NOT better (see git log of this session); the fix is re-posing those clips' arms (elbow swivel) one by one with previews.
+  (3) Headless battles run in slow motion: step the sim with game.update(0.05) in page.evaluate (see medevac test pattern).
 - The soldier GLBs cannot be rebuilt in a fresh container (tools/blender/soldiers/.cache has no body.pkl): patch the shipped GLB
   (band_weights.py, mount_legfix.py) or add runtime meshes (sling_shoulder.json) instead.
 - Owner's queue (his words, Nov 2026; DONE since: CI units, dugout entrances, tile maps + new map types, defence system): CI-point special units - "model the CI vehicles using references" (VDV platoons,

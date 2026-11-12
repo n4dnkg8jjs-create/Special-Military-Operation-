@@ -720,8 +720,14 @@ export class City {
     for (const b of this.buildings) { b.buildInterior(slab, dark, counters); b.onRoomOpen = i => { dark.setMatrixAt(i, zeroM); dark.instanceMatrix.needsUpdate = true; }; }
     slab.count = counters.slab; dark.count = counters.dark; this.slabMesh = slab; this.darkMesh = dark; slab.castShadow = slab.receiveShadow = true; dark.receiveShadow = true;
     this.scene.add(slab, dark);
-    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3b3934, roughness: 0.9 });
+    // roofs v2: the flat roofs were clean dark slabs with crisp edges (they read as new). Rolled bitumen felt as it lies on these
+    // blocks: lapped strips, patched repairs, pale dust and gravel in the low spots, stains - one world-scale texture (9 m tile,
+    // mapped from the world position: the slabs are stretched boxes) - and, on a ruined map, a tint per slab: pale with concrete
+    // dust beside a caved-in / bombed part, sooty where the flat below burnt (Building.buildInterior -> counters.roofTint)
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.93, map: roofTexture() });
+    roofMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n  { vec4 rp = vec4(position, 1.0);\n  #ifdef USE_INSTANCING\n    rp = instanceMatrix * rp;\n  #endif\n  vMapUv = (modelMatrix * rp).xz / 9.0; }\n#endif'); };
     const roofs = new THREE.InstancedMesh(box, roofMat, Math.max(1, counters.roofs.length)); counters.roofs.forEach((m, i) => roofs.setMatrixAt(i, m));
+    { const col = new THREE.Color(); counters.roofs.forEach((m, i) => { const t = counters.roofTint?.[i]; roofs.setColorAt(i, t ? col.setRGB(t[0], t[1], t[2]) : col.setRGB(1, 1, 1)); }); if (roofs.instanceColor) roofs.instanceColor.needsUpdate = true; }
     roofs.castShadow = roofs.receiveShadow = true; this.scene.add(roofs); this.roofMesh = roofs; this.falling = [];
     for (const m of [slab, dark, roofs]) { m.matrixAutoUpdate = false; markStatic(m); }   // (cached static shadow: engine/renderer.js)
     // nav + occluders (one per contiguous standing part; pancaked gap leaves a passage)
@@ -1571,4 +1577,27 @@ function trenchWallTexture() {
   for (let i = 0; i < 260; i++) { const px = r() * N, py = r() * N, rad = 1 + r() * 4, l = 120 + r() * 80; x.fillStyle = `rgb(${l},${l * 0.94 | 0},${l * 0.86 | 0})`; wrap(() => { x.beginPath(); x.ellipse(px, py, rad, rad * (0.6 + r() * 0.4), r() * 6, 0, 6.29); x.fill(); }); x.fillStyle = 'rgba(20,15,10,0.5)'; wrap(() => { x.beginPath(); x.ellipse(px + 1, py + rad * 0.8, rad, rad * 0.35, 0, 0, 6.29); x.fill(); }); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.needsUpdate = true;
   return (_twTex = t);
+}
+
+// worn rolled-bitumen roofing (sRGB, tiles; ~9 m across): see the roofs in City.placeBuildings
+let _roofTex = null;
+function roofTexture() {
+  if (_roofTex) return _roofTex;
+  if (typeof document === 'undefined') return null;
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  let a = 9173; const R = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
+  x.fillStyle = '#3d3b36'; x.fillRect(0, 0, N, N);
+  // the felt's strips (1 m rolls laid across the block), each a shade of its own, a darker lap line with tar squeezed out
+  const sw = N / 9;
+  for (let i = 0; i < 9; i++) { const v = 52 + Math.floor(R() * 18); x.fillStyle = `rgb(${v + 3},${v + 1},${v - 4})`; x.fillRect(i * sw, 0, sw + 1, N); x.fillStyle = 'rgba(18,17,15,0.55)'; x.fillRect(i * sw - 1, 0, 2.2, N);
+    for (let k = 0; k < 14; k++) { x.fillStyle = 'rgba(14,13,12,0.5)'; x.fillRect(i * sw - 2 + R() * 3, R() * N, 2 + R() * 3, 6 + R() * 26); } }
+  const wrapBlob = (cx, cy, rx, ry, fill) => { for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { const g = x.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, Math.max(rx, ry)); g.addColorStop(0, fill); g.addColorStop(1, fill.replace(/[\d.]+\)$/, '0)')); x.fillStyle = g; x.save(); x.translate(cx + ox, cy + oy); x.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry)); x.translate(-cx - ox, -cy - oy); x.fillRect(cx + ox - N, cy + oy - N, 2 * N, 2 * N); x.restore(); } };
+  // repairs: newer (darker) and older (greyer) patches with their own edges
+  for (let i = 0; i < 9; i++) { const w = 30 + R() * 70, h = 24 + R() * 60, px = R() * (N - w), py = R() * (N - h), v = R() < 0.5 ? 34 + R() * 10 : 66 + R() * 14; x.fillStyle = `rgba(${v},${v - 1},${v - 5},0.85)`; x.fillRect(px, py, w, h); x.strokeStyle = 'rgba(15,14,13,0.6)'; x.lineWidth = 1.5; x.strokeRect(px, py, w, h); }
+  // pale dust and gravel washed into the low spots, dark damp stains
+  for (let i = 0; i < 26; i++) wrapBlob(R() * N, R() * N, 20 + R() * 60, 14 + R() * 44, 'rgba(120,114,100,0.16)');
+  for (let i = 0; i < 16; i++) wrapBlob(R() * N, R() * N, 16 + R() * 50, 12 + R() * 40, 'rgba(16,15,14,0.22)');
+  // grit
+  const im = x.getImageData(0, 0, N, N), d = im.data; for (let i = 0; i < d.length; i += 4) { const n = (R() - 0.5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n; } x.putImageData(im, 0, 0);
+  const t = _roofTex = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
 }

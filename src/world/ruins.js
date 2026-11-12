@@ -75,7 +75,7 @@ function planBlock(w, b) {
     for (let i = 0; i < n; i++) {
       const wd = 2 + Math.floor(R() * 3), a = 1 + Math.floor(R() * Math.max(1, M - wd - 1)), c = Math.min(M - 2, a + wd - 1);
       if (plan.fab.some(([p, q]) => a <= q + 1 && c >= p - 1) || (pk && a <= pk[1] + 1 && c >= pk[0] - 1)) continue;
-      plan.fab.push([a, c, F >= 9 ? 3 + Math.floor(R() * Math.max(1, F - 6)) : 2 + (R() < 0.35 ? 1 : 0)]);
+      plan.fab.push([a, c, F >= 9 ? 3 + Math.floor(R() * Math.max(1, F - 6)) : 2 + (R() < 0.55 ? 1 : 0) + (R() < 0.3 ? 1 : 0)]);   /* (v2: deeper in the five-storeys - a FAB-500 goes through three floors of a khrushchyovka) */
     }
   }
   // roof burnt off / caved in over a section or two (most of the five-storeys: the top flats burn first)
