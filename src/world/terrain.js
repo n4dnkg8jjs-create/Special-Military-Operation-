@@ -437,6 +437,9 @@ export class Terrain {
     const hl = 2.5, cx = ex + dx * hl, cz = ez + dz * hl, rot = Math.atan2(dx, dz);
     this.addRelief({ type: 'mound', x: cx, z: cz, hx: 2.35, hz: 2.75, rot: -rot, h: 0.5, mesh: false, nav: 'dugout' });
     this.put(this.R() < 0.5 ? 'dugout_roof' : 'dugout_roof_b', trs(cx, 0, cz, rot + Math.PI));
+    // the doorway where the passage runs in under the roof (city.js fortFallback 'dugout_door': posts, log lintel over the last
+    // half metre of the passage, the dark of the chamber behind) - the passage used to stop at a blank earth wall short of a closed mound
+    this.put('dugout_door', trs(ex, 0, ez, rot));
     return [cx, cz];
   }
   // covered machine-gun position over a firing cell (log roof on posts, sandbag cheeks, embrasure to the front)

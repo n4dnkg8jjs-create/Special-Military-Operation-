@@ -302,7 +302,7 @@ export class City {
     T.finalize({ scene: this.scene, matTop: this.trenchTopMat(), matWall: wall, groundS: this.groundS });
     this.groundUniforms.tHole.value = T.mask;
     // dressing pieces (fortifications.glb, procedural stand-ins otherwise)
-    const g = this.assets.gltf.fortifications, cull = { rv_pallet: 260, rv_sheet: 260, rv_ply: 260, rv_door: 260, rv_branches: 260, rv_logs: 260, rv_mesh: 300, floor_pallet: 170, floor_planks: 170, litter_a: 140, litter_b: 140, ammo_crates: 170, sandbag_row: 380, sandbag_pile: 380, debris_conc: 300, net_cover: 520, branch_cover: 480, tarp_cover: 480, net_drone: 420, dragon_tooth: 1100, dragon_tooth_b: 1100, dragon_tooth_rubble: 1100, dugout_roof: 1000, dugout_roof_b: 1000, mg_nest_roof: 850 };
+    const g = this.assets.gltf.fortifications, cull = { dugout_door: 320, rv_pallet: 260, rv_sheet: 260, rv_ply: 260, rv_door: 260, rv_branches: 260, rv_logs: 260, rv_mesh: 300, floor_pallet: 170, floor_planks: 170, litter_a: 140, litter_b: 140, ammo_crates: 170, sandbag_row: 380, sandbag_pile: 380, debris_conc: 300, net_cover: 520, branch_cover: 480, tarp_cover: 480, net_drone: 420, dragon_tooth: 1100, dragon_tooth_b: 1100, dragon_tooth_rubble: 1100, dugout_roof: 1000, dugout_roof_b: 1000, mg_nest_roof: 850 };
     for (const [name, mats] of T.dress) {
       const t = g?.scene.getObjectByName(name) || fortFallback(name); if (!t) continue;
       instance(this.scene, t, mats, { cullDist: cull[name] || 400, shadows: !/floor_|litter|ammo|_cover|net_/.test(name) });
@@ -1519,6 +1519,16 @@ function fortFallback(name) {
   else if (name === 'branch_cover') fbox(g, 2.4, 0.15, 2.4, 0x55603a, 0, 0.08, 0);
   else if (name === 'tarp_cover') fbox(g, 2.0, 0.03, 2.2, 0x4a5038, 0, 0.04, 0);
   else if (/^dugout_roof/.test(name)) { fbox(g, 4.6, 0.45, 4.8, 0x4f4636, 0, 0.22, 0); fbox(g, 1.6, 1.9, 0.2, 0x4b3d2e, 0, -0.85, 2.45); }
+  else if (name === 'dugout_door') {
+    // origin: the passage's end at ground level, +Z into the dugout; passage 0.88 m wide, 1.7 m deep
+    const log = (r, len, c, x, y, z, along) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.08, len, 7), fm(c)); m.position.set(x, y, z); if (along === 'x') m.rotation.z = Math.PI / 2; else if (along === 'z') m.rotation.x = Math.PI / 2; m.castShadow = m.receiveShadow = true; g.add(m); };
+    for (const sx of [-1, 1]) { log(0.075, 1.78, 0x3f3428, sx * 0.37, -0.83, -0.52); log(0.06, 1.78, 0x352c22, sx * 0.39, -0.83, -0.2); }          // door posts, a second pair inside
+    // lintel + roof logs over the passage's end, running on under the edge of the roof mound (weathered: dark)
+    for (const [z, y, r] of [[-0.56, 0.0, 0.09], [-0.38, 0.02, 0.085], [-0.2, 0.0, 0.09], [-0.02, 0.03, 0.08], [0.16, 0.01, 0.09], [0.34, 0.03, 0.085], [0.52, 0.02, 0.09], [0.7, 0.05, 0.085], [0.88, 0.06, 0.09], [1.06, 0.08, 0.09]]) log(r, 1.5 + (Math.abs(z) * 7 % 1) * 0.14, [0x3a3025, 0x352c22, 0x3f3428][Math.round(Math.abs(z) * 50) % 3], ((Math.abs(z) * 13 % 1) - 0.5) * 0.08, y, z, 'x');
+    fbox(g, 0.78, 0.05, 0.16, 0x41362a, 0, -0.16, -0.5);                                                                                     // header board under the lintel
+    const dark = new THREE.Mesh(new THREE.BoxGeometry(0.86, 1.6, 0.8), _fm.void ||= new THREE.MeshBasicMaterial({ color: 0x050403 })); dark.position.set(0, -0.92, 0.0); g.add(dark);   // the chamber's dark: fills the passage section behind the posts
+    fbox(g, 0.5, 0.03, 0.34, 0x5d5140, 0, -1.7, -0.62);                                                                                      // threshold plank
+  }
   else if (name === 'mg_nest_roof') fbox(g, 2.3, 0.3, 2.1, 0x4b3d2e, 0, 0.55, -0.1);
   else if (name === 'dragon_tooth_rubble') { fbox(g, 0.9, 0.35, 0.9, 0x8f8a80, 0, 0.15, 0); for (const [x, z, w] of [[1.1, 0.3, 0.4], [-0.8, 0.9, 0.3], [0.2, -1.2, 0.35], [-1.2, -0.5, 0.25]]) fbox(g, w, w * 0.6, w * 0.8, 0x8f8a80, x, w * 0.25, z); }
   else if (/^dragon_tooth/.test(name)) { const m = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.0, 4), fm(0x9a958a)); m.position.y = 0.5; m.rotation.y = Math.PI / 4; m.castShadow = m.receiveShadow = true; g.add(m); }
