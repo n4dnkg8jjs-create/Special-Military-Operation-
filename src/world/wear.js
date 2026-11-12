@@ -345,6 +345,7 @@ export function weatherEnv(assets) {
   if (assets._weathered) return; assets._weathered = true;
   cleanHouseTemplates(assets);   // (before anything derives burnt / ruined variants from them)
   cleanFenceTemplates(assets);
+  glazeHouseWindows(assets);
   const amt = { panel_kit: 1, city: 1, farmland: 0.9, modern: 0.8, props: 0.7, fortifications: 0.5, wires: 0.4 };
   for (const [k, a] of Object.entries(amt)) {
     const g = assets.gltf[k]; if (!g) continue;
@@ -467,14 +468,28 @@ export function burntHouse(tpl) {
 // userData.frame: the wall box, eave / ridge height and ridge axis in the template frame (rafters, debris: ruins.js),
 // userData.holes: the roof holes [x, z, r] (template frame).
 // A chimney stack is built up from the floor. In the templates it starts at the roof surface, so with the roof gone or broken
-// open it stood on nothing: copies of the stack (a small tall island of the given triangles) are set under it down to the floor.
+// open it stood on nothing: the stack (a small tall island of the given triangles) is carried on down to the floor - four brick
+// faces under its foot, textured from the stack's own largest side face, laid in lengths of that face's height so the courses
+// keep their size. (v1 set copies of the whole stack under it: their overlapping faces flickered and every copy brought its cap.)
 function chimneyDown(P, N, U, floorY, out) {
   for (const ts of islandsOf(P)) {
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
     for (const t of ts) for (let k = 0; k < 3; k++) { const x = P[t * 9 + k * 3], y = P[t * 9 + k * 3 + 1], z = P[t * 9 + k * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     if (x1 - x0 > 1.3 || z1 - z0 > 1.3 || x1 - x0 < 0.25 || z1 - z0 < 0.25 || y1 - y0 < 0.8 || y0 < floorY + 0.6) continue;
-    const step = (y1 - y0) * 0.8;
-    for (let d = step; y1 - d > floorY; d += step) for (const t of ts) { for (let k = 0; k < 9; k++) out[0].push(P[t * 9 + k] - (k % 3 === 1 ? d : 0)); for (let k = 0; k < 9; k++) out[1].push(N[t * 9 + k]); for (let k = 0; k < 6; k++) out[2].push(U[t * 6 + k]); }
+    /* the shaft's own footprint (the cap is wider): the vertices of its lower half; the side face to take the brick from */
+    let fx0 = 1e9, fx1 = -1e9, fz0 = 1e9, fz1 = -1e9, best = null;
+    for (const t of ts) {
+      const V = [0, 1, 2].map(k => [P[t * 9 + k * 3], P[t * 9 + k * 3 + 1], P[t * 9 + k * 3 + 2]]);
+      for (const v of V) if (v[1] < (y0 + y1) / 2) { fx0 = Math.min(fx0, v[0]); fx1 = Math.max(fx1, v[0]); fz0 = Math.min(fz0, v[2]); fz1 = Math.max(fz1, v[2]); }
+      const ex = [V[1][0] - V[0][0], V[1][1] - V[0][1], V[1][2] - V[0][2]], ey = [V[2][0] - V[0][0], V[2][1] - V[0][1], V[2][2] - V[0][2]], nx = ex[1] * ey[2] - ex[2] * ey[1], ny = ex[2] * ey[0] - ex[0] * ey[2], nz = ex[0] * ey[1] - ex[1] * ey[0], ar = Math.hypot(nx, ny, nz);
+      if (ar < 1e-6 || Math.abs(ny) / ar > 0.2) continue; const hgt = Math.max(V[0][1], V[1][1], V[2][1]) - Math.min(V[0][1], V[1][1], V[2][1]);
+      if (!best || ar > best.ar) { const hi = V.reduce((a, v, k) => v[1] > V[a][1] ? k : a, 0), lo = V.reduce((a, v, k) => v[1] < V[a][1] ? k : a, 0), uu = [0, 1, 2].map(k => U[t * 6 + k * 2]); best = { ar, hgt, u0: Math.min(...uu), u1: Math.max(...uu), vTop: U[t * 6 + hi * 2 + 1], vBot: U[t * 6 + lo * 2 + 1] }; }
+    }
+    if (!best || fx1 - fx0 < 0.2 || fz1 - fz0 < 0.2 || best.hgt < 0.2) continue;
+    const quad = (a, b, n, ya, yb, va, vb) => { const pts = [[a[0], ya, a[1], best.u0, va], [b[0], ya, b[1], best.u1, va], [b[0], yb, b[1], best.u1, vb], [a[0], ya, a[1], best.u0, va], [b[0], yb, b[1], best.u1, vb], [a[0], yb, a[1], best.u0, vb]]; for (const q of pts) { out[0].push(q[0], q[1], q[2]); out[1].push(n[0], 0, n[1]); out[2].push(q[3], q[4]); } };
+    const top = y0 + 0.03;   /* (a little up into the stack: no slit at the join) */
+    for (let ya = top; ya > floorY + 1e-3; ya -= best.hgt) { const yb = Math.max(floorY, ya - best.hgt), vb = best.vTop + (best.vBot - best.vTop) * (ya - yb) / best.hgt;
+      quad([fx0, fz1], [fx1, fz1], [0, 1], ya, yb, best.vTop, vb); quad([fx1, fz0], [fx0, fz0], [0, -1], ya, yb, best.vTop, vb); quad([fx1, fz1], [fx1, fz0], [1, 0], ya, yb, best.vTop, vb); quad([fx0, fz0], [fx0, fz1], [-1, 0], ya, yb, best.vTop, vb); }
   }
 }
 const _ruinMat = new Map();
@@ -558,6 +573,65 @@ export function floatingWindows(P) {
   return drop;
 }
 // the house_* templates as shipped: a window left hanging in a shell hole (house_d) goes (geometry index edited once)
+// The private houses' windows rendered as black holes ("windows are just plain black"): each is a little picture in the atlas -
+// painted frame, and glass as a dark grey, very smooth dielectric, which with no environment to mirror comes out black. Glass
+// seen from outside by day is dark, but it carries the sky - paler towards the top, a slanting streak of reflection - and in
+// these houses a lace curtain hangs behind most of it. That is painted once into the atlas over the glass texels of every
+// window (vertical faces in the window band; glass = the smooth texels of the ORM map, the frames are left alone), in the
+// window's own frame (sill to head), so it is the right way up whatever way it sits in the atlas; the glass is made a little
+// less mirror-smooth so the sun spreads on it. Windows that share texels share the picture.
+export function glazeHouseWindows(assets) {
+  const g = assets.gltf.city; if (!g || g.userData.glazed || typeof document === 'undefined') return; g.userData.glazed = true;
+  const jobs = new Map(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  g.scene.traverse(o => {
+    if (!o.isMesh || !/^house_[a-z]$/.test(o.name)) return; const mt = Array.isArray(o.material) ? o.material[0] : o.material, tex = mt?.map, orm = mt?.roughnessMap || mt?.metalnessMap; if (!tex?.image || !orm?.image) return;
+    const geo = o.geometry, pos = geo.attributes.position, uv = geo.attributes.uv, idx = geo.index, nT = (idx ? idx.count : pos.count) / 3; if (!uv) return;
+    geo.computeBoundingBox(); const y0 = geo.boundingBox.min.y * o.scale.y, cand = [];
+    for (let t = 0; t < nT; t++) {
+      const i = [0, 1, 2].map(k => idx ? idx.getX(t * 3 + k) : t * 3 + k);
+      a.fromBufferAttribute(pos, i[0]).multiply(o.scale); b.fromBufferAttribute(pos, i[1]).multiply(o.scale); c.fromBufferAttribute(pos, i[2]).multiply(o.scale);
+      n.subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize(); if (Math.abs(n.y) > 0.2) continue;
+      const lo = Math.min(a.y, b.y, c.y) - y0, hi = Math.max(a.y, b.y, c.y) - y0; if (lo < 1.15 || hi > 3.0 || hi - lo < 0.5) continue;
+      const along = Math.abs(n.z) > Math.abs(n.x) ? 'x' : 'z';
+      cand.push({ P: [a.clone(), b.clone(), c.clone()], U: i.map(k => [uv.getX(k), uv.getY(k)]), along, key: o.name + along + Math.round((along === 'x' ? a.z : a.x) * 50) });
+    }
+    if (cand.length) { const J = jobs.get(tex) || jobs.set(tex, { orm, cand: [] }).get(tex); J.cand.push(...cand); }
+  });
+  for (const [tex, { orm, cand }] of jobs) {
+    const img = tex.image, W = img.width, H = img.height, oi = orm.image; if (oi.width !== W || oi.height !== H) continue;
+    const mk = im => { const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const x = cv.getContext('2d', { willReadFrequently: true }); x.drawImage(im, 0, 0); return [cv, x, x.getImageData(0, 0, W, H)]; };
+    const [cv, cx, cd] = mk(img), [ov, ox, od] = mk(oi), px = cd.data, op = od.data;
+    const glass = k => op[k + 1] < 72 && op[k + 2] < 90 && px[k] + px[k + 1] + px[k + 2] < 330;   /* smooth, not metal, dark */
+    /* windows: the triangles of one wall plane that touch (shared corner positions) */
+    const groups = []; for (const q of cand) { let gq = groups.find(G => G.key === q.key && G.tris.some(r => r.P.some(p => q.P.some(p2 => p.distanceToSquared(p2) < 1e-6)))); if (!gq) groups.push(gq = { key: q.key, tris: [] }); gq.tris.push(q); }
+    let panes = 0; const done = new Uint8Array(W * H);
+    for (const G of groups) {
+      let h0 = 1e9, h1 = -1e9, y0 = 1e9, y1 = -1e9; const ax = G.tris[0].along;
+      for (const q of G.tris) for (const p of q.P) { h0 = Math.min(h0, p[ax]); h1 = Math.max(h1, p[ax]); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+      if (h1 - h0 < 0.3 || h1 - h0 > 2.6 || y1 - y0 < 0.5) continue;
+      const seed = Math.abs(Math.sin(h0 * 12.9898 + y0 * 78.233 + G.key.length * 3.1) * 43758.5453) % 1, curtain = seed < 0.72, top = 0.5 + seed * 0.42; let hit = 0;
+      for (const q of G.tris) {
+        const S = q.P.map(p => [(p[ax] - h0) / (h1 - h0), (p.y - y0) / (y1 - y0)]), Q = q.U.map(u => [u[0] * W, u[1] * H]);
+        /* pixel -> barycentric -> (s, t) */
+        const d = (Q[1][1] - Q[2][1]) * (Q[0][0] - Q[2][0]) + (Q[2][0] - Q[1][0]) * (Q[0][1] - Q[2][1]); if (Math.abs(d) < 1e-6) continue;
+        const x0 = Math.max(0, Math.floor(Math.min(Q[0][0], Q[1][0], Q[2][0]))), x1 = Math.min(W - 1, Math.ceil(Math.max(Q[0][0], Q[1][0], Q[2][0]))), yy0 = Math.max(0, Math.floor(Math.min(Q[0][1], Q[1][1], Q[2][1]))), yy1 = Math.min(H - 1, Math.ceil(Math.max(Q[0][1], Q[1][1], Q[2][1])));
+        if ((x1 - x0) * (yy1 - yy0) > 400000) continue;
+        for (let y = yy0; y <= yy1; y++) for (let x = x0; x <= x1; x++) {
+          const l0 = ((Q[1][1] - Q[2][1]) * (x + 0.5 - Q[2][0]) + (Q[2][0] - Q[1][0]) * (y + 0.5 - Q[2][1])) / d, l1 = ((Q[2][1] - Q[0][1]) * (x + 0.5 - Q[2][0]) + (Q[0][0] - Q[2][0]) * (y + 0.5 - Q[2][1])) / d, l2 = 1 - l0 - l1;
+          if (l0 < -0.02 || l1 < -0.02 || l2 < -0.02) continue; const k = (y * W + x) * 4; if (done[y * W + x] || !glass(k)) continue; done[y * W + x] = 1; hit++;
+          const s = l0 * S[0][0] + l1 * S[1][0] + l2 * S[2][0], t = l0 * S[0][1] + l1 * S[1][1] + l2 * S[2][1], tt = Math.pow(Math.max(0, Math.min(1, t)), 1.3);
+          let r = 22 + 56 * tt, gg = 28 + 66 * tt, bb = 34 + 76 * tt; const dg = t - 1.9 * s; if (dg > 0.15 && dg < 0.62) { r += 20; gg += 23; bb += 26; }
+          if (curtain && t < top + (Math.sin(s * 44) > 0 ? 0.03 : 0)) { const f = ((s * 7 + seed * 3) % 1) < 0.22 ? 0.8 : 1, lace = ((Math.floor(s * 60) + Math.floor(t * 60)) & 1) ? 0.94 : 1; r = r * 0.2 + 204 * 0.8 * f * lace; gg = gg * 0.2 + 200 * 0.8 * f * lace; bb = bb * 0.2 + 188 * 0.8 * f * lace; op[k + 1] = 235; }
+          else op[k + 1] = 64;
+          px[k] = r; px[k + 1] = gg; px[k + 2] = bb; op[k + 2] = 0;
+        }
+      }
+      if (hit > 40) panes++;
+    }
+    if (!panes) continue;
+    cx.putImageData(cd, 0, 0); ox.putImageData(od, 0, 0); tex.image = cv; tex.needsUpdate = true; orm.image = ov; orm.needsUpdate = true; g.userData.glazedPanes = (g.userData.glazedPanes || 0) + panes;
+  }
+}
 // The wattle fence panel carries a clay pot upside down on its middle stake. One panel, charming; a run of them, a red ball on
 // every third stake - and on the stretched / simplified panels of a fitted run the pot slid off its stake or hung beside it
 // ("fence post tops float"). The pot (the only piece of the panel that does not reach down to the weave) is taken off.
@@ -716,7 +790,8 @@ export function houseRuin(tpl, mode, seed = 1) {
   const grp = new THREE.Group(); grp.name = (tpl.name || 'house') + '_' + mode;
   const shell = new THREE.Mesh(g2, ruinMat(mat, mode === 'holed' ? 0.18 : 0.55, 'ruin_' + (mode === 'holed' ? 'holed' : 'stub'))); shell.castShadow = shell.receiveShadow = true; shell.name = grp.name + '_shell'; grp.add(shell);
   if (mode === 'holed') {   // fallen ceiling and slate on the floor (only seen through the holes)
-    const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.45, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.245, cz);   // (top 5 cm above the shell's floor plane: 1.7 cm apart they flickered)
+    const fl = new THREE.BoxGeometry(hx * 2 * 0.94, 0.5, hz * 2 * 0.94); fl.translate(cx, bb.min.y + 0.27, cz);   /* (top 7 cm over the template's own floor, which v2 keeps under it: closer, the two flicker at range) */
+      // (top 5 cm above the shell's floor plane: 1.7 cm apart they flickered)
     const floor = new THREE.Mesh(fl, ruinFloorMat()); floor.receiveShadow = true; floor.name = grp.name + '_floor'; grp.add(floor);
   }
   grp.userData.frame = frame; grp.userData.holes = holes.map(([x, z, r]) => [x, z, r]);

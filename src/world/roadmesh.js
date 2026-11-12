@@ -13,6 +13,12 @@
 import * as THREE from 'three';
 
 export const ROAD_Y = 0.06;
+// Dirt / gravel road ribbons are blended strips; where two met (a junction, a track crossing a lane) or one folded over itself in
+// a bend, the ground was painted twice: a darker patch with both sets of ruts and both soft edges showing ("roads overlap
+// instead of fading into each other"). Every ribbon material carries this: a pixel one ribbon has drawn is marked in the stencil
+// and the next ribbon leaves it alone (the scene target has a stencil buffer: engine/renderer.js).
+export const ONCE = { alphaTest: 0.03, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilZPass: THREE.ReplaceStencilOp };
+
 const CELL = 8, H = 0.5, N = CELL / H, CHUNK = 128;
 const cache = new Map();
 

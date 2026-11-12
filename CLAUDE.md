@@ -50,7 +50,7 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
 - net/: peer.js (direct + relay racing, acks, chunking), battle.js (host-authoritative snapshots, world events).
 - ui/: hud.js (dock, unit cards, selection rings drawn depthTest:false), menu.js (cinematic menu), backdrop.js (2-D painted town,
   convoy timing + dust), menuScene.js (3-D layer over it: convoy as vehicle models placed from backdrop.convoy, two kneeling UA
-  soldiers on a berm; loads ~55 MB after the intro, disposed when the menu hides; `?menu2d` turns it off), style.css.
+  soldiers on a berm; loads ~55 MB after the intro, disposed when the menu hides; OFF by default now, `?menu3d` turns it on), style.css.
 - Assets: assets/vehicles/*.glb (+manifest.json, node contract: turret, gun_pivot, muzzle, hatches, ride_seat_*, lights,
   wreck/LOD1 — never rename), assets/soldiers/soldier_anims.glb + manifest.json (125 clips), assets/env/*.glb.
 
@@ -105,6 +105,26 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   ATGM pickup in the campaign: purchasable `atgm_truck` (kind atgm, vehicle 'atgmtruck', 40 LP) in both campaigns; campaignBattle.js
   deploys it through atgmTruck.js addAtgmTruck() (crew squad carries the unit's rec; on foot when short of a man, when the truck is
   lost, or in a net battle - no joiner puppet yet); `?ctest&atgmtruck` is the dev hook.
+- THE MAIN MENU IS THE 2-D PAINTED BACKDROP AGAIN (owner, end of session 5: "make the main menu go back to the 2D version"):
+  ui/menu.js builds MenuScene only with `?menu3d`. Do not bring the 3-D menu back unasked; menu v9-v14 below describe that scene.
+- Nov 2026 session 5 (on main): the Mi-24 is SWITCHED OFF at the owner's word ("cancel the hind for now, keep its code"):
+  heli.js `HELI_ON = false`, influence.js `HIND_ON = false`; heli v2 (lofted rocket run, wreck fitted to the ground, net hooks) is
+  in the file but untested and not wired into net/battle.js. Menu v9-v14 (ui/menuScene.js): trench at CZ -7.5 with the bend,
+  `backdrop.use3d` (plain gradient until the 3-D scene is complete), game Flames for the fires, town shell bursts (`this.blasts`),
+  concertina belts / pickets / hedgehogs on the field, sandbags = instanced sacks (`bag()`, `run()`, roughness map), trench props
+  placed from MEASURED boxes and registered in `this.props`; `window.__menuScene.clipCheck()` lists floating / intersecting props
+  and props inside the men - run it after any change there, and judge the menu at a WIDE aspect too (the owner's browser window is
+  ~2.2:1: at 16:9 only x < 3.1 m of the trench is in view).
+  Maps v2/v3: a spare InstancedMesh instance / `count` left at its capacity sits at the map ORIGIN (that was the "floating crate with
+  a gold ring": roof slab cube + HUD selection rings) - always set `count`; no objective poles; river = `river_water` sheet with
+  vertex alpha + Schlick sky, culvert = pipe end; house ruins v2 (wear.js: exact clip of the wall stubs + caps, charred v2,
+  chimneyDown, house_c out of the pools, cleanFenceTemplates, glazeHouseWindows repaints the glass texels of the atlas);
+  tools/dev/houses.html = seconds-fast sheet of every house variant / any env node (`?nodes=a,b&src=farmland`);
+  game.vehSpot() (no vehicle stood among trees, only on ground the road net reaches: nav.roadReach()), treeDamage.pushOver();
+  NO churned trails across fields any more (farmland.js warLayout, synth.js `trails: []`) - the owner reads them as roads through
+  farmland that stop nowhere; dirt-road ribbons paint each pixel once (roadmesh.js ONCE: stencil; the scene target has a stencil
+  buffer now). Kit v3: tools/blender/soldiers/cummerbund_fix.py (run ONCE; UA only - the RU carrier was already right), tapeTex v2,
+  mount v6 = deck climbs played at ~1.6x (squad.js mountStart). Blood v3 is a lit Lambert decal.
 - Findings worth keeping: (1) this container's network policy blocks most reference sites (web search works, page / image fetches
   mostly do not; Wikimedia rate-limits): ask the owner for photos when a task needs references (the BTR-82A turret rework is waiting
   on that; btr.py's turret is already 'rebuilt from photos', its TURRET_SPEC.md was local only). (2) 'Body parts twisting / shrinking':

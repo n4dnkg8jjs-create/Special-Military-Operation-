@@ -6,7 +6,7 @@
    ?cam=x,y,z&at=x,y,z  ?only=house_c  ?src=farmland  -- window.ready = true when drawn */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { burntHouse, houseRuin, cleanHouseTemplates, cleanFenceTemplates } from '../../src/world/wear.js';
+import { burntHouse, houseRuin, cleanHouseTemplates, cleanFenceTemplates, glazeHouseWindows } from '../../src/world/wear.js';
 const q = new URLSearchParams(location.search), num = (k, d) => (q.get(k) || d).split(',').map(Number);
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
 r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.9; r.shadowMap.enabled = true;
@@ -15,7 +15,7 @@ scene.add(new THREE.HemisphereLight(0xb8c4d0, 0x5a5348, 1.25)); const sun = new 
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, far: 200 }); scene.add(sun);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x6b6350, roughness: 1 })); ground.receiveShadow = true; scene.add(ground);
 const g = await new GLTFLoader().loadAsync(`../../assets/env/${q.get('src') || 'city'}.glb`);
-cleanHouseTemplates({ gltf: { city: g } }); cleanFenceTemplates({ gltf: { farmland: g } });
+cleanHouseTemplates({ gltf: { city: g } }); glazeHouseWindows({ gltf: { city: g } }); window.glazed = g.userData.glazedPanes; cleanFenceTemplates({ gltf: { farmland: g } });
 if (q.get('nodes')) {   /* ?nodes=a,b,c : those nodes side by side (4 m apart + their width), nothing else */
   let x = 0; window.info = { names: [], bb: {} };
   for (const n of q.get('nodes').split(',')) { const src = g.scene.getObjectByName(n); if (!src) { window.info.names.push('MISSING ' + n); continue; } const t = src.clone(); t.position.set(0, 0, 0); t.rotation.set(0, 0, 0); t.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(t); t.position.set(x - bb.min.x, 0, 0); x += bb.max.x - bb.min.x + 2; t.traverse(m => { if (m.isMesh) m.castShadow = m.receiveShadow = true; }); scene.add(t); window.info.names.push(n); window.info.bb[n] = [bb.min.toArray().map(v => +v.toFixed(2)), bb.max.toArray().map(v => +v.toFixed(2))]; }
@@ -23,7 +23,7 @@ if (q.get('nodes')) {   /* ?nodes=a,b,c : those nodes side by side (4 m apart + 
   cam.position.set(...c); cam.lookAt(...a); r.render(scene, cam); r.render(scene, cam); window.ready = true; throw new Error('nodes view');
 }
 const names = []; g.scene.traverse(o => { if (/^house_[a-z]$/.test(o.name) && (!q.get('only') || q.get('only') === o.name)) names.push(o.name); }); names.sort();
-window.info = { names, err: [] };
+window.info = { names, err: [], glazed: window.glazed };
 names.forEach((n, i) => {
   const src = g.scene.getObjectByName(n), t = src.clone(); t.position.set(0, 0, 0); t.rotation.set(0, 0, 0); t.updateMatrixWorld(true);
   const rows = [() => t.clone(), () => burntHouse(t), () => houseRuin(t, 'holed', 3 + i), () => houseRuin(t, 'stub', 5 + i), () => houseRuin(t, 'flat', 7 + i)];

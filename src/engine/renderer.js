@@ -150,7 +150,10 @@ export class Renderer {
     // Post
     // composer targets carry a depth texture so GTAO can reconstruct normals from depth
     // instead of re-rendering the whole scene into a normal buffer (halves scene draw calls)
-    const rt = new THREE.WebGLRenderTarget(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio(), { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1, THREE.UnsignedIntType) });
+    // (roads v7: depth + stencil - the dirt-road ribbons mark the pixels they have drawn so that where two of them meet or one
+    // folds over itself the ground is painted once, not twice; world/real.js ONCE)
+    const dts = new THREE.DepthTexture(1, 1, THREE.UnsignedInt248Type); dts.format = THREE.DepthStencilFormat;
+    const rt = new THREE.WebGLRenderTarget(innerWidth * this.r.getPixelRatio(), innerHeight * this.r.getPixelRatio(), { type: THREE.HalfFloatType, depthTexture: dts, stencilBuffer: true });
     const comp = this.composer = new EffectComposer(this.r, rt);
     comp.setSize(innerWidth, innerHeight);
     comp.addPass(new RenderPass(scene, this.camera));

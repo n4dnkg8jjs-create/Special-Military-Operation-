@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { WAR_GROUND_DECL, warGroundGLSL, warGroundHooks, paintWar, roadFrame, roadWear, trackWear, weatherEnv, craterMesh, burntHouse, wreckTemplates, blackTex as warBlack } from './wear.js';
 import { groundMaterial } from './ground.js';
 import { ruinTpl } from './ruins.js';
-import { roadSurfaces, ROAD_Y } from './roadmesh.js';
+import { roadSurfaces, ROAD_Y, ONCE } from './roadmesh.js';
 import { buildWires } from './powerWires.js';
 import { battlefieldDetail, treeFate, treeTilt } from './battlefieldDetail.js';
 
@@ -207,23 +207,9 @@ export class Farmland extends City {
   // driven through the windbreaks), and worn shortcuts across the fields between the tracks. Lanes: two mine-cleared
   // lanes (ploughed, staked) in front of C and D where the earlier assaults were stopped. Burns: field fires.
   warLayout() {
-    this.trails = [
-      // assault columns from the south (from off the map, through the staging ground: no trail starts in a field)
-      { w: 4.4, mud: 0.85, pts: [[-236, 704], [-232, 606], [-227, 560], [-213, 500], [-196, 440], [-178, 372], [-160, 323]] },
-      { w: 4.4, mud: 0.85, pts: [[-326, 704], [-330, 606], [-342, 552], [-366, 505], [-412, 474], [-424, 452]] },          // up to the C1 trench
-      { w: 4.2, mud: 0.8, pts: [[264, 704], [268, 606], [272, 560], [266, 505], [258, 470], [254, 432], [252, 401]] },
-      { w: 4.2, mud: 0.75, pts: [[-32, 704], [-28, 606], [-22, 556], [-4, 500], [14, 456], [20, 430], [22, 401]] },
-      // the enemy's supply / assault tracks from the north down to the line
-      { w: 4.4, mud: 0.85, pts: [[-200, -704], [-205, -606], [-214, -560], [-208, -500], [-196, -440], [-204, -412], [-201, -403]] },   // to the NW communication trench
-      { w: 4.4, mud: 0.85, pts: [[266, -704], [262, -606], [256, -556], [241, -482], [251, -412], [250, -403]] },          // to the NE communication trench
-      { w: 4.0, mud: 0.7, pts: [[26, -704], [30, -606], [41, -540], [58, -470], [84, -410], [96, -372]] },
-      // worn shortcuts across the fields
-      { w: 3.2, mud: 0.45, pts: [[-121, 252], [-60, 263], [0, 281], [58, 300], [99, 310]] },
-      { w: 3.0, mud: 0.4, pts: [[228, -98], [262, -108], [300, -126], [340, -140]] },
-      { w: 3.2, mud: 0.45, pts: [[-356, -196], [-300, -228], [-240, -260], [-182, -290]] },
-      { w: 3.0, mud: 0.4, pts: [[-556, -120], [-520, -86], [-470, -60], [-420, -48], [-405, -28], [-404, 20], [-404, 62]] },   // then along the belt to the road
-      { w: 3.0, mud: 0.4, pts: [[-357, 230], [-300, 250], [-250, 268], [-180, 300], [-150, 323]] },
-    ];
+    /* (maps v3: no churned trails any more - tracks cut straight across the crops to end at a trench read as roads through
+       farmland that stop in the middle of nowhere; the columns keep to the roads and field edges) */
+    this.trails = [];
     this.lanes = [
       { w: 4.6, pts: [[166, 547], [165, 531], [163, 490], [160, 450], [160, 428]] },     // from the southern track up to the D1 position
       { w: 4.6, pts: [[-451, 547], [-452, 532], [-454, 500], [-456, 472], [-453, 455]] },   // ... and the C1 position
@@ -355,7 +341,7 @@ export class Farmland extends City {
     const T = this.assets.tex, trackTex = T.track?.map || T.dirt?.map;
     const a = document.createElement('canvas'); a.width = 64; a.height = 4; { const x = a.getContext('2d'), gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.18, '#fff'); gr.addColorStop(0.82, '#fff'); gr.addColorStop(1, '#000'); x.fillStyle = gr; x.fillRect(0, 0, 64, 4); }
     const alpha = new THREE.CanvasTexture(a); alpha.wrapT = THREE.RepeatWrapping;
-    const trackMat = new THREE.MeshStandardMaterial({ map: trackTex ? trackTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color: T.track ? 0xffffff : 0xb0a28a, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const trackMat = new THREE.MeshStandardMaterial({ map: trackTex ? trackTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color: T.track ? 0xffffff : 0xb0a28a, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, ...ONCE });
     if (trackMat.map) { trackMat.map.wrapS = trackMat.map.wrapT = THREE.RepeatWrapping; trackMat.map.needsUpdate = true; }
     if (T.track?.normalMap) { trackMat.normalMap = T.track.normalMap.clone(); trackMat.normalMap.wrapS = trackMat.normalMap.wrapT = THREE.RepeatWrapping; trackMat.normalMap.needsUpdate = true; trackMat.normalScale = new THREE.Vector2(0.9, 0.9); }
     trackWear(trackMat, this.groundUniforms); this.trackMat = trackMat;   // muddy ruts with standing water

@@ -222,8 +222,7 @@ function rural() {
       craters: { zones: [[-680, 180, 680, 640, 130], [-680, -120, 680, 180, 50], [-680, -640, 680, -120, 30]], plot: 1, belt: 0.5 },
       wrecks: [[...G.open(pC[0] + 60, pC[1] + 150), 3.1, 'bradley_ua', 0], [...G.open(pD[0] - 40, pD[1] + 170), 2.9, 'btr80_ua', 0], [...G.open(pA[0] - 90, pA[1] - 120), 0.3, 'bmp3', 0]] },
     objectives, fortifications: F,
-    trails: [trail(11, [pC[0] - 30, 704], [pC[0] + 14, pC[1] + 40]), trail(12, [pD[0] + 50, 704], [pD[0] - 10, pD[1] + 44]), trail(13, [at('c3', 5)[0] - 90, 704], add(at('r4', 2.5), [0, 1], 30), 4.0, 0.7),
-      trail(14, [pA[0] - 120, -704], add(at('r2', 2.3), [0, -1], 30)), trail(15, [yc[0] + 60, -704], add(at('r2', 3.6), [0, -1], 30))],
+    trails: [],   /* (maps v3: the churned approach trails across the fields are gone - see farmland.js warLayout) */
     wrecks: [[...G.open(pC[0] + 30, pC[1] + 90), 3.0, 'bradley_ua', 0], [...G.open(pD[0] + 20, pD[1] + 110), 2.8, 't72av_ua', 1], [...G.open(pA[0] + 60, pA[1] + 90), 0.2, 'btr82a', 0], [...G.open(yc[0] - 30, yc[1] - 150), 0.4, 't72b3', 0]],
     smoulder: [[Math.round(yc[0]), Math.round(yc[1]), 0.9], [Math.round(pC[0]), Math.round(pC[1]), 0.7]] };
   return { def, D: G.D, G };
@@ -265,8 +264,7 @@ function river() {
       craters: { zones: [[-680, 150, 680, 640, 120], [-680, -140, 680, 150, 60], [-680, -640, 680, -140, 30]], plot: 1.5, belt: 0.5 },
       wrecks: [[...G.open(dam[0] + 40, dam[1] + 150), 3.1, 'bradley_ua', 0], [...G.open(pC[0] + 50, pC[1] + 130), 2.9, 'btr80_ua', 0], [...G.open(cross[0] - 80, cross[1] - 90), 0.3, 'bmp3', 0]] },
     objectives, fortifications: F,
-    trails: [trail(21, [pC[0] - 20, 704], [pC[0] + 12, pC[1] + 40]), trail(22, [pD[0] + 40, 704], [pD[0] - 8, pD[1] + 44]), trail(23, [dam[0] + 110, 704], add(at('r5', 3.12), [0, 1], 26), 4.0, 0.7),
-      trail(24, [cross[0] - 150, -704], add(at('r2', 2.4), [0, -1], 30)), trail(25, [yc[0] + 80, -704], add(at('r2', 3.7), [0, -1], 30))],
+    trails: [],   /* (maps v3: the churned approach trails across the fields are gone - see farmland.js warLayout) */
     wrecks: [[...G.open(dam[0] - 50, dam[1] + 120), 3.0, 'bradley_ua', 0], [...G.open(pD[0] + 30, pD[1] + 100), 2.8, 't72av_ua', 1], [...G.open(dam2[0] + 60, dam2[1] + 130), 3.2, 'btr80_ua', 0], [...G.open(cross[0] + 90, cross[1] - 140), 0.2, 'btr82a', 0]],
     smoulder: [[Math.round(cross[0] - 40), Math.round(cross[1] + 20), 0.9], [Math.round(yc[0]), Math.round(yc[1]), 0.8]] };
   return { def, D: G.D, G, RV };
@@ -313,8 +311,7 @@ function greyzone() {
       wrecks: [W(ham[0] - 150, ham[1] + 120, 3.0, 'bradley_ua', 0), W(ham[0] + 120, ham[1] + 160, 2.8, 't72av_ua', 2), W(pC[0] + 90, pC[1] + 110, 3.2, 'btr80_ua', 0), W(pD[0] - 60, pD[1] + 130, 3.1, 'bradley_ua', 0),
         W(ham[0] - 40, ham[1] - 110, 0.2, 'bmp3', 0), W(pA[0] + 120, pA[1] + 120, 0.3, 't72b3', 2), W(pB[0] - 100, pB[1] + 110, 0.1, 'btr82a', 0)] },
     objectives, fortifications: F,
-    trails: [trail(31, [pC[0] - 40, 704], add(at(lS, 1.4), [0, 1], 34)), trail(32, [pD[0] + 30, 704], add(at(lS, 3.6), [0, 1], 34)), trail(33, add(at(lS, 2.5), [0, -1], 30), add(ham, [0, 1], 70), 4.0, 0.9),
-      trail(34, [pA[0] - 60, -704], add(at(lN, 1.3), [0, -1], 80)), trail(35, [pB[0] + 60, -704], add(at(lN, 3.9), [0, -1], 80))],
+    trails: [],   /* (maps v3: the churned approach trails across the fields are gone - see farmland.js warLayout) */
     wrecks: [W(ham[0] + 40, ham[1] + 90, 2.9, 'bradley_ua', 0), W(ham[0] - 90, ham[1] + 210, 3.3, 't72av_ua', 1), W(pD[0] + 70, pD[1] + 80, 3.0, 'btr80_ua', 0), W(pC[0] - 70, pC[1] + 150, 2.7, 'bradley_ua', 0),
       W(ham[0] + 150, ham[1] - 60, 0.3, 'bmp3', 0), W(pA[0] - 60, pA[1] + 90, 0.2, 't72b3', 1), W(yc[0] + 30, yc[1] - 110, 0.4, 'btr82a', 0), W(pB[0] + 40, pB[1] + 140, 0.1, 'bmp3', 0)],
     smoulder: [[Math.round(ham[0] - 30), Math.round(ham[1] + 10), 0.8], [Math.round(yc[0]), Math.round(yc[1]), 0.7]] };

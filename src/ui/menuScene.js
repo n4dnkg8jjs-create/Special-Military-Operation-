@@ -19,7 +19,7 @@ import { Flames } from '../fx/flames.js';
 //     the crest at the road; the other sitting with his back against the berm, knees up, rifle across them
 // Lit as the painting was: last light low on the horizon to the right, cold dark sky behind the viewer, haze over the distance.
 // The soldier and vehicle files (~55 MB) are fetched after the menu is up and the scene fades in when ready; until then, and if
-// anything fails (or with ?menu2d), the painted backdrop is all there is. Stopped and freed when the menu goes.
+// anything fails, the painted backdrop is all there is. NOT THE DEFAULT ANY MORE: the menu is the 2-D painting again; ?menu3d builds this scene. Stopped and freed when the menu goes.
 
 const VFOV = 30, D2R = Math.PI / 180, PITCH = 0.0536;          // camera looks up 3 deg: horizon at 60 % of the height, as painted
 const FY = -1.72, PLAIN = -9.6, ROAD_Z = -180;                 // hilltop floor / plain / road, below and beyond the eye (origin)

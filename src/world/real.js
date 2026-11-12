@@ -25,7 +25,7 @@ import { setKitCell } from './buildings.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { roadWear, trackWear, paintWar, wreckTemplates, weatherEnv, craterMesh } from './wear.js';
 import { battlefieldDetail } from './battlefieldDetail.js';
-import { roadSurfaces, pavedField, ROAD_Y } from './roadmesh.js';
+import { roadSurfaces, pavedField, ROAD_Y, ONCE } from './roadmesh.js';
 import { planStreets, buildStreetFurniture } from './streetFurniture.js';
 import { buildWires } from './powerWires.js';
 import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
@@ -340,7 +340,7 @@ const Real = {
     const a = document.createElement('canvas'); a.width = 64; a.height = 4; { const x = a.getContext('2d'), gr = x.createLinearGradient(0, 0, 64, 0); gr.addColorStop(0, '#000'); gr.addColorStop(0.16, '#fff'); gr.addColorStop(0.84, '#fff'); gr.addColorStop(1, '#000'); x.fillStyle = gr; x.fillRect(0, 0, 64, 4); }
     const alpha = new THREE.CanvasTexture(a); alpha.wrapT = THREE.RepeatWrapping;
     const mkTrack = (color, mapTex) => {
-      const m = new THREE.MeshStandardMaterial({ map: mapTex ? mapTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      const m = new THREE.MeshStandardMaterial({ map: mapTex ? mapTex.clone() : null, alphaMap: alpha, transparent: true, depthWrite: false, roughness: 1, color, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 , ...ONCE });   /* (roads v7: each pixel of dirt road painted once - see ONCE) */
       if (m.map) { m.map.wrapS = m.map.wrapT = THREE.RepeatWrapping; m.map.needsUpdate = true; }
       if (T.track?.normalMap) { m.normalMap = T.track.normalMap.clone(); m.normalMap.wrapS = m.normalMap.wrapT = THREE.RepeatWrapping; m.normalMap.needsUpdate = true; m.normalScale = new THREE.Vector2(0.9, 0.9); }
       trackWear(m, U); return m;

@@ -127,7 +127,9 @@ if (pick) new MutationObserver(syncMap).observe(pick, { subtree: true, childList
 const bgc = $('menuBg'), loading = $('loading');
 const bg = bgc ? new Backdrop(bgc) : null; window.__backdrop = bg;   // test hook
 // the 3-D layer over it (menuScene.js: the convoy as models, two soldiers in the foreground) - the menu only, not the loading screen
-const bg3 = bg && !new URLSearchParams(location.search).has('menu2d') ? new MenuScene(bg) : null;
+/* (owner, Nov 2026: "make the main menu go back to the 2D version" - the painted backdrop is the menu again; the 3-D scene
+   (menuScene.js) is kept, only built when asked for with ?menu3d) */
+const bg3 = bg && new URLSearchParams(location.search).has('menu3d') ? new MenuScene(bg) : null;
 function syncBg() {
   if (!bg) return;
   const m = menu && !menu.classList.contains('hidden'), l = loading && !loading.classList.contains('hidden');
