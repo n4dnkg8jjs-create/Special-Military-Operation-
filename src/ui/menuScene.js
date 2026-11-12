@@ -39,7 +39,12 @@ const crestN = x => { const f = crestD(x), l = Math.hypot(f, 1); return [-f / l,
 const crestH = x => 0.86 + (x > 8.2 || x < -12 ? 0.05 * Math.sin(x * 1.3 + 0.4) : 0);
 // steep to the men, easy to the enemy; between REV[0] and REV[1] the inner face is cut vertical and revetted with logs
 const REV = [0.95, 7.8], WALL = 0.2;   /* (v9: the bend and the stretch beyond it are bare earth - kit pieces are straight and crossed each other there) */
-const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.95 - (0.95 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)); };
+// (v9) the trench has its other side too: 1.9 m behind the front wall the ground comes up again - a rear bank lower than the
+// parapet (the men stay in view over it from where the viewer is), running on round the bend and off towards him, with the
+// spoil that was thrown out backwards heaped along its edge
+const BANK = [1.95, 0.64], SPOIL = [[6.3, -6.2, 1.3, 0.34], [9.6, -6.0, 1.5, 0.4], [-0.6, -4.9, 1.2, 0.3], [3.9, -5.4, 0.9, 0.16]];
+const bankAt = (x, z, d) => { if (d < BANK[0] - 0.05) return 0; let h = BANK[1] * sstep(BANK[0], BANK[0] + 0.32 + 0.1 * Math.sin(x * 1.7), d) * (1 + 0.05 * Math.sin(x * 2.3 + z * 1.1)); for (const [sx, sz, r, sh] of SPOIL) { const q = Math.hypot(x - sx, (z - sz) * 1.5) / r; if (q < 1) h += sh * (1 - q * q) ** 1.5 * sstep(BANK[0] - 0.05, BANK[0] + 0.35, d); } return h; };
+const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.min(sstep(REV[0] - 1.2, REV[0], x), 1 - sstep(REV[1], REV[1] + 1.2, x)), w = 0.95 - (0.95 - 0.07) * k, d0 = WALL * k; return crestH(x) * (d >= d0 ? 1 - sstep(0, w, d - d0) : d >= 0 ? 1 : 1 - sstep(0, 2.3, -d)) + bankAt(x, z, d); };
 
 export class MenuScene {
   constructor(backdrop) {
@@ -77,7 +82,7 @@ export class MenuScene {
   async load() {
     const L = new GLTFLoader(), get = u => L.loadAsync(u);
     const [sg, ag, rifle, fort] = await Promise.all([get(SOLDIER), get(ANIMS), get(RIFLE), get(ENV + 'fortifications.glb').catch(() => null)]);
-    get('assets/soldiers/rpg22.glb').then(g => { if (this.running && this.scene) this.launcher(this.scene, g); }).catch(() => { });
+    get('assets/soldiers/rpg22.glb').then(g => { this._rpg = g; if (this.running && this.scene && this._dressed) this.launcher(this.scene, g); }).catch(() => { });   /* (set down by a ray onto the bags: after dress()) */
     if (!this.running) return;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
     r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.87;
@@ -100,6 +105,7 @@ export class MenuScene {
     this.resize(); addEventListener('resize', this._rs = () => this.resize());
     this.ground(scene);
     if (fort) this.dress(scene, fort);
+    this._dressed = true; if (this._rpg) this.launcher(scene, this._rpg);
     this.soldiers(scene, sg, ag, rifle);
     this.clock = performance.now(); this.ready = true;
     window.__menu3d = { men: this.men.length, veh: 0 }; window.__menuScene = this;
@@ -117,7 +123,9 @@ export class MenuScene {
         if (kind !== k) continue;
         const w = src.clone(true);
         w.traverse(o => { if (!o.isMesh) return; let n = o, off = !!o.userData?.hidden; while (n && !off) { if (/_(wreck|LOD1)$/i.test(n.name)) off = true; n = n.parent; } o.visible = !off; });
-        w.traverse(o => { if (!o.isMesh && /_(wreck|LOD1)$/i.test(o.name)) o.visible = true; });
+        /* (v9: the convoy copy shows the far-detail meshes and hides their full-detail nodes - on the T-72 / BMP that is the whole
+           `turret` node, so the hulks, which show full detail, had no turret: every group visible again, the meshes decide) */
+        w.traverse(o => { if (!o.isMesh) o.visible = true; });
         const tn = w.getObjectByName('turret'); if (tn) tn.rotation.y = tur;
         w.position.set(x, PLAIN + 0.02, ROAD_Z + dz); w.rotation.set(0.02, yaw, roll, 'YXZ'); this.scene.add(w); w.updateMatrixWorld(true);
         charObject(w, { value: 1 }, { burn: { value: 0.62 }, fire: { value: new THREE.Vector3(x, PLAIN + 1.9, ROAD_Z + dz) }, rust: { value: 0 } });
@@ -204,16 +212,35 @@ export class MenuScene {
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
     const at = (x, d) => { const [nx, nz] = crestN(x); return [x + nx * d, crestZ(x) + nz * d, Math.atan2(nx, nz)]; };
     const face = () => WALL;                                                                   /* the cut face's distance from the crest line */
-    for (let x = REV[1] - 0.9; x > REV[0] + 0.7; x -= 1.74) { const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
-    for (let x = REV[1] - 0.7; x > REV[0] + 0.6; x -= 1.46) { if (x > 0.8 && x < 2.2) continue;   /* (the gap: the watcher's loophole) */
-      const [px, pz, ry] = at(x, face(x) - 0.27); P('sandbag_row', px, FY + crestH(x) + 0.035, pz, ry); }
+    for (let x = REV[1] - 0.9; x > REV[0] - 1.1; x -= 1.74) {   /* (the last one's end is buried in the slumped earth of the bend) */ const [px, pz, ry] = at(x, face(x) + 0.15); P('rv_logs', px, FY + 0.02, pz, ry, -0.02); }
+    // (v9) sandbags: the kit's row is one flat-sided block (fine from the game's height; from inside the trench it read as a
+    // plank lying on the parapet). Here every bag is its own lump - filled sacks, each a little different, laid end to end in a
+    // course with a second, broken course bonded over the joints; a gap where the watcher looks out
+    { const bagG = new THREE.SphereGeometry(1, 14, 9); { const p = bagG.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i), x = p.getX(i), z = p.getZ(i), k = 1 - 0.28 * Math.abs(y) ** 3; p.setXYZ(i, Math.sign(x) * Math.abs(x) ** 0.5 * k, (y < 0 ? y * 0.85 : y) * (1 - 0.18 * Math.abs(x) ** 6), Math.sign(z) * Math.abs(z) ** 0.6 * k);   /* (a filled sack: squarish in plan, pinched at its sewn ends) */ } bagG.computeVertexNormals(); }
+      const bagM = new THREE.MeshStandardMaterial({ color: 0xb3a688, roughness: 1, bumpMap: this.soilMat.bumpMap, bumpScale: 0.6 }), list = [];
+      for (let x = REV[1] - 0.3; x > REV[0] + 0.1; x -= 0.44) if (!(x > 0.75 && x < 2.15)) list.push([x, 0, 0]);
+      for (let x = REV[1] - 0.52; x > 3.1; x -= 0.44) if (R() < 0.85) list.push([x, 1, 0]);
+      const bags = new THREE.InstancedMesh(bagG, bagM, list.length), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+      list.forEach(([x, k], i) => { const [px, pz] = at(x, face(x) - 0.27 + (R() - 0.5) * 0.03); bags.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + crestH(x) + 0.035 + 0.068 + k * 0.128, pz + k * 0.02), q.setFromEuler(e.set((R() - 0.5) * 0.08, (R() - 0.5) * 0.14, (R() - 0.5) * 0.06)), new THREE.Vector3(0.225 + R() * 0.015, 0.07 + R() * 0.01, 0.14 + R() * 0.015))); bags.setColorAt(i, c.setRGB(0.8 + R() * 0.3, 0.8 + R() * 0.28, 0.76 + R() * 0.24)); });
+      bags.frustumCulled = false; scene.add(bags); }
     for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); P('floor_planks', px, FY + 0.045, pz, ry); }
     { const [px, pz] = at(4.75, face(4.75) + 0.24 + 0.5); P('ammo_crates', px, FY + 0.09, pz, 0.12); }
     // clods fallen from the wall and the parapet, mud trodden onto the boards
-    const cl = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), this.soilMat, 260), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
-    for (let i = 0; i < 260; i++) {
-      const x = 1.0 + R() * 6.6, top = R() < 0.25, d = top ? face(x) - 0.62 - R() * 0.5 : face(x) + 0.26 + R() * R() * 1.6, [px, pz] = at(x, d), r = 0.008 + R() * R() * 0.03;
-      const y = top ? FY + crestH(x) + 0.03 + r * 0.4 : FY + (d < 2.0 && x < 6.6 && (d < 0.9 || (x > 0.7 && x < 5.2)) ? 0.105 : 0.04) + r * 0.4;
+    // (v9) the earth that came out of the wall where the revetment ends: one slumped pile at the foot of the bare face, its toe
+    // spread on the floor - a heap, not scattered lumps (the clods below are the few that rolled off it)
+    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.0, pz = crestZ(0.5) + 0.78, hx = 1.05, hz = 0.8, hh = 0.72, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
+      for (let i = 0; i <= N; i++) for (let j = 0; j < K; j++) { const r = i / N, a = j / K * 6.2832, lob = 1 + 0.16 * Math.sin(a * 3 + 0.7) + 0.09 * Math.sin(a * 5 + 2.1), x = px + Math.cos(a) * r * hx * lob, z = pz + Math.sin(a) * r * hz * lob - 0.22 * (1 - r) /* (leaning into the wall) */;
+        const y = FY + 0.03 + hh * Math.pow(1 - r * r, 1.5) * (1 + 0.22 * nz(x, z)) + 0.02 * nz(x * 2.3, z * 2.3) * (1 - r) - 0.05 * r * r;
+        pos.push(x, y, z); uv.push(x / 2.2, z / 2.2 + y); const k = 0.82 + 0.3 * (y - FY) + 0.08 * nz(x * 1.9, z * 2.4); col.push(k, k * 0.97, k * 0.93); }
+      for (let i = 0; i < N; i++) for (let j = 0; j < K; j++) { const a = i * K + j, b = i * K + (j + 1) % K, c = a + K, d = b + K; idx.push(a, c, b, b, c, d); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+      const pile = new THREE.Mesh(g, this.soilMat); pile.frustumCulled = false; scene.add(pile); }
+    const clG = new THREE.IcosahedronGeometry(1, 1); clG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(clG.attributes.position.count * 3).fill(0.9), 3));   /* (the soil material takes vertex colours: without them the clods were black) */
+    const cl = new THREE.InstancedMesh(clG, this.soilMat, 260), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    cl.count = 22;
+    for (let i = 0; i < 22; i++) {
+      const x = i < 16 ? -0.9 + R() * 2.0 : 1.0 + R() * 6.6, top = false, d = top ? face(x) - 0.62 - R() * 0.5 : face(x) + 0.26 + R() * R() * 1.6, [px, pz] = at(x, d), r = 0.008 + R() * R() * 0.03;
+      const y = top ? FY + crestH(x) + 0.03 + r * 0.4 : FY + 0.04 + r * 0.4;   /* (on the earth floor; none perched on the duckboards' level where there are no boards any more) */
       cl.setMatrixAt(i, M.compose(new THREE.Vector3(px, y, pz), q.setFromEuler(e.set(R() * 3, R() * 3, R() * 3)), new THREE.Vector3(r * (1 + R()), r * 0.7, r * (1 + R()))));
     }
     cl.frustumCulled = false; scene.add(cl);
@@ -225,8 +252,15 @@ export class MenuScene {
   // an RPG-22 laid ready on the parapet beside the men (on the sandbags, along the trench)
   launcher(scene, g) {
     const o = g.scene.clone(true); o.traverse(q => { if (q.isMesh) { q.frustumCulled = false; if (/_LOD1$/i.test(q.name)) q.visible = false; } });
-    const b = new THREE.Box3().setFromObject(o), x = 4.05, grp = new THREE.Group(); o.position.set(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); grp.add(o);
-    grp.position.set(x, FY + crestH(x) + 0.035 + 0.2, crestZ(x) + WALL - 0.3);   /* (down on the bags: the model's lowest point is its sling) */ grp.rotation.set(0, Math.PI / 2 + 0.22, 0.04); scene.add(grp);
+    // (v9: it floated. The model's tube is a 9 cm tube about its own axis with the sling and sights hanging / standing off it: laid
+    // on its side the lowest point is the tube wall, 4.6 cm under the axis - it was set down by the bounding box, sling and all.)
+    // The top of the bags is found on the bags themselves: a ray down onto the scene at the spot.
+    const x = 4.18, z = crestZ(x) + WALL - 0.27, grp = new THREE.Group(); grp.add(o);
+    scene.updateMatrixWorld(true);
+    const hit = new THREE.Raycaster(new THREE.Vector3(x, FY + 3, z), new THREE.Vector3(0, -1, 0), 0, 6).intersectObjects(scene.children, true).find(h => h.object.isMesh && h.object.visible);
+    const top = hit ? hit.point.y : FY + crestH(x) + 0.2;
+    o.rotation.z = Math.PI / 2;                                  /* on its side: sights to the men, sling slack over the bags */
+    grp.position.set(x, top + 0.044, z); grp.rotation.set(0, Math.PI / 2 + 0.18, 0); scene.add(grp);
   }
   // a fire: flames (flickering additive tongues), their glow, dark smoke going up on the wind; `big`: through a roof / a wreck
   addFire(scene, x, y, z, sz, big = 0, quiet = 0) {
