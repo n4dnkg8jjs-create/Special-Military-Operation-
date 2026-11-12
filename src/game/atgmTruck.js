@@ -303,7 +303,18 @@ export class AtgmTruck extends Vehicle {
   }
 }
 
-// one truck per side in a skirmish battle (not in campaign task groups or versus yet)
+// one truck with its crew at a spot (campaign battles: game/campaignBattle.js - a unit bought as 'atgm_truck'); null without the model
+export function addAtgmTruck(game, side, x, z, h, name, men = 3) {
+  if (!game.assets?.gltf?.pickup_atgm) return null;
+  try {
+    const f = side === 'player' ? game.playerFaction : game.enemyFaction, [fx, fz] = game.nav.nearestFree(x, z, 2.0, 30);
+    const v = new AtgmTruck(game, side, f); if (name) v.name = name; v.place(fx, fz, h); game.vehicles.push(v);
+    const sq = new Squad(game, side, f, `${v.name} crew`, 'medevac', ATGM_TRUCK_ROLES.slice(0, men));
+    sq.placeAt?.(fx, fz, h); game.squads.push(sq); v.attachCrew(sq); v.crewSq ||= sq;
+    return v;
+  } catch (e) { console.warn('ATGM truck (campaign) failed', e); return null; }
+}
+// one truck per side in a skirmish battle (campaign: addAtgmTruck above; not in versus yet)
 export function setupAtgmTrucks(game) {
   if (game.opts?.net || game.campaign || !game.assets?.gltf?.pickup_atgm) return [];
   const out = [];

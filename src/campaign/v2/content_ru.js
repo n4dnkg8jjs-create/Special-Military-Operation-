@@ -116,7 +116,7 @@ export const CAMPAIGN2_RU = {
     ammoStart: 8, ammoMax: 16, uavStock: 6,
     units: START_UNITS,
     unlocked: ['ru_arm_cage', 'ru_dr_orlan'],
-    available: ['repl', 'mech_btr', 'mech_ifv', 'tank', 'assault', 'atgm', 'fpv'],
+    available: ['repl', 'mech_btr', 'mech_ifv', 'tank', 'assault', 'atgm', 'atgm_truck', 'fpv'],
   },
   theatre: { ...THEATRE2 },
   aor: {
@@ -339,6 +339,7 @@ export const CAMPAIGN2_RU = {
     { key: 'assault', label: 'Assault Coy', desc: 'Six assaulters in heavy armour with grenades and an RPG for trench and building clearing.', kind: 'assault', men: 6, lp: 30, eta: 2, limit: 3 },
     { key: 'assault_plus', label: 'Assault Coy (2nd detachment)', desc: 'Additional assault squads from a second assault detachment.', kind: 'assault', men: 6, lp: 35, eta: 2, req: ['ru_inf_stormco'], limit: 2 },
     { key: 'atgm', label: 'Kornet ATGM team', desc: 'Three-man team with a 9M133 Kornet launcher and missiles.', kind: 'atgm', men: 3, lp: 25, eta: 1, limit: 3 },
+    { key: 'atgm_truck', label: 'Kornet on a pickup', desc: 'The Kornet team on a pickup: launcher on the bed (fires over the tailgate, 34 deg arc), six missiles aboard, fast to a firing spot and away again. Unarmoured - if the truck is lost the team fights on foot.', kind: 'atgm', vehicle: 'atgmtruck', men: 3, lp: 40, eta: 2, limit: 2 },
     { key: 'fpv', label: 'Drone team', desc: 'Pilot and assistant with five FPV strike quadcopters.', kind: 'fpv', men: 2, lp: 18, eta: 1, limit: 1 },
     { key: 'fpv_plus', label: 'FPV team (UAV company)', desc: 'Additional FPV strike-drone crews (ten drones each) from the brigade\'s UAV company.', kind: 'fpv', men: 2, lp: 20, eta: 1, req: ['ru_dr_uav'], limit: 3 },
     { key: 'spg', label: '2S19M2 Msta-S', desc: 'Tracked 152 mm self-propelled howitzer with a five-man crew.', kind: 'spg', vehicle: 'spg', men: 5, lp: 95, eta: 3, req: ['ru_fire_msta'], limit: 1 },

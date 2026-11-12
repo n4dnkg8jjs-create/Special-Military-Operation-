@@ -102,6 +102,9 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   part's texture must be re-baked into those atlases (rebake(): triangle matching by vertex positions); run it on the git original),
   ruins v3 (city.js roofTexture(): felt roofs + per-slab dust / soot tint from Building.buildInterior; deeper FAB craters in
   five-storeys; Avdiivka pancakeD 0.58).
+  ATGM pickup in the campaign: purchasable `atgm_truck` (kind atgm, vehicle 'atgmtruck', 40 LP) in both campaigns; campaignBattle.js
+  deploys it through atgmTruck.js addAtgmTruck() (crew squad carries the unit's rec; on foot when short of a man, when the truck is
+  lost, or in a net battle - no joiner puppet yet); `?ctest&atgmtruck` is the dev hook.
 - Findings worth keeping: (1) this container's network policy blocks most reference sites (web search works, page / image fetches
   mostly do not; Wikimedia rate-limits): ask the owner for photos when a task needs references (the BTR-82A turret rework is waiting
   on that; btr.py's turret is already 'rebuilt from photos', its TURRET_SPEC.md was local only). (2) 'Body parts twisting / shrinking':

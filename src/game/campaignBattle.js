@@ -1,6 +1,7 @@
 // Campaign battles: deploy the player's persistent task group and the enemy composition chosen by the campaign
 // (src/campaign/state.js battleSetup), apply ordered upgrades (MODS) and veterancy, and report the outcome per unit
 // back to the campaign. Used when game.campaign is set (main.js passes it from the stored pending battle).
+import { addAtgmTruck } from './atgmTruck.js';
 import * as THREE from 'three';
 import { MAP, DEPLOY_ZONES, OBJECTIVES } from '../world/city.js';
 import { SQUAD_ROLES, ASSAULT_ROLES, ATGM_ROLES, FPV_ROLES } from '../config.js';
@@ -40,7 +41,13 @@ export function deployCampaign(game, side = 'player', forceOverride = null, mods
   for (const r of recs) {
     if (r.kind === 'assault' && r.mounted) continue;
     const [x, z] = S[si++];
-    if (r.veh && !r.veh.lost) {
+    if (r.veh && !r.veh.lost && r.veh.kind === 'atgmtruck') {
+      // the ATGM team on its pickup (game/atgmTruck.js): the unit's men are its crew; without the model, or in a net battle (the
+      // joiner has no puppet for it yet), the team deploys on foot as it does once the truck is lost
+      const v = !game.opts?.net && (r.men || 0) >= 3 ? addAtgmTruck(game, side, x, z, N, r.name, 3) : null;   /* (a team short of a man fights on foot until it is made up) */
+      if (v) { v.rec = r.uid; v.vet = xpLevel(r.xp); v.hp = v.def.hp * Math.max(0.2, r.veh.hp ?? 1); if (v.crewSq) { v.crewSq.rec = r.uid; v.crewSq.vet = xpLevel(r.xp); } list.push(v); }
+      else if (r.men > 0) list.push(squadOf(r, x, z));
+    } else if (r.veh && !r.veh.lost) {
       const v = game.makeVehicle(side, r.veh.kind, x, z, N, r.veh.variant || null); v.name = r.name.replace(/ squad$/i, '') + (r.kind === 'mech' || r.kind === 'imech' ? '' : '');
       v.rec = r.uid; v.vet = xpLevel(r.xp); v.hp = v.def.hp * Math.max(0.2, r.veh.hp ?? 1);
       if (r.kind === 'mech' || r.kind === 'imech') { v.name = `${r.veh.kind === 'ifv' ? pf.ifvName : pf.btrName} (${r.name})`; }

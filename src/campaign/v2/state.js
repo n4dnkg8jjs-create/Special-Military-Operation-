@@ -41,7 +41,7 @@ export function atDate(list, date, key) { let v = null; for (const e of list || 
 
 // ------------------------------------------------------------------ movement
 export const TERRAIN_COST = { fields: 2, village: 2, heights: 2.5, balka: 2.5, forest: 3, urban: 3, industrial: 3, water: Infinity };
-export const VEH_MP = { btr: 4, spg: 3, ifv: 3, tank: 3 };
+export const VEH_MP = { btr: 4, spg: 3, ifv: 3, tank: 3, atgmtruck: 4 };
 export const FOOT_MP = 2;
 // tech effects the campaign layer understands (on top of the battle MODS in schema.js): see PROGRESS_RULES.md
 export const CAMPAIGN_MODS = ['supplyRange', 'uavSorties', 'ammoAlloc', 'ammoMax', 'cbBonus', 'medReturn'];   // medReturn: + share of the wounded back to their unit (endTurn)
