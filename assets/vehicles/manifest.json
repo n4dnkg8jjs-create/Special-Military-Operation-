@@ -11922,6 +11922,293 @@
     ]
    },
    "textures": "EXT_texture_webp (tools/optimize_assets.sh step applied)"
+  },
+  "mi24": {
+   "faction": "both",
+   "name": "Mi-24V",
+   "kind": "heli",
+   "crew": 2,
+   "passengers": 0,
+   "real_dimensions_m": {
+    "fuselage_length": 17.51,
+    "length_rotors_turning": 19.79,
+    "main_rotor_diameter": 17.3,
+    "tail_rotor_diameter": 3.908,
+    "wing_span": 6.54,
+    "height_rotor_head": 3.97,
+    "fuselage_width": 1.7
+   },
+   "armament": [
+    "12.7 mm YakB-12.7 in the USPU-24 chin turret (muzzle)",
+    "4 x B-8V20A, 20 x 80 mm S-8 each (rocket_L1/L2/R1/R2)",
+    "ASO-2V flares (flare_L / flare_R)"
+   ],
+   "markings": "green / tan camouflage, pale blue-grey undersides; id_band_a / id_band_b = two rings round the tail boom (own materials, tinted at runtime)",
+   "sources": [
+    "https://en.wikipedia.org/wiki/Mil_Mi-24 (length 17.5 m fuselage / 19.79 m rotors turning, rotor 17.3 m, wing span 6.5 m, height 6.5 m overall, 5-blade main and 3-blade tail rotor, YakB-12.7, S-8 in B-8V20 pods)",
+    "https://www.airvectors.net/avhind_1.html (Mi-24V: stepped tandem cockpits, USPU-24 turret, Raduga-F pod to port, PZU intake filters, EVU exhaust mixers, L-166V Ispanka, ASO-2V)"
+   ],
+   "file": "assets/vehicles/mi24.glb",
+   "file_mb": 1.16,
+   "tris": {
+    "lod0": 8388,
+    "lod1": 2809,
+    "hull_wreck": 2147
+   },
+   "model_bbox_m": {
+    "min": [
+     -8.316,
+     0.5,
+     -11.692
+    ],
+    "max": [
+     8.316,
+     4.997,
+     8.65
+    ]
+   },
+   "materials": [
+    "glass_clear",
+    "mi24_id_band_a",
+    "mi24_id_band_b",
+    "mi24_paint",
+    "mi24_wreck"
+   ],
+   "animated_nodes": {
+    "rotor_main": "spin about local Y (glTF up)",
+    "rotor_tail": "spin about local X"
+   },
+   "frame": "origin on the ground line under the main rotor axis; belly 0.62 m above it; rotor head at 3.97 m",
+   "hierarchy": {
+    "name": "root",
+    "type": "empty",
+    "pos": [
+     0.0,
+     0.0,
+     -0.0
+    ],
+    "children": [
+     {
+      "name": "hull",
+      "type": "empty",
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ],
+      "children": [
+       {
+        "name": "exhaust_L",
+        "type": "empty",
+        "pos": [
+         1.36,
+         3.14,
+         0.55
+        ]
+       },
+       {
+        "name": "exhaust_R",
+        "type": "empty",
+        "pos": [
+         -1.36,
+         3.14,
+         0.55
+        ]
+       },
+       {
+        "name": "flare_L",
+        "type": "empty",
+        "pos": [
+         0.48,
+         1.62,
+         -4.5
+        ]
+       },
+       {
+        "name": "flare_R",
+        "type": "empty",
+        "pos": [
+         -0.48,
+         1.62,
+         -4.5
+        ]
+       },
+       {
+        "name": "glass_geo",
+        "type": "mesh",
+        "tris": 324,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "hull_geo",
+        "type": "mesh",
+        "tris": 7546,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "hull_geo_LOD1",
+        "type": "mesh",
+        "hidden": true,
+        "tris": 2629,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "id_band_a",
+        "type": "mesh",
+        "tris": 48,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "id_band_b",
+        "type": "mesh",
+        "tris": 48,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "muzzle",
+        "type": "empty",
+        "pos": [
+         0.0,
+         0.79,
+         6.72
+        ]
+       },
+       {
+        "name": "rocket_L1",
+        "type": "empty",
+        "pos": [
+         1.569,
+         1.404,
+         0.719
+        ]
+       },
+       {
+        "name": "rocket_L2",
+        "type": "empty",
+        "pos": [
+         2.492,
+         1.206,
+         0.654
+        ]
+       },
+       {
+        "name": "rocket_R1",
+        "type": "empty",
+        "pos": [
+         -1.569,
+         1.404,
+         0.719
+        ]
+       },
+       {
+        "name": "rocket_R2",
+        "type": "empty",
+        "pos": [
+         -2.492,
+         1.206,
+         0.654
+        ]
+       },
+       {
+        "name": "rotor_main",
+        "type": "empty",
+        "pos": [
+         0.0,
+         3.97,
+         -0.0
+        ],
+        "children": [
+         {
+          "name": "rotor_main_geo",
+          "type": "mesh",
+          "tris": 442,
+          "pos": [
+           0.0,
+           3.97,
+           -0.0
+          ]
+         },
+         {
+          "name": "rotor_main_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 154,
+          "pos": [
+           0.0,
+           3.97,
+           -0.0
+          ]
+         }
+        ]
+       },
+       {
+        "name": "rotor_tail",
+        "type": "empty",
+        "pos": [
+         0.42,
+         3.25,
+         -10.62
+        ],
+        "children": [
+         {
+          "name": "rotor_tail_geo",
+          "type": "mesh",
+          "tris": 76,
+          "pos": [
+           0.42,
+           3.25,
+           -10.62
+          ]
+         },
+         {
+          "name": "rotor_tail_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 26,
+          "pos": [
+           0.42,
+           3.25,
+           -10.62
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "name": "hull_wreck",
+      "type": "mesh",
+      "hidden": true,
+      "tris": 2147,
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ]
+     }
+    ]
+   },
+   "textures": "EXT_texture_webp (tools/optimize_assets.sh step applied)"
   }
  }
 }
