@@ -867,12 +867,9 @@ export class StrategicMap {
   // attack sector) inside the 2 km grid square: drawn at their real place on the square whose real ground they are
   // (Robotyne / Avdiivka: >= 25% of the frame on the square), otherwise centred on the square (stand-in ground).
   battleFrame(id) {
-    const c = id && this.C.cell(id), M = c && MAPS[c.battleMap]; if (!M) return null;
+    const c = id && this.C.cell(id), M = c && MAPS[this.C.battleMap ? this.C.battleMap(id) : c.battleMap]; if (!M) return null;   /* (battlemap.js: the real map only on its own square) */
     const size = (M.sizeM || 1400) / 1000, cc = this.cellCenter(id); let x = cc.x, z = cc.z, real = false;
-    if (M.geo) {
-      const rx = this.X(M.geo.lon), rz = this.Z(M.geo.lat), ov = (a, b) => Math.max(0, Math.min(a + size / 2, b + this.cw / 2) - Math.max(a - size / 2, b - this.cw / 2));
-      if (ov(rx, cc.x) * ov(rz, cc.z) >= 0.25 * size * size) { x = rx; z = rz; real = true; }
-    }
+    if (M.geo) { x = this.X(M.geo.lon); z = this.Z(M.geo.lat); real = true; }
     return { x, z, size, real, name: M.name, id: M.id, cellKm: Math.round(this.cw * 10) / 10 };
   }
   showBattleArea(id) {

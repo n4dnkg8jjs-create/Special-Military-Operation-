@@ -3,6 +3,8 @@
 const E_C = 640 / 2 + 2;   // (defence v1: 520 -> 640 m: both staging grounds 60 m further out, on the outskirts beyond the ring lanes, so a defence set up on the objectives is not on top of the attacker's forming-up place)
 const E_F = 1400 / 2 + 2;
 
+import { SYNTH_MAPS } from './real/synth.js';   /* generated maps (rural / river / greyzone) for campaign squares without a real-place map */
+
 export const MAPS = {
   city: {
     id: 'city', name: 'Novozavodsk', blurb: 'Shelled-out Soviet panel-block microdistrict. Tight street-to-street fighting, collapsible blocks, garrisons.',
@@ -466,4 +468,6 @@ export const MAPS = {
     plumes: [[-900, -900, 1.6], [700, -600, 1.8], [900, 300, 1.4], [-700, 900, 1.2], [300, 1000, 2.0]],
     cam: [-140, 520, 170], fog: 0.0016, ambience: 'ambience_city',
   },
+  // ================================================================ generated maps (src/world/real/synth.js)
+  ...SYNTH_MAPS,
 };

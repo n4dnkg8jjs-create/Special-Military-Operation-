@@ -32,8 +32,9 @@ import { ruinsSetup, ruinTpl, ruinsHeat } from './ruins.js';
 import { MAPS } from './maps.js';
 import ROBOTYNE from './real/robotyne_osm.js';
 import AVDIIVKA from './real/avdiivka_osm.js';
+import { SYNTH_DATA } from './real/synth.js';   /* generated layouts in the same format: rural / river / greyzone */
 
-export const REAL_DATA = { robotyne: ROBOTYNE, avdiivka: AVDIIVKA };
+export const REAL_DATA = { robotyne: ROBOTYNE, avdiivka: AVDIIVKA, ...SYNTH_DATA };
 // OSM tracks / service roads that stop in the open (the mapper stopped, or the way was clipped oddly) would read in the
 // game as a road running into a field and ending.  Every track / drive / gravel end must join another road, reach a
 // building / yard (farmyard, garage, plot), or run off the map edge:
@@ -269,6 +270,16 @@ export function fitParts(b, W, maxDepth = 5) {
     out.push(long ? [wx, wz, x1 - x0, z1 - z0, b.rot] : [wx, wz, z1 - z0, x1 - x0, b.rot + Math.PI / 2]);
   });
   return out;
+}
+// the river's section (m): hollow width at the top / flat bed, depth of the bed, water level below the ground, half-width
+// of the water (where the bed drops under it), half-width of the water sheet, how far short of a road the hollow stops
+const RIVER = { top: 42, bot: 18, depth: 2.5, water: 1.55, half: 12, sheet: 14.5, gap: 27 };
+let _ripple = null;
+function rippleTex() {
+  if (_ripple) return _ripple;
+  const n = 128, d = new Uint8Array(n * n * 4), W = [[3, 1, 0, 0.5], [-2, 5, 1.3, 0.34], [5, -4, 2.1, 0.3], [1, 7, 0.6, 0.24], [-6, 2, 4.0, 0.2], [7, 3, 5.2, 0.16], [-3, -8, 3.3, 0.15], [9, -2, 1.9, 0.11], [4, 11, 2.7, 0.09], [-11, 6, 0.2, 0.08]], h = (x, y) => { let v = 0; for (const [a, b, ph, am] of W) v += Math.sin((x * a + y * b) * 6.2832 / n + ph) * am; return v; };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const dx = h(x + 1, y) - h(x - 1, y), dy = h(x, y + 1) - h(x, y - 1), i = (y * n + x) * 4; d[i] = 128 + dx * 120; d[i + 1] = 128 + dy * 120; d[i + 2] = 255; d[i + 3] = 255; }
+  const t = _ripple = new THREE.DataTexture(d, n, n, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true; return t;
 }
 // ================================================================ shared world-building (mixed into both classes)
 const Real = {
@@ -663,7 +674,8 @@ const Real = {
         this.gardenPolys.push(gp);
         for (let q = 0; q < (urban ? 4 : 3); q++) if (R() < 0.8) {
           const t = (0.15 + R() * 0.7) * fr, w = g0 + R() * (dep - g0 - 3), x = a[0] + ux / fr * t + nx * w, z = a[1] + uz / fr * t + nz * w;
-          const n = fruit[Math.floor(R() * fruit.length)]; if (!this.tpl(n)) continue;
+          let n = fruit[Math.floor(R() * fruit.length)]; if (!this.tpl(n)) continue;
+          if (this.ruinTree && (MAP.ruin?.trees?.level ?? 0) >= 0.9) { const f = this.ruinTree(n, x, z, 1); if (f === null) continue; n = f; }   /* (grey zone: the gardens are splinters and stumps too) */
           this.put(n, x, z, R() * 6, { s: 0.7 + R() * 0.35, circle: 0.5, lod: lod(n), inst: { lodDist: 200, cullDist: 1100, cell: 180 } });
         }
       }
@@ -767,6 +779,17 @@ const Real = {
         else if (R() < (k ? 0.12 : 0.3)) { const n = R() < 0.5 ? 'tree_poplar_leafy' : R() < 0.5 ? 'tree_acacia_leafy' : 'tree_acacia_shelled'; if (this.tpl(n) && !this.solidHit(px, pz, 0.45, 0.45, 0, 0.3)) { items.push([n, trs(px, this.terrain.heightAt(px, pz), pz, R() * 6.28, 0.7 + R() * 0.4)]); this.nav.circle(px, pz, 0.45, BLOCK); this.solidAdd(px, pz, 0.4, 0.4, 0, 'tree'); } }
       }
       this.concealRect(x - 7, z - 7, x + 7, z + 7, 120);
+    });
+    // river banks: reeds in the shallows and at the water's edge, willow scrub and a few trees on the bank above
+    if (!urban) for (const run of this.riverRuns || []) walk(run, 2.6, (x, z, ux, uz) => {
+      const nx = -uz, nz = ux;
+      for (const sd of [-1, 1]) {
+        for (let q = 0; q < 2; q++) if (R() < 0.7 && this.tpl('weeds_tall_clump')) { const o = RIVER.half - 1.6 + R() * 3.8, px = x + nx * o * sd + ux * (R() - 0.5) * 2.4, pz = z + nz * o * sd + uz * (R() - 0.5) * 2.4; if (!this.net.hit(px, pz, 5)) items.push(['weeds_tall_clump', trs(px, this.terrain.heightAt(px, pz) - 0.05, pz, R() * 6.28, 0.9 + R() * 0.7)]); }
+        if (R() < 0.2) { const o = RIVER.half + 3 + R() * 9, px = x + nx * o * sd, pz = z + nz * o * sd; if (!this.net.hit(px, pz, 5) && Math.abs(px) < half - 3 && Math.abs(pz) < half - 3) {
+          if (R() < 0.7) { items.push([R() < 0.5 ? 'bush_a' : 'bush_b', trs(px, this.terrain.heightAt(px, pz), pz, R() * 6.28, 0.9 + R() * 0.8)]); this.nav.circle(px, pz, 1.0, 4); }
+          else { const n = R() < 0.6 ? 'tree_acacia_leafy' : 'tree_poplar_leafy'; if (this.tpl(n) && !this.solidHit(px, pz, 0.45, 0.45, 0, 0.3)) { items.push([n, trs(px, this.terrain.heightAt(px, pz), pz, R() * 6.28, 0.7 + R() * 0.45)]); this.nav.circle(px, pz, 0.45, BLOCK); this.solidAdd(px, pz, 0.4, 0.4, 0, 'tree'); } } } }
+      }
+      this.concealRect(x - 15, z - 15, x + 15, z + 15, 150);
     });
     // village streets: walnut / acacia / poplar in front of the plots
     if (!urban) for (const r of D.roads) {
@@ -932,8 +955,52 @@ const Real = {
       // soft-relief mask (1 px / m): the terrain shader keeps the grass / steppe look in a balka (no trench-floor mud)
       for (let i = 0; i < P.length - 1; i++) { const [ax, az] = P[i], [bx, bz] = P[i + 1]; for (let z = Math.floor(Math.min(az, bz) - 18); z <= Math.max(az, bz) + 18; z++) for (let x = Math.floor(Math.min(ax, bx) - 18); x <= Math.max(ax, bx) + 18; x++) { const d = segD(x + 0.5, z + 0.5, ax, az, bx, bz), ii = x + half, jj = z + half; if (d < 17 && ii >= 0 && jj >= 0 && ii < N && jj < N) soft[jj * N + ii] = Math.max(soft[jj * N + ii], Math.min(255, (17 - d) * 60)); } }
     }
+    for (const l of this.osm.lines) if (l.t === 'river') this.riverReal(l, soft, N, half);
     const t = new THREE.DataTexture(soft, N, N, THREE.RedFormat, THREE.UnsignedByteType); t.flipY = false; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
     this.softMask = t;
+  },
+  // ---------------------------------------------------------------- a small steppe river (generated maps: real/synth.js)
+  // Its bed is a wide soft hollow (terrain.balka) with water standing in it: ~24 m of water, a metre deep in the middle.
+  // Where a road crosses, the hollow stops short on both sides and the road runs over on the solid ground between - an
+  // earth dam with a culvert through it, the usual crossing of these rivers. Vehicles cross nowhere else (nav.veh = 2 on
+  // the water); men wade, slowly.
+  riverReal(l, soft, N, half) {
+    const T = this.terrain, W = RIVER, P = densify(l.pts, 3), runs = T.runs(P, W.gap).filter(r => r.length > 3);
+    T.balka(P, { top: W.top, bot: W.bot, depth: W.depth, gap: W.gap });
+    const pos = [], uv = [], idx = [], head = [];
+    this.nav.veh ||= new Uint8Array(this.nav.n * this.nav.n);
+    for (const run of runs) {
+      /* the water sheet a little past both ends of the run (it runs in under the bank: the hollow's end is a round cap) */
+      const e = (a, b, k) => { const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; return [a[0] + (a[0] - b[0]) / L * k, a[1] + (a[1] - b[1]) / L * k]; };
+      const Q = [e(run[0], run[1], 12.5), ...run, e(run[run.length - 1], run[run.length - 2], 12.5)], b0 = pos.length / 3; let along = 0;
+      for (let i = 0; i < Q.length; i++) {
+        const a = Q[Math.max(0, i - 1)], b = Q[Math.min(Q.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / L, nz = (b[0] - a[0]) / L;
+        if (i) along += Math.hypot(Q[i][0] - Q[i - 1][0], Q[i][1] - Q[i - 1][1]);
+        pos.push(Q[i][0] + nx * W.sheet, -W.water, Q[i][1] + nz * W.sheet, Q[i][0] - nx * W.sheet, -W.water, Q[i][1] - nz * W.sheet); uv.push(0, along / 6, 5, along / 6);
+        if (i) { const k = b0 + i * 2; idx.push(k - 2, k, k - 1, k - 1, k, k + 1); }
+      }
+      for (const [ax, az] of run) for (let z = Math.floor(az - W.half); z <= az + W.half; z++) for (let x = Math.floor(ax - W.half); x <= ax + W.half; x++) {
+        if (Math.hypot(x + 0.5 - ax, z + 0.5 - az) > W.half) continue;
+        const k = this.nav.idx(x + 0.5, z + 0.5); if (k >= 0) { this.nav.veh[k] = 2; if (this.nav.cost[k] < 7) this.nav.cost[k] = 7; }
+      }
+      for (const [end, nb] of [[run[0], run[1]], [run[run.length - 1], run[run.length - 2]]]) if (Math.abs(end[0]) < half - 40 && Math.abs(end[1]) < half - 40) head.push([e(end, nb, W.half + 1.6), Math.atan2(end[0] - nb[0], end[1] - nb[1])]);
+      for (let i = 0; i < run.length - 1; i++) { const [ax, az] = run[i], [bx, bz] = run[i + 1]; for (let z = Math.floor(Math.min(az, bz) - 24); z <= Math.max(az, bz) + 24; z++) for (let x = Math.floor(Math.min(ax, bx) - 24); x <= Math.max(ax, bx) + 24; x++) { const d = segD(x + 0.5, z + 0.5, ax, az, bx, bz), ii = x + half, jj = z + half; if (d < 24 && ii >= 0 && jj >= 0 && ii < N && jj < N) soft[jj * N + ii] = Math.max(soft[jj * N + ii], Math.round(255 * Math.min(1, (24 - d) / 5))); } }
+    }
+    this.nav.vehDirty = true; this.riverRuns = (this.riverRuns || []).concat(runs);
+    if (!idx.length) return;
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const water = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x35402f, roughness: 0.4, metalness: 0, normalMap: rippleTex(), normalScale: new THREE.Vector2(0.1, 0.1), transparent: true, opacity: 0.9, depthWrite: false }));
+    water.name = 'river_water'; water.renderOrder = 1; water.receiveShadow = true; this.scene.add(water);
+    /* culvert headwalls where the water meets a dam: a concrete wall set into the bank, the pipe mouth half under water */
+    if (head.length) {
+      const conc = new THREE.MeshStandardMaterial({ color: 0x8b887e, roughness: 0.92 }), dark = new THREE.MeshStandardMaterial({ color: 0x0c0d0c, roughness: 1 }), parts = { c: [], d: [] };
+      for (const [p, ry] of head) {
+        const M = trs(p[0], -W.water, p[1], ry), put = (geo, k) => { geo.applyMatrix4(M); parts[k].push(geo); };
+        put(new THREE.BoxGeometry(5.2, 2.3, 0.5).translate(0, 0.1, 0), 'c'); put(new THREE.BoxGeometry(0.45, 1.9, 2.4).translate(-2.6, -0.1, -1.1), 'c'); put(new THREE.BoxGeometry(0.45, 1.9, 2.4).translate(2.6, -0.1, -1.1), 'c');
+        put(new THREE.CylinderGeometry(0.72, 0.72, 0.5, 18, 1, true).rotateX(Math.PI / 2).translate(0, 0.08, -0.5), 'c'); put(new THREE.CircleGeometry(0.64, 18).rotateY(Math.PI).translate(0, 0.08, -0.56), 'd');
+      }
+      for (const [k, m] of [['c', conc], ['d', dark]]) { const mesh = new THREE.Mesh(mergeGeometries(parts[k].map(q => q.index ? q.toNonIndexed() : q)), m); mesh.castShadow = mesh.receiveShadow = true; mesh.name = 'river_culverts'; this.scene.add(mesh); }
+    }
   },
   // ---------------------------------------------------------------- knocked-out armour, burnt cars, barricades
   warReal() {
@@ -978,6 +1045,7 @@ const Real = {
     x.lineCap = 'round';
     for (const r of this.osm.roads) { x.strokeStyle = r.type === 'track' ? '#6e6248' : r.type === 'gravel' ? '#77705e' : '#6a6862'; x.lineWidth = Math.max(1, r.w * k); x.beginPath(); r.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
     x.strokeStyle = '#2a2622'; x.lineWidth = Math.max(1, 2.5 * k); for (const l of this.osm.lines) if (/^rail/.test(l.t)) { x.beginPath(); l.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
+    x.strokeStyle = '#3f6488'; x.lineWidth = Math.max(2, 24 * k); for (const run of this.riverRuns || []) { x.beginPath(); run.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
     x.strokeStyle = '#3d5a7a'; x.lineWidth = Math.max(1, 3 * k); for (const l of this.osm.lines) if (l.t === 'stream') { x.beginPath(); l.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
   },
   minimapOver(x, k, o) {
@@ -988,10 +1056,10 @@ const Real = {
     x.fillStyle = '#8b867a'; for (const [hx, hz, L, Dd, rot] of this.hallRects || []) { x.save(); x.translate((hx + o) * k, (hz + o) * k); x.rotate(-rot); x.fillRect(-L / 2 * k, -Dd / 2 * k, L * k, Dd * k); x.restore(); }
     x.fillStyle = '#2a2219'; for (const q of this.terrain.cuts) { x.beginPath(); q.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.closePath(); x.fill(); }
     x.strokeStyle = '#3a3128'; x.lineWidth = Math.max(1, 3 * k); for (const r of this.terrain.reliefs) if (r.type === 'ditch' && !r.soft) { x.beginPath(); r.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
-    x.fillStyle = 'rgba(230,225,210,0.75)'; x.font = '9px sans-serif'; x.fillText('© OpenStreetMap', 4, 440 - 5);
+    if (!this.osm.synthetic) { x.fillStyle = 'rgba(230,225,210,0.75)'; x.font = '9px sans-serif'; x.fillText('© OpenStreetMap', 4, 440 - 5); }
   },
   creditOverlay() {
-    if (typeof document === 'undefined' || document.getElementById('osmCredit')) return;
+    if (typeof document === 'undefined' || document.getElementById('osmCredit') || this.osm.synthetic) return;   /* (generated layouts are nobody's map data) */
     const d = document.createElement('div'); d.id = 'osmCredit'; d.textContent = OSM_CREDIT;
     Object.assign(d.style, { position: 'fixed', left: '8px', bottom: '4px', zIndex: 15, font: '10px sans-serif', color: 'rgba(235,230,215,0.75)', textShadow: '0 1px 2px #000', pointerEvents: 'none' });
     document.body.appendChild(d);
@@ -1036,8 +1104,8 @@ export class RealRural extends Farmland {
     this.fieldsR = D.areas.filter(a => a.t === 'farmland' && a.pts.length > 2).map((a, i) => {
       // long axis -> row direction
       let best = 0, ang = 0; for (let k = 0; k < a.pts.length; k++) { const p = a.pts[k], q = a.pts[(k + 1) % a.pts.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]); if (L > best) { best = L; ang = Math.atan2(q[1] - p[1], q[0] - p[0]); } }
-      const r = R(), type = r < 0.2 ? T_PLOW : r < 0.4 ? T_STUB : r < 0.66 ? T_FALLOW : r < 0.86 ? T_SUN : T_CORN;
-      return { pts: a.pts, bb: polyBB(a.pts), type, rowsX: Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)), id: i + 1 };
+      const r = R(), mud = !!MAP.fallow && r >= 0.58, type = MAP.fallow ? T_FALLOW /* (grey zone: nothing sown since 2022 - weed-grown, or bare trampled earth: `mud`) */ : r < 0.2 ? T_PLOW : r < 0.4 ? T_STUB : r < 0.66 ? T_FALLOW : r < 0.86 ? T_SUN : T_CORN;
+      return { pts: a.pts, bb: polyBB(a.pts), type, mud, rowsX: Math.abs(Math.cos(ang)) > Math.abs(Math.sin(ang)), id: i + 1 };
     });
     this.fieldIdx = new PolyIndex(48); for (const f of this.fieldsR) this.fieldIdx.add(f.pts, f);
     // war layout: churned approach trails from the north (UA) and the Russian supply tracks, field fires, burnt belts
@@ -1112,7 +1180,7 @@ export class RealRural extends Farmland {
     const R = this.rng, cap = this.quality === 'low' ? 7000 : this.quality === 'medium' ? 12000 : 16000, inst = { shadows: this.quality === 'high', cullDist: this.quality === 'high' ? 300 : 230, cell: 180 };
     const area = this.fieldsR.reduce((a, f) => a + polyArea(f.pts) * (f.type >= 2 ? 1 : 0), 0) || 1;
     for (const f of this.fieldsR) {
-      if (f.type < 2) { this.concealPoly(f.pts, 215); continue; }
+      if (f.type < 2 || f.mud) { this.concealPoly(f.pts, 215); continue; }
       const name = f.type === 3 ? 'sunflower_dead_clump' : f.type === 4 ? 'corn_dry_clump' : 'weeds_tall_clump';
       const along = f.type === 2 ? 3.4 : 1.7, across = f.type === 2 ? 3.4 : 1.45, keep = Math.min(1, cap / (area / (along * across)));
       const [x0, z0, x1, z1] = f.bb;
@@ -1147,6 +1215,7 @@ export class RealRural extends Farmland {
     for (const f of this.fieldsR) { fx.fillStyle = `rgb(${f.id},0,0)`; path(fx, f.pts, true); fx.fill(); }
     for (const r of this.osm.roads) { yx.globalAlpha = r.type === 'paved' ? 0.55 : 0.7; yx.lineWidth = (r.w + (r.type === 'paved' ? 6 : 3)) * k; path(yx, r.pts); yx.stroke(); }
     for (const p of this.yardPolys) { yx.globalAlpha = 0.55; path(yx, p, true); yx.fill(); }
+    for (const f of this.fieldsR) if (f.mud) { yx.globalAlpha = 0.85; path(yx, f.pts, true); yx.fill(); }   /* bare trampled earth, no plough rows */
     for (const b of this.buildings) { yx.save(); yx.translate(...P(b.x, b.z)); yx.rotate(-b.rot); yx.globalAlpha = 0.7; yx.fillRect((-b.L / 2 - 6) * k, (-b.D / 2 - 6) * k, (b.L + 12) * k, (b.D + 12) * k); yx.restore(); }
     for (const [x, z, L, Dd, rot] of this.hallRects || []) { yx.save(); yx.translate(...P(x, z)); yx.rotate(-rot); yx.globalAlpha = 0.75; yx.fillRect((-L / 2 - 7) * k, (-Dd / 2 - 7) * k, (L + 14) * k, (Dd + 14) * k); yx.restore(); }
     for (const a of this.osm.areas) if (a.t === 'industrial' || a.t === 'school') { yx.globalAlpha = 0.45; path(yx, a.pts, true); yx.fill(); }
@@ -1404,6 +1473,7 @@ export function drawLayout(x, S, D) {
   x.lineCap = 'round';
   for (const r of D.roads) { x.strokeStyle = r.type === 'track' ? '#7a6c55' : '#8a8a84'; x.lineWidth = Math.max(0.8, r.w * k * 1.4); x.beginPath(); r.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
   x.strokeStyle = '#222'; x.lineWidth = 1.2; for (const l of D.lines) if (/^rail/.test(l.t)) { x.beginPath(); l.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
+  x.strokeStyle = '#3f6488'; x.lineWidth = Math.max(2, 24 * k); for (const l of D.lines) if (l.t === 'river') { x.beginPath(); l.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
   x.strokeStyle = '#2f4a25'; x.lineWidth = 2; for (const l of D.lines) if (l.t === 'tree_row') { x.beginPath(); l.pts.forEach((p, i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.stroke(); }
   x.fillStyle = '#c9c4b5';
   for (const b of D.buildings) { const c = Math.cos(b.rot), s = Math.sin(b.rot); for (const [bx, bz, L, Dd] of b.parts || [[b.x, b.z, b.L, b.D]]) { x.save(); x.translate(...P([bx, bz])); x.rotate(-b.rot); x.fillRect(-L / 2 * k, -Dd / 2 * k, Math.max(1, L * k), Math.max(1, Dd * k)); x.restore(); } void c; void s; }

@@ -13,6 +13,7 @@ import * as UAVR from './recon.js';
 import * as AI from './ai.js';
 import * as GR from './growth.js';
 import { CI, install as installInfluence } from './influence.js';
+import { battleMapFor } from './battlemap.js';
 
 export const KEY2 = 'smo.campaign.v2';
 export const MAX_BATTLE = 12;                 // units one battle can deploy (the rest of a task force stays in reserve)
@@ -646,6 +647,8 @@ export class Campaign2 {
     return { enemy: out.slice(0, 13), coys: coys.length, vet: xpLevel(xp), forces: [...fs, ...(cov ? [cov.f] : [])].map(f => ({ id: f.id, name: f.name, coys: (f.coys || []).map(c => c.k), str: Math.round(f.str * 100) / 100, xp: XP_NAMES[xpLevel(f.xp || 0)], role: f === cov?.f ? 'support' : f.role || 'line' })) };
   }
   // a battle the player fights: RTS map, mode, the task force's units, the enemy composition (campaignBattle.js contract)
+  // the map this square is fought on (battlemap.js); the opening contact line = squares whose first owner had the other side next to them
+  battleMap(cellId) { const c = this.cell(cellId); if (!c) return 'farmland'; return battleMapFor(this.def.aor, c, this.neighbors(cellId).some(n => this.cell(n) && this.cell(n).owner !== c.owner)); }
   battleSetup(cellId, uids, mode = 'attack', from = null) {
     const c = this.cell(cellId), E = this.def.enemy || {};
     const prep = mode === 'attack' && this.suppressed[cellId]?.by === 'player' ? this.suppressed[cellId].n : 0;
@@ -656,7 +659,7 @@ export class Campaign2 {
     const urban = ['urban', 'industrial'].includes(c.terrain) || (c.settlement && ['town', 'industrial'].includes(c.settlement.kind));
     const force = this.battleUnits(uids);
     return {
-      v2: true, sector: cellId, sectorName: this.cellName(cellId), map: c.battleMap || (urban ? 'city' : 'farmland'), mapFallback: urban ? 'city' : 'farmland', mode,
+      v2: true, sector: cellId, sectorName: this.cellName(cellId), map: this.battleMap(cellId), mapFallback: urban ? 'city' : 'farmland', mode,
       ci: this.ciBattle?.() || { heli: 0 },
       fort: this.fort[cellId] || 0, strength, force: JSON.parse(JSON.stringify(force)), enemy: tpl.map(e => ({ ...e })), mods: { ...this.battleMods(cellId, uids), mortar: (this.battleMods(cellId, uids).mortar || 0) + Math.round(prep) }, side: this.side,
       fpvThreat: E.fpvThreat ?? 0.5, artillery: Math.round((E.artillery ?? 0.5) * this.enemyArtyFactor(cellId) * 100) / 100, turn: this.turn, date: this.date,
