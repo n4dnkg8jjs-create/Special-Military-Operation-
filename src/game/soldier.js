@@ -6,6 +6,7 @@ import { Ragdoll, samplePose, ragdollSlot } from './ragdoll.js';
 import { DamageSkin, damageTick } from './soldierDamage.js';
 import { poseInit, poseTick, poseDeath } from './soldierPose.js';   // v8: per-shot recoil, support-hand IK, death perturbation
 import { swayInit, swayPre, swayPost } from './weaponSway.js';   // v9 sway: held-weapon inertia (turn lag, start / stop, gait bob)
+import { tapeMaterial } from './tapeTex.js';
 
 export const WEAPON_ASSET = { ak74m: 'ak74m', ak12: 'ak12', ak74o: 'ak74m_optic', pkm: 'pkm', rpg7: 'rpg7', rpg22: 'rpg22', pm: 'pm' };
 // a crewman with a pistol uses the pistol clips when they exist, otherwise the rifle ones
@@ -132,7 +133,7 @@ export class Soldier {
         o.userData.lod = /_LOD1$/.test(base) ? 1 : (names.has(core + '_LOD1') || m.getObjectByName(core + '_LOD1')) ? 0 : -1;
         o.visible = o.userData.variantOn && o.userData.lod !== 1;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((mt, i) => { if (/^tape/i.test(mt.name) || /armband|legband|_tape$/i.test(core)) { const c = mt.clone(); c.color.set(this.faction.tape); c.roughness = 0.4; if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; } });
+        mats.forEach((mt, i) => { if (/^tape/i.test(mt.name) || /armband|legband|_tape$/i.test(core)) { const c = tapeMaterial(mt.clone()); c.color.set(this.faction.tape); if (Array.isArray(o.material)) o.material[i] = c; else o.material = c; } });
         if (o.userData.lod !== -1) this.lods.push(o);
       }
       if (!this.lods.length) this.lods = null;

@@ -242,8 +242,8 @@ export class Backdrop {
     if (this.vehSprites) {
       this.nextConvoy -= dt;
       if (this.nextConvoy <= 0 && !this.convoy.length) {
-        this.nextConvoy = 30 + Math.random() * 40;
-        const mixes = [['btr', 'btr', 'tank'], ['bmp', 'btr'], ['tank', 'bmp', 'btr', 'btr'], ['btr', 'btr'], ['tank', 'tank', 'bmp']], mix = mixes[Math.floor(Math.random() * mixes.length)];
+        this.nextConvoy = 16 + Math.random() * 26;
+        const mixes = [['btr'], ['tank'], ['bmp'], ['btr', 'btr'], ['tank', 'bmp'], ['bmp', 'btr'], ['tank', 'tank'], ['btr']], mix = mixes[Math.floor(Math.random() * mixes.length)];   /* (v3: ones and twos) */
         const dir = Math.random() < 0.5 ? 1 : -1, FW = W + M * 2, sp = U * (4.2 + Math.random() * 1.6);
         let gap = 0;   /* (v2: 20-30 m between vehicles - they were nose to tail at 13 m) */
         mix.forEach((k, i) => { if (i) gap += U * (11.5 + Math.random() * 5.5); this.convoy.push({ k, dir, sp, x: dir > 0 ? -U * 6 - gap : FW + U * 2 + gap, ph: Math.random() * 6 }); });
