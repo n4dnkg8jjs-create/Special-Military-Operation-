@@ -424,8 +424,12 @@ function openings(info, pl, sv, outer) {
 function buildCage(M, out, info, pl) {
   const S = pl.S, sv = pl.sv, node = S.node, col = [], scr = [], cur = [], hem = [];
   // top height: over everything on the roof (sights, cupola, MG) with a minimum stand-off over the roof edge
-  const top = Math.min(sv.yEdge + 0.8, Math.max(sv.yMax + 0.1, sv.yEdge + 0.42));
-  const outer = simplify(offsetPoly(sv.outline, 0.1), 0.08);
+  // BTR (v2): the small turret gets a visor, not a lid - a rectangular frame a good 30 cm wider than the turret on each side
+  // and out over the gun mount, ~30 cm above the sight head, on posts raked out from the turret roof (the roof screens the
+  // BTR-82A / BTR-80 crews welded on against FPV drones in 2023-24); it turns with the turret above the riders' heads
+  const visor = info.kind === 'btr' && S.isTurret;
+  const top = visor ? sv.yMax + 0.28 : Math.min(sv.yEdge + 0.8, Math.max(sv.yMax + 0.1, sv.yEdge + 0.42));
+  const outer = visor ? [[sv.xr[0] - 0.3, sv.zr[0] - 0.1], [sv.xr[1] + 0.3, sv.zr[0] - 0.1], [sv.xr[1] + 0.3, sv.zr[1] + 0.35], [sv.xr[0] - 0.3, sv.zr[1] + 0.35]].map(([x, z]) => [snap(x, Math.round), snap(z, Math.round)]) : simplify(offsetPoly(sv.outline, 0.1), 0.08);
   const isFront = (x, z) => { const a = Math.atan2(x - sv.cx, z - sv.cz); return Math.abs(a) < 0.55; };
   // openings: hatches (lid swings through), the jammer, the gun slot on high-elevation guns
   const holes = openings(info, pl, sv, outer), zMax = Math.max(...outer.map(p => p[1])) + 1;
@@ -495,11 +499,11 @@ function buildCage(M, out, info, pl) {
     if (!c) continue; const [tx, tz] = c, front = isFront(tx, tz);
     const dx = sv.cx - tx, dz = sv.cz - tz, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
     let foot = null;
-    for (const ins of [0.16, 0.22, 0.3, 0.4, 0.5]) {
+    for (const ins of visor ? [0.3, 0.4, 0.5, 0.62, 0.75, 0.9, 1.05, 1.2] : [0.16, 0.22, 0.3, 0.4, 0.5]) {
       const x = tx + ux * ins, z = tz + uz * ins; if (!keep(x, z)) continue;
       const h = down(S, x, z, top - 0.03); if (h && h.n.y > 0.45 && h.p.y > sv.yEdge - 0.4 && h.p.y < top - 0.12) { foot = h; break; }
     }
-    if (!foot && !front) {   // side wall: horizontal ray inward under the roof edge, then a short stand-off bracket
+    if (!foot && !front && !visor) {   // side wall (not for a BTR visor: a post down at deck height would sweep the hull roof's lamps and hatches as the turret turns): horizontal ray inward under the roof edge, then a short stand-off bracket
       const h = cast(S.meshes, node, V3(tx - ux * 0.3, sv.yEdge - 0.12, tz - uz * 0.3), V3(ux, 0, uz), 1.2);
       if (h && Math.abs(h.n.y) < 0.6 && keep(h.p.x, h.p.z)) { foot = h; }
     }
