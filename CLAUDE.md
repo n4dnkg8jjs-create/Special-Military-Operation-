@@ -80,14 +80,13 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   220 m), unit cards (mounted squads no longer greyed), tape bands (tools/blender/soldiers/band_weights.py: bands take the cloth's
   skin weights, idempotent), sling v11 (rifle muzzle-up behind the right shoulder, magazine out, strap over that shoulder:
   sling_shoulder.py -> assets/soldiers/sling_shoulder.json, soldier.js shoulderSling(); the GLB's v9 socket / strap stay hidden),
-  menu v3 (menuScene.js: whole scene 3-D under the painted sky; backdrop.js skips its town when scene3d.full).
+  menu v3 (menuScene.js: whole scene 3-D under the painted sky; backdrop.js skips its town when scene3d.full), dugout entrances
+  (terrain.js dugout() puts 'dugout_door', built in city.js fortFallback), ground blood (src/fx/blood.js: pools + drag smears).
 - The soldier GLBs cannot be rebuilt in a fresh container (tools/blender/soldiers/.cache has no body.pkl): patch the shipped GLB
   (band_weights.py, mount_legfix.py) or add runtime meshes (sling_shoulder.json) instead.
 - Owner's queue, not started (his words, Nov 2026): CI-point special units - "model the CI vehicles using references" (VDV platoons,
   Hind strike with crash physics that can be shot down, Leopard; LP deduction when their casualties are high; 'CI' meaning still
-  unconfirmed); animate pushing the dead medevac driver out of the seat; lightweight realistic blood (runs / pools from a wound,
-  drag trails); high-crawl clip "still really bad" + body parts swelling / twisting / shrinking in many clips; dugouts need a real
-  visible opening in trenches; better destroyed apartment blocks + damage "based off satellite images"; campaign tiles -> maps
+  unconfirmed); animate pushing the dead medevac driver out of the seat; high-crawl clip "still really bad" + body parts swelling / twisting / shrinking in many clips; better destroyed apartment blocks + damage "based off satellite images"; campaign tiles -> maps
   (open land and small towns = farmland map, cities without their own map = city map) + new map types: river map, generic rural
   map (tree lines, fields, roads, trenches), grey-zone map (mud, few trees, ruins, trenches, stumps - only if accurate for some
   tile); BTR cope cages accuracy + more work on the BTR-82A turret (measurements, side profiles); defence system (defenders place
