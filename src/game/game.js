@@ -116,10 +116,10 @@ export class Game {
     if (side === 'enemy' && this.campaign?.enemyVet && !this.opts?.net) sq.vet = this.campaign.enemyVet;
     return sq;
   }
-  makeVehicle(side, kind, x, z, h) {
+  makeVehicle(side, kind, x, z, h, variant = null) {
     const f = side === 'player' ? this.playerFaction : this.enemyFaction;
     const [fx, fz] = this.nav.nearestFree(x, z, kind === 'tank' ? 2.2 : 2.0, 30);
-    const v = new Vehicle(this, side, f, kind); v.place(fx, fz, h); this.vehicles.push(v); return v;
+    const v = new Vehicle(this, side, f, kind, variant); v.place(fx, fz, h); this.vehicles.push(v); return v;
   }
   garrison(sq, b) {
     sq.building = b;
@@ -136,12 +136,13 @@ export class Game {
     this.playerUnits = [];
     let bn = 1, tn = 1, in_ = 1;
     for (const [x, z, kind, sqName] of lineup) {
-      const v = this.makeVehicle('player', kind, x, z, N);
-      v.name = kind === 'btr' ? `${pf.btrName} #${bn++}` : kind === 'ifv' ? `${pf.ifvName} #${in_++}` : kind === 'spg' ? `${pf.spgName}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
+      const leo = kind === 'tank' && pf.id === 'UA' && tn === 1 && new URLSearchParams(location.search).has('leopard');   /* ?leopard: the first UA tank of a skirmish is the Command Influence Leopard 2A6 (to look at it outside the campaign) */
+      const v = this.makeVehicle('player', kind, x, z, N, leo ? 'tank_leopard' : null);
+      v.name = leo ? (tn++, 'Leopard 2A6') : kind === 'btr' ? `${pf.btrName} #${bn++}` : kind === 'ifv' ? `${pf.ifvName} #${in_++}` : kind === 'spg' ? `${pf.spgName}` : (pf.id === 'UA' ? `${pf.tankName} ${['"Hrim"', '"Ludmila"'][tn++ - 1]}` : `${pf.tankName} #21${tn++}`);
       this.playerUnits.push(v);
       if (sqName) {
         const sq = this.makeSquad('player', x, z + 6, N, sqName, kind === 'tank' ? 'assault' : 'mech'); sq.name = sqName;
-        sq.board(v, true); this.playerUnits.splice(this.playerUnits.length - 1, 0, sq);
+        if (v.def.seats !== 0) sq.board(v, true); /* (a Leopard carries nobody: its assault squad walks) */ this.playerUnits.splice(this.playerUnits.length - 1, 0, sq);
       }
     }
     // ATGM (Kornet / Stugna-P) and FPV drone teams move up on foot

@@ -42,6 +42,9 @@ export const WEAPONS = {
   m9m117: { name: '9M117M1 Arkan (gun-launched ATGM)', type: 'atgm', range: 5500, rof: 1, mag: 1, reload: 8, dmg: [180, 320], pen: 750, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 300, gravity: 0 } },
   tow2:   { name: 'BGM-71 TOW-2A', type: 'atgm', range: 3750, rof: 1, mag: 2, reload: 25, dmg: [190, 330], pen: 900, tandem: true, blast: 5, spread: 0.3, sound: 'rpg', projectile: { speed: 280, gravity: 0 } },
   a46:    { name: '2A46M 125 mm', type: 'tankgun', range: 1500, rof: 8.5, mag: 45, reload: 7.1, dmg: [200, 400], pen: 600, blast: 7, spread: 0.35, sound: 'tankgun', projectile: { speed: 900, gravity: 0 } },
+  // Leopard 2A6: Rh-120 L/55 with DM53 (about 750 mm RHA at 2 km against ~500 for 3BM42 from the 2A46M), stabilised hunter-killer
+  // fire control (tighter, longer); a human loader: 6 s a round while the 15 ready rounds in the bustle last
+  rh120:  { name: 'Rh-120 L/55 120 mm', type: 'tankgun', range: 1700, rof: 10, mag: 42, reload: 6.0, dmg: [220, 420], pen: 780, blast: 6.5, spread: 0.24, sound: 'tankgun', projectile: { speed: 1100, gravity: 0 } },
 };
 
 export const SQUAD_ROLES = [
@@ -142,6 +145,14 @@ export const VEHICLES = {
     kind: 'tank', hp: 1600, speed: 9, accel: 2.0, turnRate: 0.6, radius: 2.4, length: 9.5, width: 3.6, height: 2.3,
     armor: { front: { ke: 520, ce: 650 }, side: { ke: 90, ce: 260 }, rear: { ke: 50, ce: 60 }, top: { ke: 40, ce: 40 } },
     passengers: 6, seats: 6, turretSpeed: 0.5, wheeled: false,
+  },
+  // Command Influence request (campaign): Leopard 2A6. Faster on the road and across country (1,500 hp for 62 t), quicker turret,
+  // far better frontal protection and gun; no anti-drone screen in 2023, 27 of its 42 rounds beside the driver in the hull front
+  // left (armor JSON), and no riders. Vehicle variant: makeVehicle(side, 'tank', x, z, h, 'tank_leopard')
+  tank_leopard: {
+    kind: 'tank', name: 'Leopard 2A6', asset: 'leopard2a6', hp: 1750, speed: 11, accel: 2.4, turnRate: 0.65, radius: 2.6, length: 10.9, width: 3.75, height: 2.5,
+    armor: { front: { ke: 860, ce: 1500 }, side: { ke: 110, ce: 300 }, rear: { ke: 50, ce: 60 }, top: { ke: 40, ce: 40 } },
+    passengers: 0, seats: 0, turretSpeed: 0.7, wheeled: false, gun: 'rh120', ammo: 42, ap: 22, he: 20, ready: 15, cage: 0, special: 'leopard',
   },
 };
 

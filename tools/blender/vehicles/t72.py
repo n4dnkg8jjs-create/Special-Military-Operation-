@@ -217,13 +217,13 @@ def track_path():
             keep.append(p1)
     return np.array(keep)
 
-def track_band(side):
+def track_band(side, links=97):
     """Closed track band with cross-section profile, UV U = link index (scrolls), V across the profile."""
     path = track_path()
     n = len(path)
     seg = np.linalg.norm(np.roll(path, -1, 0) - path, axis=1)
     Ltot = seg.sum()
-    links = 97
+
     pitch = Ltot / links
     # outward normals (CCW polygon in (y,z) -> outward = rotate tangent clockwise)
     tang = np.roll(path, -1, 0) - np.roll(path, 1, 0)

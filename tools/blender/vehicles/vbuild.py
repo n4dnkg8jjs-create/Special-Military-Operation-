@@ -24,6 +24,10 @@ SCHEMES = {
     # UA BTR-80: green base with brown + khaki disruptive patches (2022-24 field repaints)
     'ua_btr': dict(base=(57, 67, 40), base2=(50, 59, 36), camo=[((82, 63, 42), 0.24), ((116, 104, 72), 0.12)], camo_freq=0.72,
                    dust=(136, 126, 106), mud=(64, 54, 42), wear=1.2, dust_amt=0.95, fade=(84, 90, 62)),
+    # Leopard 2A6 as delivered to Ukraine in 2023: the Bundeswehr's three-colour Flecktarn (bronze green RAL 6031, leather brown
+    # RAL 8027, tar black RAL 9021) in large soft patches, kept under local mud
+    'nato_3tone': dict(base=(63, 72, 52), base2=(56, 64, 46), camo=[((30, 30, 29), 0.22), ((84, 64, 47), 0.2)], camo_freq=0.45,
+                       dust=(136, 126, 106), mud=(64, 54, 42), wear=0.9, dust_amt=0.9, fade=(86, 92, 66)),
 }
 
 # exhaust soot sources set by a vehicle script before finalize(): [(authoring xyz of the outlet, radius m)]

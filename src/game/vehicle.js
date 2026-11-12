@@ -113,10 +113,11 @@ function hatchSrc(g, s, clip) {
 }
 
 export class Vehicle {
-  constructor(game, side, faction, kind) {
+  constructor(game, side, faction, kind, variant = null) {
     this.game = game; this.id = NEXT++; this.side = side; this.faction = faction; this.kind = kind; this.type = 'vehicle';
-    this.def = VEHICLES[kind === 'ifv' || kind === 'spg' ? `${kind}_${faction.id.toLowerCase()}` : kind];
-    this.name = kind === 'btr' ? faction.btrName : kind === 'ifv' ? faction.ifvName : kind === 'spg' ? faction.spgName : faction.tankName;
+    this.variant = variant && VEHICLES[variant]?.kind === kind ? variant : null;   /* a named variant of the kind (Command Influence units: 'tank_leopard') */
+    this.def = VEHICLES[this.variant || (kind === 'ifv' || kind === 'spg' ? `${kind}_${faction.id.toLowerCase()}` : kind)];
+    this.name = this.variant ? this.def.name : kind === 'btr' ? faction.btrName : kind === 'ifv' ? faction.ifvName : kind === 'spg' ? faction.spgName : faction.tankName;
     this.hp = this.def.hp; this.pos = new THREE.Vector3(); this.heading = 0; this.speed = 0; this.path = null; this.pathI = 0;
     this.turretYaw = 0; this.gunPitch = 0; this.target = null; this.coaxTarget = null;
     this.destroyed = false; this.immobile = false; this.gunDisabled = false; this.burning = 0; this.crew = 3;
@@ -128,14 +129,14 @@ export class Vehicle {
       ? [{ key: this.def.main, ammo: this.def.mainAmmo, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2200, cd: 0, burst: 0, coax: true }]
       : kind === 'btr'
       ? [{ key: faction.id === 'RU' ? 'a72' : 'kpvt', ammo: 0, cd: 0, burst: 0 }, { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }]
-      : [{ key: 'a46', ammo: 45, ap: 18, he: 27, cd: 0, loaded: true }, /* (T-72B / AV: 45 rounds, 22 in the carousel) */ { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }];
+      : [{ key: this.def.gun || 'a46', ammo: this.def.ammo || 45, ap: this.def.ap || 18, he: this.def.he || 27, cd: 0, loaded: true }, /* (T-72B / AV: 45 rounds, 22 in the carousel) */ { key: 'pkt', ammo: 2000, cd: 0, burst: 0, coax: true }];
     if (kind === 'btr') this.weapons[0].ammo = WEAPONS[this.weapons[0].key].mag;
     if (kind === 'ifv') { this.atgm = { key: this.def.atgm, ammo: this.def.atgmAmmo, cd: 0 }; if (this.def.gun100) this.gun100 = { ammo: this.def.gun100, cd: 0 }; }
     this.supply = this.def.supply ? { ...this.def.supply } : null;
     this.build();
     // anti-drone "cope cage" over the turret: most tanks by 2024, some BTRs. Sets off a share of FPV warheads early.
     // the tank models already carry their anti-drone screen; BTRs get a welded cage on some vehicles
-    if (kind === 'tank') this.cage = 0.55;
+    if (kind === 'tank') this.cage = this.def.cage ?? 0.55;
     else if (kind === 'btr' && !this.fallback && this.turret && Math.random() < 0.35) this.addCage();
     this.immob = {}; initArmor(this);
     // campaign: the anti-drone cage some models carry built in (T-72B3, BMP-3, Msta-S) is the tech-tree upgrade -- without
@@ -151,10 +152,10 @@ export class Vehicle {
   get alive() { return !this.destroyed; }
   get effective() { return !this.destroyed; }
   center(out = new THREE.Vector3()) { return out.copy(this.pos); }
-  ammoFrac() { const w = this.weapons[0]; return w.ammo / (this.kind === 'tank' ? 39 : this.kind === 'ifv' ? this.def.mainAmmo : this.kind === 'spg' ? this.def.ammo : WEAPONS[w.key].mag); }
+  ammoFrac() { const w = this.weapons[0]; return w.ammo / (this.kind === 'tank' ? (this.def.ammo || 39) : this.kind === 'ifv' ? this.def.mainAmmo : this.kind === 'spg' ? this.def.ammo : WEAPONS[w.key].mag); }
   moraleState() { return this.destroyed ? 'DESTROYED' : this.burning ? 'ON FIRE' : this.immobile ? 'IMMOBILISED' : this.gunDisabled ? 'GUN DAMAGED' : this.crew < (this.def.crew || 3) ? 'CREW HIT' : this.kind === 'spg' ? this.spgStatus() : 'OPERATIONAL'; }
   build() {
-    const A = this.game.assets, key = this.kind === 'btr' ? this.faction.btrAsset : this.kind === 'ifv' ? this.faction.ifvAsset : this.kind === 'spg' ? this.faction.spgAsset : this.faction.tankAsset, g = A.gltf[key];
+    const A = this.game.assets, key = this.variant && this.def.asset ? this.def.asset : this.kind === 'btr' ? this.faction.btrAsset : this.kind === 'ifv' ? this.faction.ifvAsset : this.kind === 'spg' ? this.faction.spgAsset : this.faction.tankAsset, g = A.gltf[key];
     this.assetKey = key; this.vman = A.manifest?.vehicles?.vehicles?.[key] || {};
     const root = this.root = new THREE.Group();
     if (g) { this.model = g.scene.clone(true); }
@@ -466,8 +467,8 @@ export class Vehicle {
         const round = vsArmor && main.ap > 0 ? 'ap' : main.he > 0 ? 'he' : 'ap';
         if (main[round] <= 0) return;
         main[round]--; main.ammo--;
-        main.cd = (W.reload + (this.crew < 3 ? 6 : 0)) + (main.ammo === 23 ? 15 : 0);   // carousel (22) empty: refilled by hand from the hull racks
-        this.game.combat.fireTankGun(this, t, round);
+        main.cd = (W.reload + (this.crew < 3 ? 6 : 0)) + (main.ammo === (this.def.ready ? (this.def.ammo || 45) - this.def.ready : 23) ? 15 : 0);   // carousel (22) / ready rack empty: refilled by hand from the hull racks
+        this.game.combat.fireTankGun(this, t, round, W);
         this.recoil = 1;
       }
     } else if (main.ammo > 0) {

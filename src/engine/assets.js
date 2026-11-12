@@ -21,7 +21,7 @@ export class Assets {
       ['soldier_anims', 'assets/soldiers/soldier_anims.glb'],
       ['ak74m', 'assets/soldiers/ak74m.glb'], ['pkm', 'assets/soldiers/pkm.glb'], ['rpg7', 'assets/soldiers/rpg7.glb'],
       ['btr82a', 'assets/vehicles/btr82a.glb'], ['btr80_ua', 'assets/vehicles/btr80_ua.glb'],
-      ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'], ['bmp3', 'assets/vehicles/bmp3.glb'], ['bradley_ua', 'assets/vehicles/bradley_ua.glb'], ['msta_s', 'assets/vehicles/msta_s.glb'], ['bohdana', 'assets/vehicles/bohdana.glb'], ['pickup', 'assets/vehicles/pickup.glb'], ['pickup_atgm', 'assets/vehicles/pickup_atgm.glb'],
+      ['t72b3', 'assets/vehicles/t72b3.glb'], ['t72av_ua', 'assets/vehicles/t72av_ua.glb'], ['leopard2a6', 'assets/vehicles/leopard2a6.glb'], ['bmp3', 'assets/vehicles/bmp3.glb'], ['bradley_ua', 'assets/vehicles/bradley_ua.glb'], ['msta_s', 'assets/vehicles/msta_s.glb'], ['bohdana', 'assets/vehicles/bohdana.glb'], ['pickup', 'assets/vehicles/pickup.glb'], ['pickup_atgm', 'assets/vehicles/pickup_atgm.glb'],
       ['panel_kit', 'assets/env/panel_kit.glb'], ['trees', 'assets/env/trees.glb'], ['wires', 'assets/env/wires.glb'], ['props', 'assets/env/props.glb'], ['city', 'assets/env/city.glb'], ['rpg22', 'assets/soldiers/rpg22.glb'], ['pm', 'assets/soldiers/pm.glb'], ['ak12', 'assets/soldiers/ak12.glb'], ['ak74m_optic', 'assets/soldiers/ak74m_optic.glb'],
       // ATGM / FPV team props
       ['kornet', 'assets/soldiers/kornet.glb'], ['stugna', 'assets/soldiers/stugna.glb'], ['atgm_tube_carried', 'assets/soldiers/atgm_tube_carried.glb'],
@@ -38,7 +38,7 @@ export class Assets {
     this.sling2 = await tryJSON('assets/soldiers/sling_shoulder.json');   /* sling v11: shoulder carry (rifle socket + strap per back-gear class, tools/blender/soldiers/sling_shoulder.py) */
     // researched armour layouts for the newer vehicles (zones / parts in the armor.js frame)
     this.armor = {};
-    for (const k of ['bmp3', 'bradley_ua', 'msta_s', 'bohdana', 'pickup', 'pickup_atgm']) { const a = await tryJSON(`assets/vehicles/${k}_armor.json`); if (a) this.armor[k] = a; }
+    for (const k of ['bmp3', 'bradley_ua', 'msta_s', 'bohdana', 'pickup', 'pickup_atgm', 'leopard2a6']) { const a = await tryJSON(`assets/vehicles/${k}_armor.json`); if (a) this.armor[k] = a; }
     // rubble files are discovered from the env manifest (or a default list)
     const rubbleList = (this.manifest.env.rubble_files) || ['rubble_1', 'rubble_2', 'rubble_3', 'rubble_4', 'rubble_5', 'rubble_6', 'rubble_7', 'rubble_8', 'rubble_9', 'rubble_10', 'rubble_11', 'rubble_12'];
     for (const r of rubbleList) jobs.push([r, `assets/env/${r}.glb`]);

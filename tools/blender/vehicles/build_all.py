@@ -9,7 +9,7 @@ import sys, os, json, subprocess, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
 CACHE = '/tmp/vehicle_bake_cache'
-SCRIPTS = {'btr82a': 'btr.py', 'btr80_ua': 'btr.py', 't72b3': 't72.py', 't72av_ua': 't72.py'}
+SCRIPTS = {'btr82a': 'btr.py', 'btr80_ua': 'btr.py', 't72b3': 't72.py', 't72av_ua': 't72.py', 'leopard2a6': 'leopard.py'}
 
 SOURCES = {
     'btr': [
@@ -20,6 +20,12 @@ SOURCES = {
         'https://en.wikipedia.org/wiki/BTR-80 (split side doors between axles 2 and 3, ball-mount firing ports, BPPU on BTR-80A/82A)',
         'https://www.globalsecurity.org/military/world/russia/btr-80-specs.htm (BTR-80 7.55 x 2.95 x 2.41 m, KPVT + PKT, 6 x 81 mm launchers)',
         'https://en.wikipedia.org/wiki/BTR-80 (side doors: upper part opens forward, lower part folds down as a step; round ball-mount ports, the forward ones in angled recesses; rear raised and engine compartment squared off; 6 smoke projectors on the turret rear; KPVT/PKT elevate to 60 deg)',
+    ],
+    'leopard2': [
+        'https://en.wikipedia.org/wiki/Leopard_2 (hull 7.72 m, 10.97 m gun forward with the L/55, width 3.75 m, height 2.48 m to the turret roof / 3.0 m overall, 2A5: wedge-shaped spaced add-on armour on the turret front and sides, EMES 15 moved to the roof, PERI R17 behind the commander\'s hatch; 2A6: Rh-120 L/55)',
+        'https://knds.com/en/products/systems/leopard/leopard-2-a6 (manufacturer: 120 mm L/55, crew 4, MTU MB 873 Ka-501 1,100 kW)',
+        'https://www.inetres.com/gp/military/cv/tank/Leopard2.html (ground clearance 0.54 m, turret top 2.48 m, 7 dual road wheels and 4 return rollers a side, 635 mm track)',
+        'https://en.wikipedia.org/wiki/Leopard_2#Ukraine (18 Leopard 2A6 from Germany and 3 from Portugal delivered in March 2023; first losses near Mala Tokmachka, 8 June 2023)',
     ],
     't72': [
         'https://www.globalsecurity.org/military/world/russia/t-72-specs.htm (hull 6.86-6.91 m, 9.53 m gun forward, width 3.58-3.77 m, turret roof 2.226 m, clearance 0.49 m)',
@@ -46,6 +52,13 @@ STATIC = {
                   armament=['125 mm 2A46M-5 (muzzle)', '7.62 mm PKT coaxial (coax_muzzle)', '12.7 mm Kord on commander cupola (no empty)',
                             '8 x 81 mm 902G smoke (smoke_launchers)'],
                   markings='none'),
+    'leopard2a6': dict(faction='UA', name='Leopard 2A6', kind='tank', crew=4, passengers=0,
+                       real_dimensions_m=dict(hull_length=7.72, length_gun_forward=10.97, width_with_skirts=3.75, height_turret_roof=2.48,
+                                              ground_clearance=0.54, track_width=0.635, track_centres=2.785, road_wheel_diameter=0.70,
+                                              road_wheels_per_side=7, return_rollers_per_side=4, gun_tube=6.6),
+                       armament=['120 mm Rh-120 L/55 (muzzle)', '7.62 mm MG3 coaxial (coax_muzzle)', '7.62 mm MG3 on the loader hatch rail (no empty)',
+                                 '2 x 8 76 mm smoke dischargers (smoke_launchers)'],
+                       markings='Bundeswehr three-colour camouflage (bronze green / leather brown / tar black), small white crosses on the turret stowage boxes'),
     't72av_ua': dict(faction='UA', name='T-72AV', kind='tank', crew=3, passengers=0,
                      real_dimensions_m=dict(hull_length=6.86, length_gun_forward=9.53, width_over_tracks=3.46, width_with_skirts=3.59,
                                             height_turret_roof=2.19, ground_clearance=0.49, track_width=0.58, track_centres=2.79,

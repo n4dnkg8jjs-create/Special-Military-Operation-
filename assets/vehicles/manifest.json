@@ -43,6 +43,12 @@
    "https://www.twz.com/ukrainian-bradleys-seen-equipped-with-explosive-reactive-armor (Jul 2023: Ukrainian M2A2 ODS with BRAT boxes mounted around the hull sides; BUSK extras unconfirmed)",
    "https://militarnyi.com/en/articles/bradley-american-cowboy-on-ukrainian-battlefield/ (M2A2 ODS-SA, 600 hp, up to 61 km/h, crew 3 + up to 6 dismounts; BRAT on front hull, sides and turret of some vehicles, field-installable; no APS)",
    "https://www.snopes.com/news/2023/06/28/ukrainian-military-nazi-cross/ (Ukrainian vehicles carry a plain white equidistant identification cross)"
+  ],
+  "leopard2": [
+   "https://en.wikipedia.org/wiki/Leopard_2 (hull 7.72 m, 10.97 m gun forward with the L/55, width 3.75 m, height 2.48 m to the turret roof / 3.0 m overall, 2A5: wedge-shaped spaced add-on armour on the turret front and sides, EMES 15 moved to the roof, PERI R17 behind the commander's hatch; 2A6: Rh-120 L/55)",
+   "https://knds.com/en/products/systems/leopard/leopard-2-a6 (manufacturer: 120 mm L/55, crew 4, MTU MB 873 Ka-501 1,100 kW)",
+   "https://www.inetres.com/gp/military/cv/tank/Leopard2.html (ground clearance 0.54 m, turret top 2.48 m, 7 dual road wheels and 4 return rollers a side, 635 mm track)",
+   "https://en.wikipedia.org/wiki/Leopard_2#Ukraine (18 Leopard 2A6 from Germany and 3 from Portugal delivered in March 2023; first losses near Mala Tokmachka, 8 June 2023)"
   ]
  },
  "vehicles": {
@@ -10871,6 +10877,1046 @@
        0.0,
        0.0,
        -0.0
+      ]
+     }
+    ]
+   },
+   "textures": "EXT_texture_webp (tools/optimize_assets.sh step applied)"
+  },
+  "leopard2a6": {
+   "faction": "UA",
+   "name": "Leopard 2A6",
+   "kind": "tank",
+   "crew": 4,
+   "passengers": 0,
+   "real_dimensions_m": {
+    "hull_length": 7.72,
+    "length_gun_forward": 10.97,
+    "width_with_skirts": 3.75,
+    "height_turret_roof": 2.48,
+    "ground_clearance": 0.54,
+    "track_width": 0.635,
+    "track_centres": 2.785,
+    "road_wheel_diameter": 0.7,
+    "road_wheels_per_side": 7,
+    "return_rollers_per_side": 4,
+    "gun_tube": 6.6
+   },
+   "armament": [
+    "120 mm Rh-120 L/55 (muzzle)",
+    "7.62 mm MG3 coaxial (coax_muzzle)",
+    "7.62 mm MG3 on the loader hatch rail (no empty)",
+    "2 x 8 76 mm smoke dischargers (smoke_launchers)"
+   ],
+   "markings": "Bundeswehr three-colour camouflage (bronze green / leather brown / tar black), small white crosses on the turret stowage boxes",
+   "file": "assets/vehicles/leopard2a6.glb",
+   "file_mb": 3.77,
+   "tris": {
+    "lod0": 70486,
+    "lod1": 21113,
+    "hull_wreck": 28584,
+    "turret_wreck": 2913
+   },
+   "model_bbox_m": {
+    "min": [
+     -1.914,
+     0.0,
+     -4.037
+    ],
+    "max": [
+     1.914,
+     3.16,
+     7.11
+    ],
+    "size": [
+     3.828,
+     3.16,
+     11.147
+    ]
+   },
+   "materials": [
+    "glass",
+    "leopard2a6_paint",
+    "leopard2a6_wreck",
+    "light_lens",
+    "track",
+    "track_wreck"
+   ],
+   "track_link_pitch_m": 0.1894,
+   "track_length_m": 15.531,
+   "track_links": 82,
+   "ride_seats": [],
+   "hatch_lids": {
+    "hatch_lid_commander": {
+     "role": "commander",
+     "axis": "x",
+     "open": -1.745,
+     "parent": "turret",
+     "rim": "hatch_commander"
+    },
+    "hatch_lid_gunner": {
+     "role": "gunner",
+     "axis": "x",
+     "open": -1.745,
+     "parent": "turret",
+     "rim": "hatch_gunner",
+     "note": "the loader's hatch (left): the gunner has none of his own and leaves through it"
+    },
+    "hatch_lid_driver": {
+     "role": "driver",
+     "axis": "y",
+     "open": -2.967,
+     "parent": "hull",
+     "rim": "hatch_driver",
+     "note": "sliding / swinging hatch: pivots about a vertical axis on its right edge and ends up over the right sponson"
+    }
+   },
+   "empties": {
+    "muzzle": "120 mm L/55",
+    "coax_muzzle": "MG3 coax (left of the gun)",
+    "smoke_launchers": "turret sides",
+    "hatch_commander / commander_hatch": "commander cupola (turret right)",
+    "hatch_gunner": "loader hatch (turret left)",
+    "hatch_driver": "driver hatch (hull front right)",
+    "exhaust": "right exhaust grille (rear plate)",
+    "dismount_L / dismount_R": "crew bail-out ground points beside the hull"
+   },
+   "animated_nodes": {
+    "hatch_lid_commander": "commander hatch lid, hinge empty under turret; open = rotation.x NEGATIVE (0 .. -1.745 rad)",
+    "hatch_lid_gunner": "gunner hatch lid, hinge empty under turret; open = rotation.x NEGATIVE (0 .. -1.745 rad); the loader's hatch (left): the gunner has none of his own and leaves through it",
+    "hatch_lid_driver": "driver hatch lid, hinge empty under hull; open = rotation.y NEGATIVE (0 .. -2.967 rad); sliding / swinging hatch: pivots about a vertical axis on its right edge and ends up over the right sponson",
+    "turret": "yaw about local Y",
+    "gun_pivot": "pitch about local X; elevate = rotation.x NEGATIVE"
+   },
+   "hierarchy": {
+    "name": "root",
+    "type": "empty",
+    "pos": [
+     0.0,
+     0.0,
+     -0.0
+    ],
+    "children": [
+     {
+      "name": "hull",
+      "type": "empty",
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ],
+      "children": [
+       {
+        "name": "dismount_L",
+        "type": "empty",
+        "pos": [
+         2.4,
+         0.0,
+         -0.6
+        ]
+       },
+       {
+        "name": "dismount_R",
+        "type": "empty",
+        "pos": [
+         -2.4,
+         0.0,
+         -0.6
+        ]
+       },
+       {
+        "name": "exhaust",
+        "type": "empty",
+        "pos": [
+         -0.95,
+         1.3,
+         -3.96
+        ]
+       },
+       {
+        "name": "hatch_driver",
+        "type": "empty",
+        "pos": [
+         -0.6,
+         1.74,
+         2.12
+        ]
+       },
+       {
+        "name": "hatch_lid_driver",
+        "type": "empty",
+        "pos": [
+         -0.904,
+         1.69,
+         2.12
+        ],
+        "children": [
+         {
+          "name": "hatch_lid_driver_geo",
+          "type": "mesh",
+          "tris": 610,
+          "pos": [
+           -0.904,
+           1.69,
+           2.12
+          ]
+         },
+         {
+          "name": "hatch_lid_driver_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 183,
+          "pos": [
+           -0.904,
+           1.69,
+           2.12
+          ]
+         }
+        ]
+       },
+       {
+        "name": "hull_geo",
+        "type": "mesh",
+        "tris": 7196,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "hull_geo_LOD1",
+        "type": "mesh",
+        "hidden": true,
+        "tris": 2154,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "idler_L",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.7,
+         3.3
+        ],
+        "children": [
+         {
+          "name": "idler_L_geo",
+          "type": "mesh",
+          "tris": 1140,
+          "pos": [
+           1.393,
+           0.7,
+           3.3
+          ]
+         },
+         {
+          "name": "idler_L_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 342,
+          "pos": [
+           1.393,
+           0.7,
+           3.3
+          ]
+         }
+        ]
+       },
+       {
+        "name": "idler_R",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.7,
+         3.3
+        ],
+        "children": [
+         {
+          "name": "idler_R_geo",
+          "type": "mesh",
+          "tris": 1140,
+          "pos": [
+           -1.393,
+           0.7,
+           3.3
+          ]
+         },
+         {
+          "name": "idler_R_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 342,
+          "pos": [
+           -1.393,
+           0.7,
+           3.3
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L1",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         2.44
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L1_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           2.44
+          ]
+         },
+         {
+          "name": "roadwheel_L1_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           2.44
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L2",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         1.62
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L2_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           1.62
+          ]
+         },
+         {
+          "name": "roadwheel_L2_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           1.62
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L3",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         0.8
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L3_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           0.8
+          ]
+         },
+         {
+          "name": "roadwheel_L3_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           0.8
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L4",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         -0.02
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L4_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           -0.02
+          ]
+         },
+         {
+          "name": "roadwheel_L4_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           -0.02
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L5",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         -0.84
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L5_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           -0.84
+          ]
+         },
+         {
+          "name": "roadwheel_L5_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           -0.84
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L6",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         -1.66
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L6_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           -1.66
+          ]
+         },
+         {
+          "name": "roadwheel_L6_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           -1.66
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_L7",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.415,
+         -2.48
+        ],
+        "children": [
+         {
+          "name": "roadwheel_L7_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           1.393,
+           0.415,
+           -2.48
+          ]
+         },
+         {
+          "name": "roadwheel_L7_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           1.393,
+           0.415,
+           -2.48
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R1",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         2.44
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R1_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           2.44
+          ]
+         },
+         {
+          "name": "roadwheel_R1_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           2.44
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R2",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         1.62
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R2_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           1.62
+          ]
+         },
+         {
+          "name": "roadwheel_R2_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           1.62
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R3",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         0.8
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R3_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           0.8
+          ]
+         },
+         {
+          "name": "roadwheel_R3_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           0.8
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R4",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         -0.02
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R4_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           -0.02
+          ]
+         },
+         {
+          "name": "roadwheel_R4_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           -0.02
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R5",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         -0.84
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R5_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           -0.84
+          ]
+         },
+         {
+          "name": "roadwheel_R5_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           -0.84
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R6",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         -1.66
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R6_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           -1.66
+          ]
+         },
+         {
+          "name": "roadwheel_R6_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           -1.66
+          ]
+         }
+        ]
+       },
+       {
+        "name": "roadwheel_R7",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.415,
+         -2.48
+        ],
+        "children": [
+         {
+          "name": "roadwheel_R7_geo",
+          "type": "mesh",
+          "tris": 3016,
+          "pos": [
+           -1.393,
+           0.415,
+           -2.48
+          ]
+         },
+         {
+          "name": "roadwheel_R7_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 904,
+          "pos": [
+           -1.393,
+           0.415,
+           -2.48
+          ]
+         }
+        ]
+       },
+       {
+        "name": "sprocket_L",
+        "type": "empty",
+        "pos": [
+         1.393,
+         0.72,
+         -3.42
+        ],
+        "children": [
+         {
+          "name": "sprocket_L_geo",
+          "type": "mesh",
+          "tris": 2216,
+          "pos": [
+           1.393,
+           0.72,
+           -3.42
+          ]
+         },
+         {
+          "name": "sprocket_L_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 664,
+          "pos": [
+           1.393,
+           0.72,
+           -3.42
+          ]
+         }
+        ]
+       },
+       {
+        "name": "sprocket_R",
+        "type": "empty",
+        "pos": [
+         -1.393,
+         0.72,
+         -3.42
+        ],
+        "children": [
+         {
+          "name": "sprocket_R_geo",
+          "type": "mesh",
+          "tris": 2216,
+          "pos": [
+           -1.393,
+           0.72,
+           -3.42
+          ]
+         },
+         {
+          "name": "sprocket_R_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 664,
+          "pos": [
+           -1.393,
+           0.72,
+           -3.42
+          ]
+         }
+        ]
+       },
+       {
+        "name": "track_L",
+        "type": "mesh",
+        "tris": 3580,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "track_L_LOD1",
+        "type": "mesh",
+        "hidden": true,
+        "tris": 1074,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "track_R",
+        "type": "mesh",
+        "tris": 3580,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "track_R_LOD1",
+        "type": "mesh",
+        "hidden": true,
+        "tris": 1074,
+        "pos": [
+         0.0,
+         0.0,
+         -0.0
+        ]
+       },
+       {
+        "name": "turret",
+        "type": "empty",
+        "pos": [
+         0.0,
+         1.67,
+         0.42
+        ],
+        "children": [
+         {
+          "name": "commander_hatch",
+          "type": "empty",
+          "pos": [
+           -0.62,
+           2.57,
+           0.37
+          ]
+         },
+         {
+          "name": "gun_pivot",
+          "type": "empty",
+          "pos": [
+           0.0,
+           2.03,
+           1.47
+          ],
+          "children": [
+           {
+            "name": "coax_muzzle",
+            "type": "empty",
+            "pos": [
+             0.27,
+             2.08,
+             2.55
+            ]
+           },
+           {
+            "name": "gun_geo",
+            "type": "mesh",
+            "tris": 1704,
+            "pos": [
+             0.0,
+             2.03,
+             1.47
+            ]
+           },
+           {
+            "name": "gun_geo_LOD1",
+            "type": "mesh",
+            "hidden": true,
+            "tris": 508,
+            "pos": [
+             0.0,
+             2.03,
+             1.47
+            ]
+           },
+           {
+            "name": "muzzle",
+            "type": "empty",
+            "pos": [
+             0.0,
+             2.03,
+             7.11
+            ]
+           }
+          ]
+         },
+         {
+          "name": "hatch_commander",
+          "type": "empty",
+          "pos": [
+           -0.62,
+           2.62,
+           0.37
+          ]
+         },
+         {
+          "name": "hatch_gunner",
+          "type": "empty",
+          "pos": [
+           0.62,
+           2.56,
+           0.3
+          ]
+         },
+         {
+          "name": "hatch_lid_commander",
+          "type": "empty",
+          "pos": [
+           -0.62,
+           2.582,
+           0.056
+          ],
+          "children": [
+           {
+            "name": "hatch_lid_commander_geo",
+            "type": "mesh",
+            "tris": 610,
+            "pos": [
+             -0.62,
+             2.582,
+             0.056
+            ]
+           },
+           {
+            "name": "hatch_lid_commander_geo_LOD1",
+            "type": "mesh",
+            "hidden": true,
+            "tris": 183,
+            "pos": [
+             -0.62,
+             2.582,
+             0.056
+            ]
+           }
+          ]
+         },
+         {
+          "name": "hatch_lid_gunner",
+          "type": "empty",
+          "pos": [
+           0.62,
+           2.527,
+           0.006
+          ],
+          "children": [
+           {
+            "name": "hatch_lid_gunner_geo",
+            "type": "mesh",
+            "tris": 610,
+            "pos": [
+             0.62,
+             2.527,
+             0.006
+            ]
+           },
+           {
+            "name": "hatch_lid_gunner_geo_LOD1",
+            "type": "mesh",
+            "hidden": true,
+            "tris": 182,
+            "pos": [
+             0.62,
+             2.527,
+             0.006
+            ]
+           }
+          ]
+         },
+         {
+          "name": "smoke_launchers",
+          "type": "empty",
+          "pos": [
+           0.0,
+           2.12,
+           -1.18
+          ]
+         },
+         {
+          "name": "turret_geo",
+          "type": "mesh",
+          "tris": 3660,
+          "pos": [
+           0.0,
+           1.67,
+           0.42
+          ]
+         },
+         {
+          "name": "turret_geo_LOD1",
+          "type": "mesh",
+          "hidden": true,
+          "tris": 1087,
+          "pos": [
+           0.0,
+           1.67,
+           0.42
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "name": "hull_wreck",
+      "type": "mesh",
+      "hidden": true,
+      "tris": 28584,
+      "pos": [
+       0.0,
+       0.0,
+       -0.0
+      ]
+     },
+     {
+      "name": "turret_wreck",
+      "type": "mesh",
+      "hidden": true,
+      "tris": 2913,
+      "pos": [
+       0.0,
+       1.63,
+       0.42
       ]
      }
     ]
