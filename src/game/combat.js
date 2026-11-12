@@ -749,22 +749,28 @@ export class Combat {
     // hits are mediocre, a clean one into the compartment is rare: q scales what the jet and blast do inside
     // (a tank: thick, cluttered roof and deck, ERA and cages -- a single FPV usually wrecks optics / a track / the engine, the
     // crew compartment and the carousel are rarely reached: q is lower still)
-    const q = W === WEAPONS.fpv ? (0.35 + 0.65 * Math.random() ** 1.6) * (v.kind === 'tank' || v.kind === 'spg' ? 0.55 : 1) : 1;
+    // v2: measured with tools/dev/fpv_mc.mjs, one connecting hit still cost a BTR ~25 % of the time inside 90 s (and left
+    // another quarter burning), an IFV ~20 %, a tank ~4 %: the PG-7VL was treated as a big ATGM behind thin armour (the
+    // 'jet and blast wreck the compartment' branch and its fire chance in full). It is a 70 mm charge: the jet makes a hole
+    // and hurts who and what is in its line; fires and compartment kills from ONE hit are the exception. q is lower and
+    // skewed further down, and that branch counts half for an FPV -> about 12 / 9 / 2 % lost, damage and mobility kills as before
+    const fpvHit = W === WEAPONS.fpv, small = fpvHit ? 0.5 : 1;
+    const q = fpvHit ? (0.25 + 0.75 * Math.random() ** 2.2) * (v.kind === 'tank' || v.kind === 'spg' ? 0.55 : 1) : 1;
     v.hp -= rf(...(W.dmg || [100, 200])) * (0.45 + 0.55 * r.residual / (r.residual + r.armor + 1)) * q;
     const msgs = [];
     // big shaped charges (ATGM, FPV warhead) through thin armour: the jet and blast wreck the compartment
     if (W.type === 'atgm' && r.residual > 250) {
-      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : v.kind === 'ifv' ? 1.35 : 1) * q;
-      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25) * q) { v.burning = 0.01; msgs.push('on fire'); }
+      v.hp -= rf(...W.dmg) * Math.min(1, r.residual / 700) * (v.kind === 'btr' ? 1.6 : v.kind === 'ifv' ? 1.35 : 1) * q * small;
+      if (!v.burning && Math.random() < (v.kind === 'btr' ? 0.55 : v.kind === 'ifv' ? 0.45 : 0.25) * q * small) { v.burning = 0.01; msgs.push('on fire'); }
     }
     // an FPV warhead on the engine deck: engine wrecked, fuel and oil often catch
-    if (W === WEAPONS.fpv && fx.has('engine') && !v.burning && Math.random() < 0.5 * q) { v.burning = 0.01; msgs.push('engine on fire'); }
+    if (fpvHit && fx.has('engine') && !v.burning && Math.random() < 0.35 * q) { v.burning = 0.01; msgs.push('engine on fire'); }
     const crewHit = role => { const c = v.crewList.find(m => (m.role === role || (role === 'gun_crew' && m.role === 'loader')) && m.hp > 0); /* (Bohdana rear: the gun crew = its loaders) */ if (!c) return; c.hp -= (k === 'ke' ? 60 : 75) + Math.random() * 70; if (c.hp <= 0) { msgs.push(`${role} killed`); if (role === 'driver') { v.immob.driver = true; v.driverSwapT = 18; } } else msgs.push(`${role} wounded`); };
     for (const e of fx) {
       const part = v.parts.find(p => p.name === e); if (!part) continue;
       if (part.crew && Math.random() < 0.55 + 0.45 * q) crewHit(part.crew);
       if (part.ammo && Math.random() < part.ammo * (k === 'ke' ? 1 : 0.8) * q * q) { msgs.push('ammunition detonated'); v.crewList.forEach(c => c.hp = 0); v.crew = 0; v.knockOut(true); break; }
-      if (part.fuel && Math.random() < part.fuel * q && !v.burning) { v.burning = 0.01; msgs.push('on fire'); }
+      if (part.fuel && Math.random() < part.fuel * q * (fpvHit ? 0.6 : 1) && !v.burning) { v.burning = 0.01; msgs.push('on fire'); }
       if (part.engine) { v.immob.engine = true; msgs.push('engine knocked out'); }
       if (part.gun) { v.gunDisabled = true; msgs.push('gun destroyed'); }
       if (part.optics) { v.opticsDamaged = true; msgs.push('sights damaged'); }
