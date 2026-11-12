@@ -24,6 +24,7 @@ export const REQUESTS = [
     text: 'Army aviation keeps a Mi-24 for the brigade: one rocket run per battle on the area you mark (about twenty S-8 over 55 × 25 m). It comes in low and it can be shot down - autocannon, heavy machine guns and shoulder-launched missiles all reach it.',
     risk: 'The helicopter shot down: −5 LP a week for 4 weeks, and no more sorties.', penalty: { lp: 5, weeks: 4 }, strikes: 1 },
 ];
+const HIND_ON = false;   /* the Mi-24 strike is switched off for now (game/heli.js HELI_ON): not offered, a loan still running gives no sorties */
 const reqOf = id => REQUESTS.find(r => r.id === id);
 
 const M = {
@@ -32,7 +33,7 @@ const M = {
   // what can be asked for, with why not
   ciList() {
     this.ciInit();
-    return REQUESTS.filter(r => !r.side || r.side === this.side).map(r => {
+    return REQUESTS.filter(r => (!r.side || r.side === this.side) && (r.id !== 'hind' || HIND_ON)).map(r => {
       const act = this.ciActive.find(a => a.id === r.id);
       const block = act ? `With the brigade for ${Math.max(0, act.until - this.turn)} more week(s)` : r.date && String(this.date) < r.date ? `Not before ${r.date}` : this.ci < r.cost ? `Needs ${r.cost} command influence` : this.def.versus ? 'Not in versus' : null;
       return { ...r, active: act || null, block };
@@ -47,7 +48,7 @@ const M = {
     this.note(`High command attaches ${r.name} to the brigade for ${r.weeks} weeks${r.units ? ` (at ${this.cellName(this.deliveryCell())})` : ''}.`, 'good');
     this.save?.();
   },
-  ciBattle() { this.ciInit(); const h = this.ciActive.find(a => a.id === 'hind' && !a.gone); return { heli: h ? reqOf('hind').strikes : 0 }; },
+  ciBattle() { this.ciInit(); const h = this.ciActive.find(a => a.id === 'hind' && !a.gone); return { heli: h && HIND_ON ? reqOf('hind').strikes : 0 }; },
   ciFine(a, r, why) { this.ciPenalty.push({ lp: r.penalty.lp, until: this.turn + r.penalty.weeks, why }); this.note(`${why} High command cuts the brigade's allocation: −${r.penalty.lp} LP a week for ${r.penalty.weeks} weeks.`, 'bad'); },
   // after a battle: what happened to the things on loan
   ciAfterBattle(res) {

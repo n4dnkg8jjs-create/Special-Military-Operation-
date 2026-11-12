@@ -1,49 +1,56 @@
 import * as THREE from 'three';
 
-// Mi-24 strike (a Command Influence request in the campaign; `?hind=N` in a skirmish): one helicopter comes in low from the
-// caller's own side, ripples its S-8 rockets into the target area, breaks away throwing flares and goes home. It is a real
-// object over the battlefield the whole time, and it can be shot down:
-//   * every enemy vehicle with an autocannon or heavy machine gun inside its reach fires at it, machine-gunners and riflemen
-//     do when it passes close (tracers go up; a hit takes a bite out of its 1,000 points - the Mi-24's cabin and cockpit
-//     are armoured against 12.7 mm, its engines, gearbox and tail are not)
-//   * if the enemy still has infantry on the field there is a chance of a shoulder-launched missile on the way out; the
-//     flares decoy about half of them
-//   * hurt badly it breaks off early trailing smoke; at zero it goes down - tail rotor gone (it spins as it sinks), engines
-//     dead (it falls nose-low), or burning - with what speed it had, hits the ground, blows up, sheds its blades and stays
-//     there burning as a wreck. Whoever is under it gets the blast. The loss is reported to the campaign (LP penalty).
-// The numbers: 58 m/s (210 km/h) at 35-45 m over the ground on the run-in, firing between 750 m and 380 m from the target,
-// 20 rockets (one pod pair) in 1.5 s, sheaf about 55 m long and 25 m wide; S-8KOM warhead (3.6 kg, 0.9 kg HE) as a burst a
-// little bigger than an 82 mm mortar bomb's.
-// Not synchronised in multiplayer battles (not offered there).
+// Mi-24 strike (a Command Influence request in the campaign and in versus; `?hind=N` in a skirmish). v2 - a lofted attack, as
+// both sides' army aviation has flown them since 2022: the helicopter does not come over the target. It runs in very low from
+// behind the caller's own rear, and at the back of the map, 0.5-1.1 km short of the target, pulls its nose up ('arch') and
+// ripples its S-8 rockets off on a ballistic arc, breaks hard away throwing flares and leaves at full speed. Lofted rockets
+// are an area weapon: the sheaf is about 120 x 60 m. It is a real object over the battlefield the whole time and can be shot
+// down by whatever reaches it there (autocannon and heavy machine guns of vehicles pushed far forward, a shoulder-launched
+// missile if the enemy's infantry is close): hurt badly it breaks off trailing smoke; at zero it goes down - tail rotor gone
+// (it spins as it sinks), engines dead (it falls nose-low) or burning - hits the ground, blows up, and stays there as a wreck
+// laid on the ground it fell on (v2: the wreck is fitted to the ground under its nose, tail and sides and lifted clear of
+// it - it used to be sunk half a metre at whatever attitude it fell in). The loss is reported to the campaign (LP penalty).
+// The numbers: 60 m/s at about 22 m over the ground on the way in, 78 m/s on the way out; 20 rockets in 1.6 s at 20-25 deg nose up.
+// Multiplayer (v2): the host flies it; the joiner calls its own by message ('heli'), draws puppets from the snapshots
+// (netState / clientSync) and the rockets and flares from events (netEvent 'hr' / 'hf').
 
 const V3 = () => new THREE.Vector3();
 const _a = V3(), _b = V3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
-export const HELI = { hp: 1000, speed: 58, alt: 40, fireFrom: 750, fireTo: 380, rockets: 20, manpads: 0.14, flareDecoy: 0.55 };
+// OFF for now at the owner's request (Nov 2026): the strike is not offered anywhere - no button, no `?hind`, no Command Influence
+// request (campaign/v2/influence.js HIND_ON), nothing in versus. The code stays; v2 below (lofted profile, wreck fitted to the
+// ground, multiplayer state) was written but NOT yet run - test it before switching this back on. The net/battle.js side of the
+// multiplayer sync (snapshot field, 'heli' / 'hr' / 'hf' messages) is not wired yet either.
+export const HELI_ON = false;
+export const HELI = { hp: 1000, speed: 60, fast: 78, alt: 22, loft: [520, 1100], rockets: 20, sheaf: [120, 60], manpads: 0.14, flareDecoy: 0.55 };
 const G = 9.81;
 
 export class HeliSupport {
   constructor(game) {
     this.g = game; this.left = { player: 0, enemy: 0 }; this.active = []; this.wrecks = []; this.rockets = []; this.flares = []; this.lost = { player: 0, enemy: 0 }; this.sent = { player: 0, enemy: 0 };
     let n = 0; try { const q = new URLSearchParams(location.search).get('hind'); n = q === '' ? 1 : +q || 0; } catch { /* */ }
-    if (n && !game.campaign && !game.opts?.net) { this.left.player = n; this.left.enemy = Math.max(1, Math.round(n / 2)); }
+    if (HELI_ON && n && !game.campaign) { this.left.player = n; this.left.enemy = game.opts?.net ? n : Math.max(1, Math.round(n / 2)); }
+    this.pup = new Map(); this.sentLocal = 0; this.seq = 1;
   }
-  get ok() { return !!this.g.assets?.gltf?.mi24 && !this.g.opts?.net; }
+  get ok() { return HELI_ON && !!this.g.assets?.gltf?.mi24; }
+  get client() { return !!this.g.netClient; }
   count(side = 'player') { return this.ok ? this.left[side] : 0; }
   // ------------------------------------------------------------------ call
   call(side, x, z) {
-    const g = this.g; if (!this.ok || this.left[side] <= 0 || g.phase === 'deploy') return false;
+    const g = this.g; if (!this.ok || this.client || this.left[side] <= 0 || g.phase === 'deploy') return false;
     this.left[side]--; this.sent[side]++;
-    // from the caller's own edge of the map, a little off the straight line; 1.4 km out so it is heard before it is over
+    // the release point: on the line from the target back through the caller's own rear, at loft range - behind his own lines;
+    // it comes to it from 1.3 km further back still, a little off the line, so it is heard before it is seen
     const H = g.medevac?.homeOf?.(side), hx = H ? H.x : 0, hz = H ? H.z : (side === 'player' ? 600 : -600);
-    let dx = hx - x, dz = hz - z; const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
-    const off = (Math.random() - 0.5) * 0.5, c = Math.cos(off), s = Math.sin(off), ax = dx * c - dz * s, az = dx * s + dz * c, D = 1400;
-    const h = { side, faction: side === 'player' ? g.playerFaction : g.enemyFaction, hp: HELI.hp, state: 'ingress', t: 0, target: V3().set(x, 0, z),
-      pos: V3().set(x + ax * D, 0, z + az * D), heading: Math.atan2(-ax, -az), speed: HELI.speed, vy: 0, roll: 0, pitch: -0.1, rockets: HELI.rockets, fireAcc: 0, rpm: 1,
-      turn: Math.random() < 0.5 ? 1 : -1, turned: 0, flareT: 0, aaT: 0, manpads: null, smoke: 0, home: V3().set(x + ax * D, 0, z + az * D), yawV: 0, rollV: 0, pitchV: 0 };
+    let dx = hx - x, dz = hz - z; const L = Math.hypot(dx, dz); if (L < 1) { dx = 0; dz = side === 'player' ? 1 : -1; } else { dx /= L; dz /= L; }
+    const Dr = THREE.MathUtils.clamp(L + 90, HELI.loft[0], HELI.loft[1]), off = (Math.random() - 0.5) * 0.3, c = Math.cos(off), s = Math.sin(off), ax = dx * c - dz * s, az = dx * s + dz * c;
+    const sx = x + dx * Dr + ax * 1300, sz = z + dz * Dr + az * 1300;
+    const h = { id: this.seq++, side, faction: side === 'player' ? g.playerFaction : g.enemyFaction, hp: HELI.hp, state: 'ingress', t: 0, target: V3().set(x, 0, z), Dr,
+      pos: V3().set(sx, 0, sz), heading: Math.atan2(x - sx, z - sz), speed: HELI.speed, vy: 0, roll: 0, pitch: -0.08, rockets: HELI.rockets, fireAcc: 0, rpm: 1,
+      turn: Math.random() < 0.5 ? 1 : -1, turned: 0, flareT: 0, aaT: 0, manpads: null, smoke: 0, home: V3().set(sx, 0, sz), yawV: 0, rollV: 0, pitchV: 0 };
     h.pos.y = this.ground(h.pos.x, h.pos.z) + HELI.alt;
     this.build(h); this.active.push(h);
     h.snd = g.audio?.loop?.('tank_engine_drive_fast', h.pos, 1.6) || null;
-    if (side === 'player') { g.hud?.alert('Mi-24 inbound: rocket run on the marked area, keep your men 100 m clear', 'good'); g.sfx('radio'); g.mortarMarker?.(x, z); }
+    if (side === 'player') { g.hud?.alert('Mi-24 inbound: lofted rockets on the marked area - keep your men 150 m clear', 'good'); g.sfx('radio'); g.mortarMarker?.(x, z); }
     else if (g.hud) g.hud.alert('Enemy helicopter inbound!', 'bad');
     return true;
   }
@@ -72,7 +79,8 @@ export class HeliSupport {
     this.call('enemy', best.x, best.z);
   }
   update(dt) {
-    this.enemyCall(dt);
+    if (this.client) return this.clientUpdate(dt);
+    if (!this.g.opts?.net) this.enemyCall(dt);   /* (versus: the other player calls his own) */
     if (!this.active.length && !this.rockets.length && !this.flares.length && !this.wrecks.length) return;
     const g = this.g;
     for (let i = this.active.length - 1; i >= 0; i--) {
@@ -91,73 +99,79 @@ export class HeliSupport {
   }
   fly(h, dt) {
     const g = this.g, T = h.target, dx = T.x - h.pos.x, dz = T.z - h.pos.z, d = Math.hypot(dx, dz);
-    let want = h.heading, bank = 0;
-    if (h.state === 'ingress' || h.state === 'attack') {
+    let want = h.heading, bank = 0, pt = -0.08, sp = HELI.speed, climb = null;
+    if (h.state === 'ingress') {
       want = Math.atan2(dx, dz);
-      if (h.state === 'ingress' && d < HELI.fireFrom) { h.state = 'attack'; if (h.side !== 'player' && g.hud) g.hud.alert('Enemy helicopter firing rockets!', 'bad'); }
-      if (h.state === 'attack') {
-        h.fireAcc += dt;
-        while (h.rockets > 0 && h.fireAcc >= 0.075) { h.fireAcc -= 0.075; this.fireRocket(h); }
-        if (d < HELI.fireTo || h.rockets <= 0 && h.fireAcc > 0.4) { h.state = 'break'; h.flareT = 0; }
-      }
+      if (d < h.Dr + 30) { h.state = 'loft'; h.lt = 0; if (h.side !== 'player' && g.hud) g.hud.alert('Enemy helicopter lofting rockets!', 'bad'); }
+    } else if (h.state === 'loft') {
+      // the arch: nose up to ~24 deg, climbing, the speed bleeding off; the rockets go as the nose passes 17 deg
+      h.lt += dt; want = Math.atan2(dx, dz); pt = 0.43; sp = 46; climb = 15 * Math.min(1, h.lt / 0.8);
+      if (h.pitch > 0.3) { h.fireAcc += dt; while (h.rockets > 0 && h.fireAcc >= 0.08) { h.fireAcc -= 0.08; this.fireRocket(h); } }
+      if (h.rockets <= 0 && h.fireAcc > 0.35 || h.lt > 6) { h.state = 'break'; h.flareT = 0; h.turned = 0; }
     } else if (h.state === 'break') {
-      const rate = 0.42 * h.turn; h.heading += rate * dt; h.turned += Math.abs(rate) * dt; bank = -0.75 * h.turn;
-      h.flareT -= dt; if (h.flareT <= 0) { h.flareT = 0.22; this.flare(h); }
-      if (h.turned > 2.6) h.state = 'egress';
+      const rate = 0.6 * h.turn; h.heading += rate * dt; h.turned += Math.abs(rate) * dt; bank = -0.95 * h.turn; pt = -0.16; sp = HELI.fast;
+      h.flareT -= dt; if (h.flareT <= 0 && h.turned < 1.6) { h.flareT = 0.28; this.flare(h); }
+      if (h.turned > 2.9) h.state = 'egress';
       want = h.heading;
     } else if (h.state === 'egress') {
-      want = Math.atan2(h.home.x - h.pos.x, h.home.z - h.pos.z);
-      if (h.t < 400 && h.flareT > -3) { h.flareT -= dt; if (h.flareT <= -0.6 - Math.random() * 0.4 && h.turned < 9) { h.flareT = 0; h.turned += 0.5; this.flare(h); } }
-      if (Math.hypot(h.home.x - h.pos.x, h.home.z - h.pos.z) < 120) { this.remove(h); return; }
+      want = Math.atan2(h.home.x - h.pos.x, h.home.z - h.pos.z); pt = -0.14; sp = HELI.fast;
+      if (Math.hypot(h.home.x - h.pos.x, h.home.z - h.pos.z) < 150) { this.remove(h); return; }
     }
-    if (h.state !== 'break') { let dh = want - h.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); const r = THREE.MathUtils.clamp(dh * 1.2, -0.35, 0.35); h.heading += r * dt; bank = -r * 1.6; }
-    h.roll += (bank - h.roll) * Math.min(1, dt * 2.2);
-    const pt = h.state === 'attack' ? -0.16 : h.state === 'break' ? 0.1 : -0.08; h.pitch += (pt - h.pitch) * Math.min(1, dt * 1.5);
+    if (h.state !== 'break') { let dh = want - h.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); const r = THREE.MathUtils.clamp(dh * 1.2, -0.4, 0.4); h.heading += r * dt; bank = -r * 1.6; }
+    h.roll += (bank - h.roll) * Math.min(1, dt * 2.4);
+    h.pitch += (pt - h.pitch) * Math.min(1, dt * (h.state === 'loft' ? 1.9 : 1.3));
+    h.speed += THREE.MathUtils.clamp(sp - h.speed, -9 * dt, 7 * dt);
     h.pos.x += Math.sin(h.heading) * h.speed * dt; h.pos.z += Math.cos(h.heading) * h.speed * dt;
-    const alt = this.ground(h.pos.x, h.pos.z) + (h.state === 'break' || h.state === 'egress' ? HELI.alt + 14 : HELI.alt) + Math.sin(h.t * 0.9) * 1.5;
-    h.pos.y += THREE.MathUtils.clamp(alt - h.pos.y, -9 * dt, 9 * dt);
+    if (climb != null) h.pos.y += climb * dt;
+    else { const alt = this.ground(h.pos.x, h.pos.z) + HELI.alt + Math.sin(h.t * 0.9) * 1.2; h.pos.y += THREE.MathUtils.clamp(alt - h.pos.y, -16 * dt, 9 * dt); }
     this.groundFire(h, dt);
     if (h.hp <= 0) return this.shootDown(h);
-    if (h.hp < HELI.hp * 0.45 && (h.state === 'ingress' || h.state === 'attack')) { h.state = 'egress'; h.smoke = Math.max(h.smoke, 0.5); if (h.side === 'player') g.hud?.alert('Mi-24 hit and breaking off!', 'bad'); }
+    if (h.hp < HELI.hp * 0.45 && (h.state === 'ingress' || h.state === 'loft')) { h.state = 'break'; h.turned = 0; h.flareT = 0; h.smoke = Math.max(h.smoke, 0.5); if (h.side === 'player') g.hud?.alert('Mi-24 hit and breaking off!', 'bad'); }
   }
   // ---------------------------------------------------------------- weapons
   fireRocket(h) {
     const g = this.g, k = HELI.rockets - h.rockets, pod = h.pods[k % Math.max(1, h.pods.length)]; h.rockets--;
     const from = pod ? pod.getWorldPosition(V3()) : h.pos.clone();
-    // the sheaf walks along the run through the aim point: long axis ~55 m, 25 m wide
-    const fx = Math.sin(h.heading), fz = Math.cos(h.heading), along = (k / (HELI.rockets - 1) - 0.5) * 55 + (Math.random() - 0.5) * 14, across = (Math.random() + Math.random() - 1) * 12.5;
+    // lofted: a wide sheaf through the aim point, long axis along the line of fire
+    const fx = Math.sin(h.heading), fz = Math.cos(h.heading), along = (k / (HELI.rockets - 1) - 0.5) * HELI.sheaf[0] * 0.8 + (Math.random() - 0.5) * HELI.sheaf[0] * 0.3, across = (Math.random() + Math.random() - 1) * HELI.sheaf[1] / 2;
     const to = V3().set(h.target.x + fx * along + fz * across, 0, h.target.z + fz * along - fx * across); to.y = this.ground(to.x, to.z);
-    const dir = to.clone().sub(from).normalize();
-    this.rockets.push({ pos: from, dir, to, side: h.side, age: 0, speed: 180 });
+    this.addRocket(from, to, h.side, false);
+    g.netEvent?.(['hr', +from.x.toFixed(1), +from.y.toFixed(1), +from.z.toFixed(1), +to.x.toFixed(1), +to.y.toFixed(1), +to.z.toFixed(1)]);
     g.fx.glow.spawn({ x: from.x, y: from.y, z: from.z, life: 0.09, size0: 2.2, size1: 0.8, r: 1, g: 0.75, b: 0.4, a0: 2.5, a1: 0 });
     if (k % 3 === 0) g.sfx('rpg_launch', from, { gain: 0.9 });
+  }
+  // a rocket on its arc: up off the rails, over, and down into the area (vis: the joiner's copy - trail only, the host's bursts arrive as events)
+  addRocket(from, to, side, vis) {
+    const D = Math.hypot(to.x - from.x, to.z - from.z);
+    this.rockets.push({ from: from.clone(), to: to.clone(), pos: from.clone(), side, age: 0, T: D / 190 + 0.7, apex: THREE.MathUtils.clamp(D * 0.15, 20, 170), vis });
   }
   flyRockets(dt) {
     const g = this.g;
     for (let i = this.rockets.length - 1; i >= 0; i--) {
-      const r = this.rockets[i]; r.age += dt; r.speed = Math.min(520, r.speed + 900 * dt);
-      const step = r.speed * dt, left = r.pos.distanceTo(r.to), n = Math.max(1, Math.ceil(Math.min(step, left) / 1.7));
-      /* a continuous grey trail (motor burns ~1.1 s: thick at first, then the thin smoke of the coasting rocket) */
-      for (let k = 0; k < n; k++) { const f = (k + 1) / n * Math.min(step, left), th = r.age < 1.1 ? 1 : 0.45; g.fx.smoke.spawn({ x: r.pos.x + r.dir.x * f, y: r.pos.y + r.dir.y * f, z: r.pos.z + r.dir.z * f, vy: 0.25, life: 2.6 + Math.random() * 1.4, size0: 0.9 * th, size1: 3.4 * th, r: 0.5, g: 0.49, b: 0.47, a0: 0.5 * th, a1: 0 }); }
-      if (r.age < 1.1) g.fx.glow.spawn({ x: r.pos.x, y: r.pos.y, z: r.pos.z, life: 0.05, size0: 1.1, size1: 0.4, r: 1, g: 0.8, b: 0.45, a0: 3, a1: 0 });
+      const r = this.rockets[i]; r.age += dt; const s = Math.min(1, r.age / r.T), p = r.pos, ox = p.x, oy = p.y, oz = p.z;
+      const nx = r.from.x + (r.to.x - r.from.x) * s, nz = r.from.z + (r.to.z - r.from.z) * s, ny = r.from.y + (r.to.y - r.from.y) * s + 4 * r.apex * s * (1 - s);
+      const step = Math.hypot(nx - ox, ny - oy, nz - oz), n = Math.max(1, Math.min(8, Math.ceil(step / 2.2))), th = r.age < 1.1 ? 1 : 0.4;
+      /* a grey trail: thick while the motor burns (~1.1 s), then the thin smoke of the coasting rocket */
+      for (let k = 0; k < n; k++) { const f = (k + 1) / n; g.fx.smoke.spawn({ x: ox + (nx - ox) * f, y: oy + (ny - oy) * f, z: oz + (nz - oz) * f, vy: 0.25, life: 2.6 + Math.random() * 1.4, size0: 0.9 * th, size1: 3.4 * th, r: 0.5, g: 0.49, b: 0.47, a0: 0.5 * th, a1: 0 }); }
+      if (r.age < 1.1) g.fx.glow.spawn({ x: nx, y: ny, z: nz, life: 0.05, size0: 1.1, size1: 0.4, r: 1, g: 0.8, b: 0.45, a0: 3, a1: 0 });
       // a building in the way takes it
-      const nx = r.pos.x + r.dir.x * step, ny = r.pos.y + r.dir.y * step, nz = r.pos.z + r.dir.z * step;
-      const occ = r.age > 0.2 ? g.nav.occluded?.(r.pos.x, r.pos.y, r.pos.z, nx, ny, nz, null, null) : null;
-      if (step >= left || (occ && !occ.foliage && !occ.smokeUntil)) {
-        const at = step >= left ? r.to.clone().setY(r.to.y + 0.15) : V3().set(nx, ny, nz);
-        this.rockets.splice(i, 1);
+      const occ = !r.vis && r.age > 0.4 ? g.nav.occluded?.(ox, oy, oz, nx, ny, nz, null, null) : null, hit = occ && !occ.foliage && !occ.smokeUntil;
+      if (s >= 1 || hit) {
+        this.rockets.splice(i, 1); if (r.vis) continue;
+        const at = hit ? V3().set(nx, ny, nz) : r.to.clone().setY(r.to.y + 0.15);
         g.combat.blastSide = r.side; g.combat.explode(at, 1.5, null, [90, 250], 9); g.combat.blastSide = null;
         for (const v of g.vehicles) { if (v.destroyed) continue; const dv = v.pos.distanceTo(at); if (dv < 4.5) { v.hp -= (4.5 - dv) * (v.kind === 'tank' ? 55 : 150); if (v.hp <= 0) v.knockOut(false); } }
         continue;
       }
-      r.pos.set(nx, ny, nz);
+      p.set(nx, ny, nz);
     }
   }
   flare(h) {
     const g = this.g;
     for (const n of h.flareN.length ? h.flareN : [null]) {
       const p = n ? n.getWorldPosition(V3()) : h.pos.clone(), sd = n?.name.endsWith('L') ? 1 : -1, c = Math.cos(h.heading), s = Math.sin(h.heading);
-      this.flares.push({ pos: p, vel: V3().set(c * sd * 14 + s * h.speed * 0.5, -3, -s * sd * 14 + c * h.speed * 0.5), age: 0, life: 3.2 + Math.random() });
+      const f = { pos: p, vel: V3().set(c * sd * 14 + s * h.speed * 0.5, -3, -s * sd * 14 + c * h.speed * 0.5), age: 0, life: 3.2 + Math.random() }; this.flares.push(f);
+      g.netEvent?.(['hf', +p.x.toFixed(1), +p.y.toFixed(1), +p.z.toFixed(1), +f.vel.x.toFixed(1), +f.vel.y.toFixed(1), +f.vel.z.toFixed(1), +f.life.toFixed(1)]);
     }
     g.sfx('grenade_throw', h.pos, { gain: 0.5 });
   }
@@ -189,7 +203,7 @@ export class HeliSupport {
         const n = sq.effective?.length || 0; if (n) h.shooters.push({ u: sq, pos: c, w: 0.05 * n * (1 - d / 560), dmg: [6, 14], key: 'mg_near', col: [1, 0.7, 0.4] });
       }
       // one shoulder-launched missile, at most, as it turns away over them
-      if (!h.manpadsTried && inf > 0 && (h.state === 'break' || h.state === 'egress')) { h.manpadsTried = true; if (Math.random() < HELI.manpads * Math.min(1, inf / 3)) h.manpads = { t: 1.2 + Math.random() * 2.5 }; }
+      if (!h.manpadsTried && inf > 0 && (h.state === 'break' || h.state === 'egress') && g.squads.some(q => q.side !== h.side && !q.destroyed && !q.mounted && !q.medevac && q.soldiers[0] && q.soldiers[0].pos.distanceTo(h.pos) < 1300)) { h.manpadsTried = true; if (Math.random() < HELI.manpads * Math.min(1, inf / 3)) h.manpads = { t: 1.2 + Math.random() * 2.5 }; }
     }
     for (const s of h.shooters || []) {
       if (Math.random() < dt * 2.2) {   // tracers up at it
@@ -242,14 +256,59 @@ export class HeliSupport {
     for (const v of g.vehicles) { if (v.destroyed) continue; const d = v.pos.distanceTo(at); if (d < 7) { v.hp -= (7 - d) * 120; if (v.hp <= 0) v.knockOut(false); } }
     // blades and panels thrown off
     for (let k = 0; k < 14; k++) { const a = Math.random() * 6.283, s = 6 + Math.random() * 14 + sp * 0.2; g.fx.fragment?.('shard', at.x, at.y + 1, at.z, Math.cos(a) * s + h.vel.x * 0.3, 4 + Math.random() * 9, Math.sin(a) * s + h.vel.z * 0.3, 0.5 + Math.random() * 0.9); }
-    // the wreck: where it stopped, canted, burning for the rest of the battle
+    // the wreck: where it stopped, burning for the rest of the battle - on open ground (not inside a building), lying on the
+    // ground under it: nose / tail and side to side fitted to the ground heights there, a small cant on top, then lifted until
+    // no corner of its underside is below the ground (and sunk a few centimetres into it)
     h.model.traverse(o => { if (o.isMesh) o.visible = false; });
     if (h.wreck) { h.wreck.visible = true; h.wreck.traverse(o => { if (o.isMesh) o.visible = true; }); }
-    h.pos.y = gy - 0.45; h.root.position.copy(h.pos);
-    h.root.quaternion.setFromEuler(_e.set(THREE.MathUtils.clamp(h.pitch, -0.25, 0.12), h.heading, THREE.MathUtils.clamp(h.roll, -0.5, 0.5) || 0.25, 'YXZ'));
+    { const free = g.nav?.nearestFree?.(h.pos.x, h.pos.z, 4, 45); if (free) { h.pos.x = free[0]; h.pos.z = free[1]; } }
+    const W = h.wreck || h.model; h.root.position.set(0, 0, 0); h.root.quaternion.identity(); h.root.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(W), zf = bb.max.z * 0.85, zb = bb.min.z * 0.85, xw = Math.max(0.8, (bb.max.x - bb.min.x) * 0.3);
+    const c = Math.cos(h.heading), s = Math.sin(h.heading), G = (lx, lz) => this.ground(h.pos.x + lx * c + lz * s, h.pos.z - lx * s + lz * c);
+    const pitch = Math.atan2(G(0, zb) - G(0, zf), zf - zb) + (Math.random() - 0.5) * 0.06, roll = Math.atan2(G(xw, 0) - G(-xw, 0), 2 * xw) + (Math.random() < 0.5 ? -1 : 1) * (0.06 + Math.random() * 0.1);
+    h.root.quaternion.setFromEuler(_e.set(pitch, h.heading, roll, 'YXZ')); h.pos.y = 0; h.root.position.copy(h.pos); h.root.updateMatrixWorld(true);
+    let lift = -1e9; for (const lx of [bb.min.x, 0, bb.max.x]) for (const lz of [bb.min.z, bb.min.z / 2, 0, bb.max.z / 2, bb.max.z]) { _a.set(lx, bb.min.y, lz).applyMatrix4(h.root.matrixWorld); lift = Math.max(lift, this.ground(_a.x, _a.z) - _a.y); }
+    h.pos.y = lift - 0.07; h.root.position.copy(h.pos); h.pitch = pitch; h.roll = roll; gy = this.ground(h.pos.x, h.pos.z); at.set(h.pos.x, gy + 0.6, h.pos.z);
     g.fx.vehFire?.(at.clone().setY(gy + 1.2), 1.6); g.fx.emitter?.(at.clone().setY(gy + 1.5), 'plume', 1.6, Infinity);
     h.snd?.stop?.(); h.snd = null; h.gone = true; this.wrecks.push(h);
     const TL = g.tickets && (h.side === 'player' ? 'player' : 'enemy'); if (TL && g.tickets[TL] != null) g.tickets[TL] = Math.max(0, g.tickets[TL] - 25);
   }
   remove(h) { h.snd?.stop?.(); this.g.scene.remove(h.root); h.gone = true; }
+  // ---------------------------------------------------------------- multiplayer
+  // host -> snapshot: every helicopter in the air and every wreck: [id, side 0 host / 1 joiner, x, y, z, heading, pitch, roll, rpm, wreck, smoke, UA]
+  netState() {
+    const r = v => Math.round(v * 100) / 100, row = (h, w) => [h.id, h.side === 'player' ? 0 : 1, r(h.pos.x), r(h.pos.y), r(h.pos.z), r(h.heading), r(h.pitch), r(h.roll), r(h.rpm), w, r(Math.max(0, h.smoke || 0)), h.faction?.id !== 'RU' ? 1 : 0];
+    return [...this.active.map(h => row(h, 0)), ...this.wrecks.map(h => row(h, 1))];
+  }
+  // joiner: puppets from the snapshot (sides flipped: the host's 'player' is the joiner's enemy); counts [host left, joiner left, joiner sent]
+  clientSync(list, hn) {
+    const g = this.g, seen = new Set();
+    for (const [id, sd, x, y, z, hd, pi, ro, rpm, wreck, smoke, ua] of list || []) {
+      seen.add(id); let h = this.pup.get(id);
+      if (!h) { h = { id, side: sd ? 'player' : 'enemy', faction: { id: ua ? 'UA' : 'RU' }, pos: V3().set(x, y, z), heading: hd, pitch: pi, roll: ro, rpm, smoke: 0, tp: V3().set(x, y, z) }; this.build(h); this.pup.set(id, h); h.snd = g.audio?.loop?.('tank_engine_drive_fast', h.pos, 1.6) || null; }
+      h.tp.set(x, y, z); h.th = hd; h.tpi = pi; h.tro = ro; h.rpm = rpm; h.smoke = smoke;
+      if (wreck && !h.isWreck) { h.isWreck = true; h.model.traverse(o => { if (o.isMesh) o.visible = false; }); if (h.wreck) { h.wreck.visible = true; h.wreck.traverse(o => { if (o.isMesh) o.visible = true; }); } h.pos.copy(h.tp); h.heading = hd; h.pitch = pi; h.roll = ro; h.snd?.stop?.(); h.snd = null; }
+    }
+    for (const [id, h] of this.pup) if (!seen.has(id)) { h.snd?.stop?.(); g.scene.remove(h.root); this.pup.delete(id); }
+    if (hn) { this.left.enemy = hn[0]; this.left.player = Math.max(0, hn[1] - Math.max(0, this.sentLocal - (hn[2] || 0))); this.sent.player = Math.max(this.sent.player, hn[2] || 0, this.sentLocal); }
+  }
+  clientEvent(e) {
+    if (e[0] === 'hr') this.addRocket(V3().set(e[1], e[2], e[3]), V3().set(e[4], e[5], e[6]), 'enemy', true);
+    else if (e[0] === 'hf') this.flares.push({ pos: V3().set(e[1], e[2], e[3]), vel: V3().set(e[4], e[5], e[6]), age: 0, life: e[7] || 3.5 });
+  }
+  clientUpdate(dt) {
+    const g = this.g, k = Math.min(1, dt * 9);
+    for (const h of this.pup.values()) {
+      if (!h.isWreck) { h.pos.lerp(h.tp, k); let dh = h.th - h.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); h.heading += dh * k; h.pitch += (h.tpi - h.pitch) * k; h.roll += (h.tro - h.roll) * k; }
+      h.root.position.copy(h.pos); h.root.quaternion.setFromEuler(_e.set(h.pitch, h.heading, h.roll, 'YXZ'));
+      if (h.isWreck) continue;
+      if (h.rotor) h.rotor.rotation.y += 25 * h.rpm * dt; if (h.tail) h.tail.rotation.x += 110 * h.rpm * dt;
+      if (h.disc) h.disc.material.opacity = 0.07 * Math.max(0, h.rpm * 1.4 - 0.4);
+      h.snd?.set(h.pos, 1.6 * (0.4 + 0.6 * h.rpm), 1.25 + 0.5 * h.rpm);
+      if (h.smoke > 0 && (h.smokeAcc = (h.smokeAcc || 0) + dt) > 0.05) { h.smokeAcc = 0; const e = h.exh?.[0]?.getWorldPosition(_a) || h.pos; g.fx.smoke.spawn({ x: e.x, y: e.y, z: e.z, vy: 0.6, life: 3.5 + Math.random() * 2, size0: 1.2, size1: 6 + h.smoke * 5, r: 0.09, g: 0.085, b: 0.08, a0: 0.5 + 0.3 * h.smoke, a1: 0 }); }
+    }
+    this.flyRockets(dt); this.flyFlares(dt);
+  }
+  // the joiner asks for his own strike (net/battle.js sends it)
+  clientCall(x, z) { if (this.left.player <= 0 || this.g.phase === 'deploy') return false; this.left.player--; this.sentLocal++; this.g.mortarMarker?.(x, z); this.g.hud?.alert('Mi-24 inbound: lofted rockets on the marked area - keep your men 150 m clear', 'good'); this.g.sfx('radio'); return true; }
 }

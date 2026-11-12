@@ -265,6 +265,9 @@ export class Backdrop {
   }
   // ---------------------------------------------------------------- frame
   draw() {
+    // (v12) the 3-D menu scene is coming (menuScene.js sets use3d): no painted town meanwhile - the same dark overcast it has,
+    // then it fades in complete. (The painting flashed up for a second on every load.)
+    if (this.use3d && !this.scene3d?.full) { this.px += (this.mx - this.px) * 0.04; this.py += (this.my - this.py) * 0.04; this._mo = [-this.M - (this.px + Math.sin(this.t * 0.05) * 0.35) * this.M * 0.5, 0]; const x = this.x, g = x.createLinearGradient(0, 0, 0, this.H); g.addColorStop(0, '#3b4146'); g.addColorStop(0.3, '#4b5156'); g.addColorStop(0.5, '#5b6062'); g.addColorStop(0.62, '#5b6062'); g.addColorStop(0.64, '#2b2620'); g.addColorStop(1, '#1d1915'); x.fillStyle = g; x.fillRect(0, 0, this.W + 2 * (this.M || 0), this.H); return; }
     if (this.scene3d?.full && this.scene3d.day) { this.px += (this.mx - this.px) * 0.04; this.py += (this.my - this.py) * 0.04; this._mo = [-this.M - (this.px + Math.sin(this.t * 0.05) * 0.35) * this.M * 0.5, 0]; return; }   /* the 3-D scene has its own sky and covers this canvas */
     const x = this.x, W = this.W, H = this.H, M = this.M, U = this.U, hz = this.hz;
     // eased parallax: mouse + a slow drift
