@@ -265,6 +265,7 @@ export class Backdrop {
   }
   // ---------------------------------------------------------------- frame
   draw() {
+    if (this.scene3d?.full && this.scene3d.day) { this.px += (this.mx - this.px) * 0.04; this.py += (this.my - this.py) * 0.04; this._mo = [-this.M - (this.px + Math.sin(this.t * 0.05) * 0.35) * this.M * 0.5, 0]; return; }   /* the 3-D scene has its own sky and covers this canvas */
     const x = this.x, W = this.W, H = this.H, M = this.M, U = this.U, hz = this.hz;
     // eased parallax: mouse + a slow drift
     this.px += (this.mx - this.px) * 0.04; this.py += (this.my - this.py) * 0.04;

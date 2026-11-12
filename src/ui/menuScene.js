@@ -42,7 +42,7 @@ const bermAt = (x, z) => { const d = (z - crestZ(x)) / crestN(x)[2], k = Math.mi
 
 export class MenuScene {
   constructor(backdrop) {
-    this.bd = backdrop; this.ready = false; this.running = false; this.loading = null; this.veh = {}; this.pool = new Map(); this.men = []; this.full = false;
+    this.day = true; this.bd = backdrop; this.ready = false; this.running = false; this.loading = null; this.veh = {}; this.pool = new Map(); this.men = []; this.full = false;
   }
   // ---------------------------------------------------------------- life cycle
   start() {
@@ -76,28 +76,33 @@ export class MenuScene {
   async load() {
     const L = new GLTFLoader(), get = u => L.loadAsync(u);
     const [sg, ag, rifle, fort] = await Promise.all([get(SOLDIER), get(ANIMS), get(RIFLE), get(ENV + 'fortifications.glb').catch(() => null)]);
+    get('assets/soldiers/rpg22.glb').then(g => { if (this.running && this.scene) this.launcher(this.scene, g); }).catch(() => { });
     if (!this.running) return;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
-    r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.95;
+    r.setClearColor(0x000000, 0); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.92;
     const scene = this.scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x2a251f, 0.0034);
-    scene.add(new THREE.HemisphereLight(0x4a5562, 0x12100d, 2.1));
-    const sun = new THREE.DirectionalLight(0xd98a45, 2.0); sun.position.set(150, 26, -230); scene.add(sun);          // last light, low on the right horizon
-    const fill = new THREE.DirectionalLight(0x5c6878, 1.0); fill.position.set(-40, 60, 60); scene.add(fill);       // sky behind the viewer
-    // the two men: nearly dark from our side (a little cold sky), the light comes from where they look - the burning town:
-    // a warm rim from the front right, a low warm glow over the parapet
-    const key = new THREE.PointLight(0x8f9cb0, 7, 15, 1.6); key.position.set(-1.6, 1.0, -4.4); scene.add(key);
-    const rim = new THREE.SpotLight(0xff9650, 80, 20, 0.27, 0.95, 1.4); rim.position.set(8.5, 0.2, -13.2); rim.target.position.set(2.2, -1.25, -8.1); scene.add(rim, rim.target);
-    const front = new THREE.PointLight(0xff8a48, 16, 11, 1.7); front.position.set(1.4, -0.1, -11.4); scene.add(front);
+    // v7: day, but a heavy overcast one - a low grey deck, flat light from the front (the men are seen against it), haze
+    const HZ = 0x8b8d8a;
+    scene.fog = new THREE.FogExp2(HZ, 0.0028);
+    { // the sky is painted once and shown as the scene's background: horizon at 60 % of the height, as the camera has it
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 512; const x = c.getContext('2d'), R = rng(9), g = x.createLinearGradient(0, 0, 0, 512);
+      g.addColorStop(0, '#50565b'); g.addColorStop(0.36, '#6e7376'); g.addColorStop(0.57, '#8a8c89'); g.addColorStop(1, '#8b8d8a'); x.fillStyle = g; x.fillRect(0, 0, 1024, 512);
+      for (let i = 0; i < 46; i++) { const px = R() * 1024, py = R() * 290, w = 110 + R() * 230, d = R() < 0.55; x.save(); x.translate(px, py); x.scale(1, 0.4 + py / 900); const q = x.createRadialGradient(0, 0, 0, 0, 0, w); q.addColorStop(0, d ? 'rgba(56,60,64,.24)' : 'rgba(152,154,152,.15)'); q.addColorStop(1, 'rgba(100,104,106,0)'); x.fillStyle = q; x.fillRect(-w, -w, w * 2, w * 2); x.restore(); }
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; scene.background = t; }
+    scene.add(new THREE.HemisphereLight(0xaab2ba, 0x4a453b, 2.1));
+    const sun = new THREE.DirectionalLight(0xd9d6cc, 1.25); sun.position.set(60, 120, -260); scene.add(sun);          // what gets through the cloud: high, from the town's side
+    const fill = new THREE.DirectionalLight(0x7f8a96, 0.35); fill.position.set(-40, 60, 60); scene.add(fill);
+    // the two men: in the trench's shade from our side; a little warmth from the fires ahead
+    const rim = new THREE.SpotLight(0xffa868, 26, 20, 0.27, 0.95, 1.4); rim.position.set(8.5, 0.2, -14.2); rim.target.position.set(2.2, -1.25, -8.1); scene.add(rim, rim.target);
     this.rim = rim;
     this.cam = new THREE.PerspectiveCamera(VFOV, 16 / 9, 1.2, 1400); this.cam.rotation.order = 'YXZ'; this.cam.rotation.x = PITCH;
     this.resize(); addEventListener('resize', this._rs = () => this.resize());
     this.ground(scene);
     if (fort) this.dress(scene, fort);
     this.soldiers(scene, sg, ag, rifle);
-    this.clock = performance.now(); this.ready = true; this.show();
+    this.clock = performance.now(); this.ready = true;
     window.__menu3d = { men: this.men.length, veh: 0 }; window.__menuScene = this;
-    this.town(scene, get).catch(e => console.warn('menu town', e));   /* ~31 MB of the game's environment models: the painted town stays until they are in */
+    this.town(scene, get).catch(e => console.warn('menu town', e)).then(() => this.show());   /* ~31 MB of the game's environment models: the painted town stays until they are in */
     // ---- vehicles (the flat sprites stay for a kind until its model is in)
     for (const [k, [, url]] of Object.entries(VEH)) get(url).then(g => {
       if (!this.running || !this.scene) return;
@@ -136,13 +141,25 @@ export class MenuScene {
     })();
     const sb = soil.clone(); sb.colorSpace = THREE.NoColorSpace; sb.needsUpdate = true;
     const far = soil.clone(); far.repeat.set(260, 220); far.needsUpdate = true;
-    const earth = new THREE.MeshStandardMaterial({ color: 0x4a4030, roughness: 1, map: far }), berm = new THREE.MeshStandardMaterial({ color: 0x9a8468, roughness: 1, map: soil, bumpMap: sb, bumpScale: 1.6 });
+    const earth = new THREE.MeshStandardMaterial({ color: 0x6e6a56, roughness: 1, map: far }), berm = new THREE.MeshStandardMaterial({ color: 0x9a8468, roughness: 1, map: soil, bumpMap: sb, bumpScale: 1.6 });
     this.soilMat = berm;
     // terrain (coarse) + the hilltop patch with the berm (fine); the patch's rim is sunk under the terrain
     const tg = new THREE.PlaneGeometry(1500, 1300, 100, 130); tg.rotateX(-Math.PI / 2); tg.translate(0, 0, -560);
     let P = tg.attributes.position;
     for (let i = 0; i < P.count; i++) { const z = P.getZ(i); P.setY(i, hill(z)); }
     tg.computeVertexNormals(); scene.add(new THREE.Mesh(tg, earth));
+    // the open ground down to the road: its own finer sheet over the coarse one, cratered (bowl, thrown-up lip, darker fresh earth)
+    { const R = rng(31), CR = this.craters = []; for (let i = 0; i < 46; i++) { const z = -20 - R() ** 0.8 * 150, r = 1.6 + R() * R() * 4.2; CR.push([(R() - 0.5) * (120 + -z * 1.1), z, r, 0.25 + r * 0.22]); }
+      for (const [x, z] of [[-9, -26], [14, -31], [-22, -44], [4, -52], [31, -47]]) CR.push([x, z, 2.2 + R() * 1.6, 0.8 + R() * 0.5]);
+      const fg = new THREE.PlaneGeometry(420, 176, 420, 176); fg.rotateX(-Math.PI / 2); fg.translate(0, 0, -100); const F = fg.attributes.position, col = new Float32Array(F.count * 3), uv = fg.attributes.uv;
+      for (let i = 0; i < F.count; i++) {
+        const x = F.getX(i), z = F.getZ(i); let h = 0, dk = 0;
+        for (const [cx, cz, r, dp] of CR) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) { h += d < 1 ? -dp * (1 - d * d) + 0.18 * dp * d * d : 0.18 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; dk = Math.max(dk, 1 - Math.min(1, d / 1.5)); } }
+        const e = Math.min(sstep(-210, -200, x), 1 - sstep(200, 210, x), sstep(-188, -184, z), 1 - sstep(-16, -13, z));
+        F.setY(i, hill(z) + (0.06 + h + Math.sin(x * 0.31 + z * 0.17) * Math.sin(z * 0.23) * 0.12) * e - 0.3 * (1 - e)); const k = 1 - dk * 0.62; col[i * 3] = k; col[i * 3 + 1] = k * 0.97; col[i * 3 + 2] = k * 0.93; uv.setXY(i, x / 3.1, z / 3.1);
+      }
+      fg.setAttribute('color', new THREE.BufferAttribute(col, 3)); fg.computeVertexNormals();
+      const fm = new THREE.MeshStandardMaterial({ color: 0xd0c6a6, roughness: 1, map: soil, vertexColors: true }); scene.add(new THREE.Mesh(fg, fm)); }
     const NX = 300, NZ = 250, bg = new THREE.PlaneGeometry(48, 14, NX, NZ); bg.rotateX(-Math.PI / 2); bg.translate(2, 0, -6);
     P = bg.attributes.position;
     for (let i = 0; i < P.count; i++) {
@@ -163,11 +180,11 @@ export class MenuScene {
   // duckboards on the floor, ammunition crates; clods of earth and smears of mud on all of it
   dress(scene, fort) {
     const R = rng(4), dirt = new Map(), mud = new THREE.Color(0x5b4c3a);
-    const dirty = (m, k = 0.62, l = 0.3) => { const key = m.uuid + k; let d = dirt.get(key); if (!d) { d = m.clone(); d.color.multiplyScalar(k).lerp(mud, l); d.roughness = 1; dirt.set(key, d); } return d; };
+    const dirty = (m, k = 0.8, l = 0.3) => { const key = m.uuid + k; let d = dirt.get(key); if (!d) { d = m.clone(); d.color.multiplyScalar(k).lerp(mud, l); d.roughness = 1; dirt.set(key, d); } return d; };
     const P = (name, x, y, z, ry = 0, rx = 0) => {
       const t = fort.scene.getObjectByName(name); if (!t) return;
       const o = t.clone(true); o.position.set(0, 0, 0); const g = new THREE.Group(); g.add(o); g.position.set(x, y, z); g.rotation.set(rx, ry, 0, 'YXZ'); scene.add(g);
-      const bag = /sandbag/.test(name), dm = m => dirty(m, bag ? 0.9 : 0.62, bag ? 0.18 : 0.3);
+      const bag = /sandbag/.test(name), dm = m => dirty(m, bag ? 1.0 : 0.8, bag ? 0.15 : 0.3);
       g.traverse(q => { if (q.isMesh) { q.frustumCulled = false; q.material = Array.isArray(q.material) ? q.material.map(dm) : dm(q.material); } if (/_lod1$/i.test(q.name)) q.visible = false; });
     };
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
@@ -192,6 +209,12 @@ export class MenuScene {
     const sm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mm, 34);
     for (let i = 0; i < 34; i++) { const x = -7 + R() * 13, d = face(x) + 0.3 + R() * 1.4, [px, pz] = at(x, d); sm.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.112, pz), q.setFromEuler(e.set(0, R() * 6, 0)), new THREE.Vector3(0.35 + R() * 0.5, 1, 0.25 + R() * 0.35))); }
     sm.frustumCulled = false; sm.renderOrder = 1; scene.add(sm);
+  }
+  // an RPG-22 laid ready on the parapet beside the men (on the sandbags, along the trench)
+  launcher(scene, g) {
+    const o = g.scene.clone(true); o.traverse(q => { if (q.isMesh) { q.frustumCulled = false; if (/_LOD1$/i.test(q.name)) q.visible = false; } });
+    const b = new THREE.Box3().setFromObject(o), x = 4.05, grp = new THREE.Group(); o.position.set(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); grp.add(o);
+    grp.position.set(x, FY + crestH(x) + 0.035 + 0.245, crestZ(x) + WALL - 0.3); grp.rotation.set(0, Math.PI / 2 + 0.22, 0.04); scene.add(grp);
   }
   // a fire: flames (flickering additive tongues), their glow, dark smoke going up on the wind; `big`: through a roof / a wreck
   addFire(scene, x, y, z, sz, big = 0, quiet = 0) {
@@ -257,6 +280,18 @@ export class MenuScene {
     }
     const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
     scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0c0c0c, transparent: true, opacity: 0.8 })));
+    // ---- concertina wire on the open ground, loose (no pickets): tangled heaps - some of them thrown into shell holes - and a
+    // few short runs of coil lying where they were dragged; thin dark lines, which is what wire is at this distance
+    { const W = [], coil = (x0, z0, yaw, len, r, mess) => { const n = Math.round(len / 0.035), c = Math.cos(yaw), sn = Math.sin(yaw); let px, py, pz;
+        for (let k = 0; k <= n; k++) { const u = k / n * len, a = u / 0.22 * 6.283, w = mess * Math.sin(u * 1.7 + x0), lx = u + Math.sin(a * 0.31 + z0) * mess * 0.3, ly = r + Math.sin(a) * r * (0.75 + 0.25 * Math.sin(u * 0.9)), lz = Math.cos(a) * r + w;
+          const X = x0 + lx * c + lz * sn, Z = z0 - lx * sn + lz * c, Y = hillC(X, Z) + Math.max(0.02, ly * (0.7 + 0.3 * Math.sin(u * 0.6 + z0))); if (k) W.push(px, py, pz, X, Y, Z); px = X; py = Y; pz = Z; } };
+      const hillC = (x, z) => { let h = 0; for (const [cx, cz, r, dp] of this.craters || []) { const d = Math.hypot(x - cx, z - cz) / r; if (d < 1.9) h += d < 1 ? -dp * (1 - d * d) + 0.18 * dp * d * d : 0.18 * dp * Math.max(0, 1 - (d - 1) / 0.9) ** 2; } return hill(z) + 0.08 + h; };
+      const heap = (x, z, k) => { for (let i = 0; i < k; i++) coil(x + (R() - 0.5) * 2.2, z + (R() - 0.5) * 2.2, R() * 6.283, 3 + R() * 4, 0.3 + R() * 0.2, 0.5 + R() * 0.5); };
+      const CR = (this.craters || []).filter(c => c[1] > -120 && Math.abs(c[0]) < 90);
+      for (let i = 0; i < Math.min(7, CR.length); i++) { const c = CR[Math.floor(R() * CR.length)]; heap(c[0], c[1], 3 + Math.floor(R() * 3)); }
+      for (const [x, z] of [[-34, -30], [22, -58], [-70, -92], [64, -110]]) heap(x, z, 2 + Math.floor(R() * 3));
+      for (const [x, z, yaw, n] of [[-52, -36, 0.12, 3], [8, -74, -0.2, 4], [-18, -118, 0.05, 5], [70, -56, 0.3, 2]]) for (let i = 0; i < n; i++) coil(x + i * 6.2 * Math.cos(yaw), z - i * 6.2 * Math.sin(yaw) + (R() - 0.5) * 0.8, yaw + (R() - 0.5) * 0.25, 6, 0.42, 0.12);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(W, 3)); scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x24252a, transparent: true, opacity: 0.85 }))); }
     // ---- panel blocks: front facade (to the viewer) and both ends from kit pieces, a roof slab and a dark core behind them
     const W = 3.2, H = 2.8, dark = new THREE.MeshBasicMaterial({ color: 0x060606 }), roofM = new THREE.MeshStandardMaterial({ color: 0x1b1a19, roughness: 0.9 });
     const block = (xc, zf, bays, floors, kind, hit = 0) => {
@@ -296,7 +331,7 @@ export class MenuScene {
     // ---- one InstancedMesh per sub-mesh of every placed model (foliage dulled: under this light the leaf cards' gloss made
     // the trees sparkle like plastic)
     const rel = new THREE.Matrix4(), inv = new THREE.Matrix4(), dull = new Map();
-    const matOf = (t, m) => { if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = m.clone(); d.roughness = 1; d.metalness = 0; d.color.multiplyScalar(0.42); if ('envMapIntensity' in d) d.envMapIntensity = 0; d.normalMap = null; dull.set(m, d); } return d; };
+    const matOf = (t, m) => { if (!/^(tree_|bush)/.test(t.name)) return m; let d = dull.get(m); if (!d) { d = m.clone(); d.roughness = 1; d.metalness = 0; d.color.multiplyScalar(0.7); if ('envMapIntensity' in d) d.envMapIntensity = 0; d.normalMap = null; dull.set(m, d); } return d; };
     for (const [t, Ms] of bins) {
       t.updateWorldMatrix(true, true); inv.copy(t.matrixWorld).invert();
       t.traverse(o => {
@@ -314,7 +349,7 @@ export class MenuScene {
       this.soot.forEach(([x_, y_, z_, w, h], i) => sm.setMatrixAt(i, M4.compose(V(x_, y_, z_), Q.identity(), V(w, h, 1)))); sm.frustumCulled = false; scene.add(sm);
     }
     for (const [x, y, z, sz, roof, quiet] of this.fires) this.addFire(scene, x, y, z, sz, roof, quiet);
-    this.townIn = true; this._full = setTimeout(() => { this.full = true; }, 400);   /* the painted town goes now */
+    this.townIn = true; this._full = setTimeout(() => { this.full = true; }, 1800);   /* the painted town goes now */
     if (window.__menu3d) window.__menu3d.town = bins.size;
   }
   soldiers(scene, sg, ag, rifle) {
@@ -389,7 +424,8 @@ export class MenuScene {
     for (const [i, g] of (this.glows || []).entries()) { const f = 0.75 + 0.18 * Math.sin(t * 11 + i * 3) + 0.1 * Math.sin(t * 23 + i * 1.7); g.scale.set(g.userData.s * f * 1.15, g.userData.s * f * 0.8, 1); g.material.opacity = 0.3 * f; if (!i) fl0 = f; }
     for (const f of this.flames || []) { const u = f.userData, a = 0.75 + 0.3 * Math.sin(t * 9 + u.ph) + 0.2 * Math.sin(t * 17.3 + u.ph * 2.1), w = 0.8 + 0.25 * Math.sin(t * 13 + u.ph * 1.7); f.position.set(u.x + Math.sin(t * 6 + u.ph) * u.s * 0.08, u.y, u.z + 0.3); f.scale.set(u.s * 0.9 * w, u.s * 2.1 * a, 1); f.material.opacity = 0.85; }
     for (const m of this.smokes || []) { const u = m.userData, k = (t * u.sp + u.ph) % 1; m.position.set(u.x + k * k * 26, u.y + k * 34, u.z); const r = u.s * (1 + k * 4.5); m.scale.set(r, r, 1); m.material.opacity = 0.5 * Math.min(1, k * 6) * (1 - k); }
-    if (this.rim) this.rim.intensity = 80 * (0.85 + 0.15 * fl0);   /* the fires' light on the two men flickers with them */
+    if (this.rim) this.rim.intensity = 26 * (0.85 + 0.15 * fl0);
+   /* the fires' light on the two men flickers with them */
     this.renderer.render(this.scene, this.cam);
   }
 }

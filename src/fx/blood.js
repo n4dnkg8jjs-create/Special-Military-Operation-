@@ -8,8 +8,8 @@ import * as THREE from 'three';
 // One instanced quad per mark (ring buffer of MAX), flat on the surface the man lies on (his own height: floors, trench beds),
 // drawn with a polygon offset and no depth write so it neither flickers against the ground nor hides anything; marks darken
 // from wet red-brown to dry brown over a few minutes.
-const MAX = 240, SCAN = 0.4;
-const WET = new THREE.Color(0x3d0b09), DRY = new THREE.Color(0x24100b);
+const MAX = 420, SCAN = 0.2;
+const WET = new THREE.Color(0x7a0c0a), DRY = new THREE.Color(0x3c0d0a);   /* (v2: it read brown on the earth - blood stays dark red a good while) */
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color(), _up = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3();
 
 function blobTexture() {
@@ -41,13 +41,13 @@ export class BloodDecals {
   }
   write(k) {
     this.mesh.setMatrixAt(k.i, _m.compose(_p.set(k.x, k.y, k.z), _q.setFromAxisAngle(_up, k.yaw), _s.set(k.w, 1, k.l)));
-    this.mesh.setColorAt(k.i, _c.copy(WET).lerp(DRY, Math.min(1, k.age / 150)));
+    this.mesh.setColorAt(k.i, _c.copy(WET).lerp(DRY, Math.min(1, k.age / 420)));
     this.mesh.instanceMatrix.needsUpdate = true; if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
   update(dt, game) {
     this.acc += dt; if (this.acc < SCAN) return; const step = this.acc; this.acc = 0;
     // growing pools, drying
-    for (const k of this.marks) { if (!k) continue; k.age += step; if (k.rate > 0 && k.w < k.w1) { k.w = Math.min(k.w1, k.w + k.rate * step); k.l = Math.min(k.l1, k.l + k.rate * step * (k.l1 / k.w1)); this.write(k); } else if (k.age < 152 && (k.age % 12) < step) this.write(k); }
+    for (const k of this.marks) { if (!k) continue; k.age += step; if (k.rate > 0 && k.w < k.w1) { k.w = Math.min(k.w1, k.w + k.rate * step); k.l = Math.min(k.l1, k.l + k.rate * step * (k.l1 / k.w1)); this.write(k); } else if (k.age < 425 && (k.age % 20) < step) this.write(k); }
     const cam = game.cam?.focus;
     for (const sq of game.squads || []) for (const s of sq.soldiers) {
       const st = s.state; if (st !== 'critical' && st !== 'stable' && st !== 'dead') { if (s._bl) s._bl = null; continue; }
@@ -56,12 +56,19 @@ export class BloodDecals {
       if (cam && Math.hypot(s.pos.x - cam.x, s.pos.z - cam.z) > 420) continue;
       const b = s._bl || (s._bl = { x: s.pos.x, z: s.pos.z, still: 0, pool: null, n: 0 });
       const dx = s.pos.x - b.x, dz = s.pos.z - b.z, d = Math.hypot(dx, dz), clip = s.curName || s.netClip || '';
-      if (d > 0.55) {
-        // moved: on the ground (dragged / crawling) it leaves a smear - thinner the further he has come; carried, nothing
-        if (/^(being_dragged|wounded_crawl|drag_)/.test(clip) && b.n < 26 && Math.random() < 0.85 - b.n * 0.02) {
-          const wd = (0.05 + Math.random() * 0.05) * (1 - b.n * 0.02);
-          this.add(b.x + dx * 0.5 + (Math.random() - 0.5) * 0.08, s.pos.y + 0.012, b.z + dz * 0.5 + (Math.random() - 0.5) * 0.08, Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.3, wd * 2, d * (0.7 + Math.random() * 0.5));
-          b.n++;
+      if (d > 0.16) {
+        // moved: on the ground (dragged / crawling) it leaves a smear. Not a row of dashes: short overlapping marks of uneven
+        // width that wander a little off the line, run thin, stop for a stretch and start again, with a drop here and there;
+        // it thins out the further he has come. Carried on a shoulder: nothing.
+        if (/^(being_dragged|wounded_crawl|drag_)/.test(clip) && b.n < 90) {
+          b.run = (b.run ?? 1) + (Math.random() - 0.47) * 0.5; b.run = Math.max(-0.6, Math.min(1.4, b.run));          /* the flow comes and goes */
+          const thin = Math.max(0.25, 1 - b.n * 0.009), yaw = Math.atan2(dx, dz);
+          if (b.run > 0) {
+            const wd = (0.035 + Math.random() * 0.075) * thin * Math.min(1, 0.5 + b.run), len = d * (1.3 + Math.random() * 1.1), off = (Math.random() - 0.5) * 0.16;
+            this.add(b.x + dx * 0.5 + Math.cos(yaw) * off, s.pos.y + 0.012, b.z + dz * 0.5 - Math.sin(yaw) * off, yaw + (Math.random() - 0.5) * 0.5, wd * 2, len);
+            b.n++;
+          }
+          if (Math.random() < 0.12 * thin) { const r = 0.03 + Math.random() * 0.06; this.add(s.pos.x + (Math.random() - 0.5) * 0.3, s.pos.y + 0.012, s.pos.z + (Math.random() - 0.5) * 0.3, Math.random() * 6.28, r, r * (0.7 + Math.random() * 0.6)); b.n++; }
         }
         b.x = s.pos.x; b.z = s.pos.z; b.still = 0; if (b.pool) { b.pool.rate = 0; b.pool = null; }
         continue;
