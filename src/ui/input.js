@@ -89,6 +89,7 @@ export class Input {
     if (d.btn === 2 && this.mode) { this.cancelMode(); this.hud.updateInfo(); return; }
     if (d.btn === 0) {
       if (this.mode === 'fireground') { const p = this.groundAt(e.clientX, e.clientY); if (p) { const sel = [...this.hud.selected]; for (const u of sel) { u.fireAt = { p: p.clone(), until: this.g.time + 30 }; u.target = null; } this.hud.groundMarker?.(p); if (sel.some(u => u.kind !== 'spg')) this.g.hud.alert(`${sel.length > 1 ? sel.length + ' units' : sel[0]?.name} firing on the area for 30 s (X halts)`); this.g.sfx('ui_order'); } this.mode = null; document.body.style.cursor = ''; return; }
+      if (this.mode === 'heli') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerHeli(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; } return; }
       if (this.mode === 'mortar') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerMortar(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; } return; }
       if (this.mode === 'artillery') { const p = this.groundAt(e.clientX, e.clientY); if (p && this.g.playerArtillery?.(p.x, p.z)) { this.mode = null; document.body.style.cursor = ''; this.hud.updateInfo(); } return; }
       if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 8) {
@@ -192,9 +193,10 @@ export class Input {
       u.smokes = (u.smokes ?? 2) - 1; g.combat.throwSmoke(th, m);
     }
     // a targeting mode is cancelled by its own key/button again, by Esc, or by a right-click
-    if ((o === 'fireground' || o === 'mortar' || o === 'artillery') && this.mode === o) { this.cancelMode(); g.sfx('ui_click'); this.hud.updateInfo(); return; }
+    if ((o === 'fireground' || o === 'mortar' || o === 'artillery' || o === 'heli') && this.mode === o) { this.cancelMode(); g.sfx('ui_click'); this.hud.updateInfo(); return; }
     if (o === 'fireground') { if (g.phase === 'deploy') { g.hud.alert('Area fire is available once the battle starts'); return; } if (sel.length) { this.mode = 'fireground'; document.body.style.cursor = 'crosshair'; g.hud.alert('Fire at ground: left-click the area to engage · right-click or Esc to cancel'); } }
     if (o === 'mortar' && g.phase === 'deploy') { g.hud.alert('Fire missions are available once the battle starts'); return; }
+    if (o === 'heli') { if (g.phase === 'deploy') { g.hud.alert('Air support is available once the battle starts'); return; } if (g.heli?.count('player') > 0) { this.mode = 'heli'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mi-24 strike: left-click the target area · right-click or Esc to cancel'); } else g.hud.alert('No helicopter on call'); }
     if (o === 'mortar') { if (g.mortars > 0) { this.mode = 'mortar'; document.body.style.cursor = 'crosshair'; g.hud.alert('Mortar: left-click a target area · right-click or Esc to cancel'); } }
     if (o === 'artillery' && g.phase === 'deploy') { g.hud.alert('Fire missions are available once the battle starts'); return; }
     if (o === 'artillery') { if ((g.fires?.count.player || 0) > 0) { this.mode = 'artillery'; document.body.style.cursor = 'crosshair'; const B = g.fires.bat('player'); g.hud.alert(`${B.name} artillery (${B.gun}): left-click a target · ~40 s to fire for effect, drone-adjusted, lethal over ~${g.fires.zoneR(B)} m · keep our troops ${g.fires.dangerR} m clear · right-click or Esc to cancel`); if (this.lastMouse) g.fires.preview(this.groundAt(...this.lastMouse)); } }
@@ -203,7 +205,7 @@ export class Input {
   cancelMode() { if (!this.mode) return false; this.mode = null; document.body.style.cursor = ''; this.hud.alert?.('Cancelled'); return true; }
   key(e) {
     if (e.repeat) return; const g = this.g;
-    const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyY: 'artillery', KeyV: 'smoke', KeyC: 'fireground' };
+    const map = { KeyR: 'run', KeyF: 'holdfire', KeyG: 'garrison', KeyM: 'mount', KeyB: 'resupply', KeyX: 'halt', KeyT: 'mortar', KeyY: 'artillery', KeyU: 'heli', KeyV: 'smoke', KeyC: 'fireground' };
     if (map[e.code]) { this.command(map[e.code]); return; }
     if (e.code === 'Enter' && g.phase === 'deploy') { g.startBattle(); return; }
     if (e.code === 'Tab') { e.preventDefault(); this.hud.rosterMini = !this.hud.rosterMini; this.hud.rebuildCards(); return; }

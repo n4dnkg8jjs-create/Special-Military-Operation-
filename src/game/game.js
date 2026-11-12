@@ -23,6 +23,7 @@ import { setupAtgmTrucks } from './atgmTruck.js';
 import { setupFires } from './fireMission.js';
 import { FACTIONS, TUNING } from '../config.js';
 import { BloodDecals } from '../fx/blood.js';
+import { HeliSupport } from './heli.js';
 
 const Q = new URLSearchParams(location.search);
 const CONTACT_TTL = 25, ISR_R = 700;   // (spotFor) a contact not re-reported for 25 s is gone; the side's recon drones watch the open ground out to 700 m from its units (~ an FPV's reach)
@@ -91,6 +92,7 @@ export class Game {
     this.deploy();
     this.medevac = setupMedevac(this);   // casualty-evacuation pickup + medics for both sides (game/medevac.js)
     this.atgmTrucks = setupAtgmTrucks(this);   // skirmish: a Kornet / Stugna-P pickup per side (game/atgmTruck.js)
+    this.heli = new HeliSupport(this);   // Mi-24 rocket strikes (Command Influence request / ?hind): game/heli.js
     this.fires = setupFires(this);       // 152 / 155 mm tube-artillery fire missions, both sides (game/fireMission.js)
     const net = this.opts.net;
     this.commander = net ? { update() {}, begin() {}, adoptCrew() {}, plan: [], waveI: 0 } : new Commander(this);   // versus: the other side is a human
@@ -356,6 +358,7 @@ export class Game {
   callStrike(x, z, rounds, spread, side, delay, caliber = 'mortar') {
     for (let i = 0; i < rounds; i++) this.strikes.push({ x: x + (Math.random() - .5) * spread * 2, z: z + (Math.random() - .5) * spread * 2, t: this.time + delay + i * (0.8 + Math.random() * 1.2), side, whistled: false, caliber });
   }
+  playerHeli(x, z) { return !!this.heli?.call('player', x, z); }
   playerMortar(x, z) {
     if (this.mortars <= 0) return false;
     this.mortars--; this.callStrike(x, z, 6, 16, 'player', 9, 'mortar');
@@ -692,6 +695,7 @@ export class Game {
     const cp = this.renderer.camera.position; updateLods(cp);
     this.fx.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), cp);
     this.blood?.update(Math.min(dt, 0.05) * (this.paused ? 0 : this.timeScale), this);
+    if (!this.paused) this.heli?.update(Math.min(dt, 0.05) * this.timeScale);
     for (const d of this.city.dynamic.children) if (d.userData.rise > 0) { const k = Math.min(d.userData.rise, dt * 0.8); d.position.y += k; d.userData.rise -= k; }
     if (this.audio.ok) { const f = this.cam.focus; this.audio.setListener({ x: f.x * 0.7 + cp.x * 0.3, y: 12 + (cp.y - 12) * 0.3, z: f.z * 0.7 + cp.z * 0.3 }, new THREE.Vector3(f.x - cp.x, 0, f.z - cp.z).normalize()); }
     this.netTick?.(dt);

@@ -219,12 +219,14 @@ export class HUD {
       mount: sel.some(u => u.type === 'squad' ? (u.mounted || (u.carrier && !u.carrier.destroyed)) : !!u.passengers || (deploy && (u.kind === 'btr' || u.kind === 'ifv'))),
       resupply: sq.some(u => u.carrier && !u.carrier.destroyed && !u.mounted),
       fireground: sel.length > 0 && !deploy, mortar: g.mortars > 0 && !deploy, artillery: (g.fires?.count.player || 0) > 0 && !deploy,
+      heli: (g.heli?.count('player') || 0) > 0 && !deploy,
     };
     for (const k in B) set(B[k], 'disabled', !en[k]);
     tog(B.holdfire, 'on', sel.length > 0 && sel.every(u => u.holdFire));
     tog(B.run, 'on', !!inp?.runMode);
     tog(B.fireground, 'on', inp?.mode === 'fireground'); tog(B.mortar, 'on', inp?.mode === 'mortar');
     set(this.mortarEl, 'textContent', String(g.mortars));
+    if (B.heli) { const n = g.heli?.count('player') || 0; set(B.heli, 'hidden', !(n > 0 || g.heli?.sent.player > 0)); tog(B.heli, 'on', inp?.mode === 'heli'); set(this.heliEl ||= document.getElementById('heliCount'), 'textContent', String(n)); }
     if (B.artillery) { tog(B.artillery, 'on', inp?.mode === 'artillery'); if (this.artyEl) set(this.artyEl, 'textContent', String(g.fires?.count.player || 0)); }
   }
   updateInfo(force) {
