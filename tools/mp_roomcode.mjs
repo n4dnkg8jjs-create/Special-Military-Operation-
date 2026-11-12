@@ -110,8 +110,12 @@ if (!process.env.SKIP_BATTLE && !process.env.SKIP_BATTLE1) {
 // ---- a battle between the two players: put a host task force next to a joiner task force and plan the attack
 const plan = await H.evaluate(() => {
   const V = window.__vsGame, me = V.host, them = V.guest, A = V.side[me], D = V.side[them];
-  for (const g of D.forces) for (const n of A.neighbors(g.cell)) {
-    if (A.owner[n] !== 'player' || A.forcesAt(n).length) continue;
+  // (since the v7 start lines no task force of one side stands next to a square of the other: put one of each on a pair of
+  // facing front squares)
+  for (const c of A.def.aor.cells) {
+    const n = c.id; if (A.owner[n] !== 'player' || A.forcesAt(n).length) continue;
+    const e = A.neighbors(n).find(x => A.owner[x] === 'enemy' && D.owner[x] === 'player' && !D.forcesAt(x).length); if (!e) continue;
+    const g = D.forces.find(x => D.battleUnits(x.units).length > 1) || D.forces[0]; g.cell = e; D.resetMoves(); D.computeSupply();
     const t = A.forces.find(x => A.tfPower(x) > 2) || A.forces[0]; t.cell = n; A.resetMoves(); A.computeSupply();
     const p = A.plan(t.id, g.cell); if (!p.ok || !p.attack) continue;
     window.__vsUi.planAttack(t, g.cell, false); return { tf: t.id, cell: g.cell, planned: !!t.planned, gtf: g.id, gn: D.battleUnits(g.units).length };

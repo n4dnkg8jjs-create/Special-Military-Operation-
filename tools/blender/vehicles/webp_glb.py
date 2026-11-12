@@ -5,7 +5,7 @@ done with Pillow here because npx downloads are not available).  Then updates fi
 import io, json, os, struct, sys, fcntl
 from PIL import Image
 
-R = '/home/claude/special-military-operation-'
+R = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..'))
 
 
 def convert(path):

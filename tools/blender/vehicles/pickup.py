@@ -37,7 +37,13 @@ from vlib import B, box, hull, prism, lathe, cyl, tube, rail, bolt, fillet_path,
 import vtex as T
 import vbuild as VB
 
-NAME = 'pickup'
+# --atgm: the anti-tank 'technical' (assets/vehicles/pickup_atgm.glb): the same truck in its factory white, no hardtop canopy,
+# no roof rack, no casevac markings; a plywood firing deck in the bed with an `atgm_mount` empty (the game stands the team's
+# Kornet / Stugna-P launcher on its tripod there: tube 1.26 m over the deck = 2.14 m over the ground, 0.35 m clear of the cab
+# roof), `tlc_1` / `tlc_2` empties for spare missile containers on the deck along the bed walls, the spare wheel upright against the bulkhead.
+ATGM = '--atgm' in sys.argv
+NAME = 'pickup_atgm' if ATGM else 'pickup'
+MOUNT_Y = -1.70                 # launcher origin in the bed (Stugna tripod reaches 0.68 m forward, its control unit 0.82 m back)
 AXF, AXR = 1.64, -1.44          # axle stations (wheelbase 3.08)
 TRACK = 1.54
 WR, WW = 0.388, 0.265           # 265/65 R17
@@ -1128,12 +1134,31 @@ def bed_kit():
     return K
 
 
+def bed_deck():
+    """--atgm: 18 mm plywood firing deck screwed to the bed floor on two 40 mm box-section bearers, edge strips, four
+    eye bolts for the lashings"""
+    K = B()
+    y0, y1 = BED_Y[0] - 0.03, BED_Y[1] + 0.06
+    for y in (y0 - 0.25, y1 + 0.25):
+        K.add(box(2 * BED_IN - 0.06, 0.04, 0.04, c=(0, y, BED_FLOOR + 0.02), mat='gunmetal'))
+    K.add(box(2 * BED_IN - 0.03, y0 - y1, 0.018, c=(0, (y0 + y1) / 2, BED_FLOOR + 0.049), mat='wood'))
+    for s in (1, -1):
+        K.add(box(0.03, y0 - y1, 0.006, c=(s * (BED_IN - 0.035), (y0 + y1) / 2, BED_FLOOR + 0.061), mat='gunmetal'))
+        for y in (y0 - 0.12, y1 + 0.12):
+            K.add(cyl(0.012, 0.03, 8, 'z', c=(s * (BED_IN - 0.09), y, BED_FLOOR + 0.073), mat='bare'))
+    return K
+
+
 def id_marks(bvh_body, bvh_can):
     """faction identification (own materials, toggled / tinted by medevac.js): id_tape = two tape bands across the canopy
     roof (faction tape colour), id_ru = white V marks on both front fenders and the bonnet front (Russian trucks only)"""
     tape = B()
-    for y in (-1.24, -2.36):
-        tape.add(ribbon(bvh_can, [(x, y, 2.5) for x in np.linspace(-0.68, 0.68, 15)], (0, 0, -1), 0.05))
+    if bvh_can is None:          # (--atgm: no canopy - two bands across the bonnet instead)
+        for y in (1.42, 1.72):
+            tape.add(ribbon(bvh_body, [(x, y, 2.5) for x in np.linspace(-0.62, 0.62, 15)], (0, 0, -1), 0.05))
+    else:
+        for y in (-1.24, -2.36):
+            tape.add(ribbon(bvh_can, [(x, y, 2.5) for x in np.linspace(-0.68, 0.68, 15)], (0, 0, -1), 0.05))
     ru = B()
     def vee(c, w, h, axis, s=1):
         u, v = c
@@ -1164,13 +1189,18 @@ def build():
     G, gh_doors = greenhouse(GL)
     H.add(G)
     print('  greenhouse', H.tris(), '%.1fs' % (time.time() - t0))
-    C, cdoor, cglass, chinge, bvh_can = canopy(GL)
-    H.add(C)
-    print('  canopy', H.tris(), '%.1fs' % (time.time() - t0))
+    bvh_can = None
+    if not ATGM:
+        C, cdoor, cglass, chinge, bvh_can = canopy(GL)
+        H.add(C)
+        print('  canopy', H.tris(), '%.1fs' % (time.time() - t0))
     H.add(front_end(GL))
     H.add(flares_and_trim())
-    H.add(roof_rack())
-    H.add(bed_kit())
+    if ATGM:
+        H.add(bed_deck())
+    else:
+        H.add(roof_rack())
+        H.add(bed_kit())
     H.add(chassis())
     I = interior()
     print('  interior tris', I.tris())
@@ -1180,8 +1210,13 @@ def build():
     zr = ROOF_Z + 0.10 + 0.015
     spc = (0.0, (ROOF_F + ROOF_R) / 2 - 0.12)
     sp = L._bcopy(Wp); sp.rot('Y', 90); sp.move(spc[0], spc[1], zr + WW / 2 + 0.002)
-    H.add(sp)
-    for a in (0, 90):
+    if ATGM:                     # the spare stands upright against the bed bulkhead (right-hand corner), one strap over it
+        sp = L._bcopy(Wp); sp.rot('Z', 90); sp.move(0.36, BED_Y[0] - WW / 2 - 0.03, BED_FLOOR + 0.058 + WR)
+        H.add(sp)
+        H.add(box(0.04, WW + 0.02, 0.01, c=(0.36, BED_Y[0] - WW / 2 - 0.03, BED_FLOOR + 0.058 + 2 * WR + 0.006), mat='canvas'))
+    else:
+        H.add(sp)
+    for a in (() if ATGM else (0, 90)):
         st = box(0.04, 2 * WR + 0.03, 0.01, c=(0, 0, 0), mat='canvas').move(0, 0, WW / 2 + 0.007).rot('Z', a)
         H.add(st.move(spc[0], spc[1], zr + WW / 2 + 0.002))
         for sgn in (1, -1):
@@ -1206,10 +1241,12 @@ def build():
     tgE = L.node_empty('tailgate', hullE, th, 0.1)
     tg_obj = L.node_mesh('tailgate_geo', tp, tgE, th)
     doors_man['tailgate'] = dict(axis='x', open=round(-math.radians(90), 3), parent='hull', note='hinge on the bottom edge, opens down to a flat loading shelf at bed-floor height')
-    cdE = L.node_empty('canopy_door', hullE, chinge, 0.1)
-    cd_obj = L.node_mesh('canopy_door_geo', cdoor, cdE, chinge)
-    glass_objs.append(L.node_mesh('canopy_door_glass', cglass, cdE, chinge))
-    doors_man['canopy_door'] = dict(axis='x', open=round(math.radians(85), 3), parent='hull', note='canopy rear lift door, hinge on the roof rear edge, swings up and back (opens together with the tailgate)')
+    cd_obj = None
+    if not ATGM:
+        cdE = L.node_empty('canopy_door', hullE, chinge, 0.1)
+        cd_obj = L.node_mesh('canopy_door_geo', cdoor, cdE, chinge)
+        glass_objs.append(L.node_mesh('canopy_door_glass', cglass, cdE, chinge))
+        doors_man['canopy_door'] = dict(axis='x', open=round(math.radians(85), 3), parent='hull', note='canopy rear lift door, hinge on the roof rear edge, swings up and back (opens together with the tailgate)')
     # ---- faction identification meshes: own materials (not in the atlas), never decimated
     idm = []
     for nm, part, col in (('id_tape', tape, (0.85, 0.85, 0.82)), ('id_ru', ru, (0.85, 0.85, 0.82))):
@@ -1254,13 +1291,21 @@ def build():
             L.node_empty(f'cab_door_{w}{tag}', hullE, (s * (BW + 0.15), (y0 + y1) / 2, 0.0), 0.1)
         L.node_empty(f'dismount_{tag}', hullE, (s * (BW + 0.75), 0.55, 0.0), 0.1)
     stretchers = []
-    for i, x in enumerate(LIT_X):
-        e = L.node_empty(f'stretcher_{i + 1}', hullE, (x, -1.80, LIT_Z), 0.12)
-        stretchers.append(e)
-    lp = L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
+    lp = None
+    if ATGM:
+        L.node_empty('atgm_mount', hullE, (0.0, MOUNT_Y, BED_FLOOR + 0.058), 0.15)          # on the deck, +Z = the truck's front
+        for i, (x, y) in enumerate(((-(BED_IN - 0.16), -1.95), (BED_IN - 0.16, -2.05))):   # spare TLCs on the deck along both walls (the right one behind the spare wheel)
+            L.node_empty(f'tlc_{i + 1}', hullE, (x, y, BED_FLOOR + 0.075), 0.1)
+        L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
+    else:
+        for i, x in enumerate(LIT_X):
+            e = L.node_empty(f'stretcher_{i + 1}', hullE, (x, -1.80, LIT_Z), 0.12)
+            stretchers.append(e)
+        lp = L.node_empty('load_point', hullE, (0.0, REAR - 0.85, 0.0), 0.12)
     print('  geometry done %.1fs' % (time.time() - t0))
-    lod0 = [hull_mesh] + door_objs + [tg_obj, cd_obj] + wheel_objs + glass_objs
-    return dict(root=root, hull=hullE, lod0=lod0, atlas=[hull_mesh] + door_objs + [tg_obj, cd_obj, wheel_objs[0], wheel_objs[2]],
+    tail = [tg_obj] + ([cd_obj] if cd_obj else [])
+    lod0 = [hull_mesh] + door_objs + tail + wheel_objs + glass_objs
+    return dict(root=root, hull=hullE, lod0=lod0, atlas=[hull_mesh] + door_objs + tail + [wheel_objs[0], wheel_objs[2]],
                 doors=door_objs, tg=tg_obj, cd=cd_obj, wheels=wheel_objs, doors_man=doors_man, stretchers=stretchers, load_point=lp,
                 bake_hide=glass_objs + idm, glass=glass_objs, nolod=glass_objs, idm=idm)
 
@@ -1283,7 +1328,7 @@ def wreck(d):
         ent = d['doors_man'][e.name]
         e.rotation_euler = (0, 0, ent['open'] * 0.25)
     bpy.context.view_layer.update()
-    hw = VB.join_copies('hull_wreck', [d['lod0'][0]] + d['doors'] + [d['tg'], d['cd']] + d['wheels'], root, (0, 0, 0),
+    hw = VB.join_copies('hull_wreck', [d['lod0'][0]] + d['doors'] + [d['tg']] + ([d['cd']] if d['cd'] else []) + d['wheels'], root, (0, 0, 0),
                         drop_slots=('tyre', 'glass', 'light', 'decal', 'wood'), drop_z=drop)
     for o in d['doors']:
         o.parent.rotation_euler = (0, 0, 0)
@@ -1302,6 +1347,8 @@ def rect_shape(hu, hv, r=0.025):
 def decals(P, N):
     """White panels with red crosses (painted / magnetic casevac signs): both front doors, both canopy sides behind the
     windows, the tailgate, the bonnet and the canopy roof.  Returns layers [(sRGB, mask, patchy)] for vbuild."""
+    if ATGM:
+        return []                # plain civilian white: no signs
     E = lambda p: (-p[0], -p[1], p[2])
     white = np.zeros(P.shape[:2], np.float32); red = np.zeros_like(white)
     def sign(c, n, up, hu, hv, arm, hw):
@@ -1329,10 +1376,20 @@ VB.SCHEMES['medevac_green'] = dict(base=(74, 82, 57), base2=(66, 74, 51), camo=N
                                    clean_kinds=('cast',))
 
 
+# --atgm: factory white under road dust and mud (the commonest pickup colour in the war zone), plywood deck, black trim
+VB.SCHEMES['technical_white'] = dict(base=(222, 222, 214), base2=(206, 206, 198), camo=None, dust=(150, 140, 118), mud=(96, 84, 66),
+                                     wear=0.6, dust_amt=1.25, mud_amt=1.3, fade=(232, 232, 226), rough_base=0.5,
+                                     kind_colors={'skirt': ((28, 28, 27), 0.7, 0.0), 'canvas': ((26, 26, 25), 0.92, 0.0),
+                                                  'era': ((150, 18, 14), 0.3, 0.0), 'cage': ((205, 110, 22), 0.2, 0.0),
+                                                  'cast': ((60, 60, 57), 0.7, 0.0), 'wood': ((152, 128, 92), 0.9, 0.0),
+                                                  'rim': ((30, 30, 29), 0.5, 0.3)},
+                                     clean_kinds=('cast',))
+
+
 def write_armor():
     """pickup_armor.json: sheet steel only (0.7-0.8 mm body panels, ~2-3 mm frame); the cab is not protected at all."""
     J = {
-        'model': NAME, 'vehicle': 'civilian double-cab pickup (casualty evacuation)',
+        'model': NAME, 'vehicle': 'civilian double-cab pickup (' + ('anti-tank missile carrier' if ATGM else 'casualty evacuation') + ')',
         'summary': 'Unarmoured: 0.7-0.8 mm body panels, glass, a ladder frame. Every small-arms round penetrates; any HEAT / '
                    'autocannon round destroys it. Tyres are soft-skinned; the engine bay and fuel tank catch fire easily.',
         'frame': 'armor.js: metres, x right, y up, z forward, origin on the ground at the hull centre; faces in mm RHA-equivalent vs a horizontal shot',
@@ -1385,7 +1442,7 @@ def main(argv):
         return
     VB.SOOT[:] = [((0.66, -2.1, 0.4), 0.18)]
     out = os.path.join(VB.REPO, 'previews', 'vehicles_v7', '_dev_' + NAME + '.glb') if dev else None
-    info = VB.finalize(d, NAME, 'medevac_green', decals, wreck, out=out, lod_ratio=0.3, glass_alpha=0.3)
+    info = VB.finalize(d, NAME, 'technical_white' if ATGM else 'medevac_green', decals, wreck, out=out, lod_ratio=0.3, glass_alpha=0.3)
     info['doors'] = d['doors_man']
     info['wheel_radius_m'] = WR
     info['steering'] = {'nodes': ['steer_L1', 'steer_R1'], 'axis': 'y', 'max_rad': 0.6, 'note': 'positive = steer to the vehicle left'}
@@ -1402,6 +1459,11 @@ def write_manifest(info):
     import fcntl
     man_path = os.path.join(VB.REPO, 'assets', 'vehicles', 'manifest.json')
     v = dict(STATIC)
+    if ATGM:
+        v.update(name='Pickup (ATGM carrier)', kind='atgmtruck', crew=3, passengers=0, casualty_slots=0,
+                 markings='factory white under dust and mud, no signs; faction ID meshes id_tape (two tape bands across the bonnet, tinted at runtime) and id_ru (white V marks, Russian trucks)',
+                 game=dict(hp_suggestion=160, game_speed=16.5, accel=5.0, turn_rate=1.35, note='unarmoured; fires its ATGM halted only'))
+        v['real_dimensions_m'] = dict(v['real_dimensions_m'], height_over_rack=None, launcher_line_m=2.14)
     v['file'] = f'assets/vehicles/{NAME}.glb'
     v['file_mb'] = info['file_mb']
     v['tris'] = dict(lod0=info['lod0_tris'], lod1=info['lod1_tris'], **info['wreck_tris'])
@@ -1414,7 +1476,9 @@ def write_manifest(info):
     v['wheel_radius_m'] = info['wheel_radius_m']
     v['steering'] = info['steering']
     v['ride_seats'] = {'count': 3, 'seat_type': 'cab', 'note': 'ride_seat_1 driver (front left, LHD), 2 front passenger, 3 rear right; origin = H-point on the cushion, +Z forward'}
-    v['casualty_slots'] = {'nodes': ['stretcher_1', 'stretcher_2', 'stretcher_3'], 'note': 'origin on the bed floor; local +Z points to the tailgate, so a casualty lying on his back with the head along -Z lies head towards the cab',
+    if ATGM:
+        v['atgm_mount'] = {'node': 'atgm_mount', 'note': 'on the plywood deck in the bed, +Z = the truck front: parent the Kornet / Stugna-P launcher (assets/soldiers/kornet.glb / stugna.glb, tripod deployed) here; tlc_1 / tlc_2 = spare missile containers on the deck along the bed walls'}
+    v['casualty_slots'] = {} if ATGM else {'nodes': ['stretcher_1', 'stretcher_2', 'stretcher_3'], 'note': 'origin on the bed floor; local +Z points to the tailgate, so a casualty lying on his back with the head along -Z lies head towards the cab',
                            'load_point': 'ground behind the open tailgate, +Z faces the truck (medic loading position)'}
     v['hierarchy'] = info['hierarchy']
     with open(man_path + '.lock', 'w') as lk:
