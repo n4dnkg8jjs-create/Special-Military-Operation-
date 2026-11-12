@@ -205,7 +205,10 @@ export class MenuScene {
       const o = t.clone(true); o.position.set(0, 0, 0); const g = new THREE.Group(); g.add(o); g.position.set(x, y, z); g.rotation.set(rx, ry, 0, 'YXZ'); scene.add(g);
       const bag = /sandbag/.test(name), dm = m => dirty(m, bag ? 1.9 : 0.8, bag ? 0.1 : 0.3);
       g.traverse(q => { if (q.isMesh) { q.frustumCulled = false; q.material = Array.isArray(q.material) ? q.material.map(dm) : dm(q.material); } if (/_lod1$/i.test(q.name)) q.visible = false; });
+      return g;
     };
+    /* (v14) everything stood in the trench is registered with its box and the height it is meant to rest on: clipCheck() below */
+    const props = this.props = [], reg = (name, o, on = null, soft = false) => { o.updateWorldMatrix(true, true); const box = new THREE.Box3().setFromObject(o); props.push({ name, box, on, soft }); return box; };
     // a point d metres to the men's side of the crest at x, and the yaw that faces a piece out of the wall
     const at = (x, d) => { const [nx, nz] = crestN(x); return [x + nx * d, crestZ(x) + nz * d, Math.atan2(nx, nz)]; };
     const face = () => WALL;                                                                   /* the cut face's distance from the crest line */
@@ -222,8 +225,12 @@ export class MenuScene {
         { const g = x.createLinearGradient(0, 0, 0, N); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.72, 'rgba(30,26,20,0)'); g.addColorStop(1, 'rgba(30,26,20,0.5)'); x.fillStyle = g; x.fillRect(0, 0, N, N); }   /* damp and dirt low down */
         /* (v13: no drawn creases - they read as scratches. The sack's form is in its shape; the cloth darkens towards its edges and seams, as a filled bag's does where it turns under) */
         { const g = x.createRadialGradient(N / 2, N / 2, N * 0.18, N / 2, N / 2, N * 0.74); g.addColorStop(0, 'rgba(20,17,12,0)'); g.addColorStop(0.7, 'rgba(20,17,12,0.22)'); g.addColorStop(1, 'rgba(20,17,12,0.6)'); x.fillStyle = g; x.fillRect(0, 0, N, N); }
-        const map = new THREE.CanvasTexture(cc), bump = new THREE.CanvasTexture(bc); map.colorSpace = THREE.SRGBColorSpace; for (const t of [map, bump]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; } return { map, bump }; })();
-      const bagM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, map: tex.map, bumpMap: tex.bump, bumpScale: 0.9 });
+        /* (v14) roughness: the polypropylene tapes of the weave catch a little light where they are clean; mud, damp and the worn gaps between them are dead matt */
+        const rc = mk(), z = rc.getContext('2d'); z.fillStyle = '#e6e6e6'; z.fillRect(0, 0, N, N); for (let i = 0; i < N; i += 4) { z.fillStyle = '#a2a2a2'; z.fillRect(i + 1, 0, 2, N); z.fillRect(0, i + 1, N, 2); z.fillStyle = '#ffffff'; z.fillRect(i, 0, 1, N); z.fillRect(0, i, N, 1); }
+        for (let i = 0; i < 30; i++) { const px = Q() * N, py = Q() * N, r = 16 + Q() * 50, g = z.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(1, 'rgba(255,255,255,0)'); z.fillStyle = g; z.fillRect(px - r, py - r, 2 * r, 2 * r); }
+        { const g = z.createLinearGradient(0, 0, 0, N); g.addColorStop(0.6, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,0.9)'); z.fillStyle = g; z.fillRect(0, 0, N, N); }
+        const map = new THREE.CanvasTexture(cc), bump = new THREE.CanvasTexture(bc), rough = new THREE.CanvasTexture(rc); map.colorSpace = THREE.SRGBColorSpace; for (const t of [map, bump, rough]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; } return { map, bump, rough }; })();
+      const bagM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, roughnessMap: tex.rough, map: tex.map, bumpMap: tex.bump, bumpScale: 0.9 });
       const sack = seed => { const Q = rng(seed), g = new THREE.BoxGeometry(2, 2, 2, 14, 6, 8), p = g.attributes.position, tie = Q() < 0.5 ? 1 : -1, a1 = Q() * 6, a2 = Q() * 6, sag = 0.05 + Q() * 0.12, fill = 0.82 + Q() * 0.22;
         for (let i = 0; i < p.count; i++) { let x = p.getX(i), y = p.getY(i), z = p.getZ(i); const n = (x ** 6 + y ** 4 + z ** 4) ** 0.25 || 1, k = 1 / Math.max(1, n * 0.92); x *= k; y *= k; z *= k;
           const t = Math.max(0, x * tie - 0.62) / 0.38, sw = Math.max(0, -x * tie - 0.74) / 0.26;                              /* towards the tied mouth / the sewn end */
@@ -234,35 +241,81 @@ export class MenuScene {
           z += 0.05 * Math.sin(x * 2.6 + a1) * (1 - sw); p.setXYZ(i, x, y, z); }
         g.computeVertexNormals(); return g; };
       const BL = 0.56, BH = 0.075, y0 = x => FY + crestH(x) + 0.035 + BH * 0.8, G = [sack(11), sack(23), sack(37), sack(52)], lists = G.map(() => []);
-      const lay = (x, k) => { const v = Math.floor(R() * 4), [px, pz] = at(x + (R() - 0.5) * 0.05, face(x) - 0.27 + (R() - 0.5) * 0.06), sh = 0.8 + R() * 0.3, ol = R() < 0.28;
-        lists[v].push([new THREE.Matrix4().compose(new THREE.Vector3(px, y0(x) + k * (1.55 * BH) + (R() - 0.5) * 0.008, pz + k * (0.02 + (R() - 0.5) * 0.04)), new THREE.Quaternion().setFromEuler(new THREE.Euler((R() - 0.5) * (0.06 + k * 0.1), (R() - 0.5) * (0.16 + k * 0.16) + (R() < 0.5 ? Math.PI : 0), (R() - 0.5) * (0.04 + k * 0.08), 'YXZ')), new THREE.Vector3(BL / 2 * (0.97 + R() * 0.09), BH * (0.9 + R() * 0.25), 0.15 * (0.92 + R() * 0.16))),
+      /* one sack: centre, yaw of the wall there (the bend turns them), course k (0 = on the crest / the floor) */
+      const bag = (px, py, pz, ry, k, loose = 1) => { const v = Math.floor(R() * 4), sh = 0.8 + R() * 0.3, ol = R() < 0.28;
+        lists[v].push([new THREE.Matrix4().compose(new THREE.Vector3(px, py + (R() - 0.5) * 0.008, pz), new THREE.Quaternion().setFromEuler(new THREE.Euler((R() - 0.5) * (0.06 + k * 0.08) * loose, ry + (R() - 0.5) * (0.16 + k * 0.14) * loose + (R() < 0.5 ? Math.PI : 0), (R() - 0.5) * (0.04 + k * 0.06) * loose, 'YXZ')), new THREE.Vector3(BL / 2 * (0.97 + R() * 0.09), BH * (0.9 + R() * 0.25), 0.15 * (0.92 + R() * 0.16))),
           ol ? [0.5 * sh, 0.54 * sh, 0.36 * sh] : [0.9 * sh, 0.85 * sh, 0.7 * sh]]); };
-      for (let x = REV[1] - 0.2; x > REV[0] + 0.2; x -= BL * (0.9 + R() * 0.08)) if (!(x > 0.7 && x < 2.2)) lay(x, 0);
-      for (let x = REV[1] - 0.2 - BL / 2; x > 5.0; x -= BL * (0.92 + R() * 0.1)) if (R() < 0.9) lay(x, 1);
-      lists.forEach((L, v) => { if (!L.length) return; const im = new THREE.InstancedMesh(G[v], bagM, L.length), c = new THREE.Color(); L.forEach(([M, col], i) => { im.setMatrixAt(i, M); im.setColorAt(i, c.setRGB(col[0], col[1], col[2])); }); im.frustumCulled = false; scene.add(im); });
-      this.bagTop = x => y0(x) + BH * 0.95; }
-    // (v13) the stretch behind the watcher is held up with what was to hand: a sheet of plywood and a pallet stood against the
-    // earth, their feet dug in (the kit's pieces, 1.25 / 1.2 m tall: sunk until their tops are level with the wall's), leaning back on it
-    { const [px, pz, ry] = at(1.42, face(1.42) + 0.045); P('rv_ply', px, FY - 0.36, pz, ry, -0.035); }
-    { const [px, pz, ry] = at(2.28, face(2.28) + 0.075); P('rv_pallet', px, FY - 0.31, pz, ry, -0.03); }
-    // an opened crate stack of ammunition on the duckboards at the foot of the wall, loaded magazines left on its lid
-    { const cx = 3.2, [px, pz, ry] = at(cx, face(cx) + 0.27 + 0.36); P('ammo_crates', px, FY + 0.09, pz, ry);
-      const mg = new THREE.BoxGeometry(0.2, 0.028, 0.062, 8, 1, 1); { const q = mg.attributes.position; for (let i = 0; i < q.count; i++) { const x = q.getX(i); q.setZ(i, q.getZ(i) + 0.9 * x * x); } mg.computeVertexNormals(); }   /* the AK magazine's curve */
-      const mags = new THREE.InstancedMesh(mg, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), 4), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
-      [[0.55, 0.02, 0.4, 0x15130f], [0.72, -0.06, -0.5, 0x15130f], [0.66, 0.1, 1.3, 0x4a2412], [0.98, -0.02, 0.1, 0x15130f]].forEach(([dx, dz, yaw, col], i) => { mags.setMatrixAt(i, M.compose(new THREE.Vector3(px + dx, FY + 0.09 + 0.61 + 0.014, pz + 0.1 + dz), q.setFromEuler(e.set(0, yaw, 0)), new THREE.Vector3(1, 1, 1))); mags.setColorAt(i, c.setHex(col)); });
-      mags.frustumCulled = false; scene.add(mags); }
-    for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); P('floor_planks', px, FY + 0.045, pz, ry); }
-    { const [px, pz] = at(4.75, face(4.75) + 0.24 + 0.5); P('ammo_crates', px, FY + 0.09, pz, 0.12); }
+      const lay = (x, k) => { const [px, pz, ry] = at(x + (R() - 0.5) * 0.05, face(x) - 0.27 + (R() - 0.5) * 0.06 - k * 0.025); bag(px, y0(x) + k * (1.55 * BH), pz, ry, k); };
+      const run = (x0, x1, k, skip = 0.1) => { for (let x = x0; x > x1; x -= BL * (0.9 + R() * 0.09) / crestN(x)[2]) if (R() >= skip) lay(x, k); };
+      /* the parapet: one course along the whole revetted stretch (a gap where the watcher looks out), a second bonded over its
+         joints on both sides of the men and at the far end, a third on part of that; where the RPG-22 lies it stays one course */
+      for (let x = REV[1] - 0.2; x > 2.2; x -= BL * (0.9 + R() * 0.08)) { lay(x, 0); this.bagLeft = x; }
+      run(REV[1] - 0.2 - BL / 2, 5.05, 1); run(REV[1] - 0.5, 6.0, 2, 0.15);
+      run(3.75, 2.5, 1, 0);
+      /* (v14) the corner: bags built up round the bend where the wall has no revetment - three courses, stepped, following the turn */
+      run(0.62, -1.75, 0, 0); run(0.62 - BL / 2, -1.5, 1, 0); run(0.2, -1.05, 2, 0.1);
+      this.bagRuns = [[2.2, REV[1]], [-1.75, 0.62]];
+      /* spare filled sacks stacked on the duckboards against the far stretch of the wall: three, two on their joints, one on top */
+      this.bagStack = (x0, yb, zc) => { [[0, 0], [1, 0], [2, 0], [0.5, 1], [1.5, 1], [1, 2]].forEach(([i, k]) => bag(x0 + i * BL * 1.02, yb + BH * 0.8 + k * 1.55 * BH, zc + (R() - 0.5) * 0.03, 0, k, 0.5)); };
+      this.bagFlush = () => {
+      lists.forEach((L, v) => { if (!L.length) return; const im = new THREE.InstancedMesh(G[v], bagM, L.length), c = new THREE.Color(); L.forEach(([M, col], i) => { im.setMatrixAt(i, M); im.setColorAt(i, c.setRGB(col[0], col[1], col[2])); }); im.frustumCulled = false; scene.add(im); }); };
+      this.bagTop = x => y0(x) + BH * 0.95; this.bagDim = [BL, BH]; }
+    // (v14) Everything below is placed from measured boxes, not from guessed sizes (v13: the kit's crate stack is 1.1 m wide and
+    // stood in the sitting man's arm; the magazines lay 15 cm over its lid; the plywood stood inside the foot of the earth face,
+    // which is not plumb: it runs out 7 cm - and a mesh cell - towards the men at the floor).
+    const FL = FY + 0.035, wood = (() => { const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'), Q = rng(91);
+      x.fillStyle = '#d9c08e'; x.fillRect(0, 0, N, N);
+      for (let i = 0; i < 520; i++) { const y = Q() * N, w = 30 + Q() * 200, x0 = Q() * N; x.fillStyle = `rgba(${Q() < 0.5 ? '96,66,34' : '214,186,138'},${0.05 + Q() * 0.13})`; x.fillRect(x0, y, w, 1 + Q() * 1.6); x.fillRect(x0 - N, y, w, 1 + Q() * 1.6); }   /* veneer grain */
+      for (let i = 0; i < 7; i++) { const px = Q() * N, py = Q() * N, r = 3 + Q() * 6; x.fillStyle = 'rgba(70,46,24,0.55)'; x.beginPath(); x.ellipse(px, py, r * 1.7, r, 0, 0, 7); x.fill(); }   /* knots */
+      for (let i = 0; i < 14; i++) { const px = Q() * N, py = N * (0.35 + Q() * 0.65), r = 14 + Q() * 44, g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, `rgba(58,46,34,${0.25 + Q() * 0.3})`); g.addColorStop(1, 'rgba(58,46,34,0)'); x.fillStyle = g; x.fillRect(px - r, py - r, 2 * r, 2 * r); }   /* damp, mud thrown up */
+      { const g = x.createLinearGradient(0, 0, 0, N); g.addColorStop(0.62, 'rgba(44,34,24,0)'); g.addColorStop(1, 'rgba(44,34,24,0.6)'); x.fillStyle = g; x.fillRect(0, 0, N, N); }
+      x.strokeStyle = 'rgba(40,30,20,0.7)'; x.lineWidth = 3; x.strokeRect(1, 1, N - 2, N - 2);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; })();
+    const plyM = new THREE.MeshStandardMaterial({ map: wood, color: 0xffffff, roughness: 0.88, emissive: 0x2a2418, emissiveMap: wood })   /* (pale new board: it has to read against the wet earth at dusk) */, stakeM = new THREE.MeshStandardMaterial({ map: wood, color: 0x6f6252, roughness: 1 });
+    const solid = (name, geo, mat, x, y, z, ry = 0, rx = 0, on = null) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, 0, 'YXZ'); m.frustumCulled = false; scene.add(m); reg(name, m, on); return m; };
+    // a cut sheet of plywood stood against the earth between the two men, its foot dug in, leaning back on the wall; two stakes
+    // driven into the floor in front of it hold it there. The face it shows stands 13 cm clear of the cut (see above).
+    { const sx = 2.1, sd = WALL + 0.135, H = 0.9, lean = 0.055, zc = crestZ(sx) + sd;
+      solid('plywood', new THREE.BoxGeometry(1.22, H, 0.018), plyM, sx, FL - 0.05 + H / 2, zc, 0, -lean);
+      this.plyFront = zc + 0.009 + 0.012;   /* (its face at the height the rifle's fore-end meets it) */
+      for (const dx of [-0.42, 0.44]) solid('stake', new THREE.BoxGeometry(0.05, 1.05, 0.05), stakeM, sx + dx, FL - 0.2 + 0.525, zc + 0.009 + lean * H / 2 + 0.03, 0.2 * dx); }
+    // duckboards along the foot of the wall (the kit's piece), measured: the crates and the spare sacks stand on them
+    const boards = []; for (let x = 6.4; x > REV[0] + 0.9; x -= 2.17) { const [px, pz, ry] = at(x, face(x) + 0.24 + 0.77 - 0.2); boards.push(reg('duckboard', P('floor_planks', px, FY + 0.045, pz, ry), null, true)); }
+    const boardAt = x => boards.find(b => x > b.min.x + 0.05 && x < b.max.x - 0.05) || boards[0];
+    this.boardTop = boards.length ? Math.max(...boards.map(b => b.max.y)) : FL;
+    // ammunition: three wooden 5.45 crates (48.8 x 35 x 16.3 cm, as issued: 2160 rounds in two tins) on the duckboards well to
+    // the right of the sitting man - two side by side, one across them - and loaded magazines left on the top one
+    { const N = 256, c = document.createElement('canvas'); c.width = N; c.height = N / 2; const x = c.getContext('2d'), Q = rng(123);
+      x.fillStyle = '#4b5237'; x.fillRect(0, 0, N, N / 2);
+      for (let i = 0; i < 260; i++) { x.fillStyle = `rgba(${Q() < 0.5 ? '30,34,22' : '104,110,80'},${0.05 + Q() * 0.12})`; x.fillRect(Q() * N, Q() * N / 2, 20 + Q() * 90, 1); }      /* brushed paint over the grain */
+      x.fillStyle = 'rgba(18,20,14,0.85)'; for (const y of [42, 85]) x.fillRect(0, y, N, 2);                                                                              /* three boards */
+      x.fillStyle = 'rgba(40,44,30,0.9)'; for (const px of [10, N - 34]) { x.fillRect(px, 0, 24, N / 2); x.fillStyle = 'rgba(16,18,12,0.9)'; x.fillRect(px, 0, 1, N / 2); x.fillRect(px + 23, 0, 1, N / 2); x.fillStyle = 'rgba(40,44,30,0.9)'; }   /* end battens */
+      x.fillStyle = 'rgba(12,12,10,0.85)'; x.font = 'bold 15px monospace'; x.fillText('5,45 \u041f\u0421 \u0433\u0441', 52, 28); x.font = '11px monospace'; x.fillText('2160 \u0448\u0442', 52, 66); x.fillText('\u0411\u0420\u0423\u0422\u0422\u041e 29 \u043a\u0433', 52, 112); x.fillText('17-83-270', 150, 66);   /* stencils */
+      for (let i = 0; i < 40; i++) { x.fillStyle = `rgba(150,140,112,${0.1 + Q() * 0.25})`; x.fillRect(Q() * N, Q() * N / 2, 2 + Q() * 9, 1 + Q() * 1.5); }                 /* knocks through to the wood */
+      { const g = x.createLinearGradient(0, 0, 0, N / 2); g.addColorStop(0.55, 'rgba(60,48,34,0)'); g.addColorStop(1, 'rgba(60,48,34,0.6)'); x.fillStyle = g; x.fillRect(0, 0, N, N / 2); }   /* mud low down */
+      const ct = new THREE.CanvasTexture(c); ct.colorSpace = THREE.SRGBColorSpace; ct.anisotropy = 8;
+      const crM = new THREE.MeshStandardMaterial({ map: ct, color: 0xd8d8d0, roughness: 0.92 }), CG = new THREE.BoxGeometry(0.488, 0.163, 0.35), cx = 4.08, bd = boardAt(cx), by = bd.max.y, cz = bd.min.z + 0.05 + 0.175;
+      solid('crate', CG, crM, cx - 0.255, by + 0.0815, cz, 0.03, 0, by); solid('crate', CG, crM, cx + 0.255, by + 0.0815, cz + 0.01, -0.04, 0, by);
+      const top = solid('crate', CG, crM, cx + 0.03, by + 0.163 + 0.0815, cz + 0.005, 0.11, 0, by + 0.163), ty = by + 0.326;
+      const mg = new THREE.BoxGeometry(0.2, 0.028, 0.062, 8, 1, 1); { const q = mg.attributes.position; for (let i = 0; i < q.count; i++) { const mx = q.getX(i); q.setZ(i, q.getZ(i) + 0.9 * mx * mx); } mg.computeVertexNormals(); }   /* the AK magazine's curve */
+      [[-0.15, 0.07, 0.4, 0x15130f], [0.02, -0.105, -0.5, 0x15130f], [0.17, 0.07, 1.3, 0x4a2412]].forEach(([dx, dz, yaw, col]) => solid('magazine', mg, new THREE.MeshStandardMaterial({ color: col, roughness: 0.6 }), top.position.x + dx, ty + 0.014, top.position.z + dz, yaw, 0, ty));
+      /* and an opened tin of the same lot on the end sack of the parapet beside the watcher, pressed into it, a magazine on it */
+      { const tx = this.bagLeft ?? 2.3, [px, pz] = at(tx, face(tx) - 0.27), ys = this.bagTop(tx) - 0.014, TG = new THREE.BoxGeometry(0.357, 0.103, 0.153);
+        solid('ammo tin', TG, new THREE.MeshStandardMaterial({ map: ct, color: 0xb9beb4, roughness: 0.6, metalness: 0.1 }), px, ys + 0.0515, pz, 0.12);
+        solid('magazine', mg, new THREE.MeshStandardMaterial({ color: 0x15130f, roughness: 0.6 }), px + 0.02, ys + 0.103 + 0.014, pz + 0.01, 0.9, 0, ys + 0.103); }
+      /* the spare sacks, further along the same boards */
+      const b2 = boardAt(6.3); this.bagStack(5.85, b2.max.y, b2.min.z + 0.2); }
+    this.bagFlush();
     // clods fallen from the wall and the parapet, mud trodden onto the boards
     // (v9) the earth that came out of the wall where the revetment ends: one slumped pile at the foot of the bare face, its toe
     // spread on the floor - a heap, not scattered lumps (the clods below are the few that rolled off it)
-    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = 0.25, pz = crestZ(0.5) + 0.6, hx = 1.35, hz = 0.95, hh = 0.46, nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
+    { const N = 26, K = 40, pos = [], uv = [], col = [], idx = [], px = -0.05, pz = crestZ(-0.05) + 0.72, hx = 0.72, hz = 0.8, hh = 0.42,   /* (v14: it ran under the kneeling man's leg - smaller, further round the bend) */ nz = (a, b) => Math.sin(a * 3.1 + b * 1.7) * 0.5 + Math.sin(a * 7.3 - b * 5.1) * 0.25 + Math.sin(a * 13.7 + b * 11.3) * 0.12;
       for (let i = 0; i <= N; i++) for (let j = 0; j < K; j++) { const r = i / N, a = j / K * 6.2832, lob = 1 + 0.16 * Math.sin(a * 3 + 0.7) + 0.09 * Math.sin(a * 5 + 2.1), x = px + Math.cos(a) * r * hx * lob, z = pz + Math.sin(a) * r * hz * lob - 0.22 * (1 - r) /* (leaning into the wall) */;
         const y = FY + 0.03 + hh * Math.pow(1 - r * r, 0.85) * (0.8 + 0.3 * nz(x * 0.9, z * 1.1) + 0.12 * nz(x * 2.9, z * 2.1)) * (1 + 0.25 * Math.cos(a - 1.2)) + 0.025 * nz(x * 4.3, z * 3.7) * (1 - r * r) - 0.05 * r * r;   /* (v13: broad and lumpy, higher against the wall - it stood there as a smooth cone) */
         pos.push(x, y, z); uv.push(x / 2.2, z / 2.2 + y); const k = 0.82 + 0.3 * (y - FY) + 0.08 * nz(x * 1.9, z * 2.4); col.push(k, k * 0.97, k * 0.93); }
       for (let i = 0; i < N; i++) for (let j = 0; j < K; j++) { const a = i * K + j, b = i * K + (j + 1) % K, c = a + K, d = b + K; idx.push(a, b, c, b, d, c); }   /* (facing up: wound the other way it was lit from inside and showed as a black dome) */
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-      const pile = new THREE.Mesh(g, this.soilMat); pile.frustumCulled = false; scene.add(pile); }
+      const pile = new THREE.Mesh(g, this.soilMat); pile.frustumCulled = false; scene.add(pile); props.push({ name: 'earth pile', box: new THREE.Box3(new THREE.Vector3(px - hx * 0.8, FY, pz - hz * 0.8), new THREE.Vector3(px + hx * 0.8, FY + hh * 0.6, pz + hz * 0.8)), on: null, soft: true }); }
     const clG = new THREE.IcosahedronGeometry(1, 1); clG.setAttribute('color', new THREE.BufferAttribute(new Float32Array(clG.attributes.position.count * 3).fill(0.9), 3));   /* (the soil material takes vertex colours: without them the clods were black) */
     const cl = new THREE.InstancedMesh(clG, this.soilMat, 260), M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
     cl.count = 22;
@@ -276,6 +329,16 @@ export class MenuScene {
     const sm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mm, 34);
     for (let i = 0; i < 34; i++) { const x = 1.2 + R() * 6, d = face(x) + 0.3 + R() * 1.4, [px, pz] = at(x, d); sm.setMatrixAt(i, M.compose(new THREE.Vector3(px, FY + 0.112, pz), q.setFromEuler(e.set(0, R() * 6, 0)), new THREE.Vector3(0.35 + R() * 0.5, 1, 0.25 + R() * 0.35))); }
     sm.frustumCulled = false; sm.renderOrder = 1; scene.add(sm);
+  }
+  // (v14, dev) the clipping check: every registered piece against the height it should rest on, against the other pieces, and
+  // against the two men (their bones, with a limb's thickness). Returns the list of faults; [] = clean. window.__menuScene.clipCheck()
+  clipCheck() {
+    const out = [], B = this.props || [], v = new THREE.Vector3(), I = new THREE.Box3();
+    for (const p of B) if (p.on != null && Math.abs(p.box.min.y - p.on) > 0.02) out.push(`${p.name}: ${(p.box.min.y - p.on > 0 ? 'floats ' : 'sunk ')}${Math.abs(p.box.min.y - p.on).toFixed(3)} m`);
+    for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) { const a = B[i], b = B[j]; if (a.soft || b.soft || !a.box.intersectsBox(b.box)) continue; I.copy(a.box).intersect(b.box); const d = I.max.clone().sub(I.min); if (Math.min(d.x, d.y, d.z) > 0.012) out.push(`${a.name} x ${b.name}: ${(Math.min(d.x, d.y, d.z) * 100).toFixed(1)} cm into each other`); }
+    (this.men || []).forEach((s, k) => { const hit = new Map(); s.m.updateWorldMatrix(true, true); s.m.traverse(o => { if (!o.isBone || /twist|socket|_end$/i.test(o.name)) return; o.getWorldPosition(v); for (const p of B) { if (p.name === 'duckboard') continue; I.copy(p.box).expandByScalar(0.06); if (I.containsPoint(v)) hit.set(p.name, (hit.get(p.name) || []).concat(o.name)); } }); for (const [n, l] of hit) out.push(`man ${k} (${k ? 'sitting' : 'kneeling'}) x ${n}: ${l.slice(0, 4).join(', ')}`);
+      const w = s.m.getObjectByName('weapon_socket')?.children[0]; if (w) { I.setFromObject(w).expandByScalar(-0.03); for (const p of B) if (!p.soft && I.intersectsBox(p.box)) out.push(`man ${k}'s rifle x ${p.name}`); } });
+    return out;
   }
   // an RPG-22 laid ready on the parapet beside the men (on the sandbags, along the trench)
   launcher(scene, g) {
@@ -362,7 +425,19 @@ export class MenuScene {
       for (let i = 0; i < Math.min(6, CR.length); i++) { const c = CR[(i * 3) % CR.length]; heap(c[0], c[1], 3 + Math.floor(R() * 3)); }
       for (const [x, z] of [[-30, -31], [-58, -62], [44, -84], [-88, -104], [-16, -25], [-9, -41], [-40, -52]]) heap(x, z, 3 + Math.floor(R() * 3));
       for (const [x, z, yaw, n] of [[-50, -38, 0.12, 3], [6, -76, -0.2, 3], [-24, -120, 0.05, 4], [72, -58, 0.3, 2], [-44, -27, -0.1, 3]]) for (let i = 0; i < n; i++) coil(x + i * 5.9 * Math.cos(yaw), z - i * 5.9 * Math.sin(yaw), yaw + (R() - 0.5) * 0.12, 6, R() < 0.25 ? 0.4 : R() * 0.1, n === 1 ? 0.99 : i === 0 ? 0.05 : i === n - 1 ? 0.92 : R() < 0.2 ? 0.3 + R() * 0.4 : 0);
-      const wm = new THREE.InstancedMesh(coilGeo(1), wireMats()[0], coils.length); coils.forEach((M, i) => { wm.setMatrixAt(i, M); wm.setColorAt(i, cols[i]); }); wm.frustumCulled = false; pixHook(wm); scene.add(wm); }
+      /* (v14) the position's own wire, 12-14 m out from the parapet where the eye falls on the field: two rows of concertina on
+         steel pickets, shelled - lengths crushed, a gap blown through, sprung ends; heaps of it thrown aside; a row of
+         hedgehogs beyond. (The loose coils further out were all there was: at 30-100 m in this light nobody saw them.) */
+      const pk = [], belt = (x0, z0, n, yaw, gap) => { for (let i = 0; i < n; i++) { const x = x0 + i * 5.9 * Math.cos(yaw), z = z0 - i * 5.9 * Math.sin(yaw); if (i === gap) { heap(x + 3, z + 1.5, 3); continue; } coil(x, z, yaw + (R() - 0.5) * 0.1, 6, R() < 0.3 ? 0.35 + R() * 0.3 : R() * 0.08, i === gap - 1 ? 0.9 : i === gap + 1 ? 0.06 : 0); for (const t of [0, 3]) pk.push([x + t * Math.cos(yaw), z - t * Math.sin(yaw)]); } };
+      belt(-39, -20.2, 11, 0.03, 4); belt(-36, -21.7, 10, 0.025, 6);
+      heap(-9.5, -16.4, 5); heap(4.2, -17.3, 4); heap(-21, -15.6, 4); heap(-30, -17.8, 3);
+      const wm = new THREE.InstancedMesh(coilGeo(1), wireMats()[0], coils.length); coils.forEach((M, i) => { wm.setMatrixAt(i, M); wm.setColorAt(i, cols[i]); }); wm.frustumCulled = false; pixHook(wm); scene.add(wm);
+      const steel = new THREE.MeshStandardMaterial({ color: 0x2b241e, roughness: 0.85, metalness: 0.3 });
+      const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.035, 1.25, 0.035).translate(0, 0.5, 0), steel, pk.length); pk.forEach(([x, z], i) => pm.setMatrixAt(i, new THREE.Matrix4().compose(V(x, gy(x, z) - 0.02, z), new THREE.Quaternion().setFromEuler(E.set((R() - 0.5) * 0.3, R() * 6, (R() - 0.5) * 0.3)), V(1, 0.85 + R() * 0.25, 1)))); pm.frustumCulled = false; scene.add(pm);
+      /* hedgehogs: three 1.5 m lengths of I-beam bolted at right angles, standing on three ends (the rotation that stands the cube diagonal up) */
+      { const q0 = new THREE.Quaternion().setFromUnitVectors(V(1, 1, 1).normalize(), V(0, 1, 0)), parts = [[0, 0, 0], [0, 0, Math.PI / 2], [Math.PI / 2, 0, 0]].map(([rx, ry, rz]) => new THREE.BoxGeometry(0.12, 1.5, 0.1).applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz))).applyQuaternion(q0));
+        const HG = [[-17, -25.5], [-11.5, -27], [-5.5, -25.2], [1, -27.4], [7.5, -25.8], [-24, -27.2], [14, -27]], hm = parts.map(g => new THREE.InstancedMesh(g, steel, HG.length));
+        HG.forEach(([x, z], i) => { const M = new THREE.Matrix4().compose(V(x, gy(x, z) + 0.41, z), new THREE.Quaternion().setFromEuler(E.set((R() - 0.5) * 0.12, R() * 6.28, (R() - 0.5) * 0.12)), V(1, 1, 1)); for (const m of hm) m.setMatrixAt(i, M); }); for (const m of hm) { m.frustumCulled = false; scene.add(m); } } }
     // ---- panel blocks: front facade (to the viewer) and both ends from kit pieces, a roof slab and a dark core behind them
     const W = 3.2, H = 2.8, dark = new THREE.MeshBasicMaterial({ color: 0x060606 }), roofM = new THREE.MeshStandardMaterial({ color: 0x1b1a19, roughness: 0.9 });
     const block = (xc, zf, bays, floors, kind, hit = 0) => {
@@ -423,6 +498,10 @@ export class MenuScene {
       this.soot.forEach(([x_, y_, z_, w, h], i) => sm.setMatrixAt(i, M4.compose(V(x_, y_, z_), Q.identity(), V(w, h, 1)))); sm.frustumCulled = false; scene.add(sm);
     }
     for (const [x, y, z, sz, roof, quiet] of this.fires) this.addFire(scene, x, y, z, sz, roof, quiet);
+    /* (v14) shells falling in the town again: a flash, the burst of dirt and smoke thrown up, the cloud leaning away on the wind
+       and thinning out over ten seconds; one every few seconds somewhere among the houses and blocks, now and then a pair */
+    { const fm = new THREE.SpriteMaterial({ map: this.dot('255,214,160'), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false, opacity: 0 }), sm = new THREE.SpriteMaterial({ map: this.dot('46,42,38'), depthWrite: false, transparent: true, opacity: 0 });
+      this.blasts = Array.from({ length: 5 }, () => { const f = new THREE.Sprite(fm.clone()), c = new THREE.Sprite(sm.clone()), d = new THREE.Sprite(sm.clone()); for (const q of [f, c, d]) { q.visible = false; scene.add(q); } return { f, c, d, t: 99 }; }); this.blastT = 2.5; }
     this.townIn = true; this._full = setTimeout(() => { this.full = true; }, 1800);   /* the painted town goes now */
     if (window.__menu3d) window.__menu3d.town = bins.size;
   }
@@ -448,7 +527,7 @@ export class MenuScene {
     const rw = b.m.getObjectByName('weapon_socket')?.children[0];
     if (rw) {
       // butt on the duckboard 0.66 m out from the logs, the fore-end resting on them: 18 deg off the vertical, magazine to the viewer
-      const bx = 2.85 - 0.7, bz = crestZ(bx) + WALL + 0.24 + 0.025 + 0.29, by = FY + 0.11, zm = new THREE.Vector3(0, 0.949, -0.316), ym = new THREE.Vector3(0, -0.316, -0.949), xm = new THREE.Vector3().crossVectors(ym, zm);
+      const bx = 2.85 - 0.7, bz = (this.plyFront ?? crestZ(bx) + WALL + 0.24) + 0.025 + 0.29, by = (this.boardTop ?? FY + 0.105) + 0.005,   /* (v14: against the plywood sheet that stands there now, butt on the boards) */ zm = new THREE.Vector3(0, 0.949, -0.316), ym = new THREE.Vector3(0, -0.316, -0.949), xm = new THREE.Vector3().crossVectors(ym, zm);
       scene.add(rw); rw.matrix.makeBasis(xm, ym, zm); rw.matrix.decompose(rw.position, rw.quaternion, rw.scale); rw.scale.set(1, 1, 1); rw.position.set(bx, by, bz).addScaledVector(zm, 0.34).addScaledVector(ym, 0.04);
       rw.traverse(o => { o.frustumCulled = false; });
     }
@@ -500,6 +579,16 @@ export class MenuScene {
     for (const [i, g] of (this.glows || []).entries()) { const f = 0.82 + 0.12 * Math.sin(t * 2.3 + i * 3) + 0.06 * Math.sin(t * 5.1 + i * 1.7); g.scale.set(g.userData.s * f * 1.15, g.userData.s * f * 0.8, 1); g.material.opacity = 0.3 * f; if (!i) fl0 = f; }
     this.fl?.update(dt, t, this.cam.position, this.scene.fog?.density);
     for (const m of this.smokes || []) { const u = m.userData, k = (t * u.sp + u.ph) % 1; m.position.set(u.x + k * k * 26, u.y + k * 34, u.z); const r = u.s * (1 + k * 4.5); m.scale.set(r, r, 1); m.material.opacity = 0.5 * Math.min(1, k * 6) * (1 - k); }
+    if (this.blasts) {
+      this.blastT -= dt;
+      if (this.blastT <= 0) { const B = this.blasts.find(q => q.t > 11); this.blastT = Math.random() < 0.25 ? 0.5 + Math.random() * 0.6 : 3 + Math.random() * 6;
+        if (B) { B.t = 0; B.x = (Math.random() - 0.5) * 520; B.z = ROAD_Z - 22 - Math.random() * 170; B.s = 0.8 + Math.random() * 0.7; for (const q of [B.f, B.c, B.d]) q.visible = true; } }
+      for (const B of this.blasts) { if (B.t > 11) { if (B.f.visible) for (const q of [B.f, B.c, B.d]) q.visible = false; continue; } B.t += dt; const u = B.t, s = B.s;
+        B.f.position.set(B.x, PLAIN + 3, B.z + 1); B.f.scale.setScalar(11 * s * (1 + u * 2)); B.f.material.opacity = u < 0.06 ? 1 : Math.max(0, 1 - (u - 0.06) / 0.35);
+        /* the dirt thrown straight up (fast, falls back), then the smoke that stays and drifts */
+        const k = Math.min(1, u / 0.7), up = 1 - (1 - k) * (1 - k); B.d.position.set(B.x, PLAIN + 2 + 6 * s * up - Math.max(0, u - 0.9) * 2.2, B.z); B.d.scale.set(5 * s * (0.6 + up), 11 * s * (0.4 + up), 1); B.d.material.opacity = 0.85 * Math.min(1, u / 0.08) * Math.max(0, 1 - Math.max(0, u - 0.8) / 1.6);
+        const g = Math.min(1, u / 10); B.c.position.set(B.x + g * 12, PLAIN + 4 * s + g * 16, B.z - 0.5); const r = s * (6 + 15 * Math.sqrt(g)); B.c.scale.set(r * 1.25, r, 1); B.c.material.opacity = 0.7 * Math.min(1, u / 0.25) * (1 - g) * (1 - g); }
+    }
     if (this.rim) this.rim.intensity = 26 * (0.85 + 0.15 * fl0);
    /* the fires' light on the two men flickers with them */
     this.renderer.render(this.scene, this.cam);
