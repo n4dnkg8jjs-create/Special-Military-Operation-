@@ -245,7 +245,8 @@ export class Backdrop {
         this.nextConvoy = 30 + Math.random() * 40;
         const mixes = [['btr', 'btr', 'tank'], ['bmp', 'btr'], ['tank', 'bmp', 'btr', 'btr'], ['btr', 'btr'], ['tank', 'tank', 'bmp']], mix = mixes[Math.floor(Math.random() * mixes.length)];
         const dir = Math.random() < 0.5 ? 1 : -1, FW = W + M * 2, sp = U * (4.2 + Math.random() * 1.6);
-        mix.forEach((k, i) => this.convoy.push({ k, dir, sp, x: dir > 0 ? -U * 6 - i * U * 7.5 : FW + U * 2 + i * U * 7.5, ph: Math.random() * 6 }));
+        let gap = 0;   /* (v2: 20-30 m between vehicles - they were nose to tail at 13 m) */
+        mix.forEach((k, i) => { if (i) gap += U * (11.5 + Math.random() * 5.5); this.convoy.push({ k, dir, sp, x: dir > 0 ? -U * 6 - gap : FW + U * 2 + gap, ph: Math.random() * 6 }); });
       }
       for (const v of this.convoy) {
         v.x += v.dir * v.sp * dt;
@@ -280,10 +281,11 @@ export class Backdrop {
     const cw = W * 1.6, ch = H * 0.62, cx0 = -((this.t * U * 0.35) % cw) - dx * M * 0.1;
     x.globalAlpha = 0.9 + fl * 0.1; x.drawImage(this.cloud, cx0, -H * 0.02, cw, ch); x.drawImage(this.cloud, cx0 + cw, -H * 0.02, cw, ch);
     x.globalAlpha = 1;
-    let [ox, oy] = off(0.25); x.drawImage(this.far, ox, oy);
+    const full3d = !!this.scene3d?.full;   /* (menuScene.js v2 draws the town, the land and the convoy itself: only the sky side stays here) */
+    let [ox, oy] = off(0.25); if (!full3d) x.drawImage(this.far, ox, oy);
     // flames in the burning flats: a flickering glow on the facade plus a few licking tongues
     x.globalCompositeOperation = 'lighter';
-    for (const [i, f] of (this.fires || []).entries()) {
+    for (const [i, f] of (full3d ? [] : this.fires || []).entries()) {
       const fl = 0.7 + 0.2 * Math.sin(this.t * 11 + i * 3) + 0.1 * Math.sin(this.t * 23 + i), R = f.s * 3.2 * fl;
       x.globalAlpha = 0.55 * fl; x.drawImage(this.glowS, f.x + ox - R, f.y + oy - R * 0.9, R * 2, R * 1.6);
       for (let k = 0; k < 4; k++) { const ph = this.t * (7 + k * 2.3) + i * 5 + k * 1.9, fh = f.s * (1.2 + 0.55 * Math.sin(ph) + 0.25 * Math.sin(ph * 2.7)), fw = f.s * (0.42 + 0.12 * Math.sin(ph * 1.3));
@@ -301,8 +303,8 @@ export class Backdrop {
       x.globalAlpha = a; const R = p.r; x.drawImage(p.steam ? this.steamS : p.lit && p.life < 2 ? this.smokeL : this.smokeS, p.x + ox - R, p.y + oy - R, R * 2, R * 2);
     }
     x.globalAlpha = 1;
-    [ox, oy] = off(0.5); x.drawImage(this.mid, ox, oy); this._mo = [ox, oy];   // (menuScene.js: the 3-D convoy rides this layer's parallax)
-    if (this.convoy?.length || this.dust?.length) {
+    [ox, oy] = off(0.5); if (!full3d) x.drawImage(this.mid, ox, oy); this._mo = [ox, oy];   // (menuScene.js: the 3-D convoy rides this layer's parallax)
+    if (!full3d && (this.convoy?.length || this.dust?.length)) {
       for (const d of this.dust) { const a = Math.min(1, d.life / 0.4) * (1 - d.life / d.max); x.globalAlpha = a * (d.exh ? 0.5 : 0.65); const R = d.r; x.drawImage(d.exh ? this.smokeS : this.steamS, d.x + ox - R, d.y + oy - R, R * 2, R * 2); }
       x.globalAlpha = 1;
       for (const v of this.convoy) {
@@ -321,7 +323,7 @@ export class Backdrop {
       x.beginPath(); x.moveTo(p.x + ox - p.vx * 0.05, p.y + oy - p.vy * 0.05); x.lineTo(p.x + ox, p.y + oy); x.stroke();
     }
     x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
-    [ox, oy] = off(1); x.drawImage(this.fg, ox, oy);
+    [ox, oy] = off(1); if (!full3d) x.drawImage(this.fg, ox, oy);
     // ash in front of everything
     x.fillStyle = 'rgba(190,180,165,.5)';
     for (const a of this.ash) { x.globalAlpha = 0.35 + 0.3 * Math.sin(this.t + a.p); x.fillRect(a.x - dx * M * 1.3, a.y, a.s, a.s); }
