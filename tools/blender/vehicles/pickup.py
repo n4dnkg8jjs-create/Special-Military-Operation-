@@ -65,6 +65,7 @@ BED_Y = (-1.01, REAR)
 BED_FLOOR, BED_TOP = 0.88, 1.33
 BED_IN = 0.77                   # inner half width of the bed
 TG_Z = 0.90                     # tailgate hinge height
+WELL_IN = 0.59                  # half width of the under-bed structure between the rear wheels (tyre inner face 0.6375)
 DOORS = {'F': (1.11, 0.05), 'R': (-0.01, -0.86)}     # door y extents (front edge = hinge, rear edge)
 GAP = 0.004                     # shut-line half gap
 FLOOR_Z = 0.53                  # cab floor (top of the mats)
@@ -795,7 +796,8 @@ def bed_body():
         Bd.add(box(0.02, 0.07, 0.09, c=(s * (BED_IN + 0.01), y1 + 0.03, TG_Z + 0.02), mat='bare', bev=0.005, segs=1))
         Bd.add(cyl(0.012, 0.03, 8, 'x', c=(s * (BED_IN - 0.012), y1 + 0.04, BED_TOP - 0.06), mat='bare'))
         # bed sill under the wall, rear corner step
-        Bd.add(box(0.06, y0 - y1, 0.06, c=(s * (BED_IN + 0.04), (y0 + y1) / 2, SILL + 0.06), mat='gunmetal'))
+        for ya, yb in ((y0, AXR + RA + 0.012), (AXR - RA - 0.012, y1)):      # (in two pieces: it stops at the wheel arch - one full-length beam ran through the tyre)
+            Bd.add(box(0.06, ya - yb, 0.06, c=(s * (BED_IN + 0.04), (ya + yb) / 2, SILL + 0.06), mat='gunmetal'))
     # floor (liner) with ribs, front bulkhead (liner on the inside), rear sill below the tailgate
     Bd.add(box(2 * BED_IN, y0 - y1 - 0.05, 0.05, c=(0, (y0 + y1) / 2 - 0.025, BED_FLOOR - 0.025), mat='canvas'))
     for i in range(10):
@@ -804,9 +806,12 @@ def bed_body():
     Bd.add(box(2 * BED_IN + 0.02, 0.05, BED_TOP - SILL - 0.05, c=(0, y0 - 0.025, (BED_TOP + SILL + 0.05) / 2), bev=0.012, segs=1))
     Bd.add(box(2 * BED_IN, 0.02, BED_TOP - BED_FLOOR - 0.02, c=(0, y0 - 0.058, (BED_TOP + BED_FLOOR) / 2), mat='canvas', bev=0.006, segs=1))
     Bd.add(box(2 * BED_IN + 0.01, 0.055, TG_Z - SILL - 0.06, c=(0, y1 + 0.028, (TG_Z + SILL + 0.06) / 2 - 0.003), bev=0.008, segs=1))
-    Bd.add(box(2 * BW - 0.06, y0 - y1, 0.03, c=(0, (y0 + y1) / 2, SILL + 0.06), mat='gunmetal'))      # bed underside pan
-    for yy in np.linspace(y0 - 0.15, y1 + 0.15, 4):                                                 # cross sills
-        Bd.add(box(2 * BED_IN, 0.05, 0.31, c=(0, yy, 0.70), mat='gunmetal'))
+    # bed underside pan + cross sills: full width ahead of / behind the rear wheels, between the tyres (inner faces at 0.64) across the arch
+    ya, yb = AXR + RA + 0.012, AXR - RA - 0.012
+    for f, r_, hw in ((y0, ya, BW - 0.03), (ya, yb, WELL_IN), (yb, y1, BW - 0.03)):
+        Bd.add(box(2 * hw, f - r_, 0.03, c=(0, (f + r_) / 2, SILL + 0.06), mat='gunmetal'))
+    for yy in np.linspace(y0 - 0.15, y1 + 0.15, 4):
+        Bd.add(box(2 * (WELL_IN if yb - 0.03 < yy < ya + 0.03 else BED_IN), 0.05, 0.31, c=(0, yy, 0.70), mat='gunmetal'))
     return Bd
 
 
@@ -947,7 +952,8 @@ def interior():
     for x in (-0.08, 0.08):
         bag.add(rail([(x, -0.05, 0.12), (x, -0.05, 0.17), (x, 0.05, 0.17), (x, 0.05, 0.12)], r=0.008, rad=0.03, mat='skirt', foot=False))
     bag.add(box(0.2, 0.012, 0.14, c=(0, -0.14, -0.01), mat='era', bev=0.01, segs=1))
-    I.add(bag.rot('Z', 12).move(-0.42, -0.45, 0.83 + 0.12))
+    if not ATGM:                 # (--atgm: no medical kit in the cab)
+        I.add(bag.rot('Z', 12).move(-0.42, -0.45, 0.83 + 0.12))
     hel = lathe([(0.0, 0.17), (0.07, 0.165), (0.12, 0.13), (0.15, 0.07), (0.16, 0.0), (0.165, -0.005), (0.15, -0.005), (0.14, 0.0)], 18, 'z', mat='gunmetal', cap=False)
     hel.scale(1, 1.15, 0.95)
     hel.add(box(0.05, 0.04, 0.03, c=(0, 0.17, 0.11), mat='skirt'))
@@ -961,7 +967,8 @@ def interior():
     ifak = box(0.16, 0.1, 0.18, c=(0, 0, 0), mat='era', bev=0.02, segs=2)
     ifak.add(box(0.06, 0.02, 0.012, c=(0, 0.0, 0.09), mat='rolled'))
     ifak.add(box(0.02, 0.06, 0.012, c=(0, 0.0, 0.09), mat='rolled'))
-    I.add(ifak.rot('Z', 70).move(0.0, 0.3, FLOOR_Z + 0.30 + 0.09))
+    if not ATGM:
+        I.add(ifak.rot('Z', 70).move(0.0, 0.3, FLOOR_Z + 0.30 + 0.09))
     # interior side trims below the windows between the doors / at the rear quarter (seen with the doors open)
     for s in (1, -1):
         I.add(box(0.05, 0.12, BELT - FLOOR_Z, c=(s * 0.835, -0.92 + 0.05, (BELT + FLOOR_Z) / 2), mat='cast'))

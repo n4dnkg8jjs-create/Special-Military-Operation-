@@ -9412,11 +9412,11 @@
     "note": "unarmoured: rifle fire disables it, any AT round destroys it"
    },
    "file": "assets/vehicles/pickup.glb",
-   "file_mb": 8.19,
+   "file_mb": 8.25,
    "tris": {
-    "lod0": 89382,
-    "lod1": 26552,
-    "hull_wreck": 24614
+    "lod0": 89430,
+    "lod1": 26566,
+    "hull_wreck": 24636
    },
    "model_bbox_m": {
     "min": [
@@ -9806,7 +9806,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 47430,
+        "tris": 47478,
         "pos": [
          0.0,
          0.0,
@@ -9817,7 +9817,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 14224,
+        "tris": 14238,
         "pos": [
          0.0,
          0.0,
@@ -10095,7 +10095,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 24614,
+      "tris": 24636,
       "pos": [
        0.0,
        0.0,
@@ -10143,11 +10143,11 @@
     "note": "unarmoured; fires its ATGM halted only"
    },
    "file": "assets/vehicles/pickup_atgm.glb",
-   "file_mb": 5.14,
+   "file_mb": 5.05,
    "tris": {
-    "lod0": 73824,
-    "lod1": 21978,
-    "hull_wreck": 20646
+    "lod0": 73336,
+    "lod1": 21830,
+    "hull_wreck": 20426
    },
    "model_bbox_m": {
     "min": [
@@ -10502,7 +10502,7 @@
        {
         "name": "hull_geo",
         "type": "mesh",
-        "tris": 33420,
+        "tris": 32932,
         "pos": [
          0.0,
          0.0,
@@ -10513,7 +10513,7 @@
         "name": "hull_geo_LOD1",
         "type": "mesh",
         "hidden": true,
-        "tris": 10022,
+        "tris": 9874,
         "pos": [
          0.0,
          0.0,
@@ -10782,7 +10782,7 @@
       "name": "hull_wreck",
       "type": "mesh",
       "hidden": true,
-      "tris": 20646,
+      "tris": 20426,
       "pos": [
        0.0,
        0.0,
