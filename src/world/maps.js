@@ -1,12 +1,12 @@
 // Map definitions. Coordinates in world metres, north (−Z) is the attacker's side, the player deploys in the south.
 // Building rows: x, z, rot, modules, floors, depthModules, sections, kind, predamage, opts
-const E_C = 520 / 2 + 2;
+const E_C = 640 / 2 + 2;   // (defence v1: 520 -> 640 m: both staging grounds 60 m further out, on the outskirts beyond the ring lanes, so a defence set up on the objectives is not on top of the attacker's forming-up place)
 const E_F = 1400 / 2 + 2;
 
 export const MAPS = {
   city: {
     id: 'city', name: 'Novozavodsk', blurb: 'Shelled-out Soviet panel-block microdistrict. Tight street-to-street fighting, collapsible blocks, garrisons.',
-    size: 'Medium', sizeM: 520, bounds: 245, kind: 'urban',
+    size: 'Medium', sizeM: 640, bounds: 305, kind: 'urban',
     // A planned Soviet microdistrict (mikrorayon) as it looked by 2022: arterial Prospekt Myru and vul. Zavodska
     // cut the district into four superblocks; inside, narrow driveways loop between parallel rows of five-storeys,
     // nine-storey slabs with shops line the avenue, the school and kindergartens sit in the green courtyards,
@@ -29,12 +29,12 @@ export const MAPS = {
       { id: 'B', name: 'Market Crossroads', x: 95, z: 12 },
     ],
     deployZones: {
-      player: { x0: -240, x1: 240, z0: 203, z1: 250 },
-      enemy: { x0: -240, x1: 240, z0: -250, z1: -203 },
+      player: { x0: -300, x1: 300, z0: 256, z1: 312 },
+      enemy: { x0: -300, x1: 300, z0: -312, z1: -256 },
     },
     spawns: {
-      attacker: [[-95, -240], [85, -240], [-30, -235], [150, -238]],
-      defender: [[-95, 240], [85, 240], [0, 235]],
+      attacker: [[-95, -302], [85, -302], [-30, -297], [150, -300]],
+      defender: [[-95, 302], [85, 302], [0, 297]],
     },
     buildings: [
       // NW superblock — avenue frontage (nine-storeys with shops), interior rows, kindergarten, north row
@@ -71,12 +71,12 @@ export const MAPS = {
       garages: [[-172, -178, 0], [-108, -178, 0], [-176, 177, Math.PI], [118, -180, 0]], boilers: [[62, -176, 0], [176, 176, Math.PI]],
       markets: [[110, 46, Math.PI], [122, 46, Math.PI], [128, 58, 0]],
       lots: [[96, -78, 138, -46], [97, -44, 137, -17]] },
-    lineup: [[-112, 188, 'btr', '1st Squad'], [50, 186, 'btr', '2nd Squad'], [-6, 186, 'ifv', '3rd Squad'], [-30, 187, 'tank', 'Assault Squad'], [140, 188, 'tank', null], [-182, 188, 'spg', null]],
-    support: [[95, 194, 'atgm'], [-72, 194, 'fpv']],
+    lineup: [[-112, 268, 'btr', '1st Squad'], [50, 266, 'btr', '2nd Squad'], [-6, 266, 'ifv', '3rd Squad'], [-30, 281, 'tank', 'Assault Squad'], [140, 268, 'tank', null], [-182, 270, 'spg', null]],
+    support: [[95, 284, 'atgm'], [-72, 284, 'fpv']],
     ai: {
       staging: { A: [[-62, -38], [-95, -52], [-23, -40], [-108, -40]], B: [[85, -62], [143, -40], [60, -40], [150, -32]] },
       overwatch: { A: [[-95, -70], [-10, -40]], B: [[85, -95], [143, -60]] },
-      army: [[-95, -168, 'mech', 'A'], [-30, -172, 'assault', 'A'], [85, -168, 'imech', 'B'], [130, -172, 'foot', 'B'], [-60, -180, 'tank', 'A'], [40, -180, 'tank', 'B'], [10, -186, 'atgm', 'A'], [-140, -186, 'fpv', 'B'], [176, -170, 'spg', 'B']],
+      army: [[-95, -266, 'mech', 'A'], [-30, -270, 'assault', 'A'], [85, -266, 'imech', 'B'], [130, -270, 'foot', 'B'], [-60, -282, 'tank', 'A'], [40, -282, 'tank', 'B'], [10, -290, 'atgm', 'A'], [-140, -290, 'fpv', 'B'], [176, -272, 'spg', 'B']],
     },
     // improvised positions dug into the courtyard greens (spoil full of brick and concrete): a slit trench across the
     // school forecourt covering the avenue, and foxholes + an MG pit on the market crossroads' south-west corner

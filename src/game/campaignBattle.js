@@ -53,9 +53,10 @@ export function deployCampaign(game, side = 'player', forceOverride = null, mods
   }
   for (const a of assaults) delete a.mounted;
   if (side === 'player' && C.mode === 'defend') {
-    // defending: the staging ground stretches forward over the objectives (positions prepared in advance)
-    const Z = DEPLOY_ZONES.player, oz = Math.min(...OBJECTIVES.map(o => o.z));
-    Z.z0 = Math.min(Z.z0, oz - 40); Z.x0 = Math.min(Z.x0, ...OBJECTIVES.map(o => o.x - 50)); Z.x1 = Math.max(Z.x1, ...OBJECTIVES.map(o => o.x + 50));
+    // defending: besides the staging ground, the objectives and the trench systems are open to set up on (game.setDefence:
+    // nothing nearer the attacker's staging ground than the no-camp distance) - positions prepared in advance
+    const A = game.setDefence('player');
+    if (A.length) setTimeout(() => game.hud?.alert(`Defence: place your units on the objectives and in the trenches (ringed) or keep them back on the staging ground. ${A.length} position${A.length > 1 ? 's' : ''} open.`, 'good'), 2500);
   }
   applyMods(game, modsOverride || C.mods || {}, side);
 }

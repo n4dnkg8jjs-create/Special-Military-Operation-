@@ -440,7 +440,9 @@ export class HUD {
     // staging grounds during deployment
     if (g.phase === 'deploy' && DEPLOY_ZONES) for (const [side, col] of [['player', C.ok], ['enemy', C.hostile]]) {
       const z = DEPLOY_ZONES[side]; if (!z) continue; x.setLineDash([3, 3]); x.strokeStyle = col; x.lineWidth = 1.2; x.fillStyle = side === 'player' ? 'rgba(120,184,74,.12)' : 'rgba(217,71,61,.10)';
-      x.fillRect(P(z.x0), P(z.z0), (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.strokeRect(P(z.x0) + .5, P(z.z0) + .5, (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.setLineDash([]);
+      x.fillRect(P(z.x0), P(z.z0), (z.x1 - z.x0) * k, (z.z1 - z.z0) * k); x.strokeRect(P(z.x0) + .5, P(z.z0) + .5, (z.x1 - z.x0) * k, (z.z1 - z.z0) * k);
+      for (const a of g.defAreas?.[side] || []) { x.beginPath(); x.arc(P(a.x), P(a.z), a.r * k, 0, 6.283); x.fill(); x.stroke(); }   /* defence areas */
+      x.setLineDash([]);
     }
     // objectives: capture circle in the owner's colour, control arc, letter
     for (const ob of g.objectives) {

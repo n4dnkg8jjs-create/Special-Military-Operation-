@@ -165,12 +165,31 @@ export class Game {
       const edge = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0), 64, 0.35, 4), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, depthWrite: false }));
       g.add(edge); g.position.set((z.x0 + z.x1) / 2, 0.2, (z.z0 + z.z1) / 2); g.renderOrder = 3;
       this.scene.add(g); this.zoneMeshes.push(g);
+      for (const a of this.defAreas?.[side] || []) {   // defence areas: a ring on the ground round each
+        const ring = new THREE.Mesh(new THREE.RingGeometry(a.r - 0.7, a.r, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide }));
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(a.r, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide }));
+        const gg = new THREE.Group(); ring.rotation.x = disc.rotation.x = -Math.PI / 2; gg.add(disc, ring); gg.position.set(a.x, (this.city.groundHeight?.(a.x, a.z) ?? 0) + 0.25, a.z); gg.renderOrder = 3; this.scene.add(gg); this.zoneMeshes.push(gg);
+      }
     }
   }
-  // clamp a point into the player's staging ground (deployment phase)
+  // Defence deployment (defence v1): the side that holds the ground may set its units up on it before the battle - on the
+  // objectives (58 m round each) and in the trench systems - not only on its own staging ground. So that the attacker's
+  // forming-up place cannot be camped, no such area may come within CAMP metres of his staging ground: he always has that
+  // much clear ground in front of him to plan and shake out in. Areas: [{ x, z, r, name }] per side (this.defAreas).
+  setDefence(side) {
+    const os = side === 'player' ? 'enemy' : 'player', E = DEPLOY_ZONES[os], CAMP = Math.max(170, MAP.sizeM * 0.24);
+    const far = a => Math.hypot(Math.max(E.x0 - a.x, 0, a.x - E.x1), Math.max(E.z0 - a.z, 0, a.z - E.z1)) - a.r >= CAMP;
+    const A = [...OBJECTIVES.map(o => ({ x: o.x, z: o.z, r: 58, name: o.name || o.id })), ...(this.city.trenchSystems || []).map(t => ({ x: t.center[0], z: t.center[1], r: Math.min(95, (t.radius || 30) + 8), name: t.name || 'Trench line' }))].filter(far);
+    (this.defAreas ||= {})[side] = A; for (const m of this.zoneMeshes || []) this.scene.remove(m); this.zoneMarkers();
+    return A;
+  }
+  // clamp a point into the side's deployment ground: its staging rectangle or one of its defence areas (deployment phase)
   inZone(x, z, side = 'player', pad = 3) {
-    const Z = DEPLOY_ZONES[side];
-    return [Math.min(Z.x1 - pad, Math.max(Z.x0 + pad, x)), Math.min(Z.z1 - pad, Math.max(Z.z0 + pad, z))];
+    const Z = DEPLOY_ZONES[side], A = this.defAreas?.[side] || [];
+    for (const a of A) if (Math.hypot(x - a.x, z - a.z) <= a.r - pad) return [x, z];
+    let best = [Math.min(Z.x1 - pad, Math.max(Z.x0 + pad, x)), Math.min(Z.z1 - pad, Math.max(Z.z0 + pad, z))], bd = Math.hypot(best[0] - x, best[1] - z);
+    for (const a of A) { const d = Math.hypot(x - a.x, z - a.z) || 1, k = (a.r - pad) / d, q = [a.x + (x - a.x) * k, a.z + (z - a.z) * k], qd = Math.hypot(q[0] - x, q[1] - z); if (qd < bd) { bd = qd; best = q; } }
+    return best;
   }
   deployPlace(u, x, z, facing, side = 'player') {
     [x, z] = this.inZone(x, z, side);
