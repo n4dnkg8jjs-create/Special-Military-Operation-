@@ -82,9 +82,21 @@ Repo: github.com/n4dnkg8jjs-create/special-military-operation- (main; GitHub Pag
   sling_shoulder.py -> assets/soldiers/sling_shoulder.json, soldier.js shoulderSling(); the GLB's v9 socket / strap stay hidden),
   menu v3 (menuScene.js: whole scene 3-D under the painted sky; backdrop.js skips its town when scene3d.full), dugout entrances
   (terrain.js dugout() puts 'dugout_door', built in city.js fortFallback), ground blood (src/fx/blood.js: pools + drag smears).
+- Nov 2026 session 4 (ON main since the owner's "push to main when done"; keep pushing finished fixes to main again):
+  Leopard 2A6 (tools/blender/vehicles/leopard.py, VEHICLES.tank_leopard as a `variant` of kind tank; `?leopard` in a skirmish),
+  Mi-24 strike (mi24.py, src/game/heli.js HeliSupport: key U / `?hind=N`, can be shot down, crash; rotor sound is a stand-in),
+  Command Influence (src/campaign/v2/influence.js: CI earned by directives / wins, spent on Leopard section, VDV platoon, Mi-24 on
+  call; losses cut LP), defence v1 (game.setDefence: defender deploys on objectives + trench systems outside the no-camp distance;
+  city map 640 m), menu v4-v8 (daytime 3-D scene from game models: menuScene.js), tapeTex.js, blood v2, band weights v2,
+  maps v1: three GENERATED maps `rural` / `river` / `greyzone` - src/world/real/synth.js lays out an OSM-format layout (turned,
+  jittered field grid; roads / belts / streets on its lines; yards; a river line) AND their map defs (objectives, strongpoints via
+  strongpoint(), trails, wrecks), built by world/real.js like Robotyne (REAL_DATA / MAPS get them by spread). River = line type
+  'river' (real.js riverReal: balka hollow + water sheet + nav.veh 2, earth dams where roads cross, culvert headwalls), grey zone =
+  `fallow: 1` + heavy `ruin`. src/campaign/v2/battlemap.js battleMapFor(): real map only on its own square, city / river /
+  greyzone (opening contact line) / farmland (villages) / rural. Cell data keeps `battleMap` = the sector's real map (validated).
 - The soldier GLBs cannot be rebuilt in a fresh container (tools/blender/soldiers/.cache has no body.pkl): patch the shipped GLB
   (band_weights.py, mount_legfix.py) or add runtime meshes (sling_shoulder.json) instead.
-- Owner's queue, not started (his words, Nov 2026): CI-point special units - "model the CI vehicles using references" (VDV platoons,
+- Owner's queue (his words, Nov 2026; DONE since: CI units, dugout entrances, tile maps + new map types, defence system): CI-point special units - "model the CI vehicles using references" (VDV platoons,
   Hind strike with crash physics that can be shot down, Leopard; LP deduction when their casualties are high; 'CI' meaning still
   unconfirmed); animate pushing the dead medevac driver out of the seat; high-crawl clip "still really bad" + body parts swelling / twisting / shrinking in many clips; better destroyed apartment blocks + damage "based off satellite images"; campaign tiles -> maps
   (open land and small towns = farmland map, cities without their own map = city map) + new map types: river map, generic rural
