@@ -4,6 +4,7 @@ import { Vehicle } from './vehicle.js';
 import { Squad, angDiff } from './squad.js';
 import { clipDuration, hasClip } from './soldier.js';
 import { cabPose, turnWheel } from './cabPose.js';
+import { twoBone } from './soldierPose.js';
 import { SPAWNS, MAP_SIZE, DEPLOY_ZONES } from '../world/city.js';
 import { TUNING } from '../config.js';
 const SEAT_DROP = [0.13, 0.13, 0.08];   // seated men (driver, front medic, rear medic): below the clip's seated frame (cab roof clearance; measured head bone -> roof lining 0.01 m before)
@@ -31,6 +32,11 @@ export const MEDIC_ROLES = [
 ];
 const V3 = () => new THREE.Vector3();
 const _v = V3(), _w = V3();
+const UP = new THREE.Vector3(0, 1, 0), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _t1 = V3(), _t2 = V3(), _t3 = V3();
+const sm = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
+function setWorldQ(bone, q) { bone.parent.getWorldQuaternion(_q1); bone.quaternion.copy(_q1.invert().multiply(q)); bone.updateMatrixWorld(true); }
+// the dead driver hauled out of the cab (pullTick): total time, end of the reach-in, end of the haul (fractions of it)
+const PULL = { T: 4.6, reach: 0.2, haul: 0.76 };
 const CLIP = {
   exit: ['medevac_cab_exit', 'dismount_door'], enter: ['medevac_cab_enter', 'dismount_door'], lift: ['medevac_lift', 'treat_wounded'],
   carry: ['medevac_carry_walk', 'drag_wounded'], load: ['medevac_load_bed', 'crouch_idle'],
@@ -290,23 +296,85 @@ export class MedevacTruck extends Vehicle {
     const A = this.drvSpot(), s = m.s; m.task = 'toDrv'; m.t = 0; m.best = null; m.stuck = 0; m.force = false; s.netClip = null;
     s.goal = [A.p.x, A.p.z]; this.game.requestPath(s, s.pos.x, s.pos.z, A.p.x, A.p.z, 0.45);
   }
-  // the dead driver slid out of the door onto the ground (seated pose while he is pulled, then he slumps down there)
+  // v10: the dead driver hauled out of his seat. The medic at the open driver's door reaches in and takes him under the arms
+  // (reach); drags him out backwards - the body tips towards the door, turns its back to the medic and comes over the sill at
+  // seat height, the legs trailing out of the footwell last (haul); and lays him down on his back beside the truck, feet
+  // towards it (lay). The body is posed here, not by a clip: his seat pose turned and tilted about the pelvis (the tilt axis is
+  // the truck's nose: a sideways lean while he still faces forward, lying back once he is turned), legs and arms by two-bone
+  // IK (heels in the footwell, over the sill, on the ground; arms hanging, then beside him). The medic walks backwards bent
+  // over (drag_wounded), his hands held on the man's shoulders by IK (pullHands, after his own animation). Then he walks
+  // round the head and climbs in through that door: the cab enter clip mirrored for the left side (case 'enterDrv').
+  pullStart(m) {
+    const D = m.swap, b = D.s, s = m.s, l = this.left(), f = this.fwd(), N = n => b.model?.getObjectByName(n);
+    b.root.updateMatrixWorld(true);
+    const hips = N('Hips'); if (!hips) return (m.pull = { none: true, from: b.pos.clone() });
+    const B = {}; for (const n of ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot']) { const o = N(n); if (o) B[n] = { o, q: o.quaternion.clone() }; }
+    const h0 = hips.getWorldPosition(V3()), G = h0.clone().addScaledVector(l, 1.75).addScaledVector(f, -0.5), gy = this.groundY(G.x, G.z); G.y = gy + 0.13;
+    const foot = n => B[n] ? B[n].o.getWorldPosition(V3()) : h0.clone(), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+    if (s.wSock !== 'back' && s.weaponTo && s.weaponObj) s.weaponTo('back');
+    return (m.pull = { B, l, f, h0, G, gy, H: h0.clone(), root0: b.pos.clone(), head0: b.heading, over: h0.clone().addScaledVector(l, 1.0).setY(h0.y + 0.14),
+      feet: [foot('LeftFoot'), foot('RightFoot')], side: V3().crossVectors(UP, l).negate(), dYaw: wrap(Math.atan2(-l.x, -l.z) - Math.atan2(f.x, f.z)),
+      sg: Math.sign(V3().crossVectors(f, UP).dot(l)) || 1, medic0: s.pos.clone(), r: 0, u: 0, w: 0 });
+  }
   pullTick(m) {
-    const D = m.swap, b = D.s, A = this.drvSpot(), k = Math.min(1, m.t / m.T), e = k * k * (3 - 2 * k);
-    if (!m.from) m.from = b.pos.clone();
-    const gy = this.groundY(A.body.x, A.body.z);
+    const D = m.swap, b = D.s, s = m.s, P = m.pull || this.pullStart(m), k = Math.min(1, m.t / m.T);
     b.inCab = false; b.inside = null; D.task = 'pulled';
-    b.pos.set(m.from.x + (A.body.x - m.from.x) * e, m.from.y + (gy - m.from.y) * e, m.from.z + (A.body.z - m.from.z) * e); b.sync();
-    if (k >= 1) {
-      m.from = null; b.pos.y = gy;
-      b.deathClip = hasClip('death_sit_slump') ? 'death_sit_slump' : 'death_crumple'; b.deathT = 0; b.corpseDone = false; b.ragdollAt = null; b.deathInfo = {}; b.cabSlump = false;
-      if (b.mixer) { b.play(b.deathClip, 0); b.mixer.update(0); }
-      return true;
+    if (P.none) {   /* (no skeleton to pose: slid out as before) */
+      const A = this.drvSpot(), e = k * k * (3 - 2 * k), gy = this.groundY(A.body.x, A.body.z);
+      b.pos.set(P.from.x + (A.body.x - P.from.x) * e, P.from.y + (gy - P.from.y) * e, P.from.z + (A.body.z - P.from.z) * e); b.sync();
+      if (k >= 1) { m.pull = null; b.deathClip = hasClip('death_sit_slump') ? 'death_sit_slump' : 'death_crumple'; b.deathT = 0; b.corpseDone = false; b.ragdollAt = null; b.deathInfo = {}; b.cabSlump = false; if (b.mixer) { b.play(b.deathClip, 0); b.mixer.update(0); } return true; }
+      return false;
     }
+    const r = P.r = sm(0, PULL.reach, k), u = P.u = sm(PULL.reach, PULL.haul, k), w = P.w = sm(PULL.haul, 1, k), { B, l, f } = P;
+    // the pelvis: out over the sill at seat height, then down to where he is laid (one curve, no stop on the sill)
+    P.H.copy(P.h0).multiplyScalar((1 - u) * (1 - u)).addScaledVector(P.over, 2 * u * (1 - u)).addScaledVector(P.G, u * u);
+    const yaw = P.dYaw * sm(0.05, 0.6, u), th = 0.3 * r + 0.45 * u + 0.76 * w;
+    b.heading = P.head0 + yaw; b.pos.copy(_t1.copy(P.root0).sub(P.h0).applyAxisAngle(UP, yaw).add(P.H));
+    for (const n in B) B[n].o.quaternion.copy(B[n].q);
+    b.sync(); b.root.updateMatrixWorld(true);
+    B.Hips.o.getWorldQuaternion(_q2); setWorldQ(B.Hips.o, new THREE.Quaternion().setFromAxisAngle(f, P.sg * th).multiply(_q2));
+    b.root.updateMatrixWorld(true);
+    // legs: heels in the footwell until the pelvis is at the sill, across it, then on the ground towards the truck
+    [['Left', 1], ['Right', -1]].forEach(([nm, sd], i) => {
+      const a = B[nm + 'UpLeg'], c = B[nm + 'Leg'], e = B[nm + 'Foot']; if (!a || !c || !e) return;
+      const mid = _t1.copy(P.h0).addScaledVector(l, 0.52).addScaledVector(f, 0.22 + sd * 0.07); mid.y = P.h0.y - 0.3;
+      const end = _t2.copy(P.G).addScaledVector(l, -0.86).addScaledVector(P.side, sd * 0.12); end.y = P.gy + 0.09;
+      twoBone(a.o, c.o, e.o, _t3.copy(P.feet[i]).lerp(mid, sm(0.3, 0.62, u)).lerp(end, sm(0.62, 1, u)));
+    });
+    // arms: let go of the wheel and hang; beside him on the ground once he lies
+    [['Left', 1], ['Right', -1]].forEach(([nm, sd]) => {
+      const a = B[nm + 'Arm'], c = B[nm + 'ForeArm'], e = B[nm + 'Hand']; if (!a || !c || !e) return;
+      const sh = a.o.getWorldPosition(_t1), hang = _t2.copy(sh).addScaledVector(l, -0.1 * (1 - u)); hang.y = Math.max(P.gy + 0.07, sh.y - 0.5);
+      const lie = _t3.copy(sh).addScaledVector(l, -0.5).addScaledVector(P.side, sd * 0.16); lie.y = P.gy + 0.07;
+      const cur = e.o.getWorldPosition(V3());
+      twoBone(a.o, c.o, e.o, cur.lerp(hang, sm(0, 0.6, r + u)).lerp(lie, w));
+    });
+    b.root.updateMatrixWorld(true);
+    // the medic: at the door for the reach, backwards with the load, a last step back as he lowers him
+    if (!P.drop) {
+      const mg = _t1.copy(P.G).addScaledVector(l, 0.95), me = _t2.copy(P.G).addScaledVector(l, 1.5);
+      s.pos.copy(P.medic0).lerp(mg, u).lerp(me, w); s.pos.y = this.groundY(s.pos.x, s.pos.z);
+      s.netClip = k < PULL.reach * 0.8 ? 'walk_rifle' : hasClip('drag_wounded') ? 'drag_wounded' : clipOf('lift');
+      s.netTs = k < PULL.reach * 0.8 ? 1e-3 : 0.25 + 0.75 * Math.sin(Math.PI * u) + 0.3 * Math.sin(Math.PI * w);
+    }
+    if (k >= 1) { b.pos.y = b.pos.y; b.deathT = 99; b.corpseDone = true; b.ragdollAt = null; b.ragdoll = null; b.cabSlump = false; m.pullEnd = { head: P.G.clone().addScaledVector(l, 0.45).addScaledVector(f, 0.75), from: s.pos.clone() }; m.pull = null; return true; }
     return false;
   }
+  // (after the medic's own animation) his hands on the dead man's shoulders: reaching during the reach-in, let go as he is laid down
+  pullHands(m) {
+    const P = m.pull, s = m.s, b = m.swap?.s; if (!P || P.none || !b) return;
+    const N = n => s.model?.getObjectByName(n), g = sm(0.25, 1, P.r) * (1 - sm(0.7, 1, P.w)); if (g < 0.01) return;
+    s.root.updateMatrixWorld(true);
+    const sp = N('Spine1'); if (sp && P.u < 0.05) { sp.rotateX(0.3 * P.r * (1 - P.u * 20)); sp.updateMatrixWorld(true); }   /* leaning in through the door */
+    const lf = _t3.set(Math.cos(s.heading), 0, -Math.sin(s.heading)), sh = ['LeftArm', 'RightArm'].map(n => P.B[n]?.o.getWorldPosition(V3())).filter(Boolean); if (sh.length < 2) return;
+    sh.sort((a, c) => c.dot(lf) - a.dot(lf));
+    [['Left', sh[0]], ['Right', sh[1]]].forEach(([nm, t]) => {
+      const a = N(nm + 'Arm'), c = N(nm + 'ForeArm'), e = N(nm + 'Hand'); if (!a || !c || !e) return;
+      t.y -= 0.07; twoBone(a, c, e, e.getWorldPosition(V3()).lerp(t, g));
+    });
+  }
   takeWheel(m) {
-    const D = m.swap, s = m.s; m.swap = null;
+    const D = m.swap, s = m.s; m.swap = null; s.root.scale.x = 1; m.pullEnd = null;
     D.i = m.i; m.i = 0; D.task = 'pulled'; this.medics.sort((a, b) => a.i - b.i);
     m.task = 'in'; s.inside = 'btr'; s.inCab = true; s.netClip = null; s.path = null; s.goal = null;
     const c = this.crewList?.find(e => e.role === 'driver'); if (c) c.hp = 100;
@@ -337,6 +405,10 @@ export class MedevacTruck extends Vehicle {
       const s = m.s;
       if (!s.alive) {
         if (m.cas) this.dropCas(m);
+        if (s.root.scale.x < 0) s.root.scale.x = 1;
+        // hit while hauling the driver out: the body is not left hanging in the door - it comes the rest of the way down by itself
+        if (m.swap && m.pull) { m.pull.drop = true; m.t += dt * 1.8; if (this.pullTick(m)) { m.swap = null; m.pullEnd = null; } }
+        else if (m.swap && m.task !== 'pull') { m.swap = null; m.pullEnd = null; }
         if (m.task === 'in' && s.state === 'dead') { this.seatMan(m, dt); continue; }   // v9: dead in his seat (pulled out by a medic if he was the driver)
         if (this.medics.some(q => q.swap === m && q.task === 'pull')) continue;          // being pulled out (pullTick)
         s.inCab = false; if (s.state === 'dead' || s.onBed) { s.animate(dt, g.camDist(s.pos)); s.sync(); } continue;   // (a medic on the bed: his squad does not animate him)
@@ -409,15 +481,28 @@ export class MedevacTruck extends Vehicle {
           else if (m.t - m.bestT > 5) { m.bestT = m.t; m.stuck = (m.stuck || 0) + 1; s.path = null; if (m.stuck >= 2 && dd < 4.5) m.force = true; }
           if (dd < 0.45 || m.force || (!s.path && !s.pathReq && dd < 1.6)) {
             s.pos.set(A.p.x, s.pos.y, A.p.z); s.heading = A.h; s.path = null; s.vel.set(0, 0, 0);
-            m.task = 'pull'; m.t = 0; m.T = 1.6; s.netClip = hasClip('drag_wounded') ? 'drag_wounded' : clipOf('lift'); s.netTs = 0.5; this.door('door_FL', true, 4);
+            if (m.swap.task === 'pulled') { m.task = 'seatDrv'; m.t = m.T = 0.01; m.pullEnd = null; this.door('door_FL', true, 6); break; }   /* (already out: the first medic was hit hauling him) */
+            m.task = 'pull'; m.t = 0; m.T = PULL.T; m.pull = null; s.netClip = 'walk_rifle'; s.netTs = 1e-3; this.door('door_FL', true, PULL.T + 6);
           } else if (!s.path && !s.pathReq) { s.goal = [A.p.x, A.p.z]; g.requestPath(s, s.pos.x, s.pos.z, A.p.x, A.p.z, 0.45); }
           break;
         }
         case 'pull':
           if (!m.swap) { this.goDoor(m); break; }
-          if (this.pullTick(m)) { m.task = 'seatDrv'; m.t = 0; m.T = 0.9; s.netClip = 'crouch_idle'; s.netTs = 1; this.door('door_FL', true, 1.4); }
+          if (this.pullTick(m)) { m.task = 'seatDrv'; m.t = 0; m.T = 2.3; s.netClip = 'walk_rifle'; s.netTs = 1; }
           break;
-        case 'seatDrv':
+        case 'seatDrv': {   /* round the dead man's head to the driver's door (two legs of a walk, clear of the body) */
+          const A = this.drvSpot(), E = m.pullEnd, k = Math.min(1, m.t / m.T);
+          if (E) { const a = Math.min(1, k / 0.45), c = Math.max(0, (k - 0.45) / 0.55), x0 = s.pos.x, z0 = s.pos.z;
+            s.pos.copy(E.from).lerp(E.head, a).lerp(_t1.set(A.p.x, s.pos.y, A.p.z), c); const dx = s.pos.x - x0, dz = s.pos.z - z0;
+            if (dx * dx + dz * dz > 1e-6) s.heading += THREE.MathUtils.clamp(angDiff(Math.atan2(dx, dz), s.heading), -6 * dt, 6 * dt); }
+          if (m.t >= m.T) {
+            if (!hasClip(clipOf('enter'))) { this.takeWheel(m); break; }
+            const lf = this.left(); s.pos.set(A.p.x, s.pos.y, A.p.z); s.heading = Math.atan2(lf.x, lf.z); s.root.scale.x = -1;   /* the right-door clip mirrored */
+            m.task = 'enterDrv'; m.t = 0; m.T = dur('enter', 1.8); s.netClip = clipOf('enter'); s.netTs = 1; s.netClipT = null; this.door('door_FL', true, m.T);
+          }
+          break;
+        }
+        case 'enterDrv':
           if (m.t >= m.T) this.takeWheel(m);
           break;
         case 'enter':
@@ -438,6 +523,8 @@ export class MedevacTruck extends Vehicle {
       } else { s.vel.set(0, 0, 0); s.pos.y = this.groundY(s.pos.x, s.pos.z); }
       if (m.task === 'carry') { const sp = s.vel.length(); s.netClip = clipOf('carry'); s.netTs = THREE.MathUtils.clamp(sp / 1.14, 0.05, 1.6); }
       s.animate(dt, g.camDist(s.pos)); s.sync();
+      if (m.task === 'pull' && m.pull) this.pullHands(m);
+      if (m.task !== 'enterDrv' && s.root.scale.x < 0) s.root.scale.x = 1;
       this.pairCas(m);
     }
   }
